@@ -1,0 +1,620 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc2119 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY rfc2223 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2223.xml">
+<!ENTITY rfc2578 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2578.xml">
+<!ENTITY rfc2579 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2579.xml">
+<!ENTITY rfc2580 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2580.xml">
+<!ENTITY rfc2629 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2629.xml">
+<!ENTITY rfc3410 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3410.xml">
+<!ENTITY rfc4181 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4181.xml">
+]>
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="8235" category="info" ipr="trust200902" submissionType="independent">
+  <front>
+    <title abbrev="Schnorr NIZK Proof">Schnorr Non-interactive Zero-Knowledge Proof</title>
+
+      <author fullname="Feng Hao" initials="F" role="editor"
+            surname="Hao">
+      <organization>Newcastle University (UK)</organization>
+
+      <address>
+        <postal>
+	  <street>Urban Sciences Building, School of Computing, Newcastle University</street>
+          <city>Newcastle Upon Tyne</city>
+
+          <country>United Kingdom</country>
+        </postal>
+
+        <phone>+44 (0)191-208-6384</phone>
+
+        <email>feng.hao@ncl.ac.uk</email>
+      </address>
+    </author>
+
+    <date month="August" year="2017" />
+
+    <keyword>Zero-Knowledge Proof</keyword>
+
+    <keyword>Schnorr NIZK proof</keyword>
+
+    <keyword>Identification protocol</keyword>
+
+    <abstract>
+    <t>
+    This document describes the Schnorr non-interactive zero-knowledge (NIZK) proof, a non-interactive
+    variant of the three-pass Schnorr identification scheme. The
+    Schnorr NIZK proof allows one to prove the knowledge of a discrete
+    logarithm without leaking any information about its value.  It can
+    serve as a useful building block for many cryptographic protocols
+    to ensure that participants follow the protocol specification
+    honestly. This document specifies the Schnorr NIZK proof in both
+    the finite field and the elliptic curve settings. 
+    </t>
+    </abstract>
+ 
+   </front>
+
+  <middle>
+
+        <section anchor="intro" title="Introduction">
+
+            <t>
+            A well-known principle for designing robust public key
+            protocols is as follows: "Do not assume that a message
+            you receive has a particular form (such as g^r for known
+            r) unless you can check this" <xref target="AN95" />.
+            This is the sixth of the eight principles defined by Ross
+            Anderson and Roger Needham at Crypto '95. Hence, it is also
+            known as the "sixth principle". In the past thirty years,
+            many public key protocols failed to prevent attacks, which
+            can be explained by the violation of this principle
+            <xref target="Hao10" />.
+            </t>
+            
+            <t>
+            While there may be several ways to satisfy the sixth
+            principle, this document describes one technique that
+            allows one to prove the knowledge of a discrete logarithm
+            (e.g., r for g^r) without revealing its value. This
+            technique is called the Schnorr NIZK proof, which is a
+            non-interactive variant of the three-pass Schnorr
+            identification scheme <xref target="Stinson06" />. The
+            original Schnorr identification scheme is made
+            non-interactive through a Fiat-Shamir transformation
+            <xref target="FS86" />, assuming that there exists a
+            secure cryptographic hash function (i.e., the so-called random oracle model).
+            </t>  
+           	
+           	<t>
+           	The Schnorr NIZK proof can be implemented over a finite 
+           	field or an elliptic curve (EC). 
+           	The technical specification is basically the same, except that the underlying 
+           	cyclic group is different. For completeness, this document describes
+           	the Schnorr NIZK proof in both the finite field and the EC
+           	settings.
+           	</t>
+           	
+            <section title="Requirements Language">
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+            </section>
+            
+            <section title="Notation">
+            
+            <t>
+            The following notation is used in this document:
+            </t>
+            
+            <t>
+            <list style="symbols">    
+                <t>Alice: the assumed identity of the prover in the protocol </t>
+                <t>Bob: the assumed identity of the verifier in the protocol </t>
+                <t>a | b: a divides b</t>
+                <t>a || b: concatenation of a and b</t>           
+                <t>[a, b]: the interval of integers between and including a and b</t>            
+                <t>t: the bit length of the challenge chosen by Bob</t>
+                <t>H: a secure cryptographic hash function</t>       
+                <t>p: a large prime</t>
+                <t>q: a large prime divisor of p-1, i.e., q | p-1</t>
+                <t>Zp*: a multiplicative group of integers modulo p</t>
+                <t>Gq: a subgroup of Zp* with prime order q</t>
+                <t>g: a generator of Gq</t>                
+                <t>g^d: g raised to the power of d</t>
+                <t>a mod b: a modulo b</t>
+                <t>Fp: a finite field of p elements, where p is a prime</t>
+                <t>E(Fp): an elliptic curve defined over Fp</t>
+                <t>G: a generator of the subgroup over E(Fp) with prime order n</t>
+                <t>n: the order of G</t>	
+                <t>h: the cofactor of the subgroup generated by G, which is equal to the order of the elliptic curve divided by n</t>			
+                <t>P x [b]: multiplication of a point P with a scalar b over E(Fp)</t>          
+            </list>
+            </t>        
+                           
+            </section>              
+
+		</section>
+		
+		<section title="Schnorr NIZK Proof over Finite Field">
+		
+	        <section title="Group Parameters">
+        	
+	        <t>When implemented over a finite field, the Schnorr NIZK proof may use
+	        	the same group setting as DSA <xref target="FIPS186-4" />. Let p and q be two large primes with q | p-1. 
+	        	Let Gq denote the subgroup of Zp* of prime order q, and g be a generator for the 
+	        	subgroup. Refer to the DSA examples in the NIST
+			Cryptographic Toolkit <xref target="NIST_DSA"/> for values of (p, q, g) that provide different security levels. A level of 128-bit security or above is recommended. Here, DSA groups are used only as an example. Other multiplicative groups where the discrete logarithm problem (DLP) is intractable are also suitable for the implementation of the Schnorr NIZK proof.
+	        </t> 
+	        
+	        </section>
+	        	        	
+	        <section title="Schnorr Identification Scheme">
+       
+            <t>The Schnorr identification scheme runs interactively between Alice (prover) and Bob (verifier). 
+            In the setup of the scheme, Alice publishes her public key A = g^a mod p, where a is the private key chosen uniformly at random from [0, q-1].</t> 
+          	        	
+	        <t>The protocol works in three passes:
+	        </t>
+        
+	        <t>
+	        <list style="numbers">
+	            <t>Alice chooses a number v uniformly at random from [0, q-1] and computes V = g^v mod p. She sends V to Bob.</t>
+	            <t>Bob chooses a challenge c uniformly at random from [0, 2^t-1], where t is the bit length of the challenge (say, t = 160). Bob sends c to Alice.</t>
+	            <t>Alice computes r = v - a * c mod q and sends it to Bob. </t>        
+	        </list>
+	        </t>
+        
+	        <t>
+	        At the end of the protocol, Bob performs the following checks. If any check fails, the identification is unsuccessful.
+	        </t>
+	        
+	        <t>
+	        	<list style="numbers">
+	        		<t>To verify A is within [1, p-1] and A^q = 1 mod p;</t>
+	        		<t>To verify V = g^r * A^c mod p.</t>
+	        	</list>                        
+	        </t>
+	        
+	        <t>The first check ensures that A is a valid public key, hence the discrete logarithm of A with respect to the base g actually exists. It is worth noting that some applications may specifically exclude the identity element as	a valid public key. In that case, one shall check A is within [2, p-1] instead of [1, p-1].
+	        </t>
+	        
+	        <t>
+	        	The process is summarized in the following diagram.
+	        </t>
+        
+	    <figure title="Information Flows in Schnorr Identification Scheme over Finite Field">
+        <artwork><![CDATA[
+       Alice                               Bob
+      -------                             -----    
+    
+choose random v from [0, q-1]
+    
+compute V = g^v mod p    -- V ->                           
+                              
+compute r = v-a*c mod q  <- c -- choose random c from [0, 2^t-1]
+    
+                         -- b -> check 1) A is a valid public key
+                                       2) V = g^r * A^c mod p     
+]]></artwork>        
+        </figure>
+      
+	        </section>
+        
+	        <section title="Non-interactive Zero-Knowledge Proof">
+        
+	        <t>
+	        The Schnorr NIZK proof is obtained from the interactive Schnorr identification scheme through a Fiat-Shamir 
+	        transformation <xref target="FS86" />. This transformation involves using a secure cryptographic hash function to issue the challenge 
+	        instead. More specifically, the challenge is redefined as c =
+		H(g || V ||  A || UserID || OtherInfo), where UserID is a
+		unique identifier for the prover and OtherInfo is optional
+		data. Here, the hash function H shall be a secure
+		cryptographic hash function, e.g., SHA-256, SHA-384, SHA-512,
+		SHA3-256, SHA3-384, or SHA3-512. The bit length of the hash output should be at least equal to that of the order q of the considered subgroup.
+	        </t>
+	        
+	        <t>
+	         OtherInfo is defined to allow flexible inclusion of contextual information (also known as "labels" in <xref target="ABM15" />) in the Schnorr NIZK proof so that the technique defined in this document can be generally useful. For example, some security protocols built on top of the Schnorr NIZK proof may wish to include more contextual information such as the protocol name, timestamp, and so on. The exact items (if any) in OtherInfo shall be left to specific protocols to define. However, the format of OtherInfo in any specific protocol must be fixed and explicitly defined in the protocol specification.
+	        </t>                                    
+                    
+	        <t>Within the hash function, there must be a clear boundary between any two concatenated items. It is recommended that one should always prepend each item with a 4-byte integer that 
+	        represents the byte length of that item.  OtherInfo may contain multiple subitems. In that case, the same rule 
+	        shall apply to ensure a clear boundary between adjacent subitems.
+	        </t>
+        
+	        </section>
+        
+	        <section title="Computation Cost">
+
+	        <t>
+	        In summary, to prove the knowledge of the exponent for A = g^a, Alice generates
+	        a Schnorr NIZK proof that contains: {UserID, OtherInfo, V = g^v mod p, r = v - a*c mod q}, where c = H(g || V ||  A || UserID || OtherInfo).
+	        </t>
+        
+	        <t>
+	        To generate a Schnorr NIZK proof, the cost is roughly one modular exponentiation: that is to compute g^v mod p. In practice, this exponentiation may be precomputed in the offline manner to optimize efficiency. The cost of the remaining operations (random number generation, modular multiplication, and hashing) is negligible as compared with the modular exponentiation.
+	        </t>
+        
+	        <t>
+	        To verify the Schnorr NIZK proof, the cost is approximately two exponentiations: one for computing A^q mod p and
+	        the other for computing g^r * A^c mod p. (It takes roughly one exponentiation to compute the latter using a simultaneous exponentiation technique as described in <xref target="MOV96" />.) 
+	        </t>
+       
+   	     </section>
+
+		</section>
+
+	<section title="Schnorr NIZK Proof over Elliptic Curve">
+	
+		<section title="Group Parameters">
+		
+		<t>When implemented over an elliptic curve, the Schnorr NIZK proof may use the same EC setting as ECDSA <xref target="FIPS186-4" />. For the illustration purpose, only curves over the prime fields (e.g., NIST P-256) are described here. Other curves over the binary fields (see <xref target="FIPS186-4" />) that are suitable for ECDSA can also be used for implementing the Schnorr NIZK proof. Let E(Fp) be an elliptic curve defined over a finite field Fp, where p is a large prime. Let G be a base point on the curve that serves as a generator for the subgroup over E(Fp) of prime order n. The cofactor of the subgroup is denoted h, which is usually a small value (not more than 4). Details on EC operations, such as addition, negation and scalar multiplications, can be found in <xref target="MOV96" />. Data types and conversions including elliptic-curve-point-to-octet-string and vice versa can be found in Section 2.3 of <xref target="SEC1" />. Here, the NIST curves are used only as an example. Other secure curves such as Curve25519 are also suitable for the implementation as long as the elliptic curve discrete logarithm problem (ECDLP) remains intractable.
+ 		</t> 
+
+		</section>
+			
+		<section title="Schnorr Identification Scheme">
+
+		<t>					 
+		In the setup of the scheme, Alice publishes her public key
+<vspace/>
+A = G x [a], where a is the private key chosen uniformly at random from [1, n-1]. 
+		</t>
+			
+		<t>The protocol works in three passes:
+		</t>
+			
+		<t>
+		<list style="numbers">
+			<t>Alice chooses a number v uniformly at random from [1, n-1] and computes V = G x [v]. She sends V to Bob.</t>
+			<t>Bob chooses a challenge c uniformly at random from [0, 2^t-1], where t is the bit length of the challenge (say, t = 80). Bob sends c to Alice.</t>
+			<t>Alice computes r = v - a * c mod n and sends it to Bob. </t>        			
+		</list>
+		</t>
+			
+		<t>
+		At the end of the protocol, Bob performs the following checks. If any check fails, the verification is unsuccessful.
+		</t>
+		
+		<t>
+			<list style="numbers">
+				<t>To verify A is a valid point on the curve and A x [h] is not the point at infinity;</t>
+				<t>To verify V = G x [r] + A x [c].</t>
+			</list>                        
+		</t>
+		
+		<t>The first check ensures that A is a valid public key, hence the discrete logarithm of A with respect to the base G actually exists. Unlike in the DSA-like group setting where a full modular exponentiation is required to validate a public key, in the ECDSA-like setting, the public key validation incurs almost negligible cost due to the cofactor 
+		being small (e.g., 1, 2, or 4). 
+		</t>
+	
+		<t>The process is summarized in the following diagram.
+		</t>
+			
+<figure title="Information Flows in Schnorr Identification Scheme over Elliptic Curve">
+<artwork><![CDATA[
+Alice                               Bob
+-------                             -----    
+                                                
+choose random v from [1, n-1]
+                                                
+compute V = G x [v]          -- V ->                           
+                                                
+compute r = v - a * c mod n  <- c -- choose random c from [0, 2^t-1]
+                                                
+                             -- b -> check 1) A is a valid public key
+                                           2) V = G x [r] + A x [c]     
+]]></artwork>        
+
+				</figure>
+				
+		</section>
+			
+		<section title="Non-interactive Zero-Knowledge Proof">
+				
+		<t>Same as before, the non-interactive variant is obtained through a Fiat-Shamir 
+			transformation <xref target="FS86" />, by using a secure cryptographic hash 
+			function to issue the challenge instead. The challenge c is defined as c = H(G || V ||  A || UserID || OtherInfo), where UserID is a unique identifier for the prover and OtherInfo is optional data as explained earlier.
+		</t>                                    
+					
+		</section>
+				
+		<section title="Computation Cost">
+					
+		<t>
+		In summary, to prove the knowledge of the discrete logarithm for A = G x [a] with respect to base G over the elliptic curve, Alice generates
+		a Schnorr NIZK proof that contains: {UserID, OtherInfo, V = G x [v], r = v - a*c mod n}, where c = H(G || V ||  A || UserID || OtherInfo).
+		</t>
+					
+		<t>
+		To generate a Schnorr NIZK proof, the cost is one scalar multiplication: that is to compute G x [v]. 	
+		</t>
+					
+		<t>
+		To verify the Schnorr NIZK proof in the EC setting, the cost is approximately one multiplication over the elliptic curve: i.e., computing G x [r] + A x [c] (using the same simultaneous computation technique as before). The cost of public key validation in the EC setting is essentially free.
+		</t>
+						
+		</section>					
+
+	</section>
+		
+	<section title="Variants of Schnorr NIZK proof">
+		
+	<t>In the finite field setting, the prover sends (V, r) (along with UserID and OtherInfo), and the verifier first computes c, and then checks for V = g^r * A^c mod p. This requires the transmission of an element V of Zp, whose size is typically between 2048 and 3072 bits, and an element r of Zq whose size is typically between 224 and 256 bits. It is possible to reduce the amount of transmitted data to two elements of Zq as below.</t>
+		
+	<t>In the modified variant, the prover works exactly the same as before, except that it sends (c, r) instead of (V, r). The verifier computes V = g^r * A^c mod p and then checks whether H(g || V ||  A || UserID || OtherInfo) = c. The security of this modified variant follows from the fact that one can compute V from (c, r) and c from (V, r). Therefore, sending (c, r) is equivalent to sending (V, c, r), which in turn is equivalent to sending (V, r). Thus, the size of the Schnorr NIZK proof is significantly reduced. However, the computation costs for both the prover and the verifier stay the same.</t>
+	
+	<t>The same optimization technique also applies to the elliptic curve setting by replacing (V, r) with (c, r), but the benefit is extremely limited. When V is encoded in the compressed form, this optimization only saves 1 bit. The computation costs for generating and verifying the NIZK proof remain the same as before.</t>
+			
+	</section>
+		
+	<section title="Applications of Schnorr NIZK proof">
+        
+	<t>Some key exchange protocols, such as J-PAKE <xref target="HR08" /> and YAK <xref target="Hao10" />, rely on the Schnorr NIZK proof to ensure participants have the knowledge of discrete logarithms, hence following the protocol specification honestly. The technique described in this document can be directly applied to those protocols. 
+    </t>
+        
+	<t>The inclusion of OtherInfo also makes the Schnorr NIZK proof generally useful and flexible to cater for
+        a wide range of applications. For example, the described technique may
+	be used to allow a user to demonstrate the proof of possession (PoP)
+	of a long-term private key to a Certification Authority (CA) during
+	the public key registration phrase. It must be ensured that the hash contains
+   	data that links the proof to one particular key registration
+   	procedure (e.g., by including the CA name, the expiry date, the
+   	applicant's email contact, and so on, in OtherInfo). 
+	In this case, the Schnorr NIZK proof is functionally equivalent to a self-signed Certificate Signing Request generated by using DSA or ECDSA.
+	</t>
+
+	</section>
+
+    <section title="Security Considerations">
+            
+            <t>
+            The Schnorr identification protocol has been proven to satisfy the following properties, assuming that the verifier is honest and the discrete 
+            logarithm problem is intractable (see <xref target="Stinson06" />).
+            </t>
+            
+            <t>
+            <list style="numbers">
+            <t>Completeness -- a prover who knows the discrete logarithm is always able to pass the verification challenge.</t>
+            <t>Soundness -- an adversary who does not know the discrete logarithm has only a negligible probability (i.e., 2^(-t)) to 
+            pass the verification challenge.</t>
+            <t>Honest verifier zero-knowledge -- a prover leaks no more than
+	    one bit of information to the honest verifier: whether the prover knows the discrete logarithm.</t>
+            </list>                        
+            </t>
+
+            <t>
+            The Fiat-Shamir transformation is a standard technique to transform a three-pass interactive Zero-Knowledge Proof protocol 
+            (in which the verifier chooses a random challenge) to a non-interactive one, 
+            assuming that there exists a secure cryptographic hash function. 
+            Since the hash function is publicly defined, the prover is able to compute
+            the challenge by itself, hence making the protocol non-interactive. In this case,
+            the hash function (more precisely, the random oracle in the security proof) implements an honest verifier,
+            because it assigns a uniformly random challenge c to each commitment (g^v or G x [v]) sent by the prover. This is exactly what an honest verifier would do.
+            </t>
+		            
+			<t>
+			It is important to note that in Schnorr's
+			identification scheme and its non-interactive variant,
+			a secure random number generator is required. In
+			particular, bad randomness in v may reveal the secret
+			discrete logarithm. For example, suppose the same
+			random value V = g^v mod p is used twice by the prover
+			(e.g., because its random number generator failed),
+			but the verifier chooses different challenges c and c'
+			(or the hash function is used on two different
+			OtherInfo data, producing two different values c and
+			c'). The adversary now observes two proof transcripts
+			(V, c, r) and (V, c', r'), based on which he can
+			compute the secret key a by:
+<vspace blankLines="1"/>
+			(r-r')/(c'-c) = (v-a*c-v+a*c')/(c'-c) = a mod q.
+			</t>
+			
+
+			<t>
+			More generally, such an attack may even work for a
+			slightly better (but still bad) random number
+			generator, where the value v is not repeated, but the
+			adversary knows a relation between two values v and v'
+			such as v' = v + w for some known value w. Suppose the
+			adversary observes two proof transcripts (V, c, r) and
+			(V', c', r'). He can compute the secret key a by:
+<vspace blankLines="1"/>
+(r-r'+w)/(c'-c) = (v-a*c-v-w+a*c'+w)/(c'-c) = a mod q. 
+			</t>
+<t>This example reinforces the importance of using a secure random number generator to generate the ephemeral secret v in Schnorr's schemes.
+			</t> 
+		    
+		    <t>
+		    	Finally, when a security protocol relies on the Schnorr NIZK proof for proving the knowledge of a discrete logarithm in a non-interactive way, the threat of replay attacks shall be considered.    
+		    	For example, the Schnorr NIZK proof might be replayed back to the prover itself (to introduce some 
+		    	undesirable correlation between items in a cryptographic protocol). This particular attack
+		    	is prevented by the inclusion of the unique UserID in the hash. The verifier shall check the prover's UserID is a valid identity and is different from its own. 
+		    	Depending on the context of specific protocols, other forms of replay attacks should be considered, and appropriate contextual
+		    	information included in OtherInfo whenever necessary. 
+		    </t>
+		        
+    </section>
+
+    <section title="IANA Considerations">
+    <t>This document does not require any IANA actions.</t>
+    </section>
+
+
+  </middle>
+
+  <back>
+
+    <!-- References Section -->
+
+    <references title="Normative References">
+
+            <?rfc include="reference.RFC.2119.xml"?>
+            <?rfc include="reference.RFC.8174.xml"?>
+			
+	            <reference anchor="SEC1" target="http://www.secg.org/sec1-v2.pdf">
+	           	<front>
+	       		<title>Standards for Efficient Cryptography. SEC 1: Elliptic Curve Cryptography</title>
+	       		<author fullname="Standards for Efficient Cryptography Group">
+	          	</author>
+	            <date month="May" year="2009" />
+	           	</front>
+	       		<seriesInfo name="SECG" value="SEC1-v2" />
+	       		</reference>
+	            		            
+				
+	            <reference anchor="ABM15">
+  <front>
+    <title>Security of the J-PAKE Password-Authenticated Key Exchange
+    Protocol</title>
+    <author initials="M." surname="Abdalla" fullname="Michel Abdalla">
+      <organization></organization>
+    </author>
+    <author initials="F." surname="Benhamouda" fullname="Fabrice Benhamouda">
+      <organization></organization>
+    </author>
+    <author initials="P." surname="MacKenzie" fullname="Philip MacKenzie">
+      <organization></organization>
+    </author>
+    <date year="2015" month="May"/>
+  </front>
+  <seriesInfo name="2015" value="IEEE Symposium on Security and Privacy"/>
+  <seriesInfo name="DOI" value="10.1109/sp.2015.41"/>
+		    </reference>
+
+            <reference anchor="AN95">
+                <front>
+                    <title>Robustness principles for public key protocols</title>
+                    <author initials="R." surname="Anderson" fullname="Ross Anderson">                            
+                    </author>
+                    <author initials="R." surname="Needham" fullname="Roger Needham">                            
+                    </author>                
+                    <date year="1995" />                    
+                </front>
+                <seriesInfo name="Proceedings" value="of the 15th Annual
+						      International Cryptology
+						      Conference on Advances
+						      in Cryptology" />
+  <seriesInfo name="DOI" value="10.1007/3-540-44750-4_19"/>
+            </reference>
+			    
+            <reference anchor="FS86">
+                <front>
+                    <title>How to Prove Yourself: Practical Solutions to Identification and Signature Problems</title>
+                    <author initials="A." surname="Fiat" fullname="Amos Fiat">                            
+                    </author>
+                    <author initials="A." surname="Shamir" fullname="Adi Shamir">                            
+                    </author>                
+                    <date year="1986" />                    
+                </front>
+                <seriesInfo name="Proceedings" value="of the 6th Annual
+						      International Cryptology
+						      Conference on Advances in Cryptology" />
+  <seriesInfo name="DOI" value="10.1007/3-540-47721-7_12"/>
+            </reference>
+           
+            <reference anchor="MOV96">
+                <front>
+                    <title>Handbook of Applied Cryptography</title>
+                    <author initials="A." surname="Menezes" fullname="Alfred Menezes">
+                    </author>
+                    <author initials="P.V." surname="Oorschot" fullname="P.V. Oorschot">
+                    </author>                
+                    <author initials="S." surname="Vanstone" fullname="S. Vanstone">
+                    </author>                
+                    <date year="1996" />
+                </front>
+            </reference>         
+
+<reference anchor="Stinson06">
+  <front>
+    <title>Cryptography: Theory and Practice</title>
+    <author initials="D." surname="Stinson" fullname="Douglas Stinson">
+    </author>
+    <date year="2006" />
+  </front>
+  <seriesInfo name="3rd Edition," value="CRC" />
+</reference>   
+            
+    </references>
+
+    <references title="Informative References">
+
+        	<reference anchor="FIPS186-4"
+			   target="http://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-4.pdf"> 
+        <front>
+          <title>Digital Signature Standard (DSS)</title>
+          <author>
+            <organization>National Institute of Standards and
+	    Technology</organization>
+          </author>
+          <date year="2013" month="July" />
+        </front>
+        <seriesInfo name="FIPS" value="PUB 186-4" />
+        <seriesInfo name='DOI' value='10.6028/NIST.FIPS.186-4' />
+		</reference>
+    		
+
+                <reference anchor="HR08">
+
+ <front>
+    <title>Password Authenticated Key Exchange by Juggling</title>
+    <author initials="F." surname="Hao" fullname="Feng Hao">
+      <organization></organization>
+    </author>
+    <author initials="P." surname="Ryan" fullname="Peter Y. A. Ryan">
+      <organization></organization>
+    </author>
+    <date year="2011"/>
+ </front>
+  <seriesInfo name="Lecture Notes in Computer Science," value="pp. 159-171"/>
+  <seriesInfo name="from 16th" value="Security Protocols Workshop (SPW'08)"/>
+  <seriesInfo name="DOI" value="10.1007/978-3-642-22137-8_23"/>
+		</reference>            
+            
+            <reference anchor="Hao10">
+                <front>
+                    <title>On Robust Key Agreement Based on Public Key Authentication</title>
+                    <author initials="F." surname="Hao" fullname="Feng Hao">                            
+                    </author>
+                    <date month="February" year="2010" />                    
+                </front>
+                <seriesInfo name="14th" value="International Conference on
+					       Financial Cryptography and Data
+					       Security" />
+<seriesInfo name="DOI" value="10.1007/978-3-642-14577-3_33"/>
+            </reference>
+            
+   <reference anchor="NIST_DSA" target="http://csrc.nist.gov/groups/ST/toolkit/documents/Examples/DSA2_All.pdf">
+
+     <front>
+       <title>DSA Examples</title>
+
+       <author>
+         <organization>NIST Cryptographic Toolkit</organization>
+       </author>
+
+       <date/>
+     </front>
+   </reference>
+
+            
+    </references>
+
+        <section title="Acknowledgements" numbered="no">
+    <t>The editor of this document would like to thank Dylan Clarke, Robert Ransom, Siamak Shahandashti, Robert Cragie, Stanislav Smyshlyaev, and Tibor Jager for many useful comments. Tibor Jager pointed out the optimization technique and the vulnerability issue when the ephemeral secret v is not generated randomly. This work is supported by the EPSRC First Grant (EP/J011541/1) and the ERC Starting Grant (No. 306994).</t>
+    </section>
+
+	</back>
+</rfc>

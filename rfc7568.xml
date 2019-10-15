@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+  <?xml-stylesheet type="text/xsl" href="rfc2629.xslt" ?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+
+<rfc number="7568" submissionType="IETF" consensus="yes" ipr="trust200902"
+     category="std" updates="5246">
+
+<?rfc toc="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc rfcedstyle="yes" ?>
+
+  <front>
+    <title abbrev="SSLv3 Is Not Secure">Deprecating Secure Sockets Layer Version 3.0</title>
+
+    <author initials="R." surname="Barnes" fullname="Richard Barnes">
+      <organization>Mozilla</organization>
+      <address>
+        <email>rlb@ipv.sx</email>
+      </address>
+    </author>
+    <author initials="M." surname="Thomson" fullname="Martin Thomson">
+      <organization>Mozilla</organization>
+      <address>
+        <email>martin.thomson@gmail.com</email>
+      </address>
+    </author>
+    <author initials="A." surname="Pironti" fullname="Alfredo Pironti">
+      <organization>INRIA</organization>
+      <address>
+        <email>alfredo@pironti.eu</email>
+      </address>
+    </author>
+    <author initials="A." surname="Langley" fullname="Adam Langley">
+      <organization>Google</organization>
+      <address>
+        <email>agl@google.com</email>
+      </address>
+    </author>
+
+    <date month="June" year="2015"/>
+    
+<keyword>SSL</keyword>
+<keyword>TLS</keyword>
+<keyword>insecure</keyword>
+<keyword>diediedie</keyword>
+    
+
+    <abstract>
+<t>The Secure Sockets Layer version 3.0 (SSLv3), as specified in RFC 6101, is not sufficiently secure.
+This document requires that SSLv3 not be used.  The replacement versions, in
+particular, Transport Layer Security (TLS) 1.2 (RFC 5246), are considerably more
+secure and capable protocols.</t>
+
+<t>This document updates the backward compatibility section of RFC 5246 and its
+predecessors to prohibit fallback to SSLv3.</t>
+
+    </abstract>
+
+
+  </front>
+
+  <middle>
+
+
+<section anchor="introduction" title="Introduction">
+
+<t>Since it was
+released in 1996, the SSLv3 protocol <xref target="RFC6101"/> has been subject to a long series of attacks, both on its key
+exchange mechanism and on the encryption schemes it supports.  Despite being replaced by TLS 1.0 <xref target="RFC2246"/> in 1999, and
+subsequently TLS 1.1 in 2002 <xref target="RFC4346"/> and 1.2 in 2006 <xref target="RFC5246"/>,
+availability of these replacement versions has not been universal.  As a result,
+many implementations of TLS have permitted the negotiation of SSLv3.</t>
+
+<t>The predecessor of SSLv3, SSL version 2, is no longer considered sufficiently
+secure <xref target="RFC6176"/>.  SSLv3 now follows.</t>
+
+</section>
+<section anchor="terminology" title="Terminology">
+
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in RFC 2119 <xref target="RFC2119"></xref>.</t>
+
+</section>
+<section anchor="do-not-use-ssl-version-30" title="Do Not Use SSL Version 3.0">
+
+<t>SSLv3 MUST NOT be used.  Negotiation of SSLv3 from any version of TLS MUST NOT
+be permitted.</t>
+
+<t>Any version of TLS is more secure than SSLv3, though the highest version
+available is preferable.</t>
+
+<t>Pragmatically, clients MUST NOT send a ClientHello with
+ClientHello.client_version set to {03,00}.  Similarly, servers MUST NOT send a
+ServerHello with ServerHello.server_version set to {03,00}.  Any party
+receiving a Hello message with the protocol version set to {03,00} MUST
+respond with a "protocol_version" alert message and close the connection.</t>
+
+<t>Historically, TLS specifications were not clear on what the record layer version
+number (TLSPlaintext.version) could contain when sending ClientHello.  Appendix
+E of <xref target="RFC5246"/> notes that TLSPlaintext.version could be selected to maximize
+interoperability, though no definitive value is identified as ideal.  That
+guidance is still applicable; therefore, TLS servers MUST accept any value
+{03,XX} (including {03,00}) as the record layer version number for ClientHello,
+but they MUST NOT negotiate SSLv3.</t>
+
+</section>
+<section anchor="sslv3-is-comprehensively-broken" title="SSLv3 Is Comprehensively Broken">
+
+<section anchor="record-layer" title="Record Layer">
+
+<t>The non-deterministic padding used in the Cipher Block Chaining (CBC) construction of SSLv3
+trivially permits the recovery of plaintext <xref target="POODLE"/>. More generally,
+the CBC modes of SSLv3 use a flawed MAC-then-encrypt
+construction that has subsequently been replaced in TLS versions <xref target="RFC7366"/>.
+Unfortunately, the mechanism to correct this flaw relies on extensions: a
+feature added in TLS 1.0.  SSLv3 cannot be updated to correct this flaw in the
+same way.</t>
+
+<t>The flaws in the CBC modes in SSLv3 are mirrored by the weakness of the stream
+ciphers it defines.  Of those defined, only RC4 is currently in widespread use.
+RC4, however, exhibits serious biases and is also no longer fit for use
+<xref target="RFC7465"/>.</t>
+
+<t>This leaves SSLv3 with no suitable record protection mechanism.</t>
+
+</section>
+<section anchor="key-exchange" title="Key Exchange">
+
+<t>The SSLv3 key exchange is vulnerable to man-in-the-middle attacks when
+renegotiation <xref target="RFC5746"/> or session resumption <xref target="TRIPLE-HS"/> are used.
+Each flaw has been fixed in TLS by means of extensions. Again,
+SSLv3 cannot be updated to correct these flaws.</t>
+
+</section>
+<section anchor="custom-cryptographic-primitives" title="Custom Cryptographic Primitives">
+
+<t>SSLv3 defines custom constructions for Pseudorandom Function (PRF), Hashed
+Message Authentication Code (HMAC), and digital signature
+primitives.  Such constructions lack the deep cryptographic scrutiny that
+standard constructions used by TLS have received.  Furthermore, all SSLv3
+primitives rely on SHA-1 <xref target="RFC3174"/> and MD5 <xref target="RFC1321"/>: these hash algorithms
+are considered weak and are being systematically replaced with stronger hash
+functions, such as SHA-256 <xref target="FIPS180-4"/>.</t>
+
+</section>
+</section>
+<section anchor="limited-capabilities" title="Limited Capabilities">
+
+<t>SSLv3 is unable to take advantage of the many features that have been added to
+recent TLS versions.  This includes the features that are enabled by ClientHello
+extensions, which SSLv3 does not support.</t>
+
+<t>Though SSLv3 can benefit from new cipher suites, it cannot benefit from new
+cryptographic modes and features.  Of these, the following are particularly
+prominent:</t>
+
+<t><list style="symbols">
+  <t>Authenticated Encryption with Additional Data (AEAD) modes are added in
+<xref target="RFC5246"/>.</t>
+  <t>Elliptic Curve Diffie-Hellman (ECDH) and Digital Signature Algorithm (ECDSA)
+are added in <xref target="RFC4492"/>.</t>
+  <t>Stateless session tickets <xref target="RFC5077"/>.</t>
+  <t>A datagram mode of operation, DTLS <xref target="RFC6347"/>.</t>
+  <t>Application-layer protocol negotiation <xref target="RFC7301"/>.</t>
+</list></t>
+
+</section>
+
+
+<section anchor="security-considerations" title="Security Considerations">
+
+<t>This entire document aims to improve security by prohibiting the use of a
+protocol that is not secure.</t>
+
+</section>
+
+
+  </middle>
+
+  <back>
+
+    <references title='Normative References'>
+<?rfc include="reference.RFC.2119"?>
+<?rfc include="reference.RFC.2246"?>
+<?rfc include="reference.RFC.4346"?>
+<?rfc include="reference.RFC.5246"?>
+<?rfc include="reference.RFC.6101"?>
+<?rfc include="reference.RFC.7366"?>
+<?rfc include="reference.RFC.7465"?>
+    </references>
+
+    <references title='Informative References'>
+
+<?rfc include="reference.RFC.1321"?>
+<?rfc include="reference.RFC.3174"?>
+<?rfc include="reference.RFC.4492"?>
+<?rfc include="reference.RFC.5077"?>
+<?rfc include="reference.RFC.5746"?>
+<?rfc include="reference.RFC.6176"?>
+<?rfc include="reference.RFC.6347"?>
+<?rfc include="reference.RFC.7301"?>
+
+<reference anchor="FIPS180-4" >
+  <front>
+    <title>Secure Hash Standard</title>
+    <author>
+      <organization>U.S. National Institute of Standards and Technology</organization>
+    </author>
+    <date year="2012" month="March"/>
+  </front>
+<seriesInfo name="FIPS" value="180-4"/>
+</reference>
+
+<reference anchor="POODLE" target="http://googleonlinesecurity.blogspot.com/2014/10/this-poodle-bites-exploiting-ssl-30.html">
+  <front>
+    <title>This POODLE bites: exploiting the SSL 3.0 fallback</title>
+    <author initials="B." surname="Moeller" fullname="Bodo Moeller">
+      <organization></organization>
+    </author>
+    <date year="2014" month="October" day="14"/>
+  </front>
+</reference>
+
+<reference anchor="TRIPLE-HS">
+  <front>
+    <title>Triple Handshakes and Cookie Cutters: Breaking and Fixing Authentication over TLS</title>
+    <author initials="K." surname="Bhargavan" fullname="Karthikeyan Bhargavan">
+      <organization>INRIA</organization>
+    </author>
+    <author initials="A." surname="Delignat-Lavaud" fullname="Antoine Delignat-Lavaud">
+      <organization>INRIA</organization>
+    </author>
+    <author initials="C." surname="Fournet" fullname="Cedric Fournet">
+      <organization>Microsoft Research</organization>
+    </author>
+    <author initials="A." surname="Pironti" fullname="Alfredo Pironti">
+      <organization>INRIA</organization>
+    </author>
+    <author initials="P-Y." surname="Strub" fullname="Pierre-Yves Strub">
+      <organization>IMDEA</organization>
+    </author>
+    <date year="2014"/>
+  </front>
+  <seriesInfo name="IEEE" value="Symposium on Security and Privacy"/>
+</reference>
+
+
+    </references>
+
+
+
+  </back>
+</rfc>
+

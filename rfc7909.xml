@@ -1,0 +1,535 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc toc="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="7909" category="std" submissionType="IETF" consensus="yes" updates="2622, 4012" ipr="trust200902">
+ <front>
+   <title abbrev="Securing RPSL">Securing Routing Policy Specification
+   Language (RPSL)&nbsp;Objects with&nbsp;Resource&nbsp;Public&nbsp;Key&nbsp;Infrastructure&nbsp;(RPKI)&nbsp;Signatures</title>
+
+   <author fullname="Robert Kisteleki" initials="R." surname="Kisteleki">
+     <organization>RIPE NCC</organization>
+     <address>
+       <email>robert@ripe.net</email>
+       <uri>http://www.ripe.net</uri>
+     </address>
+   </author>
+
+   <author fullname="Brian Haberman" initials="B." surname="Haberman">
+      <organization abbrev="JHU APL">Johns Hopkins University Applied Physics Lab</organization>
+      <address>
+        <email>brian@innovationslab.net</email>
+      </address>
+   </author>
+
+   <date month="June" year="2016" />
+
+   <area>Internet</area>
+   <workgroup>SIDR</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in 
+the title) for use on https://www.rfc-editor.org/search.
+-->
+
+<keyword>example</keyword>
+
+   <abstract>
+     <t>This document describes a method that allows parties to electronically sign Routing Policy Specification Language
+     objects and validate such
+     electronic signatures. This allows relying parties to detect accidental or malicious modifications of such objects. It also
+     allows parties who run Internet Routing Registries or similar databases,
+     but do not yet have authentication (based on Routing Policy System Security) of the
+     maintainers of certain objects, to verify that the additions or modifications of such database objects are done by the
+     legitimate holder(s) of the Internet resources mentioned in those objects. This document updates RFCs 2622 and 4012 to
+     add the signature attribute to supported RPSL objects.</t>
+   </abstract>
+
+ </front>
+
+ <middle>
+   <section anchor="intro" title="Introduction">
+
+     <t>Objects stored in resource databases, like the RIPE DB, are generally protected by an authentication mechanism: anyone
+     creating or modifying an object in the database has to have proper authorization to do so, and therefore has to go through an
+     authentication procedure (provide a password, certificate, email signature, etc.). However, for objects transferred between
+     resource databases, the authentication is not guaranteed.
+     This means that when a Routing Policy Specification Language (RPSL)
+     object is downloaded from a database, the consumer can reasonably claim that the object is authentic if it was locally created,
+     but cannot make the same claim for an object imported from a different database.
+     Also, once such an
+     object is downloaded from the database, it becomes a simple (but still structured) text file with no integrity protection.
+     More importantly, the authentication and integrity guarantees associated with these objects do not always ensure that the
+     entity that generated them is authorized to make the assertions implied by the data contained in the objects.</t>
+
+     <t>A potential use for resource certificates <xref target="RFC6487" /> is to use
+     them to secure such (both imported and downloaded) database objects, by applying a digital signature over the
+     object contents in lieu of methods such as Routing Policy System Security <xref target="RFC2725" />.
+     The signer of such signed database objects MUST possess a relevant resource certificate, which shows
+     him/her as the legitimate holder of an Internet number resource. This mechanism allows the users of such database
+     objects to verify that the contents are in fact produced by the legitimate holder(s) of the Internet resources mentioned in those
+     objects. It also allows the signatures to cover whole RPSL objects, or just selected attributes of them. In other words,
+     a digital signature created using the private key associated with a resource certificate can offer object security in addition
+     to the channel security already present in most resource databases. Object security in turn allows such objects to be hosted
+     in different databases and still be independently verifiable.</t>
+
+     <t>While the approach outlined in this document mandates the use of the
+     Resource Public Key Infrastructure (RPKI) for certificate distribution, it is not dependent
+     upon the RPKI for correct functionality. Equivalent functionality can be
+     achieved with a more traditional Certification Authority (CA), using the
+     extensions described in <xref target="RFC3779" /> within the certificates, and the appropriate trust anchor material to verify the
+     digital signature.</t>
+
+     <t>The capitalized key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
+     "MAY", and "OPTIONAL" in this document are to be interpreted as described in <xref target="RFC2119" />.</t>
+   </section>
+
+   <section title="Signature Syntax and Semantics">
+
+     <t>When signing an RPSL object <xref target="RFC2622" /> <xref target="RFC4012" />, the input for the signature process is
+     transformed into a sequence of strings of ASCII data.
+     The approach is similar to the one used in Domain Key Identified
+     Mail (DKIM) <xref target="RFC6376" />. In the case of RPSL, the
+     object to be signed closely resembles an SMTP header, so it seems reasonable to adapt DKIM's relevant features.</t>
+
+     <section anchor="genatt" title="General Attributes and Meta Information">
+
+       <t>The digital signature associated with an RPSL object is itself a new  attribute named "signature". It consists of mandatory
+       and optional fields. These fields are structured in a sequence of name and value pairs, separated by a semicolon ";" and a whitespace. Collectively, these fields make up the value for the new "signature" attribute. The "name" part of such a component is always
+       a single ASCII character that serves as an identifier; the value is an ASCII string the contents of which depend on the field type.
+       Mandatory fields MUST appear exactly once, whereas optional fields MUST appear at most once.</t>
+
+       <t>Mandatory fields of the "signature" attribute:<list style="symbols">
+
+         <t>Version of the signature (field "v"): This field MUST be set to "rpkiv1" and MAY be the first field of the signature
+         attribute to simplify the parsing of the attributes' fields. The signature format
+         described in this document applies when the version field is set to "rpkiv1". All the rest of the signature
+         attributes are defined by the value of the version field.</t>
+
+         <t>Reference to the certificate corresponding to the private key used to sign this object (field "c"): The value of this field
+         MUST be a URL of type "rsync" <xref target="RFC5781" /> or "http(s)" <xref target="RFC7230" /> that points to a specific
+         resource certificate in an RPKI repository <xref target="RFC6481" />. Any non URL-safe
+         characters (including semicolon ";" and plus "+") must be URL encoded
+	 <xref target="RFC3986" />.</t>
+
+         <t>Signature method (field "m"): What hash and signature algorithms were used to create the signature.
+         This specification follows the algorithms defined in RFC 6485 <xref target="RFC6485" />.
+         The algorithms are referenced within the signature attribute by the
+	 ASCII names of the algorithms.</t>
+
+         <t>Time of signing (field "t"): The format of the value of this field MUST be in the Internet Date/Time
+         ABNF format <xref target="RFC3339" />. All times MUST be converted to Universal Coordinated Time
+         (UTC), i.e., the ABNF time-offset is always "Z".</t>
+
+         <t>The signed attributes (field "a"): This is a list of attribute names, separated by an ASCII "+" character (if
+         more than one attribute is enumerated). The list must include any
+	 attribute at most once.</t>
+
+         <t>The signature itself (field "b"): This MUST be the last field in the list. The signature is the output of the
+         signature algorithm using the appropriate private key and the calculated hash value of the object as inputs. The value
+         of this field is the digital signature in base64 encoding (Section 4 of <xref target="RFC4648" />).</t>
+
+       </list></t>
+
+       <t>Optional fields of the "signature" attribute:
+
+<list style="symbols">
+
+         <t> Signature expiration time (field "x"): The format of the value of this field MUST be in the Internet
+         Date/Time format <xref target="RFC3339" />. All times MUST be represented in UTC.</t>
+
+       </list></t>
+
+     </section>
+
+     <section title="Signed Attributes">
+
+       <t>One can look at an RPSL object as an (ordered) set of attributes, each having a "key: value" syntax. Understanding
+       this structure can help in developing more flexible methods for applying digital signatures.</t>
+
+       <t>Some of these attributes are automatically added by the database, some are database-dependent, yet others do not carry
+       operationally important information. This specification allows the maintainer of such an object to decide which attributes
+        are important (signed) and which are not (not signed), from among all the attributes of the object;
+	in other words, we define a way of including
+       important attributes while excluding irrelevant ones. Allowing the maintainer of an object to select the attributes that are
+       covered by the digital signature achieves the goals established in
+       <xref target="intro"/>.</t>
+
+       <t>The type of the object determines the minimum set of attributes that MUST be signed. The signer MAY choose to sign additional
+       attributes, in order to provide integrity protection for those attributes too.</t>
+
+       <t>When verifying the signature of an object, the verifier has to check whether the signature itself is valid, and whether all
+       the specified attributes are referenced in the signature. 
+
+If not, the verifier MUST reject the signature and treat the object
+       as a regular, unsigned RPSL object.</t>
+
+     </section>
+
+     <section title="Storage of the Signature Data">
+
+       <t>The result of applying the signature mechanism once is exactly one new attribute for the object. As an illustration, the
+       structure of a signed RPSL object is as follows:</t>
+      <figure>
+         <artwork><![CDATA[
+  attribute1:  value1
+  attribute2:  value2
+  attribute3:  value3
+  ...
+  signature:   v=rpkiv1; c=rsync://.....; m=sha256WithRSAEncryption;
+               t=2014-12-31T23:59:60Z; 
+               a=attribute1+attribute2+attribute3+...; 
+               b=<base64 data>
+       ]]></artwork>
+       </figure>
+     </section>
+
+     <section title="Number Resource Coverage">
+
+<t>
+   Even if the signature over the object is valid according to the
+   signature validation rules, it may not be relevant to the object; it
+   also needs to cover the relevant Internet number resources mentioned
+   in the object.
+</t>
+       <t>Therefore, the Internet number resources present in <xref target="RFC3779" /> extensions of the certificate referred to in the
+       "c" field of the signature
+       MUST cover the resources in the primary key of the object (e.g., value of the "aut-num:" attribute
+       of an aut-num object, value of the "inetnum:" attribute of an inetnum object, values of "route:", and "origin:" attributes
+       of a route object, etc.).</t>
+
+     </section>
+
+     <section title="Validity Time of the Signature">
+
+       <t>The validity time interval of a signature is the intersection of the validity time of the certificate used to verify the signature, the
+       "not before" time specified by the "t" field of the signature, and the optional "not after" time specified by the "x" field of the
+       signature.</t>
+
+       <t>When checking multiple signatures, these checks are individually applied to each signature.</t>
+
+     </section>
+
+   </section>
+
+   <section title="Signature Creation and Validation Steps">
+
+     <section title="Canonicalization">
+
+       <t>The notion of canonicalization is essential to digital signature generation and validation whenever data representations may change
+       between a signer and one or more signature verifiers. Canonicalization defines how one transforms a representation of data into a series
+       of bits for signature generation and verification.  The task of canonicalization is to make irrelevant differences in representations
+       of the same object, which would otherwise cause signature verification to fail. Examples of this could be: <list style="symbols">
+
+         <t>data transformations applied by the databases that host these objects (such as notational changes for IPv4/IPv6 prefixes, automatic 
+         addition/modification of "changed" attributes, etc.)</t>
+
+         <t>the difference of line terminators across different systems</t>
+
+       </list></t>
+
+       <t>This means that the destination database might change parts of the submitted data after it was signed, which would cause signature verification
+       to fail. This document specifies strict canonicalization rules to overcome this problem.</t>
+
+       <t>The following steps MUST be applied in order to achieve canonicalized representation of an object, before the actual signature
+       (verification) process can begin:
+
+<list style="numbers">
+
+       <t>Comments (anything beginning with a "#") MUST be omitted.</t>
+
+       <t>Any trailing whitespace MUST be omitted.</t>
+
+       <t>A multi-line attribute MUST be converted into its single-line equivalent. This is accomplished by:<list style="symbols">
+            <t>Converting all line endings to a single blank space (ASCII code 32).</t>
+            <t>Concatenating all lines into a single line.</t>
+            <t>Replacing the trailing blank space with a single new line ("\n", ASCII code 10).</t>
+
+       </list></t>
+
+       <t>Numerical fields MUST be converted to canonical representations.  These include:<list style="symbols">
+
+            <t>Date and time fields MUST be converted to UTC and MUST be represented in the Internet Date/Time
+            format <xref target="RFC3339" />.</t>
+
+            <t>AS numbers MUST be converted to ASPLAIN syntax <xref target="RFC5396" />.</t>
+
+            <t>IPv6 addresses MUST be canonicalized as defined in <xref target="RFC5952" />.</t>
+
+            <t>IPv4 addresses MUST be represented as the ipv4-address type
+	    defined by RPSL <xref target="RFC2622" />.</t>
+
+            <t>All IP prefixes (IPv4 and IPv6) MUST be represented in
+	    Classless Inter-Domain Routing (CIDR) notation <xref target="RFC4632" />.</t>
+       </list></t>
+
+            <t>All ranges, lists, or sets of numerical fields are represented using the appropriate RPSL attribute and each numerical
+               element contained within those attributes MUST conform to the canonicalization rules in this document. The ordering of
+               values within such fields MUST be maintained during database
+	       transfers.</t>
+
+       <t>The name of each attribute MUST be converted into lower case, and MUST be kept as part of the attribute line.</t>
+
+       <t>Tab characters ("\t", ASCII code 09) MUST be converted into spaces.</t>
+
+       <t>Multiple whitespaces MUST be collapsed into a single space (" ", ASCII code 32) character.</t>
+
+       <t>All line endings MUST be converted into a single new line ("\n", ASCII
+       code 10) character, (thus avoiding CR vs. CRLF differences).</t>
+
+     </list></t>
+
+     </section>
+
+     <section title="Signature Creation">
+
+     <t>Given an RPSL object and corresponding certificate, in order to create the digital signature, the following steps MUST
+     be performed:<list style="numbers">
+
+       <t>Create a list of attribute names referring to the attributes that will be signed (contents of the "a" field). The minimum set of
+       these attributes is determined by the object type; the signer MAY select additional attributes.</t>
+
+       <t>Arrange the selected attributes according to the selection sequence specified in the "a" field as above, omitting
+          all attributes that will not be signed.</t>
+
+       <t>Construct the new "signature" attribute, with all its fields, leaving the value of the "b" field empty.</t>
+
+       <t>Apply canonicalization rules to the result (including the "signature" attribute).</t>
+
+       <t>Create the signature over the results of the canonicalization process (according to the signature and hash algorithms specified
+       in the "m" field of the signature attribute).</t>
+
+       <t>Insert the base64-encoded value of the signature as the value of the "b" field.</t>
+
+       <t>Append the resulting "signature" attribute to the original object.</t>
+
+     </list></t>
+
+     </section>
+
+     <section anchor= "SigVal" title="Signature Validation">
+
+     <t>In order to validate a signature over such an object, the following steps MUST be performed:<list
+     style="numbers">
+
+       <t>Verify the syntax of the "signature" attribute (i.e., whether it contains the mandatory and optional components and the syntax
+       of these fields matches the specification as described in <xref
+       target="genatt" />).</t>
+
+       <t>Fetch the certificate referred to in the "c" field of the "signature" attribute, and check its validity using the steps
+       described in <xref target="RFC6487" />.</t>
+
+       <t>Extract the list of attributes that were signed using the signer from the "a" field of the "signature" attribute.</t>
+
+       <t>Verify that the list of signed attributes includes the minimum set of attributes for that object type.</t>
+
+       <t>Arrange the selected attributes according to the selection sequence provided in the value of the "a" field, omitting all
+       unsigned attributes.</t>
+
+       <t>Replace the value of the signature field "b" of the "signature" attribute with an empty string.</t>
+
+       <t>Apply the canonicalization procedure to the selected attributes (including the "signature" attribute).</t>
+
+       <t>Check the validity of the signature using the signature algorithm specified in the "m" field of the signature attribute,
+       the public key contained in the certificate mentioned in the "c" field of the signature, the signature value specified in the
+       "b" field of the signature attribute, and the output of the canonicalization process.</t>
+
+     </list></t>
+
+     </section>
+
+   </section>
+
+   <section title="Signed Object Types and Set of Signed Attributes">
+
+     <t>This section describes a list of object types that MAY be signed using this approach. For each object type, the set of
+        attributes that MUST be signed for these object types (the minimum set noted in <xref target="SigVal" /> is enumerated.</t>
+
+     <t>This list generally excludes attributes that are used to maintain referential integrity in the databases that carry these objects,
+     since these usually make sense only within the context of such a database, whereas the scope of the signatures is only one specific
+     object. Since the attributes in the referred object (such as mnt-by,
+     admin-c, tech-c, etc.) can change without any modifications to the
+     signed object, signing such attributes could lead to a false sense of security in terms of the contents of the signed data; therefore,
+     including such attributes should only be done in order to provide full integrity protection of the object itself.</t>
+
+     <t>The newly constructed "signature" attribute is always included in the list. The signature under construction MUST NOT include
+     signature attributes that are already present in the object.</t>
+
+<!-- [rfced] In Section 4, we have intentionally reduced the spacing 
+between the list items. Please review - and if you prefer to have the 
+blank line between each item, let us know and we will revert. For example:
+
+Original:
+      route[6]:
+
+      *  route[6]
+
+      *  origin
+
+      *  holes
+
+      *  member-of
+
+      *  signature
+
+Current:
+      route[6]:
+
+      *  route[6]
+      *  origin
+      *  holes
+      *  member-of
+      *  signature
+-->
+
+     <t><list style="empty">
+
+<?rfc subcompact="yes"?>
+       <t>as-block:<list style="symbols">
+         <t>as-block</t>
+         <t>signature</t>
+       </list></t>
+     </list></t>
+
+     <t><list style="empty">
+       <t>aut-num:<list style="symbols">
+         <t>aut-num</t>
+         <t>as-name</t>
+         <t>member-of</t>
+         <t>import</t>
+         <t>mp-import</t>
+         <t>export</t>
+         <t>mp-export</t>
+         <t>default</t>
+         <t>mp-default</t>
+         <t>signature</t>
+       </list></t>
+     </list></t>
+
+     <t><list style="empty">
+       <t>inet[6]num:<list style="symbols">
+         <t>inet[6]num</t>
+         <t>netname</t>
+         <t>country</t>
+         <t>status</t>
+         <t>signature</t>
+       </list></t>
+     </list></t>
+
+     <t><list style="empty">
+       <t>route[6]:<list style="symbols">
+         <t>route[6]</t>
+         <t>origin</t>
+         <t>holes</t>
+         <t>member-of</t>
+         <t>signature</t>
+       </list></t>
+
+<?rfc subcompact="no"?>
+     </list></t>
+
+<!-- [rfced] "ASN" has been expanded as "Autonomous System Number"
+here. Please confirm this is correct.
+
+Current:
+   This means that it is not possible to
+   properly sign route[6] objects where one resource holder possesses
+   the Autonomous System Number (ASN) and another resource holder
+   possesses the referenced prefix.
+-->
+
+     <t>It should be noted that the approach defined in this document has a limitation in signing route[6] objects. This document
+     only supports a single signature per object. This means that it is not possible to properly sign route[6] objects where one
+     resource holder possesses the Autonomous System Number (ASN) and another resource holder possesses the referenced prefix. A future version of this
+     specification may resolve this limitation.</t>
+
+     <t>For each signature, the extension described in RFC 3779 that appears in the certificate used to verify the signature MUST include a resource entry
+     that is equivalent to, or covers (i.e., is "less specific" than) the following resources mentioned in the object the signature is attached to:
+     <list style="symbols">
+
+       <t>For the as-block object type: the resource in the "as-block" attribute.</t>
+
+       <t>For the aut-num object type: the resource in the "aut-num" attribute.</t>
+
+       <t>For the inet[6]num object type: the resource in the "inet[6]num" attribute.</t>
+
+       <t>For the route[6] object type: the resource in the "route[6]" or "origin" (or both) attributes.</t>
+
+     </list></t>
+
+   </section>
+
+   <section title="Keys and Certificates Used for Signature and Verification"> 
+
+     <t>The certificate that is referred to in the signature (in the "c" field):
+     <list style="symbols">
+       <t>MUST be an end-entity (i.e., non-CA)
+       certificate</t>
+
+       <t>MUST conform to the X.509 PKIX Resource Certificate profile <xref
+       target="RFC6487" /></t>
+
+       <t>MUST have the extension described in RFC 3779 that covers the Internet number resource included in
+       a signed attribute <xref target="RFC3779" /></t>
+     </list></t>
+
+     <t>The certificate generated will omit the Subject Information Access (SIA) extension mandated by RFC 6487 as that extension
+     requires an rsync URI for the accessLocation form and RPSL currently does not support database access via rsync.</t>
+   </section>
+
+   <section title="Security Considerations">
+     <t>RPSL objects stored in the Internet Routing Registry (IRR) databases are public, and as such there is no need for confidentiality.
+        Each signed RPSL object can have its integrity and authenticity verified using the supplied digital
+        signature and the referenced certificate.</t>
+
+     <t>Since the RPSL signature approach leverages X.509 extensions, the security considerations in <xref target="RFC3779" />
+        apply here as well. Additionally, implementers MUST follow the certificate validation steps described in RFC 6487.</t>
+
+     <t>The maintainer of an object has the ability to include attributes in the signature that are not included in the resource
+        certificate used to create the signature. Potentially, a maintainer may include attributes that reference resources the
+        maintainer is not authorized to use.</t>
+
+     <t>It should be noted that this digital signature does not preclude monkey-in-the-middle attacks where the adversary either
+     intercepts RPSL object transfers, deletes the signature attribute, modifies the contents, or intercepts the transfer and
+     drops the objects destined for the requester.</t>
+   </section>
+
+
+ </middle>
+
+ <back>
+   <references title="Normative References">
+      <?rfc include="reference.RFC.2119" ?>
+      <?rfc include="reference.RFC.2622" ?>
+      <?rfc include="reference.RFC.3339" ?>
+      <?rfc include="reference.RFC.3779" ?>
+      <?rfc include="reference.RFC.3986" ?>
+      <?rfc include="reference.RFC.4012" ?>
+      <?rfc include="reference.RFC.4632" ?>
+      <?rfc include="reference.RFC.4648" ?>
+      <?rfc include="reference.RFC.5396" ?>
+      <?rfc include="reference.RFC.5781" ?>
+      <?rfc include="reference.RFC.5952" ?>
+      <?rfc include="reference.RFC.6481" ?>
+      <?rfc include="reference.RFC.6485" ?>
+      <?rfc include="reference.RFC.6487" ?>
+      <?rfc include="reference.RFC.7230" ?>
+   </references>
+
+   <references title="Informative References">
+      <?rfc include="reference.RFC.2725" ?>
+      <?rfc include="reference.RFC.6376" ?>
+   </references>
+
+   <section title="Acknowledgements" numbered="no">
+     <t>The authors would like to acknowledge the valued contributions from Jos Boumans, Tom Harrison, Steve Kent, Sandra Murphy,
+     Magnus Nystrom, Alvaro Retana, Sean Turner, Geoff Huston, and Stephen Farrell in preparation of this document.</t>
+   </section>
+
+ </back>
+</rfc>
+

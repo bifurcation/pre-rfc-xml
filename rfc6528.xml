@@ -1,0 +1,585 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+    <!-- try to enforce the ID-nits conventions and DTD validity -->
+<?rfc strict="no" ?>    <!-- items used when reviewing the document -->
+<?rfc comments="no" ?>  <!-- controls display of <cref> elements -->
+<?rfc inline="no" ?>    <!-- when no, put comments at end in comments section,
+                                otherwise, put inline -->
+<?rfc editing="no" ?>   <!-- when yes, insert editing marks -->
+
+    <!-- create table of contents (set it options).
+           Note the table of contents may be omitted
+         for very short documents -->
+
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+
+    <!-- choose the options for the references. Some like
+         symbolic tags in the references (and citations)
+         and others prefer numbers. --> 
+<?rfc symrefs="yes"?><?rfc sortrefs="yes" ?>
+    <!-- these two save paper: start new paragraphs from the same page etc. -->
+<?rfc compact="yes" ?><?rfc subcompact="no" ?>
+<?rfc rfcedstyle="yes"?>
+
+<rfc
+    number="6528"
+    category="std"
+    ipr="trust200902"
+    updates="793"
+    obsoletes="1948"
+    submissionType="IETF" consensus="yes"
+>
+
+<front>
+    <title>Defending against Sequence Number Attacks</title>
+
+
+<author
+        fullname="Fernando Gont"
+        initials="F."
+        surname="Gont">
+        <organization abbrev="SI6 Networks / UTN-FRH">SI6 Networks / UTN-FRH</organization>
+        <address>
+            <postal>                
+             <street>Evaristo Carriego 2644</street>
+		<code>1706</code><city>Haedo</city>
+ 		<region>Provincia de Buenos Aires</region>
+		<country>Argentina</country>
+            </postal>
+            <phone>+54 11 4650 8472</phone>
+            <email>fgont@si6networks.com</email>
+	    <uri>http://www.si6networks.com</uri>
+
+        </address>
+</author>
+
+    <author initials="S.M." surname="Bellovin" fullname="Steven M. Bellovin">
+      <organization>
+                                Columbia University
+                        </organization>
+      <address>
+        <postal>
+          <street>1214 Amsterdam Avenue</street>
+          <street>MC 0401</street>
+          <city>New York</city>
+          <region>NY</region>
+          <code>10027</code>
+          <country>US</country>
+        </postal>
+        <phone>+1 212 939 7149</phone>
+        <email>bellovin@acm.org</email>
+      </address>
+    </author>
+
+<date month="January" year="2012"/> 
+
+    <area>Transport</area>
+
+    <workgroup>TCP Maintenance and Minor Extensions (tcpm)</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in
+the title) for use on http://www.rfc-editor.org/rfcsearch.html. -->
+
+<keyword>TCP security, TCP Sequence Numbers, Sequence Number Randomization, obfuscation, TCP vulnerabilities</keyword>
+
+<abstract>
+<t>This document specifies an algorithm for the generation of TCP Initial Sequence Numbers (ISNs), such that the chances of an off-path attacker guessing the sequence numbers in use by a target connection are reduced. This document revises (and formally obsoletes) RFC 1948, and takes the ISN generation algorithm originally proposed in that document to Standards Track, formally updating RFC 793.</t>
+</abstract>
+
+</front>
+
+<middle>
+
+<section title="Introduction" anchor="intro">
+<t>
+For a long time, the Internet has experienced a number of off-path attacks against TCP connections. These attacks have ranged from trust-relationship exploitation to denial-of-service attacks <xref target="CPNI-TCP"/>. Discussion of some of these attacks dates back to at least 1985, when Morris <xref target="Morris1985"/> described a form of attack based on guessing what sequence numbers TCP <xref target="RFC0793"/> will use for new connections between two known end-points.</t>
+
+<t>In 1996, RFC 1948 <xref target="RFC1948"/> proposed an algorithm for the selection of TCP Initial Sequence Numbers (ISNs), such that the chances of an off-path attacker guessing valid sequence numbers are reduced. With the aforementioned algorithm, such attacks would remain possible if and only if the attacker already has the ability to perform "man-in-the-middle" attacks.</t>
+
+<t>This document revises (and formally obsoletes) RFC 1948, and takes the ISN generation algorithm originally proposed in that document to Standards Track.</t>
+
+<t><xref target="isn-reqs"/> provides a brief discussion of the requirements
+for a good ISN generation algorithm. <xref target="algorithm"/> specifies a
+good ISN selection algorithm. <xref target="trust-relationship-attacks"/> provides a discussion of the
+trust-relationship exploitation attacks that originally motivated the
+publication of RFC 1948 <xref target="RFC1948"/>. Finally, <xref target="changes"/>
+lists the differences from RFC 1948 to this document.</t>
+
+
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+   NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   RFC 2119 <xref target="RFC2119"/>.</t>
+
+</section>
+
+<section title="Generation of Initial Sequence Numbers" anchor="isn-reqs">
+<t>
+RFC 793 <xref target="RFC0793"/> suggests that the choice of the ISN of a connection is not arbitrary, but aims to reduce the chances of a stale segment from being accepted by a new incarnation of a previous connection. RFC 793 <xref target="RFC0793"/> suggests the use of a global 32-bit ISN generator that is incremented by 1 roughly every 4 microseconds.</t>
+<t>
+It is interesting to note that, as a matter of fact, protection against stale
+segments from a previous incarnation of the connection is enforced by
+preventing the creation of a new incarnation of a previous connection before
+2*MSL have passed since a segment corresponding to the old incarnation was last
+seen (where "MSL" is the "Maximum Segment Lifetime" <xref target="RFC0793"/>). This is accomplished by the TIME-WAIT state and TCP's "quiet time" concept (see Appendix B of <xref target="RFC1323"/>).</t>
+
+<t>Based on the assumption that ISNs are monotonically increasing across connections, many stacks (e.g., 4.2BSD-derived) use the ISN of an incoming SYN segment to perform "heuristics" that enable the creation of a new incarnation of a connection while the previous incarnation is still in the TIME-WAIT state (see p. 945 of <xref target="Wright1994"/>). This avoids an interoperability problem that may arise when a node establishes connections to a specific TCP end-point at a high rate <xref target="Silbersack2005"/>.</t>
+
+<t>Unfortunately, the ISN generator described in <xref target="RFC0793"/> makes it trivial for an off-path attacker to predict the ISN that a TCP will use for new connections, thus allowing a variety of attacks against TCP connections <xref target="CPNI-TCP"/>. One of the possible attacks that takes advantage of weak sequence numbers was first described in <xref target="Morris1985"/>, and its exploitation was widely publicized about 10 years later <xref target="Shimomura1995"/>. <xref target="CERT2001"/> and <xref target="USCERT2001"/> are advisories about the security implications of weak ISN generators. <xref target="Zalewski2001"/> and <xref target="Zalewski2002"/> contain a detailed analysis of ISN generators, and a survey of the algorithms in use by popular TCP implementations.</t>
+
+<t>Simple random selection of the TCP ISNs would mitigate those attacks that require an attacker to guess valid sequence numbers. However, it would also break the 4.4BSD "heuristics" to accept a new incoming connection when there is a previous incarnation of that connection in the TIME-WAIT state <xref target="Silbersack2005"/>.</t>
+
+<t>
+We can prevent sequence number guessing attacks by giving each connection -- that is, each four-tuple of (localip, localport, remoteip, remoteport) -- a separate sequence number space.  Within each space, the ISN is incremented according to <xref target="RFC0793"/>; however, there is no obvious relationship between the numbering in different spaces.
+</t>
+
+<t>An obvious way to prevent sequence number guessing attacks while not
+breaking the 4.4BSD heuristics would be to perform a simple random selection of TCP ISNs while maintaining state for dead connections (e.g. changing the TCP state transition
+diagram so that both end-points of all connections go to TIME-WAIT state). That
+would work but would consume system memory to store the additional
+state. Instead, we propose an improvement to the TCP ISN generation algorithm
+that does not require TCP to keep state for all recently terminated connections.</t>
+
+</section>
+
+
+<section title="Proposed Initial Sequence Number Generation Algorithm" anchor="algorithm">
+
+<t>TCP SHOULD generate its Initial Sequence Numbers with the expression:</t>
+
+<t>
+<artwork align="center">
+ISN = M + F(localip, localport, remoteip, remoteport, secretkey)
+</artwork>
+</t>
+
+<t>where M is the 4 microsecond timer, and F() is a pseudorandom function (PRF) of the connection-id. F() MUST NOT be computable from the outside, or an attacker could still guess at sequence numbers from the ISN used for some other connection.  The PRF could be implemented as a cryptographic hash of the concatenation of the connection-id and some secret data; MD5 <xref target="RFC1321"/> would be a good choice for the hash function. <!-- The secret data can either be a true random number <xref target="RFC4086"/>, or it can be the combination of some per-host secret and the boot time of the machine (with the boot time ensuring that the secret is changed on occasion).  Other data, such as the host's IP address and name, may be included in the hash as well; this eases administration by permitting a network of workstations to share the same secret data while still giving them separate sequence number spaces.  Our recommendation, in fact, is to use all three of these items: as random a number as the hardware can generate, an administratively-installed pass phrase, and the machine's IP address.  This allows for local choice on how secure the secret is.---></t>
+
+    <t>The result of F() is no more secure than the secret key.  If an attacker is aware of which cryptographic hash function is being used by the victim (which we should expect), and the attacker can obtain enough material (i.e., ISNs selected by the victim), the attacker may simply search the entire secret-key space to find matches. To protect against this, the secret key should be of a reasonable length. Key lengths of 128 bits should be adequate. The secret key can either be a true random number <xref target="RFC4086"/> or some per-host secret. A possible mechanism for protecting the secret key would be to change it on occasion. For example, the secret key could be changed whenever one of the following events occur:</t>
+
+    <t>
+    <list style="symbols">
+    <t>The system is being bootstrapped (e.g., the secret key could be a combination of some secret and the boot time of the machine).</t>
+    <t>
+    Some predefined/random time has expired.
+    </t>
+    <t>
+    The secret key has been used sufficiently often that it should be regarded
+as insecure at that point.
+    </t>
+    </list>
+    </t>
+
+
+<t>
+Note that changing the secret would change the ISN space used for reincarnated connections, and thus could cause the 4.4BSD heuristics to fail; to maintain safety, either dead connection state could be kept or a quiet time observed for two maximum segment lifetimes before such a change.
+</t>
+
+<t>It should be noted that while there have been concerns about the security
+properties of MD5 <xref target="RFC6151"/>, the algorithm specified in this
+document simply aims at reducing the chances of an off-path attacker guessing
+the ISN of a new connection, and thus in our threat model it is not worth the
+effort for an attacker to try to learn the secret key. Since MD5 is faster than
+other "stronger" alternatives, and is used in virtually all existing
+implementations of this algorithm, we consider that use of MD5 in the specified
+algorithm is acceptable. However, implementations should consider the
+trade-offs involved in using functions with stronger security properties, and
+ employ them if it is deemed appropriate.</t>
+</section>
+
+
+
+<section title="Security Considerations" anchor="securityconsiderations">
+<t>Good sequence numbers are not a replacement for cryptographic
+authentication, such as that provided by IPsec <xref target="RFC4301"/> or the
+TCP Authentication Option (TCP-AO) <xref target="RFC5925"/>.  At best, they are a palliative measure.</t>
+<t>
+If random numbers are used as the sole source of the secret, they MUST be chosen in accordance with the recommendations given in <xref target="RFC4086"/>.
+</t>
+
+<t>A security consideration that should be made about the algorithm proposed in this document is that it might allow an attacker to count the number of systems behind a Network Address Translator (NAT) <xref target="RFC3022"/>. Depending on the ISN generators implemented by each of the systems behind the NAT, an attacker might be able to count the number of systems behind a NAT by establishing a number of TCP connections (using the public address of the NAT) and identifying the number of different sequence number "spaces". <xref target="Gont2009"/> discusses how this and other information leakages at NATs could be mitigated.
+</t>
+
+
+<t>
+An eavesdropper who can observe the initial messages for a connection can determine its sequence number state, and may still be able to launch sequence number guessing attacks by impersonating that connection.  However, such an eavesdropper can also hijack existing connections <xref target="Joncheray1995"/>, so the incremental threat is not that high.  Still, since the offset between a fake connection and a given real connection will be more or less constant for the lifetime of the secret, it is important to ensure that attackers can never capture such packets.  Typical attacks that could disclose them include both eavesdropping and the variety of routing attacks discussed in <xref target="Bellovin1989"/>.</t>
+
+<t>Off-path attacks against TCP connections require the attacker to guess or
+know the four-tuple (localip, localport, remoteip, remoteport) that identifies
+the target connection. TCP port number randomization <xref target="RFC6056"/>
+reduces the chances of an attacker of guessing such a four-tuple by obfuscating the selection of TCP ephemeral ports, therefore contributing to the mitigation of such attacks. <xref target="RFC6056"/> provides advice on the selection of TCP ephemeral ports, such that the overall protection of TCP connections against off-path attacks is improved.</t>
+
+<t><xref target="CPNI-TCP"/> contains a discussion of all the currently known attacks that require an attacker to know or be able to guess the TCP sequence numbers in use by the target connection.
+</t>
+
+
+</section>
+
+
+<section title="Acknowledgements" anchor="acknowledgements">
+<t>
+Matt Blaze and Jim Ellis contributed some crucial ideas to RFC 1948, on which this document is based. Frank Kastenholz contributed constructive comments to that memo.
+</t>
+
+<t>The authors of this document would like to thank (in chronological order) Alfred Hoenes, Lloyd Wood, Lars Eggert, Joe Touch, William Allen Simpson, Tim Shepard, Wesley Eddy, Anantha Ramaiah, and Ben Campbell for providing valuable comments on draft versions of this document.
+</t>
+
+<t>Fernando Gont wishes to thank Jorge Oscar Gont, Nelida Garcia, and Guillermo Gont for their love and support, and Daniel Bellomo and Christian O'Flaherty for their support in his Internet engineering activities.</t>
+<t>Fernando Gont's attendance to IETF meetings was supported by ISOC's "Fellowship to the IETF" program.</t>
+</section>
+
+</middle>
+<back>
+<references title="Normative References">
+	<?rfc include="reference.RFC.0793" ?>
+	<?rfc include="reference.RFC.1321" ?>
+	<?rfc include="reference.RFC.1323" ?>
+	<?rfc include="reference.RFC.2119" ?>
+	<?rfc include="reference.RFC.4086" ?>
+	<?rfc include="reference.RFC.6056" ?>
+</references>
+
+<references title="Informative References">
+
+<!-- draft-gont-behave-nat-security is Expired -->
+<reference anchor='Gont2009'>
+<front>
+<title>Security implications of Network Address Translators (NATs)</title>
+
+<author initials='F' surname='Gont' fullname='Fernando Gont'>
+    <organization />
+</author>
+
+<author initials='P' surname='Srisuresh' fullname='Pyda Srisuresh'>
+    <organization />
+</author>
+
+<date month='October' day='27' year='2009' />
+
+<abstract><t>This document analyzes the security implications of Network Address Translators (NATs).  It neither deprecates nor encourages the use of NATs, but rather aims to raise awareness about their security implications, and possible implementation approaches to improve their security.</t></abstract>
+
+</front>
+
+<seriesInfo name='Work in' value='Progress'/>
+
+</reference>
+
+	<?rfc include="reference.RFC.1948" ?>
+
+	<reference anchor="CERT2001">
+		<front>
+			<title>CERT Advisory CA-2001-09: Statistical Weaknesses in TCP/IP Initial Sequence Numbers
+</title>
+			<author initials="" surname="CERT" fullname= "CERT">
+				<organization></organization>
+			</author>
+			<date year="2001"/>
+		</front>
+		<seriesInfo name="" value="http://www.cert.org/advisories/CA-2001-09.html"/>
+	</reference>
+
+<!--[rfced] The URL for the following reference returns Page Not Found.  Please 
+let us know how it should be updated.
+
+Original:
+   [CPNI-TCP]
+              CPNI, "Security Assessment of the Transmission Control                   
+              Protocol (TCP)",  http://www.cpni.gov.uk/Docs/
+              tn-03-09-security-assessment-TCP.pdf, 2009.
+
+[fgont] Done. I've replaced the URL with one pointing to the copy of the document I host on my web site.
+ -->
+
+
+	<reference anchor="CPNI-TCP">
+		<front>
+			<title>Security Assessment of the Transmission Control Protocol (TCP)</title>
+			<author initials="" surname="CPNI" fullname= "CPNI">
+				<organization></organization>
+			</author>
+			<date year="2009"/>
+		</front>
+		<seriesInfo name="" value="http://www.gont.com.ar/papers/tn-03-09-security-assessment-TCP.pdf"/>
+	</reference>
+
+	<reference anchor="Bellovin1989">
+		<front>
+			<title>Security Problems in the TCP/IP Protocol Suite</title>
+			<author initials="R." surname="Morris" fullname="Robert Morris">
+				<organization></organization>
+			</author>
+			<date year="Computer Communications Review, vol. 19, no. 2, pp. 32-48, 1989"/>
+		</front>
+	</reference>
+
+	<reference anchor="Joncheray1995">
+		<front>
+			<title>A Simple Active Attack Against TCP</title>
+			<author initials="L." surname="Joncheray" fullname="L. Joncheray">
+				<organization></organization>
+			</author>
+			<date year="Proc. Fifth Usenix UNIX Security Symposium, 1995"/>
+		</front>
+	</reference>
+
+	<reference anchor="Morris1985">
+		<front>
+			<title>A Weakness in the 4.2BSD UNIX TCP/IP Software</title>
+			<author initials="R." surname="Morris" fullname="Robert Morris">
+				<organization></organization>
+			</author>
+			<date year="1985"/>
+		</front>
+		<seriesInfo name="CSTR 117," value="AT&amp;T Bell Laboratories, Murray Hill, NJ"/>
+	</reference>
+
+<!-- [rfced] The URL for the following reference appears to be to a personal 
+website. If possible, please provide a more stable URL for this reference.
+
+   [Shimomura1995]   Shimomura, T., "Technical details of the attack
+                     described by Markoff in NYT",  http://
+                     www.gont.com.ar/docs/post-shimomura-usenet.txt,
+                     Message posted in USENET's comp.security.misc
+                     newsgroup, Message-ID: <3g5gkl$5j1@ariel.sdsc.edu>,
+                     1995.
+
+[fgont] The aforementioned URL is that of my web site. I couldn't provide any more "stable" reference than that. So it is okay.
+-->
+
+	<reference anchor="Shimomura1995">
+		<front>
+			<title>Technical details of the attack described by Markoff in NYT</title>
+			<author initials="T." surname="Shimomura" fullname="T. Shimomura">
+			</author>
+			<date year="Message posted in USENET's comp.security.misc newsgroup, Message-ID: &lt;3g5gkl$5j1@ariel.sdsc.edu&gt;, 1995"/>
+		</front>
+		<seriesInfo name="" value="http://www.gont.com.ar/docs/post-shimomura-usenet.txt"/>
+	</reference>
+
+	<reference anchor="Silbersack2005">
+		<front>
+			<title>Improving TCP/IP security through randomization without sacrificing interoperability</title>
+			<author initials="M.J." surname="Silbersack" fullname="Michael James Silbersack">
+				<organization>The FreeBSD Project</organization>
+			</author>
+		</front>
+		<seriesInfo name="EuroBSDCon 2005" value="Conference"/>
+	</reference>
+
+	<reference anchor="USCERT2001">
+		<front>
+			<title>US-CERT Vulnerability Note VU#498440: Multiple TCP/IP implementations may use statistically predictable initial sequence numbers
+</title>
+			<author initials="" surname="US-CERT" fullname= "US-CERT">
+				<organization></organization>
+			</author>
+			<date year="2001"/>
+		</front>
+		<seriesInfo name="" value="http://www.kb.cert.org/vuls/id/498440"/>
+	</reference>
+
+	<reference anchor="Wright1994">
+		<front>
+			<title>TCP/IP Illustrated, Volume 2: The Implementation</title>
+			<author initials="G.R." surname="Wright" fullname= "Gary R. Wright">
+				<organization></organization>
+			</author>
+
+			<author initials="W.R." surname="Stevens" fullname= "W. Richard Stevens">
+				<organization></organization>
+			</author>
+			<date year="Addison-Wesley, 1994"/>
+		</front>
+<!-- The usage of the date element (above) avoids an extra space
+		before the comma.
+		<seriesInfo name="Addison-Wesley" value=""/>-->
+	</reference>
+
+<!-- [rfced] The URLs for the following references appear to be to a personal 
+website. If possible, please provide more stable URLs for these references.
+
+   [Zalewski2001]
+              Zalewski, M., "Strange Attractors and TCP/IP Sequence
+              Number Analysis",
+               http://lcamtuf.coredump.cx/oldtcp/tcpseq.html, 2001.
+
+   [Zalewski2002]
+              Zalewski, M., "Strange Attractors and TCP/IP Sequence
+              Number Analysis - One Year Later",
+               http://lcamtuf.coredump.cx/newtcp/, 2002.
+
+[fgont] They are stable references, and refer to the official copy of the documents.
+-->
+
+
+	<reference anchor="Zalewski2001">
+		<front>
+			<title>Strange Attractors and TCP/IP Sequence Number Analysis
+</title>
+			<author initials="M. " surname="Zalewski" fullname= "Michal Zalewski">
+				<organization></organization>
+			</author>
+			<date year="2001"/>
+		</front>
+		<seriesInfo name="" value="http://lcamtuf.coredump.cx/oldtcp/tcpseq.html"/>
+	</reference>
+
+	<reference anchor="Zalewski2002">
+		<front>
+			<title>Strange Attractors and TCP/IP Sequence Number Analysis - One Year Later
+</title>
+			<author initials="M. " surname="Zalewski" fullname= "Michal Zalewski">
+				<organization></organization>
+			</author>
+			<date year="2002"/>
+		</front>
+		<seriesInfo name="" value="http://lcamtuf.coredump.cx/newtcp/"/>
+	</reference>
+	
+	<?rfc include="reference.RFC.0854" ?>
+	<?rfc include="reference.RFC.1034" ?>
+	<?rfc include="reference.RFC.3022" ?>
+	<?rfc include="reference.RFC.5936" ?>
+	<?rfc include="reference.RFC.4301" ?>
+	<?rfc include="reference.RFC.4120" ?>
+	<?rfc include="reference.RFC.4251" ?>
+	<?rfc include="reference.RFC.4954" ?>
+	<?rfc include="reference.RFC.5321" ?>
+	<?rfc include="reference.RFC.5925" ?>
+	<?rfc include="reference.RFC.6151" ?>
+</references>
+
+<section title="Address-Based Trust-Relationship Exploitation Attacks" anchor="trust-relationship-attacks">
+<t>This section discusses the trust-relationship exploitation attack that originally motivated the publication of RFC 1948 <xref target="RFC1948"/>. It should be noted that while RFC 1948 focused its discussion of address-based trust-relationship exploitation attacks on Telnet <xref target="RFC0854"/> and the various UNIX "r" commands, both Telnet and the various "r" commands have since been largely replaced by secure counterparts (such as SSH <xref target="RFC4251"/>) for the purpose of remote login and remote command execution. Nevertheless, address-based trust relationships are still employed nowadays in some scenarios. For example, some SMTP <xref target="RFC5321"/>
+deployments still authenticate their users by means of their IP addresses, even when more appropriate authentication mechanisms are available <xref target="RFC4954"/>. Another example is the authentication of DNS secondary servers <xref target="RFC1034"/> by means of their IP addresses for allowing DNS zone transfers <xref target="RFC5936"/>, or any other access control mechanism based on IP addresses.</t>
+<t>
+In 1985, Morris <xref target="Morris1985"/> described a form of attack based on guessing what sequence numbers TCP <xref target="RFC0793"/> will use for new connections.  Briefly, the attacker gags a host trusted by the target, impersonates the IP address of the trusted host when talking to the target, and completes the three-way handshake based on its guess at the next ISN to be used.  An ordinary connection to the target is used to gather sequence number state information.  This entire sequence, coupled with address-based authentication, allows the attacker to execute commands on the target host.
+</t>
+
+<t>
+Clearly, the proper solution for these attacks is cryptographic authentication <xref target="RFC4301"/> <xref target="RFC4120"/> <xref target="RFC4251"/>.
+</t>
+
+<t>The following subsection provides technical details for the trust-relationship exploitation attack described by Morris <xref target="Morris1985"/>.
+</t>
+
+<section title="Blind TCP Connection-Spoofing">
+<t>
+In order to understand the particular case of sequence number guessing, one must look at the three-way handshake used in the TCP open sequence <xref target="RFC0793"/>.  Suppose client machine A wants to talk to rsh server B.&nbsp; It sends the following message:
+
+<artwork align="center">
+A-&gt;B: SYN, ISNa
+</artwork>
+</t>
+
+<t>
+That is, it sends a packet with the SYN ("synchronize sequence number") bit set and an initial sequence number ISNa.
+</t>
+
+<t>
+   B replies with
+
+
+<artwork align="center">
+B-&gt;A: SYN, ISNb, ACK(ISNa)
+</artwork>
+</t>
+
+<t>
+In addition to sending its own ISN, it acknowledges A's.  Note that the actual numeric value ISNa must appear in the message.
+</t>
+
+<t>
+A concludes the handshake by sending
+
+<artwork align="center">
+A->B: ACK(ISNb)
+</artwork>
+</t>
+
+<t>
+RFC 793 <xref target="RFC0793"/> specifies that the 32-bit counter be incremented by 1 in the low-order position about every 4 microseconds.  Instead, Berkeley-derived kernels traditionally incremented it by a constant every second, and by another constant for each new connection.  Thus, if you opened a connection to a machine, you knew to a very high degree of confidence what sequence number it would use for its next connection.  And therein lied the vulnerability.
+</t>
+
+<t>
+The attacker X first opens a real connection to its target B -- say, to the mail port or the TCP echo port.  This gives ISNb.  It then impersonates A and sends
+
+<artwork align="center">
+Ax->B: SYN, ISNx
+</artwork>
+</t>
+
+
+<t>
+where "Ax" denotes a packet sent by X pretending to be A.
+</t>
+
+<t>
+   B's response to X's original SYN (so to speak)
+
+<artwork align="center">
+B->A: SYN, ISNb', ACK(ISNx)
+</artwork>
+</t>
+
+<t>
+goes to the legitimate A, about which more anon.  X never sees that message but can still send
+
+<!-- [rfced] Please clarify "about which more anon. X" in this text.
+What is the intended meaning?
+
+Original:
+   B's response to X's original SYN (so to speak)
+
+                        B->A: SYN, ISNb', ACK(ISNx)
+
+   goes to the legitimate A, about which more anon.  X never sees that
+   message but can still send
+
+                             Ax->B: ACK(ISNb')
+
+[fgont] "English as second language" here, but my undesrstanding is that "about which more anon" is an idiom that means "about which we'll talk more later".
+-->
+
+<artwork align="center">
+Ax->B: ACK(ISNb')
+</artwork>
+</t>
+
+<t>
+using the predicted value for ISNb'.  If the guess is right -- and usually it will be, if the sequence numbers are weak -- B's rsh server thinks it has a legitimate connection with A, when in fact X is sending the packets.  X can't see the output from this session, but it can execute commands as more or less any user -- and in that case, the game is over and X has won.
+</t>
+
+<t>
+There is a minor difficulty here.  If A sees B's message, it will realize that
+B is acknowledging something it never sent, and will send a RST packet in
+response to tear down the connection. However, an attacker could send the TCP segments
+containing the commands to be executed back-to-back with the segments required to establish the TCP connection, and thus by the time the connection is reset, the attacker has already won.
+</t>
+
+<list style="hanging">
+<t>
+In the past, attackers exploited a common TCP implementation bug to prevent the connection from being reset (see subsection "A Common TCP Bug" in <xref target="RFC1948"/>). However, all TCP implementations that used to implement this bug have been fixed for a long time.
+</t>
+
+</list>
+</section>
+
+</section>
+<section title="Changes from RFC 1948" anchor="changes">
+<t>
+<list style="symbols">
+<t>This document is Standards Track (rather than Informational).</t>
+<t>Formal requirements <xref target="RFC2119"/> are specified.</t>
+<t>The discussion of address-based trust-relationship attacks has been updated and moved to an appendix.</t>
+<t>The subsection entitled "A Common TCP Bug" (describing a common bug in the BSD TCP implementation) has been removed.</t>
+</list>
+</t>
+</section>
+
+
+</back>
+</rfc>

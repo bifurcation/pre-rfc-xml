@@ -1,0 +1,904 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+  <!ENTITY RFC2119 SYSTEM 
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+  <!ENTITY RFC2629 SYSTEM 
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2629.xml">
+  <!ENTITY RFC3552 SYSTEM 
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3552.xml">
+  <!ENTITY RFC6830 SYSTEM 
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6830.xml">
+  <!ENTITY RFC2631 SYSTEM 
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2631.xml">
+  <!ENTITY RFC5116 SYSTEM 
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5116.xml">
+  <!ENTITY RFC3526 SYSTEM 
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3526.xml">
+  <!ENTITY RFC4492 SYSTEM
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4492.xml">
+  <!ENTITY RFC6090 SYSTEM
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6090.xml">
+  <!ENTITY RFC7539 SYSTEM
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7539.xml">
+  <!ENTITY RFC5226 SYSTEM
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5226.xml">
+  <!ENTITY RFC6973 SYSTEM
+    "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6973.xml">
+]>
+
+<rfc submissionType="IETF" category="exp" consensus="yes" ipr="trust200902" number="8061">
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc iprnotified="no" ?>
+<?rfc strict="yes" ?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<front>
+  <title abbrev="LISP Data-Plane Confidentiality">Locator/ID Separation Protocol (LISP) Data-Plane Confidentiality</title>
+
+  <author fullname="Dino Farinacci" initials="D." surname="Farinacci">
+  <organization>lispers.net</organization>
+    <address>
+      <postal>
+        <street></street>
+        <city>San Jose</city>
+        <region>California</region>
+        <code>95120</code>
+        <country>United States of America</country>
+      </postal>
+      <phone>408-718-2001</phone>
+      <email>farinacci@gmail.com</email>
+    </address>
+  </author>
+
+  <author fullname="Brian Weis" initials="B." surname="Weis">
+  <organization>Cisco Systems</organization>
+    <address>
+      <postal>
+        <street>170 West Tasman Drive</street>
+        <city>San Jose</city>
+        <region>California</region>
+        <code>95124-1706</code>
+        <country>United States of America</country>
+      </postal>
+      <phone>408-526-4796</phone>
+      <email>bew@cisco.com</email>
+    </address>
+  </author>
+
+  <date month="February" year="2017"/>
+  <area>General</area>
+  <workgroup>Internet Engineering Task Force</workgroup>
+
+
+
+
+  <abstract>
+
+    <t>This document describes a mechanism for encrypting traffic encapsulated using the Locator/ID Separation Protocol (LISP). The design describes how key exchange is achieved using existing
+    LISP control-plane mechanisms as well as how to secure the LISP data plane
+    from third-party surveillance attacks.</t>
+  </abstract>
+</front>
+
+<middle>
+
+  <section title="Introduction">
+    <t>This document describes a mechanism for encrypting LISP-encapsulated
+    traffic. The design describes how key exchange is achieved using existing
+    LISP control-plane mechanisms as well as how to secure the LISP data plane
+    from third-party surveillance attacks.</t>
+
+    <t>The Locator/ID Separation Protocol <xref target="RFC6830"/>
+    defines a set of functions for routers to exchange information
+    used to map from non- routable Endpoint Identifiers (EIDs) to
+    routable Routing Locators (RLOCs). LISP Ingress Tunnel Routers
+    (ITRs) and Proxy Ingress Tunnel Routers (PITRs) encapsulate
+    packets to Egress Tunnel Routers (ETRs) and Re-encapsulating Tunnel
+    Routers (RTRs). Packets that arrive at the ITR or PITR may not be
+    encrypted, which means no protection or privacy of the data is
+    added. When the source host encrypts the data stream, encapsulated
+    packets do not need to be encrypted by LISP.  However, when plaintext
+    packets are sent by hosts, this design can encrypt the user
+    payload to maintain privacy on the path between the encapsulator
+    (the ITR or PITR) to a decapsulator (ETR or RTR). The encrypted
+    payload is unidirectional. However, return traffic uses the same
+    procedures but with different key values by the same xTRs or
+    potentially different xTRs when the paths between LISP sites are
+    asymmetric.</t>
+
+    <t>This document has the following requirements (as well as the general
+    requirements from <xref target="RFC6973"/>) for the solution space:</t>
+    <t><list style="symbols">
+    <t>Do not require a separate Public Key Infrastructure (PKI) that is
+    out of scope of the LISP control-plane architecture.</t>
+    <t>The budget for key exchange MUST be one round-trip time. That is, only
+    a two-packet exchange can occur.</t>
+    <t>Use symmetric keying so faster cryptography can be performed in
+    the LISP data plane.</t>
+    <t>Avoid a third-party trust anchor if possible.</t>
+    <t>Provide for rekeying when secret keys are compromised.</t>
+    <t>Support Authenticated Encryption with packet integrity checks.</t>
+    <t>Support multiple Cipher Suites so new crypto algorithms can be easily
+    introduced.</t>
+    </list></t>
+
+    <t>Satisfying the above requirements provides the following benefits:</t>
+    <t><list style="symbols">
+    <t>Avoiding a PKI reduces the operational cost of managing
+    a secure network. Key management is distributed and independent from
+    any other infrastructure.</t>
+    <t>Packet transport is optimized due to fewer packet headers. Packet loss
+    is reduced by a more efficient key exchange.</t>
+    <t>Authentication and privacy are provided with a single mechanism thereby
+    providing less per-packet overhead and therefore more resource 
+    efficiency.</t>
+    </list></t>
+
+    </section>
+
+    <section title="Requirements Notation">
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+      NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+      "OPTIONAL" in this document are to be interpreted as described
+      in <xref target="RFC2119"/>.</t>
+    </section>
+
+
+    <section title="Definition of Terms">
+      <t>AEAD: Authenticated Encryption with Associated Data <xref
+      target="RFC5116"/></t>
+      <t>ICV: Integrity Check Value</t>
+      <t>LCAF: LISP Canonical Address Format <xref target="RFC8060" /></t>
+      <t>xTR: A general reference to ITRs, ETRs, RTRs, and PxTRs</t>
+    </section>
+
+    <section title="Overview">
+    <t>The approach proposed in this document is NOT to rely on the LISP
+    mapping system (or any other key-infrastructure system) to store security
+    keys. This will provide for a simpler and more secure
+    mechanism. Secret shared keys will be negotiated between the ITR
+    and the ETR in Map-Request and Map-Reply messages. Therefore, when
+    an ITR needs to obtain the RLOC of an ETR, it will get security
+    material to compute a shared secret with the ETR.</t>
+
+    <t>The ITR can compute three shared secrets per ETR the ITR is
+    encapsulating to. When the ITR encrypts a packet before
+    encapsulation, it will identify the key it used for the crypto
+    calculation so the ETR knows which key to use for decrypting the
+    packet after decapsulation. By using key-ids in the LISP header,
+    we can also get fast rekeying functionality.</t>
+
+    <t>The key management described in this document is
+    unidirectional from the ITR (the encapsulator) to the ETR (the
+    decapsultor).</t>
+    </section>
+
+    <section title="Diffie-Hellman Key Exchange" anchor="DHKE">
+    <t>LISP will use a Diffie-Hellman <xref target="RFC2631" /> key
+    exchange sequence and computation for computing a shared
+    secret. The Diffie-Hellman parameters will be passed via Cipher
+    Suite code-points in Map-Request and Map-Reply messages.</t>
+
+    <t>Here is a brief description how Diffie-Hellman works:</t>
+    <figure align="center">
+    <artwork align="left"><![CDATA[
++----------------------------+---------+----------------------------+
+|              ITR           |         |           ETR              |
++------+--------+------------+---------+------------+---------------+
+|Secret| Public | Calculates |  Sends  | Calculates | Public |Secret|
++------|--------|------------|---------|------------|--------|------+
+|  i   |  p,g   |            | p,g --> |            |        |  e   |
++------|--------|------------|---------|------------|--------|------+
+|  i   | p,g,I  |g^i mod p=I |  I -->  |            | p,g,I  |  e   |
++------|--------|------------|---------|------------|--------|------+
+|  i   | p,g,I  |            |  <-- E  |g^e mod p=E |  p,g   |  e   |
++------|--------|------------|---------|------------|--------|------+
+| i,s  |p,g,I,E |E^i mod p=s |         |I^e mod p=s |p,g,I,E | e,s  |
++------|--------|------------|---------|------------|--------|------+
+            ]]></artwork>
+<postamble>Public-Key Exchange for Computing a Shared Private Key <xref
+target="DH" /></postamble>
+    </figure>
+
+    <t>Diffie-Hellman parameters 'p' and 'g' must be the same values used
+    by the ITR and ETR. The ITR computes public key 'I' and transmits
+    'I' in a Map-Request packet. When the ETR receives the Map-Request, it
+    uses parameters 'p' and 'g' to compute the ETR's public key 'E'. The ETR
+    transmits 'E' in a Map-Reply message. At this point, the ETR has enough
+    information to compute 's', the shared secret, by using 'I' as the base
+    and the ETR's private key 'e' as the exponent. When the ITR receives
+    the Map-Reply, it uses the ETR's public key 'E' with the ITR's private key
+    'i' to compute the same 's' shared secret the ETR computed. The value 'p'
+    is used as a modulus to create the width of the shared secret 's' 
+    (see <xref target="KM"/>).</t>
+    </section>
+
+    <section title="Encoding and Transmitting Key Material" anchor="KM">
+
+    <t>The Diffie-Hellman key material is transmitted in Map-Request and 
+    Map-Reply messages. Diffie-Hellman parameters are encoded in the LISP
+    Security Key LCAF Type <xref target="RFC8060" />.</t>
+
+    <figure align="center">
+    <artwork align="left"><![CDATA[
+  0                   1                   2                   3             
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1           
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+          
+ |           AFI = 16387         |     Rsvd1     |     Flags     |          
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+          
+ |   Type = 11   |      Rsvd2    |             6 + n             |          
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+          
+ |   Key Count   |      Rsvd3    | Cipher Suite  |   Rsvd4     |R|          
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+          
+ |           Key Length          |     Public Key Material ...   |          
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+          
+ |                    ... Public Key Material                    |          
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+          
+ |              AFI = x          |       Locator Address ...     |          
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+         
+            ]]></artwork>
+    <postamble>Cipher Suite Field Contains DH Key Exchange and Cipher/Hash 
+    Functions</postamble>
+    </figure>
+
+    <t>The Key Count field encodes the number of {'Key-Length', 
+    'Key-Material'} fields included in the encoded LCAF. The maximum number
+    of keys that can be encoded is three, each identified by key-id 1, 
+    followed by key-id 2, and finally key-id 3.</t>
+
+    <t>The R bit is not used for this use case of the Security Key LCAF Type
+    but is reserved for <xref target="LISP-DDT" /> security. Therefore, 
+    the R bit SHOULD be transmitted as 0 and MUST be ignored on receipt.</t>
+
+    <figure align="center">
+    <artwork align="left"><![CDATA[
+Cipher Suite 0: 
+   Reserved
+
+Cipher Suite 1 (LISP_2048MODP_AES128_CBC_SHA256):
+   Diffie-Hellman Group: 2048-bit MODP [RFC3526]
+   Encryption:  AES with 128-bit keys in CBC mode [AES-CBC]
+   Integrity:   Integrated with AEAD_AES_128_CBC_HMAC_SHA_256 [AES-CBC]
+   IV length:   16 bytes
+   KDF:         HMAC-SHA-256
+
+Cipher Suite 2 (LISP_EC25519_AES128_CBC_SHA256):
+   Diffie-Hellman Group: 256-bit Elliptic-Curve 25519 [CURVE25519]
+   Encryption:  AES with 128-bit keys in CBC mode [AES-CBC]
+   Integrity:   Integrated with AEAD_AES_128_CBC_HMAC_SHA_256 [AES-CBC]
+   IV length:   16 bytes
+   KDF:         HMAC-SHA-256
+
+Cipher Suite 3 (LISP_2048MODP_AES128_GCM):
+   Diffie-Hellman Group: 2048-bit MODP [RFC3526]
+   Encryption:  AES with 128-bit keys in GCM mode [RFC5116]
+   Integrity:   Integrated with AEAD_AES_128_GCM [RFC5116]
+   IV length:   12 bytes
+   KDF:         HMAC-SHA-256
+
+Cipher Suite 4 (LISP_3072MODP_AES128_GCM):
+   Diffie-Hellman Group: 3072-bit MODP [RFC3526]
+   Encryption:  AES with 128-bit keys in GCM mode [RFC5116]
+   Integrity:   Integrated with AEAD_AES_128_GCM [RFC5116]
+   IV length:   12 bytes
+   KDF:         HMAC-SHA-256
+
+Cipher Suite 5 (LISP_256_EC25519_AES128_GCM):
+   Diffie-Hellman Group: 256-bit Elliptic-Curve 25519 [CURVE25519]
+   Encryption:  AES with 128-bit keys in GCM mode [RFC5116]
+   Integrity:   Integrated with AEAD_AES_128_GCM [RFC5116]
+   IV length:   12 bytes
+   KDF:         HMAC-SHA-256
+
+Cipher Suite 6 (LISP_256_EC25519_CHACHA20_POLY1305):
+   Diffie-Hellman Group: 256-bit Elliptic-Curve 25519 [CURVE25519]
+   Encryption: Chacha20-Poly1305 [CHACHA-POLY] [RFC7539]
+   Integrity:  Integrated with AEAD_CHACHA20_POLY1305 [CHACHA-POLY]
+   IV length:  8 bytes
+   KDF:        HMAC-SHA-256
+            ]]></artwork>
+
+    </figure>
+
+    <t>The Public Key Material field contains the public key generated by
+    one of the Cipher Suites defined above. The length of the key, in octets,
+    is encoded in the Key Length field.</t>
+
+    <t>When an ITR, PITR, or RTR sends a Map-Request, they will encode their
+    own RLOC in the Security Key LCAF Type format within the ITR-RLOCs
+    field. When an ETR or RTR sends a Map-Reply, they will encode their
+    RLOCs in Security Key LCAF Type format within the RLOC-record field of
+    each EID-record supplied.</t>
+
+    <t>If an ITR, PITR, or RTR sends a Map-Request with the Security Key LCAF Type 
+    included and the ETR or RTR does not want to have encapsulated
+    traffic encrypted, they will return a Map-Reply with no RLOC-records encoded with the Security Key LCAF Type. This signals to the
+    ITR, PITR, or RTR not to encrypt traffic (it cannot encrypt
+    traffic anyway since no ETR public key was returned).</t>
+
+    <t>Likewise, if an ITR or PITR wishes to include multiple key-ids in the
+    Map-Request, but the ETR or RTR wishes to use some but not all of the key-ids,
+    it returns a Map-Reply only for those key-ids it wishes to use.</t>
+    
+    </section>
+
+    <section title="Shared Keys Used for the Data Plane" anchor="KEYS">
+
+    <t>When an ITR or PITR receives a Map-Reply accepting the Cipher
+    Suite sent in the Map-Request, it is ready to create data-plane
+    keys. The same process is followed by the ETR or RTR returning the
+    Map-Reply.</t>
+
+    <t>The first step is to create a shared secret, using the peer's
+    shared Diffie-Hellman Public Key Material combined with the device's
+    own private keying material, as described in <xref target="DHKE" />. The
+    Diffie-Hellman parameters used are defined in the Cipher Suite sent
+    in the Map-Request and copied into the Map-Reply.</t>
+
+    <t>The resulting shared secret is used to compute an AEAD-key
+    for the algorithms specified in the Cipher Suite. A
+    Key Derivation Function (KDF) in counter mode, as specified by
+    <xref target="NIST-SP800-108" />, is used to generate the data-plane keys. 
+    The amount of keying material that is derived depends on the
+    algorithms in the Cipher Suite.</t>
+
+    <t>The inputs to the KDF are as follows:</t>
+
+    <t><list style="symbols">
+    <t>KDF function. This is HMAC-SHA-256 in this document, but generally
+    specified in each Cipher Suite definition.</t>
+    <t>A key for the KDF function. This is the computed Diffie-Hellman
+    shared secret.</t>
+
+    <t>Context that binds the use of the data-plane
+    keys to this session. The context is made up of the following
+    fields, which are concatenated and provided as the data to be
+    acted upon by the KDF function.  A Context is made up of the following components:
+
+
+    <list style="symbols">
+    <t>A counter, represented as a two-octet value in network byte order.</t>
+    <t>The null-terminated string "lisp-crypto".</t>
+    <t>The ITR's nonce from the Map-Request the Cipher Suite was included
+    in.</t>
+    <t>The number of bits of keying material required (L), represented as a 
+    two-octet value in network byte order.</t>
+    </list></t></list></t>   
+
+    <t>The counter value in the context is first set to 1. When the
+    amount of keying material exceeds the number of bits returned by
+    the KDF function, then the KDF function is called again with the
+    same inputs except that the counter increments for each call. When
+    enough keying material is returned, it is concatenated and used to
+    create keys.</t>
+
+    <t>For example, AES with 128-bit keys requires 16 octets (128
+    bits) of keying material, and HMAC-SHA1-96 requires another 16
+    octets (128 bits) of keying material in order to maintain a
+    consistent 128 bits of security. Since 32 octets (256 bits) of
+    keying material are required, and the KDF function HMAC-SHA-256
+    outputs 256 bits, only one call is required. The inputs are as
+    follows:</t>
+
+    <figure align="center">
+    <artwork align="left"><![CDATA[
+key-material = HMAC-SHA-256(dh-shared-secret, context)
+
+    where: context = 0x0001 || "lisp-crypto" || <itr-nonce> || 0x0100
+        ]]></artwork>
+    </figure>
+
+    <t>In contrast, a Cipher Suite specifying AES with 256-bit keys
+    requires 32 octets (256 bits) of keying material, and
+    HMAC-SHA256-128 requires another 32 octets (256 bits) of keying
+    material in order to maintain a consistent 256 bits of
+    security. Since 64 octets (512 bits) of keying material are
+    required, and the KDF function HMAC-SHA-256 outputs 256 bits, two
+    calls are required.</t>
+
+    <figure align="center">
+    <artwork align="left"><![CDATA[
+key-material-1 = HMAC-SHA-256(dh-shared-secret, context)
+
+    where: context = 0x0001 || "lisp-crypto" || <itr-nonce> || 0x0200
+    
+key-material-2 = HMAC-SHA-256(dh-shared-secret, context)
+
+    where: context = 0x0002 || "lisp-crypto" || <itr-nonce> || 0x0200
+
+key-material = key-material-1 || key-material-2
+        ]]></artwork>
+
+    </figure>
+
+    <t>If the key-material is longer than the required number of
+    bits (L), then only the most significant L bits are used.</t>
+
+    <t>From the derived key-material, the most significant 256 bits
+    are used for the AEAD-key by AEAD ciphers. The 256-bit AEAD-key is divided
+    into a 128-bit encryption key and a 128-bit integrity check key internal
+    to the cipher used by the ITR.</t>
+
+    </section>
+
+    <section title="Data-Plane Operation">
+    <t>The LISP encapsulation header <xref target="RFC6830"/> requires
+    changes to encode the key-id for the key being used for
+    encryption.</t>
+    <figure align="center">
+    <artwork align="left"><![CDATA[
+     0                   1                   2                   3             
+     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1           
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ 
+  / |       Source Port = xxxx      |       Dest Port = 4341        | 
+UDP +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ 
+  \ |           UDP Length          |        UDP Checksum           | 
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ 
+L / |N|L|E|V|I|R|K|K|            Nonce/Map-Version                  |\ \
+I   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ |A
+S \ |                 Instance ID/Locator-Status-Bits               | |D
+P   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ |/   
+    |                   Initialization Vector (IV)                  | I     
+E   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ C   
+n / |                                                               | V     
+c   |                                                               | |     
+r   |                Packet Payload with EID Header ...             | |     
+y   |                                                               | |     
+p \ |                                                               |/      
+t   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+     
+           ]]></artwork>
+    <postamble>K-bits Indicate When a Packet Is Encrypted and Which Key Is Used
+    </postamble>
+    </figure>
+
+    <t>When the KK bits are 00, the encapsulated packet is not
+    encrypted.  When the value of the KK bits is 1, 2, or 3, it
+    encodes the key-id of the secret keys computed during the
+    Diffie-Hellman Map-Request/Map-Reply exchange. When the KK bits
+    are not 0, the payload is prepended with an Initialization Vector
+    (IV). The length of the IV field is based on the Cipher Suite
+    used.  Since all Cipher Suites defined in this document do
+    Authenticated Encryption with Associated Data (AEAD), an ICV field does not need to be
+    present in the packet since it is included in the ciphertext.
+    The Additional Data (AD) used for the ICV is shown above and
+    includes the LISP header, the IV field, and the packet payload.</t>
+
+    <t>When an ITR or PITR receives a packet to be encapsulated, the device
+    will first decide what key to use, encode the key-id into the LISP
+    header, and use that key to encrypt all packet data that follows the LISP
+    header. Therefore, the outer header, UDP header, and LISP header
+    travel as plaintext.</t>
+
+
+
+    <t>At the time of writing, there is an open working group item to discuss if the data
+    encapsulation header needs change for encryption or any new
+    applications. This document proposes changes to the existing
+    header so experimentation can continue without making large
+    changes to the data plane at this time. This document allocates two
+    bits of the previously unused three flag bits (note the R-bit above is
+    still a reserved flag bit, as documented in <xref
+    target="RFC6830"/>) for the KK bits.</t>
+    </section>
+
+    <section title="Procedures for Encryption and Decryption">
+
+    <t>When an ITR, PITR, or RTR encapsulates a packet and has already
+    computed an AEAD-key (detailed in <xref
+    target="KEYS" />) that is associated with a destination RLOC, the
+    following encryption and encapsulation procedures are
+    performed:</t>
+    
+    <t><list style="numbers">
+    <t>The encapsulator creates an IV and prepends the IV value to the
+    packet being encapsulated.  For GCM and ChaCha20 Cipher Suites, the
+    IV is incremented for every packet (beginning with a value of 1 in
+    the first packet) and sent to the destination RLOC.  For CBC
+    Cipher Suites, the IV is a new random number for every packet sent
+    to the destination RLOC.  For the ChaCha20 Cipher Suite, the IV is an
+    8-byte random value that is appended to a 4-byte 
+    counter that is incremented for every packet (beginning with a
+    value of 1 in the first packet).</t>
+    <t>Next encrypt with cipher function AES or ChaCha20 using the
+    AEAD- key over the packet payload following the AEAD specification
+    referenced in the Cipher Suite definition.  This does not include
+    the IV.  The IV must be transmitted as plaintext so the decrypter
+    can use it as input to the decryption cipher.  The payload should
+    be padded to an integral number of bytes a block cipher may
+    require. The result of the AEAD operation may contain an ICV, the
+    size of which is defined by the referenced AEAD specification.
+    Note that the AD (i.e., the LISP header exactly as will be prepended
+    in the next step and the IV) must be given to the AEAD encryption
+    function as the "associated data" argument.</t>
+    <t>Prepend the LISP header. The key-id field of the LISP header is
+    set to the key-id value that corresponds to key-pair used for the
+    encryption cipher.</t>
+    <t>Lastly, prepend the UDP header and outer IP header onto the
+    encrypted packet and send packet to destination RLOC. </t>
+    </list></t>
+
+    <t>When an ETR, PETR, or RTR receives an encapsulated packet, the 
+    following decapsulation and decryption procedures are performed:</t>
+
+    <t><list style="numbers">
+    <t>The outer IP header, UDP header, LISP header, and IV field are
+    stripped from the start of the packet. The LISP header and IV are
+    retained and given to the AEAD decryption operation as the
+    "associated data" argument.</t>
+    <t>The packet is decrypted using the AEAD-key and the IV from the
+    packet.  The AEAD-key is obtained from a local-cache associated
+    with the key-id value from the LISP header.  The result of the
+    decryption function is a plaintext packet payload if the cipher
+    returned a verified ICV.  Otherwise, the packet is invalid 
+    and is discarded. If the AEAD specification included an
+    ICV, the AEAD decryption function will locate the ICV in the
+    ciphertext and compare it to a version of the ICV that the AEAD
+    decryption function computes. If the computed ICV is different
+    than the ICV located in the ciphertext, then it will be considered
+    tampered.</t>
+    <t>If the packet was not tampered with, the decrypted packet is
+    forwarded to the destination EID.</t>
+    </list></t>
+
+    </section>
+
+    <section title="Dynamic Rekeying">
+    <t>Since multiple keys can be encoded in both control and data messages, 
+    an ITR can encapsulate and encrypt with a specific key while it is 
+    negotiating other keys with the same ETR. As soon as an ETR or RTR returns
+    a Map-Reply, it should be prepared to decapsulate and decrypt using the
+    new keys computed with the new Diffie-Hellman parameters received in
+    the Map-Request and returned in the Map-Reply.</t>
+
+    <t>RLOC-probing can be used to change keys or Cipher Suites by the
+    ITR at any time. And when an initial Map-Request is sent to
+    populate the ITR's map-cache, the Map-Request flows across the
+    mapping system where a single ETR from the Map-Reply RLOC-set will
+    respond. If the ITR decides to use the other RLOCs in the
+    RLOC-set, it MUST send a Map-Request directly to negotiate
+    security parameters with the ETR. This process may be used to test
+    reachability from an ITR to an ETR initially when a map-cache
+    entry is added for the first time, so an ITR can get both
+    reachability status and keys negotiated with one
+    Map-Request/Map-Reply exchange.</t>
+
+    <t>A rekeying event is defined to be when an ITR or PITR changes
+    the Cipher Suite or public key in the Map-Request. The ETR or
+    RTR compares the Cipher Suite and public key it last received from the
+    ITR for the key-id, and if any value has changed, it computes a
+    new public key and Cipher Suite requested by the ITR from the
+    Map-Request and returns it in the Map-Reply. Now a new shared
+    secret is computed and can be used for the key-id for encryption
+    by the ITR and decryption by the ETR. When the ITR or PITR starts
+    this process of negotiating a new key, it must not use the
+    corresponding key-id in encapsulated packets until it receives a
+    Map-Reply from the ETR with the same Cipher Suite value it expects (the
+    values it sent in a Map-Request).</t>
+
+    <t>Note when RLOC-probing continues to maintain RLOC reachability and
+    rekeying is not desirable, the ITR or RTR can either not include the
+    Security Key LCAF Type in the Map-Request or supply the same key material
+    as it received from the last Map-Reply from the ETR or RTR. This approach
+    signals to the ETR or RTR that no rekeying event is requested.</t>
+    </section>
+
+    <section title="Future Work">
+    <t>For performance considerations, newer Elliptic-Curve Diffie-Hellman
+    (ECDH) groups can be used as specified in <xref target="RFC4492" /> and
+    <xref target="RFC6090" /> to reduce CPU cycles required to compute
+    shared secret keys.</t>
+
+    <t>For better security considerations as well as to be able to
+    build faster software implementations, newer approaches to ciphers
+    and authentication methods will be researched and tested. Some
+    examples are ChaCha20 and Poly1305 <xref target="CHACHA-POLY" />
+    <xref target="RFC7539" />.</t>
+    </section>
+
+    <section title="Security Considerations">
+      <section title="SAAG Support">
+        <t>The LISP working group received security advice and
+        guidance from the Security Area Advisory Group (SAAG). The SAAG
+        has been involved early in the design process, and their input
+        and reviews have been included in this document.</t>
+
+	<t>Comments from the SAAG included:</t>
+	<t><list style="numbers">
+	  <t>Do not use asymmetric ciphers in the data plane.</t>
+	  <t>Consider adding ECDH early in the design.</t>
+	  <t>Add Cipher Suites because ciphers are created more frequently
+	  than protocols that use them.</t>
+	  <t>Consider the newer AEAD technology so authentication comes with
+          doing encryption.</t>
+	</list></t>
+      </section>
+
+      <section title="LISP-Crypto Security Threats">
+        <t>Since ITRs and ETRs participate in key exchange over a
+        public non-secure network, a man in the middle
+        (MITM) could circumvent the key exchange and compromise
+        data-plane confidentiality.    This can happen
+   when the MITM is acting as a Map-Replier and provides its own public key
+   so the ITR and the MITM generate a shared secret key between them.
+ If the MITM
+        is in the data path between the ITR and ETR, it can use the shared
+        secret key to decrypt traffic from the ITR.</t>
+
+	<t>Since LISP can secure Map-Replies by the authentication
+	process specified in <xref target="LISP-SEC" />, the ITR can
+	detect when a MITM has signed a Map-Reply for an EID-prefix for which it
+	is not authoritative. When an ITR determines that the signature
+	verification fails, it discards and does not reuse the key
+	exchange parameters, avoids using the ETR for encapsulation,
+	and issues a severe log message to the network
+	administrator. 
+
+
+Optionally, the ITR can send RLOC-probes to the
+	compromised RLOC to determine if the authoratative ETR is reachable. And when the ITR validates the signature of a Map-Reply,
+	it can begin encrypting and encapsulating packets to the RLOC of
+	ETR.</t>
+      </section>
+    </section>
+
+    <section title="IANA Considerations">
+
+
+      <t>This document describes a mechanism for encrypting LISP-encapsulated packets based on Diffie-Hellman key exchange
+      procedures.  During the exchange, the devices have to agree on a
+      Cipher Suite to be used (i.e., the cipher and hash functions used
+      to encrypt/decrypt and to sign/verify packets).  The  8-bit Cipher Suite
+      field is reserved for such purpose in the security material
+      section of the Map-Request and Map-Reply messages.</t>
+
+      <t>IANA has created a new
+      registry (as outlined in <xref target="RFC5226"/>) titled
+      "LISP Crypto Cipher Suite". Initial values for the
+      registry are provided below.  Future assignments are to be made
+      on a "First Come, First Served" basis <xref target="RFC5226"/>.</t>
+
+    <figure align="center">
+    <artwork align="left"><![CDATA[
++-----+--------------------------------------------+------------+
+|Value| Suite                                      | Reference  |
++-----+--------------------------------------------+------------+
+|  0  | Reserved                                   | Section 6  |
++-----+--------------------------------------------+------------+
+|  1  | LISP_2048MODP_AES128_CBC_SHA256            | Section 6  |
++-----+--------------------------------------------+------------+
+|  2  | LISP_EC25519_AES128_CBC_SHA256             | Section 6  |
++-----+--------------------------------------------+------------+
+|  3  | LISP_2048MODP_AES128_GCM                   | Section 6  |
++-----+--------------------------------------------+------------+
+|  4  | LISP_3072MODP_AES128_GCM                   | Section 6  |
++-----+--------------------------------------------+------------+
+|  5  | LISP_256_EC25519_AES128_GCM                | Section 6  |
++-----+--------------------------------------------+------------+
+|  6  | LISP_256_EC25519_CHACHA20_POLY1305         | Section 6  |
++-----+--------------------------------------------+------------+
+    ]]></artwork>
+    <postamble>LISP Crypto Cipher Suites
+    </postamble>
+    </figure>
+    </section>
+</middle>
+
+<back>
+  <references title="Normative References">
+      &RFC2119;
+      &RFC6830;
+      &RFC2631;
+      &RFC5116;
+      &RFC3526;
+      &RFC4492;
+      &RFC6090;
+      &RFC7539;
+      &RFC5226;
+      &RFC6973;
+
+<!--draft-ietf-lisp-lcaf-13; Companion document -->
+
+
+<reference anchor='RFC8060' target='http://www.rfc-editor.org/info/rfc8060'>
+<front>
+<title>LISP Canonical Address Format (LCAF)</title>
+
+<author initials='D' surname='Farinacci' fullname='Dino Farinacci'>
+    <organization />
+</author>
+
+<author initials='D' surname='Meyer' fullname='David Meyer'>
+    <organization />
+</author>
+
+<author initials='J' surname='Snijders' fullname='Job Snijders'>
+    <organization />
+</author>
+
+<date month='February' year='2017' />
+
+</front>
+
+<seriesInfo name='RFC' value='8060' />
+<seriesInfo name="DOI" value="10.17487/RFC8060"/>
+</reference>
+
+
+    <reference anchor="NIST-SP800-108">
+      <front>
+        <title>Recommendation for Key Derivation Using Pseudorandom Functions  
+        </title>
+        <author> <organization>National Institute of Standards and Technology</organization></author>
+        <date month="October" year="2009"/>
+      </front>
+      <seriesInfo name="NIST Special Publication"  value="SP 800-108" />
+<seriesInfo name="DOI" value="10.6028/NIST.SP.800-108"/>
+      </reference>
+  </references>
+
+  <references title="Informative References">
+
+
+<!--draft-mcgrew-aead-aes-cbc-hmac-sha2-05; Expired-->
+    <reference anchor="AES-CBC">
+      <front>
+        <title>Authenticated Encryption with AES-CBC and HMAC-SHA</title>
+        <author initials="D" surname="McGrew">
+          <organization />
+        </author>
+        <author initials="J" surname="Foley">
+          <organization />
+        </author>
+        <author initials="K" surname="Paterson">
+          <organization />
+        </author>
+	<date month="July" year="2014"/>
+      </front>
+      <seriesInfo name="Work in Progress," 
+                  value="draft-mcgrew-aead-aes-cbc-hmac-sha2-05" />
+    </reference>
+
+    <reference anchor="DH" target="https://en.wikipedia.org/w/index.php?title=Diffie%E2%80%93Hellman_key_exchange&amp;oldid=759611604">
+      <front>
+        <title>Diffie-Hellman key exchange</title>
+	<author><organization>Wikipedia</organization> </author>
+	<date month="January" year="2017" />
+      </front>
+    </reference>
+
+<!--draft-fuller-lisp-ddt-04; replaced by draft-ietf-lisp-ddt-08 -->
+
+    <reference anchor="LISP-DDT">
+<front>
+<title>LISP Delegated Database Tree</title>
+
+<author initials='V' surname='Fuller' fullname='Vince Fuller'>
+    <organization />
+</author>
+
+<author initials='D' surname='Lewis' fullname='Darrel Lewis'>
+    <organization />
+</author>
+
+<author initials='V' surname='Ermagan' fullname='Vina Ermagan'>
+    <organization />
+</author>
+
+<author initials='A' surname='Jain' fullname='Amit Jain'>
+    <organization />
+</author>
+
+<author initials='A' surname='Smirnov' fullname='Anton Smirnov'>
+    <organization />
+</author>
+
+<date month='September' day='8' year='2016' />
+
+<abstract><t>This document describes the LISP Delegated Database Tree (LISP-DDT), a hierarchical, distributed database which embodies the delegation of authority to provide mappings from LISP Endpoint Identifiers (EIDs) to Routing Locators (RLOCs).  It is a statically-defined distribution of the EID namespace among a set of LISP-speaking servers, called DDT nodes.  Each DDT node is configured as "authoritative" for one or more EID-prefixes, along with the set of RLOCs for Map Servers or "child" DDT nodes to which more-specific EID-prefixes are delegated.</t></abstract>
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-lisp-ddt-08' />
+
+</reference>
+
+
+
+
+<!--draft-ietf-lisp-sec-10; I-D Exists -->
+
+    <reference anchor="LISP-SEC">
+      <front>
+        <title>LISP-Security (LISP-SEC)</title>
+        <author initials="F" surname="Maino">
+          <organization />
+        </author>
+        <author initials="V" surname="Ermagan">
+          <organization />
+        </author>
+        <author initials="A" surname="Cabellos">
+          <organization />
+        </author>
+        <author initials="D" surname="Saucez">
+          <organization />
+        </author>
+	<date month="November" year="2016"/>
+      </front>
+      <seriesInfo name="Work in Progress," 
+                  value="draft-ietf-lisp-sec-12" />
+    </reference>
+
+<!--draft-agl-tls-chacha20poly1305-04; Expired -->
+    <reference anchor="CHACHA-POLY">
+      <front>
+        <title>ChaCha20 and Poly1305 based Cipher Suites for TLS</title>
+        <author initials="A" surname="Langley">
+          <organization />
+        </author>
+        <author initials="W" surname="Chang">
+         <organization />
+       </author>
+	<date month="November" year="2013"/>
+      </front>
+      <seriesInfo name="Work in Progress," 
+                  value="draft-agl-tls-chacha20poly1305-04" />
+    </reference>
+
+    <reference anchor="CURVE25519" target="http://www.iacr.org/cryptodb/archive/2006/PKC/3351/3351.pdf">
+      <front>
+        <title>Curve25519: new Diffie-Hellman speed records</title>
+        <author initials="D" surname="Bernstein">
+          <organization />
+        </author>
+	<date />
+      </front>
+<seriesInfo name='DOI' value='10.1007/11745853_14' />
+    </reference>
+
+  </references>
+
+  <section title="Acknowledgments" numbered="no">
+    <t>The authors would like to thank Dan Harkins, Joel Halpern,
+    Fabio Maino, Ed Lopez, Roger Jorgensen, and Watson Ladd for their
+    interest, suggestions, and discussions about LISP data-plane
+    security. An individual thank you to LISP WG Chair Luigi Iannone for 
+    shepherding this document as well as contributing to the IANA
+    Considerations section.</t>
+
+    <t>The authors would like to give a special thank you to Ilari
+    Liusvaara for his extensive commentary and discussion. He has
+    contributed his security expertise to make lisp-crypto as secure as the
+    state of the art in cryptography.</t>
+   
+    <t>In addition, the support and suggestions from the SAAG working group 
+    were helpful and appreciated.</t>
+  </section>
+
+<!-- [rfced] Throughout the text, the following terminology appears to be used 
+inconsistently.  
+
+a) Please review these occurrences and let us know if/how they may be made 
+consistent.  
+
+cipher suite vs. Cipher Suite
+
+b) May we remove the quoation marks from around field and bit names?
+
+For example:
+
+"Public Key Material" field
+'Key Count' field
+'R' bit
+
+
+-->
+
+</back>
+</rfc>

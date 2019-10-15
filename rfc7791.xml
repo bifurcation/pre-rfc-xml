@@ -1,0 +1,545 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc2119 SYSTEM "reference.RFC.2119.xml">
+<!ENTITY rfc1876 SYSTEM "reference.RFC.1876.xml">
+<!ENTITY rfc4555 SYSTEM "reference.RFC.4555.xml">
+<!ENTITY rfc4301 SYSTEM "reference.RFC.4301.xml">
+<!ENTITY rfc4186 SYSTEM "reference.RFC.4186.xml">
+<!ENTITY rfc5216 SYSTEM "reference.RFC.5216.xml">
+<!ENTITY rfc5685 SYSTEM "reference.RFC.5685.xml">
+<!ENTITY rfc5723 SYSTEM "reference.RFC.5723.xml">
+<!ENTITY rfc7296 SYSTEM "reference.RFC.7296.xml">
+]>
+
+<rfc number="7791" category="std" submissionType="IETF" consensus="yes" ipr="trust200902">
+
+  <front>
+    <title abbrev="Cloning IKE SA">
+      Cloning the IKE Security Association in&nbsp;the&nbsp;Internet&nbsp;Key&nbsp;Exchange&nbsp;Protocol&nbsp;Version&nbsp;2&nbsp;(IKEv2)
+    </title>
+
+    <author fullname="Daniel Migault" initials="D." surname="Migault" role="editor">
+      <organization>Ericsson</organization>
+
+      <address>
+        <postal>
+          <street>8400 boulevard Decarie</street>
+
+          <city>Montreal, QC H4P 2N2</city>
+
+          <country>Canada</country>
+        </postal>
+
+        <email>daniel.migault@ericsson.com</email>
+      </address>
+    </author>
+
+    <author fullname='Valery Smyslov' initials='V.' surname="Smyslov">
+        <organization>ELVIS-PLUS</organization>
+        <address>
+            <postal>
+                <street>PO Box 81</street>
+                <city>Moscow (Zelenograd)</city>
+                <code>124460</code>
+                <country>Russian Federation</country>
+            </postal>
+            <phone>+7 495 276 0211</phone>
+            <email>svan@elvis.ru</email>
+        </address>
+    </author>
+
+    <date month="March" year="2016"/>
+
+    <area>SECURITY</area>
+
+    <keyword>MIF</keyword>
+    <keyword>Load balancing</keyword>
+    <keyword>Load sharing</keyword>
+    <keyword>MOBIKE</keyword>
+
+    <abstract>
+    <t>This document considers a VPN end user establishing an IPsec Security
+    Association (SA) with a Security Gateway using the Internet Key Exchange Protocol version 2 (IKEv2), where at least one of the peers has multiple interfaces or where Security Gateway is a cluster with each node having its own IP address.</t>
+    <t>The protocol described allows a peer to clone an IKEv2 SA, where an
+    additional SA is derived from an existing one. The newly created IKE SA is set without the IKEv2 authentication exchange. This IKE SA can later be assigned to another interface or moved to another cluster node.</t>
+    </abstract>
+
+    </front>
+
+    <middle>
+
+
+    <section title="Introduction">
+
+    <t>The main scenario that motivated this document is a VPN end user
+    establishing a VPN with a Security Gateway when at least one of the peers
+    has multiple interfaces. <xref target="Figure1"/> represents the case when
+    the VPN end user has multiple interfaces, <xref target="Figure2"/>
+    represents the case when the Security Gateway has multiple interfaces, and
+    <xref target="Figure3"/> represents the case when both the VPN end user
+    and the Security Gateway have multiple interfaces. With <xref
+    target="Figure1"/> and <xref target="Figure2"/>, one of the peers has n =
+    2 interfaces and the other has a single interface. This results in the
+    creation of up to n = 2 VPNs. With <xref target="Figure3"/>, the VPN end user has n = 2 interfaces and the Security Gateway has m = 2 interfaces. This may lead to up to m x n VPNs.</t>
+             <figure title="VPN End User with Multiple Interfaces" anchor="Figure1" >
+                 <artwork>
++------------+                                +------------+
+|            | Interface_0 : VPN_0            |            |
+|            =================                |            |
+|    VPN     |               v                |  Security  |
+|  End User  |               ==================  Gateway   |
+|            ================^                |            |
+|            | Interface_1 : VPN_1            |            |
++------------+                                +------------+
+                 </artwork>
+             </figure>
+
+             <figure title="Security Gateway with Multiple Interfaces" anchor="Figure2">
+                 <artwork>
++------------+                                +------------+
+|            |            Interface_0 : VPN_0 |            |
+|            |               ==================            |
+|    VPN     |               v                |  Security  |
+|  End User  =================                |  Gateway   |
+|            |               ^=================            |
+|            |            Interface_1 : VPN_1 |            |
++------------+                                +------------+
+                 </artwork>
+             </figure>
+             <figure title="VPN End User and Security Gateway with Multiple Interfaces" anchor="Figure3">
+                 <artwork>
++------------+                                +------------+
+|            | Interface_0       Interface_0' |            |
+|            ==================================            |
+|    VPN     |             \\ //              |  Security  |
+|  End User  |             // \\              |  Gateway   |
+|            ==================================            |
+|            | Interface_1       Interface_1' |            |
++------------+                                +------------+
+                 </artwork>
+             </figure>
+    <t>With the current IKEv2 protocol <xref target="RFC7296"/>, each VPN requires an IKE SA, and setting an IKE SA requires an authentication. Authentication might require multiple round trips and an activity from the end user (like EAP-SIM <xref target="RFC4186"/> or EAP-TLS <xref target="RFC5216"/>) as well as crypto operations that would introduce an additional delay.</t>
+
+<t>
+   Another scenario is a load-balancing solution. Load-sharing clusters are
+   often built to be transparent for VPN end users. In the case of IPsec, this
+   means that IKE and IPsec SA states are duplicated on
+   every cluster node where the load balancer can redirect packets.  The
+   drawback of such an approach is that anti-replay related data (in
+   particular, Sequence Number) must be reliably synchronized
+   between participating nodes per every outgoing Authentication Header (AH)
+   or Encapsulating Security Payload (ESP) packet,
+   which makes building high-speed systems problematic. Another
+   approach for building load-balancing systems is to make VPN end users
+   aware of them, which allows for having two or more Security Gateways
+   sharing the same ID, but each having its own IP address. In this
+   case, the VPN end user first establishes an IKE SA with one of these
+   gateways. Then, at some point of time the gateway makes a decision
+   to move the client to a different cluster node. This can be done with
+   Redirect Mechanism for IKEv2 <xref target="RFC5685"/>. The drawback of such
+   an approach is that it requires a new IKE SA to be established from
+   scratch, including full authentication.  In some cases, this could be
+   avoided by using IKEv2 Session Resumption <xref target="RFC5723"/> with a new
+   gateway. However, this requires the VPN end user to know beforehand which
+   new gateway to connect to. So, it is desirable to be able to clone
+   the existing IKE SA, move it to a different Security Gateway, and then
+   indicate to the VPN end user to use this new SA. This would allow
+   participating Security Gateways to share the load between them.
+</t>
+    <t>This document introduces the possibility of cloning the IKE SA in the
+    Internet Key Exchange Protocol Version 2 (IKEv2). The main idea is that
+    the peer with multiple interfaces sets the first IKE SA as usual. Then it
+    takes advantage of the fact that this SA is completed and derives as many
+    new parallel IKE SAs from it as the desired number of VPNs. On each IKE SA
+    a VPN is negotiated by creating one or more IPsec SAs. This results in
+    coexisting parallel VPNs. Then the VPN end user moves each IPsec SA to its
+    proper location using the IKEv2 Mobility and Multihoming Protocol (MOBIKE) <xref target="RFC4555"/>. Alternatively, the VPN end user may first move the IKE SAs and then create the IPsec SAs.</t>
+
+<t>
+Note that it is up to the host's local policy to decide which additional VPNs to create and 
+when to do it. The process of selecting address pairs for migration is 
+ a local matter. Furthermore, in the case of multiple interfaces on 
+ both ends, care should be taken to avoid the VPNs being duplicated by both
+ ends or moved to both interfaces.
+</t>
+<t>
+ In addition, multiple MOBIKE operations may be involved from the 
+ Security Gateway or the VPN end user.
+ Suppose, as depicted in Figure 3 for example, that the cloned VPN is 
+ between Interface _0 and Interface_0', and the VPN end user and the 
+ Security Gateway want to move it to Interface_1 and Interface_1'. The 
+ VPN end user may initiate a MOBIKE exchange in order to move it to 
+ Interface_1, in which case the cloned VPN is now between Interface_1 
+ and Interface_0'. Then the Security Gateway may also initiate a MOBIKE exchange in order to move the VPN to Interface_1', in which case the VPN has reached its final destination.
+</t>
+
+
+<t>The combination of the IKE SA cloning with MOBIKE protocol provides IPsec communications with multiple interfaces the following advantages. First, cloning the IKE SA requires very few modifications to already existing IKEv2 implementations. Then, it takes advantage of the already existing and widely deployed MOBIKE protocol. Finally, it keeps a dedicated IKE SA for each VPN, which simplifies reachability tests and VPN maintenance.</t> 
+
+<t>Note also that the cloning of the IKE SA is independent from MOBIKE and can also address other future scenarios not described in the current document.</t> 
+    </section>
+
+    <section title="Requirements Notation">
+
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+      document are to be interpreted as described in <xref target="RFC2119"/>.</t>
+
+    </section>
+
+    <section title="Terminology">
+
+      <t>This section defines terms and acronyms used in this document.
+          <list hangIndent="6" style="hanging">
+              <t hangText="- VPN:">Virtual Private Network -- one or more Child (IPsec) SAs created in tunnel mode between two peers.</t>
+              <t hangText="- VPN End User:">designates the end user that initiates the VPN with a Security Gateway. This end user may be mobile and move its VPN from one Security Gateway to another.</t>
+              <t hangText="- Security Gateway:">designates a point of attachment for the VPN service. In this document, the VPN service is provided by multiple Security Gateways. Each Security Gateway may be considered as a specific hardware. </t>
+              <t hangText="- IKE SA:">IKE Security Association as defined in <xref target="RFC7296"/>.</t>
+          </list>
+      </t>
+    </section>
+
+    <section title="Protocol Overview">
+
+    <t>This document specifies how to clone existing IKE SAs
+    without performing new authentication. In order to achieve this goal, this
+    document proposes that the two peers agree upon their ability to clone the
+    IKE SA. This is done during the IKE_AUTH exchange by exchanging the
+    CLONE_IKE_SA_SUPPORTED notifications. To create a new parallel IKE SA, one
+    of the peers initiates a CREATE_CHILD_SA exchange as if it would rekey the
+    existing IKE SA. In order to indicate that the current IKE SA must not be deleted, the initiator includes the CLONE_IKE_SA notification in the CREATE_CHILD_SA exchange. This results in two parallel IKE SAs.</t> 
+
+    <t>Note that without the CLONE_IKE_SA notification, the old IKE SA would be deleted after the rekey is successfully completed (as specified in Section 2.8 of <xref target="RFC7296"/>.</t>
+  
+    </section> 
+
+    <section title="Protocol Details">
+
+        <section title="Support Negotiation">
+
+            <t>The initiator and the responder indicate their support for cloning IKE SA by exchanging the CLONE_IKE SA_SUPPORTED notifications. This notification MUST be sent in the IKE_AUTH exchange (in case of multiple IKE_AUTH exchanges -- in the first IKE_AUTH message from initiator and in the last IKE_AUTH message from responder). If both initiator and responder send this notification during the IKE_AUTH exchange, peers may clone this IKE SA. In the other case, the IKE SA MUST NOT be cloned.</t>
+             <figure>
+                 <artwork><![CDATA[
+Initiator                         Responder
+-------------------------------------------------------------------
+HDR, SA, KEi, Ni -->
+                             <-- HDR, SA, KEr, Nr
+HDR, SK {IDi, AUTH,
+     SA, TSi, TSr,
+     N(CLONE_IKE_SA_SUPPORTED)} -->
+                             <-- HDR, SK {IDr, AUTH,
+                                      SA, TSi, TSr,
+                                      N(CLONE_IKE_SA_SUPPORTED)}
+                 ]]></artwork>
+             </figure>
+        </section>
+
+        <section title="Cloning the IKE SA">
+
+            <t>The initiator of the rekey exchange includes the CLONE_IKE_SA
+	    notification in a CREATE_CHILD_SA request for rekeying the IKE
+	    SA. The CLONE_IKE_SA notification indicates that the current IKE
+	    SA will not be immediately deleted once the new IKE SA is
+	    created. Instead, two parallel IKE SAs are expected to
+	    coexist. The current IKE SA becomes the old IKE SA and the newly
+	    negotiated IKE SA becomes the new IKE SA. The CLONE_IKE_SA
+	    notification MUST appear only in the request message of the CREATE_CHILD_SA exchange concerning the IKE SA rekey. If the CLONE_IKE_SA notification appears in any other message, it MUST be ignored.</t>
+            <figure>
+                 <artwork><![CDATA[
+Initiator                         Responder
+-------------------------------------------------------------------
+HDR, SK {N(CLONE_IKE_SA), SA, Ni, KEi} -->
+                 ]]></artwork>
+            </figure>
+            <t>If the CREATE_CHILD_SA request is concerned with an IKE SA rekey and contains the CLONE_IKE_SA notification, the responder proceeds to the IKE SA rekey, creates the new IKE SA, and keeps the old IKE SA. No additional Notify Payloads are included in the CREATE_CHILD_SA response as represented below:</t>
+            <figure>
+                 <artwork><![CDATA[
+                             <--  HDR, SK {SA, Nr, KEr}
+                 ]]></artwork>
+            </figure>
+            <t>When the IKE SA is cloned, peers MUST NOT transfer existing Child SAs that were created by the old IKE SA to the newly created IKE SA. So, all signaling messages concerning those Child SAs would continue to be sent over the old IKE SA. This is different from the regular IKE SA rekey in IKEv2.</t>
+        </section>
+
+
+        <section title="Error Handling">
+
+            <t>There may be conditions when the responder for some reason is unable or unwilling to clone the IKE SA. This inability may be temporary or permanent.</t>
+
+            <t>Temporary inability occurs when the responder doesn't have enough resources at the moment to clone an IKE SA or when the IKE SA is being deleted by the responder. In this case, the responder SHOULD reject the request to clone the IKE SA with the TEMPORARY_FAILURE notification.</t>
+            <figure>
+                <artwork><![CDATA[
+                            <--  HDR, SK {N(TEMPORARY_FAILURE)}
+                ]]></artwork>
+            </figure>
+            <t>After receiving this notification, the initiator MAY retry its request after waiting some period of time. See Section 2.25 of <xref target="RFC7296"/> for details.</t>
+
+            <t>In some cases, the responder may have restrictions on the
+	    number of coexisting IKE SAs with one peer. These restrictions
+	    may be either implicit (some devices may have enough resources to
+	    handle only a few IKE SAs) or explicit (provided by some
+	    configuration parameter). If the initiator wants to clone more IKE
+	    SAs than the responder is able or is configured to handle, the responder SHOULD reject the request with the NO_ADDITIONAL_SAS notification.</t>
+            <figure>
+                <artwork><![CDATA[
+                            <--  HDR, SK {N(NO_ADDITIONAL_SAS)}
+                ]]></artwork>
+            </figure>
+            <t>This condition is considered permanent and the initiator SHOULD
+	    NOT retry cloning an IKE SA until some of the  existing SAs with the responder are deleted.</t>
+
+        </section>
+    </section>
+
+    <section title="Payload Description">
+
+        <t><xref target="Figure6"/> illustrates the Notify Payload packet format as described in Section 3.10 of <xref target="RFC7296"/>. This format is used for both the CLONE_IKE_SA and the CLONE_IKE_SA_SUPPORTED notifications.</t>
+
+       <t>The CLONE_IKE_SA_SUPPORTED notification is used in an IKEv2 exchange of type IKE_AUTH and the CLONE_IKE_SA is used in an IKEv2 exchange of type CREATE_CHILD_SA.</t> 
+        <figure title="Notify Payload" anchor="Figure6">
+        <artwork>
+                        1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Protocol ID  |   SPI Size    |      Notify Message Type      |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        </artwork>
+        </figure>
+        <t>The fields Next Payload, Critical Bit, RESERVED, and Payload Length
+	are defined in <xref target="RFC7296"/>. Specific fields defined in
+	this document are:
+
+        <list style="hanging" hangIndent="6">
+                <t hangText="- Protocol ID (1 octet):"> Set to zero.</t>
+                <t hangText="- Security Parameter Index (SPI) Size (1 octet):"> Set to zero.</t>
+                <t hangText="- Notify Message Type (2 octets):"> Specifies the
+		type of notification message. It is set to 16432 for the
+		CLONE_IKE_SA_SUPPORTED notification or 16433
+		for the CLONE_IKE_SA notification.</t>
+        </list>
+        </t>
+    </section>
+
+    <section title="IANA Considerations">
+
+        <t>IANA has allocated two values in the "IKEv2 Notify Message Types - Status Types" registry:</t>
+        <figure>
+            <artwork>
+  Value    Notify Messages - Status Types
+-----------------------------------------
+  16432    CLONE_IKE_SA_SUPPORTED
+  16433    CLONE_IKE_SA
+            </artwork>
+        </figure>
+    </section>
+
+    <section title="Security Considerations">
+        <t>The protocol defined in this document does not modify
+	IKEv2. Security considerations for cloning an IKE SA are mostly the
+	same as those for the base IKEv2 protocol described in <xref target="RFC7296"/>.</t>
+
+        <t>Cloning an IKE SA allows an initiator to duplicate existing SAs. As a result, it may influence any accounting or control mechanisms based on a single IKE SA per authentication.</t>
+
+        <t>Suppose a system has a limit on the number of IKE SAs it can handle. In this case, cloning an IKE SA may provide a way for resource exhaustion, as a single end user may populate multiple IKE SAs.</t>
+
+        <t>Suppose a system shares the IPsec resources by limiting the number
+	of Child SAs per IKE SA. With a single IKE SA per end user, this
+	provides an equal resource sharing. In this case, cloning the IKE SA
+	provides the means for an end user to overpass this limit. Such a system should evaluate the number of Child SAs over the number of all IKE SAs associated to an end user.</t>
+
+        <t>Note that these issues are not unique to the ability of cloning the IKE SA, as multiple IKE SAs between two peers may be created without involving a cloning method. Note also that implementation can always limit the number of cloned IKE SAs.</t>
+
+        <t>Suppose the VPN or any other IPsec-based service monitoring is based on
+	the liveliness of the first IKE SA. Such a system considers a service
+	is accessed or used from the time IKE performs an authentication to
+	the time the IKE SA is deleted. Such accounting methods were fine as
+	any IKE SA required an authentication exchange. As cloning the IKE SA
+	skips the authentication phase, it may make it possible to delete the
+	initial IKE SA while the service is being used on the cloned IKE
+	SA. Such accounting methods should consider that the service is being used from the first IKE SA establishment to until the last IKE SA is removed.</t>
+
+        <t>When this solution is used to build load-balancing systems, then there is a necessity to transfer IKE SA states between nodes of a load-sharing cluster. Since IKE SA state contains sensitive information, such as session keys, implementations must take all due precautions. Such precautions might include using technical and/or administrative means to protect IKE SA state data. The details of what is transferred and how it is protected are out of scope of this document.</t>
+    </section>
+
+  </middle>
+
+  <back>
+    <references title="Normative References">
+        &rfc2119;
+        &rfc4555;
+        &rfc7296;
+      </references>
+    <references title="Informative References">
+        &rfc4186;
+        &rfc5216;
+        &rfc5685;
+        &rfc5723;
+    </references>
+
+    <section title="Setting a VPN on Multiple Interfaces">
+
+    <t>This section is informational and exposes how a VPN end user, as illustrated in <xref target="Figure1"/>, can build two VPNs on its two interfaces without multiple authentications. Other cases represented in <xref target="Figure2"/> and <xref target="Figure3"/> are similar and can be easily derived from this case. The mechanism is based on cloning the IKE SA and the MOBIKE extension <xref target="RFC4555"/>.</t>
+
+    <section title="Setting VPN_0">
+    <t>First, the VPN end user negotiates a VPN using one interface. This involves regular IKEv2 exchanges. In addition, the VPN end user and the Security Gateway advertise their support for MOBIKE. At the end of the IKE_AUTH exchange, VPN_0 is set as represented in <xref target="Figure7"/>.</t>
+        <figure title="VPN End User Establishing VPN_0" anchor="Figure7">
+                 <artwork>
++------------+                                +------------+
+|            | Interface_0 : VPN_0            |            |
+|            =================                |            |
+|    VPN     |               v                |  Security  |
+|  End User  |               ==================  Gateway   |
+|            =                                |            |
+|            | Interface_1                    |            |
++------------+                                +------------+
+                 </artwork>
+        </figure>
+    <t>The exchanges are completely described in <xref target="RFC7296"/> and
+    <xref target="RFC4555"/>. First, peers negotiate IKE SA parameters and
+    exchange nonces and public keys in the IKE_SA_INIT exchange. In the figure below, they also proceed to NAT detection because of the use of MOBIKE.</t> 
+        <figure>
+                 <artwork><![CDATA[
+Initiator                         Responder
+-------------------------------------------------------------------
+(IP_I0:500 -> IP_R:500)
+HDR, SA, KEi, Ni,
+     N(NAT_DETECTION_SOURCE_IP),
+     N(NAT_DETECTION_DESTINATION_IP)  -->
+
+                      <--  (IP_R:500 -> IP_I0:500)
+                           HDR, SA, KEr, Nr,
+                                N(NAT_DETECTION_SOURCE_IP),
+                                N(NAT_DETECTION_DESTINATION_IP)
+                 ]]></artwork>
+        </figure>
+    <t>Then the initiator and the responder proceed to the IKE_AUTH exchange, advertise their support for MOBIKE and their ability to clone the IKE SA -- with the MOBIKE_SUPPORTED and the CLONE_IKE_SA_SUPPORTED notifications -- and negotiate the Child SA for VPN_0. Optionally, the initiator and the responder can advertise their multiple interfaces using the ADDITIONAL_IP4_ADDRESS and/or ADDITIONAL_IP6_ADDRESS notifications.</t>
+        <figure>
+                 <artwork><![CDATA[
+(IP_I0:4500 -> IP_R:4500)
+HDR, SK {IDi, AUTH,
+     SA, TSi, TSr,
+     N(MOBIKE_SUPPORTED), 
+     [N(ADDITIONAL_IP*_ADDRESS)+,]
+     N(CLONE_IKE_SA_SUPPORTED)}  -->
+
+                      <--  (IP_R:4500 -> IP_I0:4500)
+                           HDR, SK {IDr, AUTH,
+                                SA, TSi, TSr,
+                                N(MOBIKE_SUPPORTED),
+                                [N(ADDITIONAL_IP*_ADDRESS)+,]
+                                N(CLONE_IKE_SA_SUPPORTED)}
+                 ]]></artwork>
+        </figure>
+    </section>
+ 
+    <section title="Creating an Additional IKE SA">
+
+    <t>In this case, the VPN end user wants to establish an additional VPN with its Interface_1. The VPN end user will first establish a parallel IKE SA using a CREATE_CHILD_SA that concerns an IKE SA rekey associated with a CLONE_IKE_SA notification. This results in two separate IKE SAs between the VPN end user and the Security Gateway. Currently both IKE SAs are set using Interface_0 of the VPN end user.</t>
+        <figure>
+                 <artwork><![CDATA[
+Initiator                         Responder
+-------------------------------------------------------------------
+(IP_I0:4500 -> IP_R:4500)
+HDR, SK {N(CLONE_IKE_SA), 
+     SA, Ni, KEi} -->
+                      <--  (IP_R:4500 -> IP_I0:4500)
+                           HDR, SK {SA, Nr, KEr}
+                 ]]></artwork>
+        </figure>
+    </section>
+
+    <section title="Creating the Child SA for VPN_1">
+
+    <t>Once the new IKE SA has been created, the VPN end user can initiate a CREATE_CHILD_SA exchange that concerns the creation of a Child SA for VPN_1. The newly created VPN_1 will use Interface_0 of the VPN end user.</t>
+
+<t>It is out of scope for this document to define how the VPN end user handles
+traffic with multiple interfaces. The VPN end user can use the same inner IP
+address on its multiple interfaces. In this case, the same Traffic Selectors
+(that is, the IP address used for VPN_0 and VPN_1) can match for both VPNs
+VPN_0 and VPN_1. The VPN end user must be aware of such a match and be able to
+manage it. It can, for example, use distinct Traffic Selectors on both VPNs
+using different ports, manage the order of its Security Policy Database (SPD),
+or have SPD defined per interfaces. Defining these mechanisms is out of scope for this document. Alternatively, the VPN end user can use a different inner IP address for each interface.
+</t>
+
+<t> The creation of VPN_1 is performed via the newly created IKE SA as follows:</t>
+        <figure>
+                 <artwork><![CDATA[
+Initiator                         Responder
+-------------------------------------------------------------------
+(IP_I0:4500 -> IP_R:4500)
+HDR(new), SK(new) {SA, TSi, TSr}  -->
+
+                      <--  (IP_R:4500 -> IP_I0:4500)
+                           HDR(new), SK(new) {SA, TSi, TSr}
+                 ]]></artwork>
+        </figure>
+    <t>The resulting configuration is depicted in <xref target="Figure8"/>. VPN_0 and VPN_1 have been created, but both are using the same Interface: Interface_0.</t>
+        <figure title="VPN End User Establishing VPN_0 and VPN_1" anchor="Figure8">
+                 <artwork>
++------------+                                +------------+
+|            | Interface_0 : VPN_0, VPN_1     |            |
+|            ====================             |            |
+|    VPN     =================  v             |  Security  |
+|  End User  |               v  ===============  Gateway   |
+|            |               ==================            |
+|            | Interface_1                    |            |
++------------+                                +------------+
+                 </artwork>
+        </figure>
+    </section>
+
+    <section title="Moving VPN_1 on Interface_1">
+
+    <t>In this section, MOBIKE is used to move VPN_1 on Interface_1. The exchange is described in <xref target="RFC4555"/>.</t>
+        <figure>
+                 <artwork><![CDATA[
+(IP_I1:4500 -> IP_R:4500)
+HDR(new), SK(new) {N(UPDATE_SA_ADDRESSES),
+          N(NAT_DETECTION_SOURCE_IP),
+          N(NAT_DETECTION_DESTINATION_IP),
+          N(COOKIE2)}  -->
+
+                      <--  (IP_R:4500 -> IP_I1:4500)
+                           HDR(new), SK(new) { 
+                                N(NAT_DETECTION_SOURCE_IP),
+                                N(NAT_DETECTION_DESTINATION_IP),
+                                N(COOKIE2)}
+                 ]]></artwork>
+        </figure>
+    <t>This results in the situation as described in <xref target="Figure9"/>.</t>
+
+        <figure title="VPN End User with Multiple Interfaces" anchor="Figure9">
+                 <artwork>
++------------+                                +------------+
+|            | Interface_0 : VPN_0            |            |
+|            ==================               |            |
+|    VPN     |                v               |  Security  |
+|  End User  |                =================  Gateway   |
+|            =================^               |            |
+|            | Interface_1 : VPN_1            |            |
++------------+                                +------------+
+                 </artwork>
+             </figure>
+    </section>
+
+    </section>
+
+    <section title="Acknowledgments" numbered="no">
+      <t>The ideas for this document came from various input from the IP Security
+      Maintenance and Extensions (ipsecme) Working Group
+      and from discussions with Tero Kivinen and Michael Richardson. Yaron
+      Sheffer and Tero Kivinen provided significant input to set the current design of the protocol, as well as its designation.</t>
+    </section>
+ 
+  </back>
+</rfc>
+  

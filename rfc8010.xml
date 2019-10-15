@@ -1,0 +1,1682 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt" ?>
+
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="8010"
+     consensus="yes"
+     ipr="trust200902"
+     category="std"
+     obsoletes="2910, 3382"
+     submissionType="IETF">
+
+  <front>
+    <title abbrev="IPP/1.1: Encoding and Transport">Internet Printing Protocol/1.1: Encoding and Transport</title>
+    <author initials="M." surname="Sweet" fullname="Michael Sweet">
+      <organization>Apple Inc.</organization>
+      <address>
+        <postal>
+          <street>1 Infinite Loop</street>
+          <street>MS 111-HOMC</street>
+          <city>Cupertino</city>
+          <region>CA</region>
+          <code>95014</code>
+          <country>United States of America</country>
+        </postal>
+        <email>msweet@apple.com</email>
+      </address>
+    </author>
+    <author initials="I." surname="McDonald" fullname="Ira McDonald">
+      <organization>High North, Inc.</organization>
+      <address>
+        <postal>
+          <street>PO Box 221</street>
+          <city>Grand Marais</city>
+          <region>MI</region>
+          <code>49839</code>
+          <country>United States of America</country>
+        </postal>
+        <phone>+1 906-494-2434</phone>
+        <email>blueroofmusic@gmail.com</email>
+      </address>
+    </author>
+    <date month="January" year="2017"/>
+    <area>Applications</area>
+    <workgroup>IPP WG</workgroup>
+
+    <keyword>IPP</keyword>
+    <keyword>Printer</keyword>
+    <keyword>PWG</keyword>
+    <keyword>Printer Working Group</keyword>
+
+    <abstract>
+      <t>The Internet Printing Protocol (IPP) is an application-level protocol
+      for distributed printing using Internet tools and technologies. This
+      document defines the rules for encoding IPP operations, attributes, and
+      values into the Internet MIME media type called
+      &quot;application/ipp&quot;. It also defines the rules for transporting
+      a message body whose Content-Type is &quot;application/ipp&quot; over
+      HTTP and/or HTTPS. The IPP data model and operation semantics are
+      described in "Internet Printing Protocol/1.1: Model and Semantics" (RFC 8011).</t>
+      <t>This document obsoletes RFCs 2910 and 3382.</t>
+    </abstract>
+  </front>
+  <middle>
+    <section anchor="Sec.Introduction" title="Introduction">
+      <t>This document contains the rules for encoding IPP operations and describes two layers: the transport layer and the operation layer.</t>
+      <t>The transport layer consists of an HTTP request and response. All IPP implementations support HTTP/1.1, the relevant parts of which are described in the following RFCs:<list style="symbols">
+        <t>Hypertext Transfer Protocol (HTTP/1.1): Message Syntax and Routing <xref target="RFC7230" /></t>
+        <t>Hypertext Transfer Protocol (HTTP/1.1): Semantics and Content <xref target="RFC7231" /></t>
+        <t>Hypertext Transfer Protocol (HTTP/1.1): Conditional Requests <xref target="RFC7232" /></t>
+        <t>Hypertext Transfer Protocol (HTTP/1.1): Caching <xref target="RFC7234" /></t>
+        <t>Hypertext Transfer Protocol (HTTP/1.1): Authentication <xref target="RFC7235" /></t>
+        <t>The 'Basic' HTTP Authentication Scheme <xref target="RFC7617" /></t>
+        <t>HTTP Digest Access Authentication <xref target="RFC7616" /></t>
+      </list></t>
+      <t>IPP implementations can support HTTP/2, which is described in the following RFCs:<list style="symbols">
+        <t>Hypertext Transfer Protocol Version 2 (HTTP/2) <xref target="RFC7540" /></t>
+        <t>HPACK - Header Compression for HTTP/2 <xref target="RFC7541" /></t>
+      </list></t>
+      <t>This document specifies the HTTP headers that an IPP implementation supports.</t>
+      <t>The operation layer consists of a message body in an HTTP request or
+      response. The &quot;Internet Printing Protocol/1.1: Model and
+      Semantics&quot; document <xref target="RFC8011" /> and subsequent extensions (collectively known as the IPP Model) define the semantics of such a message body and the supported values. This document specifies the encoding of an IPP request and response message.</t>
+    </section>
+    <section anchor="Sec.Conventions" title="Conventions Used in This Document">
+      <section title="Requirements Language">
+	<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in <xref target="RFC2119" />.</t>
+      </section>
+      <section title="Printing Terminology">
+	<t>Client: Initiator of outgoing IPP session requests and sender of outgoing IPP operation requests (Hypertext Transfer Protocol -- HTTP/1.1 <xref target="RFC7230" /> User Agent).</t>
+	<t>Document: An object created and managed by a Printer that contains description, processing, and status information. A Document object may have attached data and is bound to a single Job.</t>
+	<t>'ipp' URI:  An IPP URI as defined in <xref target="RFC3510" />.</t>
+	<t>'ipps' URI:  An IPPS URI as defined in <xref target="RFC7472" />.</t>
+	<t>Job: An object created and managed by a Printer that contains description, processing, and status information. The Job also contains zero or more Document objects.</t>
+	<t>Logical Device: A print server, software service, or gateway that processes Jobs and either forwards or stores the processed Job or uses one or more Physical Devices to render output.</t>
+	<t>Model: The semantics of operations, attributes, values, and status-codes
+	used in the Internet Printing Protocol as defined in the
+	Internet Printing Protocol/1.1: Model and Semantics document <xref
+	target="RFC8011" /> and subsequent extensions.</t>
+	<t>Output Device: A single Logical or Physical Device.</t>
+	<t>Physical Device: A hardware implementation of an endpoint device, e.g., a marking engine, a fax modem, etc.</t>
+	<t>Printer: Listener for incoming IPP session requests and receiver of incoming IPP operation requests (Hypertext Transfer Protocol -- HTTP/1.1 <xref target="RFC7230" /> Server) that represents one or more Physical Devices or a Logical Device.</t>
+      </section>
+      <section title="Abbreviations">
+	<t>ABNF: Augmented Backus-Naur Form <xref target="RFC5234" /></t>
+	<t>ASCII: American Standard Code for Information Interchange <xref target="RFC20" /></t>
+	<t>HTTP: Hypertext Transfer Protocol <xref target="RFC7230" /></t>
+	<t>HTTPS: HTTP over TLS <xref target="RFC2818" /></t>
+	<t>IANA: Internet Assigned Numbers Authority</t>
+	<t>IEEE: Institute of Electrical and Electronics Engineers</t>
+	<t>IESG: Internet Engineering Steering Group</t>
+	<t>IPP: Internet Printing Protocol (this document and <xref target="PWG5100.12" />)</t>
+	<t>ISTO: IEEE Industry Standards and Technology Organization</t>
+	<t>LPD: Line Printer Daemon Protocol <xref target="RFC1179" /></t>
+	<t>PWG: IEEE-ISTO Printer Working Group</t>
+	<t>RFC: Request for Comments</t>
+	<t>TCP: Transmission Control Protocol <xref target="RFC793" /></t>
+	<t>TLS: Transport Layer Security <xref target="RFC5246" /></t>
+	<t>URI: Uniform Resource Identifier <xref target="RFC3986" /></t>
+	<t>URL: Uniform Resource Locator <xref target="RFC3986" /></t>
+	<t>UTF-8: Unicode Transformation Format - 8-bit <xref target="RFC3629" /></t>
+      </section>
+    </section>
+    <section anchor="Sec.EncodingoftheOperationLayer" title="Encoding of the Operation Layer">
+      <t>The operation layer is the message body part of the HTTP request or response and it MUST contain a single IPP operation request or IPP operation response. Each request or response consists of a sequence of values and attribute groups. Attribute groups consist of a sequence of attributes each of which is a name and value. Names and values are ultimately sequences of octets.</t>
+      <t>The encoding consists of octets as the most primitive type. There are
+      several types built from octets, but three important types are integers,
+      character strings, and octet strings, on which most other data types are
+      built. Every character string in this encoding MUST be a sequence of
+      characters where the characters are associated with some charset <xref
+      target="RFC2978" /> and some natural language. A character string MUST
+      be in &quot;reading order&quot; with the first character in the value
+      (according to reading order) being the first character in the encoding.
+
+A character string whose associated charset is US-ASCII and whose associated
+natural language is US English is henceforth called a US-ASCII-STRING. A
+character string whose associated charset and natural language are specified
+in a request or response as described in the Model is henceforth called a
+LOCALIZED-STRING. An octet string MUST be in &quot;Model order&quot; with the
+first octet in the value (according to the Model order) being the first octet
+in the encoding. Every integer in this encoding MUST be encoded as a signed
+integer using two's-complement binary encoding with big-endian format
+(also known as &quot;network order&quot; and &quot;most significant byte
+first&quot;). The number of octets for an integer MUST be 1, 2, or 4,
+depending on usage in the protocol.
+
+   A one-octet integer, henceforth called
+   a SIGNED-BYTE, is used for the version-number and tag fields.  A
+   two-byte integer, henceforth called a SIGNED-SHORT, is used for the
+   operation-id, status-code, and length fields.  A four-byte integer,
+   henceforth called a SIGNED-INTEGER, is used for value fields and the
+   request-id.
+</t>
+
+      <t>The following two sections present the encoding of the operation layer in two ways:<list style="symbols">
+        <t>informally through pictures and description</t>
+        <t>formally through Augmented Backus-Naur Form (ABNF), as specified by RFC 5234 <xref target="RFC5234" /></t>
+      </list></t>
+      <t>An operation request or response MUST use the encoding described in these two sections.</t>
+      <section anchor="Sec.PictureoftheEncoding" title="Picture of the Encoding">
+        <section anchor="Sec.RequestandResponse" title="Request and Response">
+          <t>An operation request or response is encoded as follows:</t>
+          <figure anchor="Fig.IPPMessageFormat" title="IPP Message Format"><artwork>
+-----------------------------------------------
+|                  version-number             |   2 bytes  - required
+-----------------------------------------------
+|               operation-id (request)        |
+|                      or                     |   2 bytes  - required
+|               status-code (response)        |
+-----------------------------------------------
+|                   request-id                |   4 bytes  - required
+-----------------------------------------------
+|                 attribute-group             |   n bytes - 0 or more
+-----------------------------------------------
+|              end-of-attributes-tag          |   1 byte   - required
+-----------------------------------------------
+|                     data                    |   q bytes  - optional
+-----------------------------------------------
+</artwork></figure>
+          <t>The first three fields in the above diagram contain the value of
+	  attributes described in Section 4.1.1 of the Model and Semantics document <xref target="RFC8011" />.</t>
+          <t>The fourth field is the &quot;attribute-group&quot; field, and it occurs 0 or more times. Each &quot;attribute-group&quot; field represents a single group of attributes, such as an Operation Attributes group or a Job Attributes group (see the Model). The Model specifies the required attribute groups and their order for each operation request and response.</t>
+          <t>The &quot;end-of-attributes-tag&quot; field is always present, even when the &quot;data&quot; is not present. The Model specifies whether the &quot;data&quot; field is present for each operation request and response.</t>
+        </section>
+        <section anchor="Sec.AttributeGroup" title="Attribute Group">
+          <t>Each &quot;attribute-group&quot; field is encoded as follows:</t>
+          <figure anchor="Fig.AttributeGroupEncoding" title="Attribute Group Encoding"><artwork>
+-----------------------------------------------
+|           begin-attribute-group-tag         |  1 byte
+----------------------------------------------------------
+|                   attribute                 |  p bytes |- 0 or more
+----------------------------------------------------------
+</artwork></figure>
+          <t>An &quot;attribute-group&quot; field contains zero or more &quot;attribute&quot; fields.</t>
+          <t>Note that the values of the &quot;begin-attribute-group-tag&quot; field and the &quot;end-of-attributes-tag&quot; field are called &quot;delimiter-tags&quot;.</t>
+        </section>
+        <section anchor="Sec.Attribute" title="Attribute">
+          <t>An &quot;attribute&quot; field is encoded as follows:</t>
+          <figure anchor="Fig.AttributeEncoding" title="Attribute Encoding"><artwork>
+-----------------------------------------------
+|          attribute-with-one-value           |  q bytes
+----------------------------------------------------------
+|             additional-value                |  r bytes |- 0 or more
+----------------------------------------------------------
+</artwork></figure>
+          <t>When an attribute is single valued (e.g., &quot;copies&quot; with
+	  a value of 10) or multi-valued with one value (e.g., &quot;sides-supported&quot; with just the value 'one-sided'), it is encoded with just an &quot;attribute-with-one-value&quot; field. When an attribute is multi-valued with n values (e.g., &quot;sides-supported&quot; with the values 'one-sided' and 'two-sided-long-edge'), it is encoded with an &quot;attribute-with-one-value&quot; field followed by n-1 &quot;additional-value&quot; fields.</t>
+        </section>
+        <section anchor="Sec.Attributewithonevalue" title="Attribute-with-one-value">
+          <t>Each &quot;attribute-with-one-value&quot; field is encoded as follows:</t>
+          <figure anchor="Fig.SingleValueAttributeEncoding" title="Single Value Attribute Encoding"><artwork>
+-----------------------------------------------
+|                   value-tag                 |   1 byte
+-----------------------------------------------
+|               name-length  (value is u)     |   2 bytes
+-----------------------------------------------
+|                     name                    |   u bytes
+-----------------------------------------------
+|              value-length  (value is v)     |   2 bytes
+-----------------------------------------------
+|                     value                   |   v bytes
+-----------------------------------------------
+</artwork></figure>
+          <t>An &quot;attribute-with-one-value&quot; field is encoded with five subfields:<list style="symbols">
+            <t>The &quot;value-tag&quot; field specifies the attribute syntax, e.g., 0x44 for the attribute syntax 'keyword'.</t>
+            <t>The &quot;name-length&quot; field specifies the length of the &quot;name&quot; field in bytes, e.g., u in the above diagram or 15 for the name &quot;sides-supported&quot;.</t>
+            <t>The &quot;name&quot; field contains the textual name of the attribute, e.g., &quot;sides-supported&quot;.</t>
+            <t>The &quot;value-length&quot; field specifies the length of the &quot;value&quot; field in bytes, e.g., v in the above diagram or 9 for the (keyword) value 'one-sided'.</t>
+            <t>The &quot;value&quot; field contains the value of the attribute, e.g., the textual value 'one-sided'.</t>
+          </list></t>
+        </section>
+        <section anchor="Sec.Additionalvalue" title="Additional-value">
+          <t>Each &quot;additional-value&quot; field is encoded as follows:</t>
+          <figure anchor="Fig.AdditionalAttributeValueEncoding" title="Additional Attribute Value Encoding"><artwork>
+-----------------------------------------------
+|                   value-tag                 |   1 byte
+-----------------------------------------------
+|            name-length  (value is 0x0000)   |   2 bytes
+-----------------------------------------------
+|              value-length (value is w)      |   2 bytes
+-----------------------------------------------
+|                     value                   |   w bytes
+-----------------------------------------------
+</artwork></figure>
+          <t>An &quot;additional-value&quot; is encoded with four subfields:<list style="symbols">
+            <t>The &quot;value-tag&quot; field specifies the attribute syntax, e.g., 0x44 for the attribute syntax 'keyword'.</t>
+            <t>The &quot;name-length&quot; field has the value of 0 in order to signify that it is an &quot;additional-value&quot;. The value of the &quot;name-length&quot; field distinguishes an &quot;additional-value&quot; field (&quot;name-length&quot; is 0) from an &quot;attribute-with-one-value&quot; field (&quot;name-length&quot; is not 0).</t>
+            <t>The &quot;value-length&quot; field specifies the length of the &quot;value&quot; field in bytes, e.g., w in the above diagram or 19 for the (keyword) value 'two-sided-long-edge'.</t>
+            <t>The &quot;value&quot; field contains the value of the attribute, e.g., the textual value 'two-sided-long-edge'.</t>
+          </list></t>
+        </section>
+        <section anchor="Sec.CollectionAttribute" title="Collection Attribute">
+          <t>Collection attributes create a named group containing related "member" attributes. The &quot;attribute-with-one-value&quot; field for a collection attribute is encoded as follows:</t>
+          <figure anchor="Fig.CollectionAttributeEncoding" title="Collection Attribute Encoding"><artwork>
+-----------------------------------------------
+|          value-tag (value is 0x34)          |   1 byte
+-----------------------------------------------
+|          name-length (value is u)           |   2 bytes
+-----------------------------------------------
+|                     name                    |   u bytes
+-----------------------------------------------
+|        value-length (value is 0x0000)       |   2 bytes
+-----------------------------------------------------------
+|               member-attribute              |   q bytes |-0 or more
+-----------------------------------------------------------
+|        end-value-tag (value is 0x37)        |   1 byte
+-----------------------------------------------
+|      end-name-length (value is 0x0000)      |   2 bytes
+-----------------------------------------------
+|      end-value-length (value is 0x0000)     |   2 bytes
+-----------------------------------------------
+</artwork></figure>
+          <t>Collection attribute is encoded with eight subfields:<list style="symbols">
+            <t>The &quot;value-tag&quot; field specifies the start attribute syntax: 0x34 for the attribute syntax 'begCollection'.</t>
+            <t>The &quot;name-length&quot; field specifies the length of the &quot;name&quot; field in bytes, e.g., u in the above diagram or 9 for the name &quot;media-col&quot;. Additional collection attribute values use a name length of 0x0000.</t>
+            <t>The &quot;name&quot; field contains the textual name of the attribute, e.g., &quot;media-col&quot;.</t>
+            <t>The &quot;value-length&quot; field specifies a length of 0x0000.</t>
+            <t>The &quot;member-attribute&quot; field contains member attributes encoded as defined in <xref target="Sec.MemberAttributes" />.</t>
+            <t>The &quot;end-value-tag&quot; field specifies the end attribute syntax: 0x37 for the attribute syntax 'endCollection'.</t>
+            <t>The &quot;end-name-length&quot; field specifies a length of 0x0000.</t>
+            <t>The &quot;end-value-length&quot; field specifies a length of 0x0000.</t>
+          </list></t>
+        </section>
+        <section anchor="Sec.MemberAttributes" title="Member Attributes">
+          <t>Each &quot;member-attribute&quot; field is encoded as follows:</t>
+          <figure anchor="Fig.MemberAttributeEncoding" title="Member Attribute Encoding"><artwork>
+-----------------------------------------------
+|          value-tag (value is 0x4a)          |   1 byte
+-----------------------------------------------
+|        name-length (value is 0x0000)        |   2 bytes
+-----------------------------------------------
+|          value-length (value is w)          |   2 bytes
+-----------------------------------------------
+|             value (member-name)             |   w bytes
+-----------------------------------------------
+|               member-value-tag              |   1 byte
+-----------------------------------------------
+|        name-length (value is 0x0000)        |   2 bytes
+-----------------------------------------------
+|      member-value-length (value is x)       |   2 bytes
+-----------------------------------------------
+|                member-value                 |   x bytes
+-----------------------------------------------
+</artwork></figure>
+          <t>A &quot;member-attribute&quot; is encoded with eight subfields:<list style="symbols">
+            <t>The &quot;value-tag&quot; field specifies 0x4a for the attribute syntax 'memberAttrName'.</t>
+            <t>The &quot;name-length&quot; field has the value of 0 in order to signify that it is a &quot;member-attribute&quot; contained in the collection.</t>
+            <t>The &quot;value-length&quot; field specifies the length of the &quot;value&quot; field in bytes, e.g., w in the above diagram or 10 for the member attribute name 'media-type'. Additional member attribute values are specified using a value length of 0.</t>
+            <t>The &quot;value&quot; field contains the name of the member attribute, e.g., the textual value 'media-type'.</t>
+            <t>The &quot;member-value-tag&quot; field specifies the attribute
+	    syntax for the member attribute,
+e.g., 0x44 for the attribute syntax 'keyword'.</t>
+            <t>The second &quot;name-length&quot; field has the value of 0 in order to signify that it is a &quot;member-attribute&quot; contained in the collection.</t>
+            <t>The &quot;member-value-length&quot; field specifies the length of the member attribute value, e.g., x in the above diagram or 10 for the value 'stationery'.</t>
+            <t>The &quot;member-value&quot; field contains the value of the attribute, e.g., the textual value 'stationery'.</t>
+         </list></t>
+        </section>
+        <section anchor="Sec.AlternativePictureoftheEncodingofaRequestOraResponse" title="Alternative Picture of the Encoding of a Request or a Response">
+          <t>From the standpoint of a parser that performs an action based on a &quot;tag&quot; value, the encoding consists of:</t>
+          <figure anchor="Fig.EncodingBasedOnValueTags" title="Encoding Based on Value Tags"><artwork>
+-----------------------------------------------
+|                  version-number             |   2 bytes  - required
+-----------------------------------------------
+|               operation-id (request)        |
+|                      or                     |   2 bytes  - required
+|               status-code (response)        |
+-----------------------------------------------
+|                   request-id                |   4 bytes  - required
+-----------------------------------------------------------
+|        tag (delimiter-tag or value-tag)     |   1 byte  |
+-----------------------------------------------           |-0 or more
+|           empty or rest of attribute        |   x bytes |
+-----------------------------------------------------------
+|              end-of-attributes-tag          |   1 byte   - required
+-----------------------------------------------
+|                     data                    |   y bytes  - optional
+-----------------------------------------------
+</artwork></figure>
+          <t>The following shows what fields the parser would expect after each type of  &quot;tag&quot;:<list style="symbols">
+            <t>&quot;begin-attribute-group-tag&quot;: expect zero or more &quot;attribute&quot; fields</t>
+            <t>&quot;value-tag&quot;: expect the remainder of an &quot;attribute-with-one-value&quot; or an &quot;additional-value&quot;</t>
+            <t>&quot;end-of-attributes-tag&quot;: expect that &quot;attribute&quot; fields are complete and there is optional &quot;data&quot;</t>
+          </list></t>
+        </section>
+      </section>
+      <section anchor="Sec.SyntaxofEncoding" title="Syntax of Encoding">
+        <t>The ABNF <xref target="RFC5234" /> syntax for an IPP message is shown in <xref target="Fig.ABNFOfIPPMessageFormat" />.</t>
+
+        <figure anchor="Fig.ABNFOfIPPMessageFormat" title="ABNF of IPP Message
+							   Format"><artwork type="abnf">
+ipp-message  = ipp-request / ipp-response
+ipp-request  = version-number operation-id request-id
+               *attribute-group end-of-attributes-tag data
+ipp-response = version-number status-code request-id
+               *attribute-group end-of-attributes-tag  data
+
+version-number       = major-version-number minor-version-number
+major-version-number = SIGNED-BYTE
+minor-version-number = SIGNED-BYTE
+
+operation-id = SIGNED-SHORT     ; mapping from model
+status-code  = SIGNED-SHORT     ; mapping from model
+request-id   = SIGNED-INTEGER   ; whose value is &gt; 0
+
+attribute-group          = begin-attribute-group-tag *attribute
+attribute                = attribute-with-one-value *additional-value
+attribute-with-one-value = value-tag name-length name
+                           value-length value
+additional-value         = value-tag zero-name-length
+                           value-length value
+
+name-length  = SIGNED-SHORT     ; number of octets of 'name'
+name         = LALPHA *( LALPHA / DIGIT / &quot;-&quot; / &quot;_&quot; / &quot;.&quot; )
+value-length = SIGNED-SHORT     ; number of octets of 'value'
+value        = OCTET-STRING
+data         = OCTET-STRING
+
+zero-name-length          = %x00.00           ; name-length of 0
+value-tag                 = %x10-ff           ; see Section 3.5.2
+begin-attribute-group-tag = %x00-02 / %x04-0f ; see Section 3.5.1
+end-of-attributes-tag     = %x03              ; tag of 3
+                                              ; see Section 3.5.1
+
+SIGNED-BYTE    = BYTE
+SIGNED-SHORT   = 2BYTE
+SIGNED-INTEGER = 4BYTE
+DIGIT          = %x30-39        ; &quot;0&quot; to &quot;9&quot;
+LALPHA         = %x61-7A        ; &quot;a&quot; to &quot;z&quot;
+BYTE           = %x00-ff
+OCTET-STRING   = *BYTE
+</artwork></figure>
+        <t><xref target="Fig.ABNFForAttributeGroupTags" /> defines additional terms that are referenced in this document and provides an alternate grouping of the delimiter tags.</t>
+
+        <figure anchor="Fig.ABNFForAttributeGroupTags" title="ABNF for
+							      Attribute Group
+							      Tags"><artwork type="abnf">
+delimiter-tag = begin-attribute-group-tag /   ; see Section 3.5.1
+          end-of-attributes-tag
+begin-attribute-group-tag = %x00 / operation-attributes-tag /
+   job-attributes-tag / printer-attributes-tag /
+   unsupported-attributes-tag / future-group-tags
+operation-attributes-tag   = %x01             ; tag of 1
+job-attributes-tag         = %x02             ; tag of 2
+end-of-attributes-tag      = %x03             ; tag of 3
+printer-attributes-tag     = %x04             ; tag of 4
+unsupported-attributes-tag = %x05             ; tag of 5
+future-group-tags          = %x06-0f          ; future extensions
+</artwork></figure>
+      </section>
+      <section anchor="Sec.Attributegroup" title="Attribute-group">
+        <t>Each &quot;attribute-group&quot; field MUST be encoded with the &quot;begin-attribute-group-tag&quot; field followed by zero or more &quot;attribute&quot; sub-fields.</t>
+        <t><xref target="Tab.GroupValues" /> maps the Model group name to value of the &quot;begin-attribute-group-tag&quot; field:</t>
+
+        <texttable anchor="Tab.GroupValues" title="Group Values" style="all">
+          <ttcol>Model Document Group</ttcol><ttcol>&quot;begin-attribute-group-tag&quot; field values</ttcol>
+          <c>Operation Attributes</c><c>&quot;operations-attributes-tag&quot;</c>
+          <c>Job Template Attributes</c><c>&quot;job-attributes-tag&quot;</c>
+          <c>Job Object Attributes</c><c>&quot;job-attributes-tag&quot;</c>
+          <c>Unsupported Attributes</c><c>&quot;unsupported-attributes-tag&quot;</c>
+          <c>Requested Attributes</c><c>(Get-Job-Attributes) &quot;job-attributes-tag&quot;</c>
+          <c>Requested Attributes</c><c>(Get-Printer-Attributes)&quot;printer-attributes-tag&quot;</c>
+          <c>Document Content</c><c>in a special position at the end of the message as described in <xref target="Sec.RequestandResponse" />.</c>
+        </texttable>
+        <t>For each operation request and response, the Model prescribes the required and optional attribute groups, along with their order. Within each attribute group, the Model prescribes the required and optional attributes, along with their order.</t>
+        <t>When the Model requires an attribute group in a request or response and the attribute group contains zero attributes, a request or response SHOULD encode the attribute group with the &quot;begin-attribute-group-tag&quot; field followed by zero &quot;attribute&quot; fields. For example, if the Client requests a single unsupported attribute with the Get-Printer-Attributes operation, the Printer MUST return no &quot;attribute&quot; fields, and it SHOULD return a &quot;begin-attribute-group-tag&quot; field for the Printer Attributes group. The Unsupported Attributes group is not such an example. According to the Model, the Unsupported Attributes group SHOULD be present only if the Unsupported Attributes group contains at least one attribute.</t>
+        <t>A receiver of a request MUST be able to process the following as equivalent empty attribute groups:<list style="letters">
+          <t>A &quot;begin-attribute-group-tag&quot; field with zero following
+	  &quot;attribute&quot; fields.</t>
+
+          <t>A missing, but expected, &quot;begin-attribute-group-tag&quot; field.</t>
+        </list></t>
+        <t>When the Model requires a sequence of an unknown number of attribute groups, each of the same type, the encoding MUST contain one &quot;begin-attribute-group-tag&quot; field for each attribute group, even when an &quot;attribute-group&quot; field contains zero &quot;attribute&quot; sub-fields. For example, the Get-Jobs operation may return zero attributes for some Jobs and not others. The &quot;begin-attribute-group-tag&quot; field followed by zero &quot;attribute&quot; fields tells the recipient that there is a Job in queue for which no information is available except that it is in the queue.</t>
+      </section>
+      <section anchor="Sec.RequiredParameters" title="Required Parameters">
+        <t>Some operation elements are called parameters in the Model. They MUST be encoded in a special position and they MUST NOT appear as operation attributes. These parameters are described in the subsections below.</t>
+        <section anchor="Sec.Versionnumber" title="&quot;version-number&quot;">
+          <t>The &quot;version-number&quot; field consists of a major and minor version-number, each of which is represented by a SIGNED-BYTE. The major version-number is the first byte of the encoding and the minor version-number is the second byte of the encoding. The protocol described in <xref target="RFC8011" /> has a major version-number of 1 (0x01) and a minor version-number of 1 (0x01). The ABNF for these two bytes is %x01.01.</t>
+          <t>Note: See <xref target="Sec.InteroperabilitywithOtherIPPVersions" /> for more information on the &quot;version-number&quot; field and IPP version numbers.</t>
+        </section>
+        <section anchor="Sec.Operationid" title="&quot;operation-id&quot;">
+          <t>The &quot;operation-id&quot; field contains an operation-id value as defined in the Model. The value is encoded as a SIGNED-SHORT and is located in the third and fourth bytes of the encoding of an operation request.</t>
+        </section>
+        <section anchor="Sec.Statuscode" title="&quot;status-code&quot;">
+          <t>The &quot;status-code&quot; field contains a status-code value as defined in the Model. The value is encoded as a SIGNED-SHORT and is located in the third and fourth bytes of the encoding of an operation response.</t>
+          <t>If an IPP status-code is returned, then the HTTP status-code MUST be 200 (OK). With any other HTTP status-code value, the HTTP response MUST NOT contain an IPP message body, and thus no IPP status-code is returned.</t>
+        </section>
+        <section anchor="Sec.Requestid" title="&quot;request-id&quot;">
+          <t>The &quot;request-id&quot; field contains the request-id value as defined in the Model. The value is encoded as a SIGNED-INTEGER and is located in the fifth through eighth bytes of the encoding.</t>
+        </section>
+      </section>
+      <section anchor="Sec.Tags" title="Tags">
+        <t>There are two kinds of tags:<list style="symbols">
+          <t>delimiter tags: delimit major sections of the protocol, namely attribute groups and data</t>
+          <t>value tags: specify the type of each attribute value</t>
+        </list></t>
+        <t>Tags are part of the IANA IPP registry <xref target="IANA-IPP"
+	/></t>
+
+        <section anchor="Sec.DelimiterTags" title="&quot;delimiter-tag&quot; Values">
+          <t><xref target="Tab.DelimiterTags" /> 
+ specifies the values for the delimiter tags defined in this
+ document.  These tags are registered, along with tags defined in
+ other documents, in the "Attribute Group Tags" registry.
+	  </t>
+
+          <texttable anchor="Tab.DelimiterTags" title="&quot;delimiter-tag&quot; Values" style="full">
+            <ttcol>Tag Value (Hex)</ttcol><ttcol>Meaning</ttcol>
+            <c>0x00</c><c>Reserved</c>
+            <c>0x01</c><c>&quot;operation-attributes-tag&quot;</c>
+            <c>0x02</c><c>&quot;job-attributes-tag&quot;</c>
+            <c>0x03</c><c>&quot;end-of-attributes-tag&quot;</c>
+            <c>0x04</c><c>&quot;printer-attributes-tag&quot;</c>
+            <c>0x05</c><c>&quot;unsupported-attributes-tag&quot;</c>
+<!--            <c>0x06-0x0f</c><c>Unassigned group tags (see IANA IPP registry)</c>-->
+          </texttable>
+          <t>When a &quot;begin-attribute-group-tag&quot; field occurs in the protocol, it means that zero or more following attributes up to the next group tag are attributes belonging to the attribute group specified by the value of the &quot;begin-attribute-group-tag&quot;. For example, if the value of &quot;begin-attribute-group-tag&quot; is 0x01, the following attributes are members of the Operations Attributes group.</t>
+          <t>The &quot;end-of-attributes-tag&quot; (value 0x03) MUST occur exactly once in an operation and MUST be the last &quot;delimiter-tag&quot;. If the operation has a document-data group, the Document data in that group follows the &quot;end-of-attributes-tag&quot;.</t>
+          <t>The order and presence of &quot;attribute-group&quot; fields (whose beginning is marked by the &quot;begin-attribute-group-tag&quot; subfield) for each operation request and each operation response MUST be that defined in the Model.</t>
+          <t>A Printer MUST treat a &quot;delimiter-tag&quot; (values from 0x00 through 0x0f) differently from a &quot;value-tag&quot; (values from 0x10 through 0xff) so that the Printer knows there is an entire attribute group as opposed to a single value.</t>
+        </section>
+        <section anchor="Sec.ValueTags" title="&quot;value-tag&quot; Values">
+          <t>The remaining tables show values for the &quot;value-tag&quot; field, which is the first octet of an attribute. The &quot;value-tag&quot; field specifies the type of the value of the attribute.</t>
+
+          <t><xref target="Tab.OutOfBandTags" /> 
+ specifies the "out-of-band" values for the "value-tag" field
+ defined in this document.  These tags are registered, along with
+ tags defined in other documents, in the "Out-of-Band Attribute
+ Value Tags" registry.</t>
+
+          <texttable anchor="Tab.OutOfBandTags" title="Out-of-Band Values" style="full">
+            <ttcol>Tag Value (Hex)</ttcol><ttcol>Meaning</ttcol>
+            <c>0x10</c><c>unsupported</c>
+<!--	    <c>0x11</c><c>Unassigned "out-of-band" data type (see IANA IPP registry)</c>-->
+            <c>0x12</c><c>unknown</c>
+            <c>0x13</c><c>no-value</c>
+            <!--<c>0x14-0x1f</c><c>Unassigned "out-of-band" data types (see IANA IPP registry)</c>-->
+          </texttable>
+          <t><xref target="Tab.IntegerTags" /> specifies the integer values
+	  defined in this document for the "value-tag" field; they are
+	  registered in the "Attribute Syntaxes" registry.</t>
+          <texttable anchor="Tab.IntegerTags" title="Integer Tags" style="full">
+            <ttcol>Tag Value (Hex)</ttcol><ttcol>Meaning</ttcol>
+            <c>0x20</c><c>Unassigned integer data type (see IANA IPP registry)</c>
+            <c>0x21</c><c>integer</c>
+            <c>0x22</c><c>boolean</c>
+            <c>0x23</c><c>enum</c>
+            <c>0x24-0x2f</c><c>Unassigned integer data types (see IANA IPP registry)</c>
+          </texttable>
+
+          <t><xref target="Tab.OctetStringTags" /> specifies the octetString
+	  values defined in this document for the &quot;value-tag&quot; field;
+	  they are registered in the "Attribute Syntaxes" registry.</t>
+          <texttable anchor="Tab.OctetStringTags" title="octetString Tags" style="full">
+            <ttcol>Tag Value (Hex)</ttcol><ttcol>Meaning</ttcol>
+            <c>0x30</c><c>octetString with an unspecified format</c>
+            <c>0x31</c><c>dateTime</c>
+            <c>0x32</c><c>resolution</c>
+            <c>0x33</c><c>rangeOfInteger</c>
+            <c>0x34</c><c>begCollection</c>
+            <c>0x35</c><c>textWithLanguage</c>
+            <c>0x36</c><c>nameWithLanguage</c>
+            <c>0x37</c><c>endCollection</c>
+            <c>0x38-0x3f</c><c>Unassigned octetString data types (see IANA IPP registry)</c>
+          </texttable>
+	  <t><xref target="Tab.StringTags" /> specifies the character-string
+	  values defined in this document for the &quot;value-tag&quot; field;
+	  they are registered in the "Attribute Syntaxes" registry.</t>
+          <texttable anchor="Tab.StringTags" title="String Tags" style="full">
+            <ttcol>Tag Value (Hex)</ttcol><ttcol>Meaning</ttcol>
+            <c>0x40</c><c>Unassigned character-string data type (see IANA IPP registry)</c>
+            <c>0x41</c><c>textWithoutLanguage</c>
+            <c>0x42</c><c>nameWithoutLanguage</c>
+            <c>0x43</c><c>Unassigned character-string data type (see IANA IPP registry)</c>
+            <c>0x44</c><c>keyword</c>
+            <c>0x45</c><c>uri</c>
+            <c>0x46</c><c>uriScheme</c>
+            <c>0x47</c><c>charset</c>
+            <c>0x48</c><c>naturalLanguage</c>
+            <c>0x49</c><c>mimeMediaType</c>
+            <c>0x4a</c><c>memberAttrName</c>
+            <c>0x4b-0x5f</c><c>Unassigned character-string data types (see IANA IPP registry)</c>
+          </texttable>
+          <t>Note: An attribute value always has a type, which is explicitly specified by its tag; one such tag value is &quot;nameWithoutLanguage&quot;. An attribute's name has an implicit type, which is keyword.</t>
+          <t>The values 0x60-0xff are reserved for future type definitions in Standards Track documents.</t>
+          <t>The tag 0x7f is reserved for extending types beyond the 255 values available with a single byte. A tag value of 0x7f MUST signify that the first four bytes of the value field are interpreted as the tag value. Note this future extension doesn't affect parsers that are unaware of this special tag. The tag is like any other unknown tag, and the value length specifies the length of a value, which contains a value that the parser treats atomically. Values from 0x00000000 to 0x3fffffff are reserved for definition in future Standards Track documents. The values 0x40000000 to 0x7fffffff are reserved for vendor extensions.</t>
+        </section>
+      </section>
+      <section anchor="Sec.NameLength" title="&quot;name-length&quot;">
+        <t>The &quot;name-length&quot; field consists of a SIGNED-SHORT and specifies the number of octets in the immediately following &quot;name&quot; field. The value of this field excludes the two bytes of the &quot;name-length&quot; field. For example, if the &quot;name&quot; field contains 'sides', the value of this field is 5.</t>
+        <t>If a &quot;name-length&quot; field has a value of zero, the following &quot;name&quot; field is empty and the following value is treated as an additional value for the attribute encoded in the nearest preceding &quot;attribute-with-one-value&quot; field. Within an attribute group, if two or more attributes have the same name, the attribute group is malformed (see <xref target="RFC8011" />). The zero-length name is the only mechanism for multi-valued attributes.</t>
+      </section>
+      <section anchor="Sec.AttributeName" title="(Attribute) &quot;name&quot;">
+        <t>The &quot;name&quot; field contains the name of an attribute. The Model specifies such names.</t>
+      </section>
+
+      <section anchor="Sec.ValueLength" title="&quot;value-length&quot;">
+        <t>The &quot;value-length&quot; field consists of a SIGNED-SHORT, which specifies the number of octets in the immediately following &quot;value&quot; field. The value of this field excludes the two bytes of the &quot;value-length&quot; field. For example, if the &quot;value&quot; field contains the keyword (string) value 'one-sided', the value of this field is 9.</t>
+        <t>For any of the types represented by binary signed integers, the sender MUST encode the value in exactly four octets.</t>
+        <t>For any of the types represented by binary signed bytes, e.g., the boolean type, the sender MUST encode the value in exactly one octet.</t>
+        <t>For any of the types represented by character strings, the sender MUST encode the value with all the characters of the string and without any padding characters.</t>
+        <t>For &quot;out-of-band&quot; values for the &quot;value-tag&quot;
+	field defined in this document, such as 'unsupported', the &quot;value-length&quot; MUST be 0 and the &quot;value&quot; empty; the &quot;value&quot; has no meaning when the &quot;value-tag&quot; has one of these &quot;out-of-band&quot; values. For future &quot;out-of-band&quot; &quot;value-tag&quot; fields, the same rule holds unless the definition explicitly states that the &quot;value-length&quot; MAY be non-zero and the &quot;value&quot; non-empty</t>
+      </section>
+      <section anchor="Sec.AttributeValue" title="(Attribute) &quot;value&quot;">
+        <t>The syntax types (specified by the &quot;value-tag&quot; field) and most of the details of the representation of attribute values are defined in the Model. <xref target="Tab.AttributeValueEncoding" /> augments the information in the Model and defines the syntax types from the Model in terms of the five basic types defined in <xref target="Sec.EncodingoftheOperationLayer" />. The five types are US-ASCII-STRING, LOCALIZED-STRING, SIGNED-INTEGER, SIGNED-SHORT, SIGNED-BYTE, and OCTET-STRING.</t>
+        <texttable anchor="Tab.AttributeValueEncoding" title="Attribute Value Encoding" style="all">
+          <ttcol>Syntax of Attribute Value</ttcol><ttcol>Encoding</ttcol>
+          <c>textWithoutLanguage, nameWithoutLanguage</c><c>LOCALIZED-STRING</c>
+          <c>textWithLanguage</c><c>OCTET-STRING consisting of four fields:
+	  a SIGNED-SHORT, which is the number of octets in the following field;
+	  a value of type natural-language;
+	  a SIGNED-SHORT, which is the number of octets in the following field; and
+	  a value of type textWithoutLanguage.
+	  The length of a textWithLanguage value MUST be 4 + the value of field a + the value of field c.</c>
+          <c>nameWithLanguage</c><c>OCTET-STRING consisting of four fields:
+	  a SIGNED-SHORT, which is the number of octets in the following field;
+	  a value of type natural-language;
+	  a SIGNED-SHORT, which is the number of octets in the following field; and
+	  a value of type nameWithoutLanguage.
+	  The length of a nameWithLanguage value MUST be 4 + the value of field a + the value of field c.</c>
+          <c>charset, naturalLanguage, mimeMediaType, keyword, uri, and uriScheme</c><c>US-ASCII-STRING</c>
+          <c>boolean</c><c>SIGNED-BYTE where 0x00 is 'false' and 0x01 is 'true'</c>
+          <c>integer and enum</c><c>a SIGNED-INTEGER</c>
+          <c>dateTime</c><c>OCTET-STRING consisting of eleven octets whose contents are defined by &quot;DateAndTime&quot; in RFC 2579 <xref target="RFC2579" /></c>
+          <c>resolution</c><c>OCTET-STRING consisting of nine octets of two SIGNED-INTEGERs followed by a SIGNED-BYTE. The first SIGNED-INTEGER contains the value of cross-feed direction resolution. The second SIGNED-INTEGER contains the value of feed direction resolution. The SIGNED-BYTE contains the units value.</c>
+          <c>rangeOfInteger</c><c>Eight octets consisting of two SIGNED-INTEGERs. The first SIGNED-INTEGER contains the lower bound and the second SIGNED-INTEGER contains the upper bound.</c>
+          <c>1setOf X</c><c>Encoding according to the rules for an attribute with more than one value. Each value X is encoded according to the rules for encoding its type.</c>
+          <c>octetString</c><c>OCTET-STRING</c>
+          <c>collection</c><c>Encoding as defined in <xref target="Sec.CollectionAttribute" />.</c>
+        </texttable>
+        <t>The attribute syntax type of the value determines its encoding and the value of its &quot;value-tag&quot;.</t>
+      </section>
+      <section anchor="Sec.Data" title="Data">
+        <t>The &quot;data&quot; field MUST include any data required by the operation.</t>
+      </section>
+    </section>
+    <section anchor="Sec.EncodingofTransportLayer" title="Encoding of Transport Layer">
+      <t>HTTP/1.1 <xref target="RFC7230" /> is the REQUIRED transport layer for this protocol. HTTP/2 <xref target="RFC7540" /> is an OPTIONAL transport layer for this protocol.</t>
+      <t>The operation layer has been designed with the assumption that the transport layer contains the following information:<list style="symbols">
+        <t>the target URI for the operation; and</t>
+        <t>the total length of the data in the operation layer, either as a single length or as a sequence of chunks each with a length.</t>
+      </list></t>
+      <t>Printer implementations MUST support HTTP over the IANA-assigned well-known port 631 (the IPP default port), although a Printer implementation can support HTTP over some other port as well.</t>
+      <t>Each HTTP operation MUST use the POST method where the request-target is
+      the object target of the operation and where the
+      &quot;Content-Type&quot; of the message body in each request and
+      response MUST be &quot;application/ipp&quot;. The message body MUST
+      contain the operation layer and MUST have the syntax described in <xref
+      target="Sec.SyntaxofEncoding" />, &quot;Syntax of Encoding&quot;. A
+      Client implementation MUST adhere to the rules for a Client described
+      for HTTP <xref target="RFC7230" />. A Printer (server) implementation
+      MUST adhere to the rules for an origin server described for HTTP <xref target="RFC7230" />.</t>
+      <t>An IPP server sends a response for each request that it receives. If an IPP server detects an error, it MAY send a response before it has read the entire request. If the HTTP layer of the IPP server completes processing the HTTP headers successfully, it MAY send an intermediate response, such as &quot;100 Continue&quot;, with no IPP data before sending the IPP response. A Client MUST expect such a variety of responses from an IPP server. For further information on HTTP, consult the HTTP documents <xref target="RFC7230" />.</t>
+      <t>An HTTP/1.1 server MUST support chunking for IPP requests, and an IPP Client MUST support chunking for IPP responses according to HTTP/1.1 <xref target="RFC7230" />.</t>
+      <section anchor="Sec.Printeruriandjoburi" title="Printer URI, Job URI, and Job ID">
+        <t>All Printer and Job objects are identified by a Uniform Resource Identifier (URI) <xref target="RFC3986" /> so that they can be persistently and unambiguously referenced. Jobs can also be identified by a combination of Printer URI and Job ID.</t>
+        <t>Some operation elements are encoded twice, once as the request-target on the HTTP request-line and a second time as a REQUIRED operation attribute in the application/ipp entity. These attributes are the target for the operation and are called "printer-uri" and "job-uri".</t>
+          <t>Note: The target URI is included twice in an operation referencing the same IPP object, but the two URIs can be different. For example, the HTTP request-target can be relative while the IPP request URI is absolute.</t>
+
+        <t>HTTP allows Clients to generate and send a relative URI rather than an absolute URI. A relative URI identifies a resource with the scope of the HTTP server but does not include scheme, host, or port. The following statements characterize how URIs are used in the mapping of IPP onto HTTP:<list style="numbers">
+          <t>Although potentially redundant, a Client MUST supply the target of the operation both as an operation attribute and as a URI at the HTTP layer. The rationale for this decision is to maintain a consistent set of rules for mapping "application/ipp" to possibly many communication layers, even where URIs are not used as the addressing mechanism in the transport layer.</t>
+          <t>Even though these two URIs might not be literally identical (one being relative and the other being absolute), they MUST both reference the same IPP object.</t>
+          <t>The URI in the HTTP layer is either relative or absolute and is used by the HTTP server to route the HTTP request to the correct resource relative to that HTTP server.</t>
+          <t>Once the HTTP server resource begins to process the HTTP request, it can get the reference to the appropriate IPP Printer object from either the HTTP URI (using to the context of the HTTP server for relative URIs) or from the URI within the operation request; the choice is up to the implementation.</t>
+          <t>HTTP URIs can be relative or absolute, but the target URI in the IPP operation attribute MUST be an absolute URI.</t>
+        </list></t>
+      </section>
+    </section>
+    <section title="IPP URI Schemes">
+      <t>The IPP URI schemes are 'ipp' <xref target="RFC3510" /> and 'ipps' <xref target="RFC7472" />. Clients and Printers MUST support the ipp-URI value in the following IPP attributes:<list style="symbols">
+	<t>Job attributes:<list style="symbols">
+	  <t>job-uri</t>
+	  <t>job-printer-uri</t>
+	</list></t>
+	<t>Printer attributes:<list style="symbols">
+	  <t>printer-uri-supported</t>
+	</list></t>
+	<t>Operation attributes:<list style="symbols">
+	  <t>job-uri</t>
+	  <t>printer-uri</t>
+	</list></t>
+      </list></t>
+      <t>Each of the above attributes identifies a Printer or Job. The ipp-URI and ipps-URI are intended as the value of the attributes in this list. All of these attributes have a syntax type of 'uri', but there are attributes with a syntax type of 'uri' that do not use the 'ipp' scheme, e.g., "job-more-info".</t>
+      <t>If a Printer registers its URI with a directory service, the Printer MUST register an ipp-URI or ipps-URI.</t>
+      <t>When a Client sends a request, it MUST convert a target ipp-URI to a target http-URL (or ipps-URI to a target https-URI) for the HTTP layer according to the following steps:<list style="numbers">
+        <t>change the 'ipp' scheme to 'http' or
+	'ipps' scheme to 'https'; and</t>
+        <t>add an explicit port 631 if the ipp-URL or ipps-URL does not
+	contain an explicit port. Note that port 631 is the IANA-assigned well-known port for the 'ipp' and 'ipps' schemes.</t>
+      </list></t>
+      <t>The Client MUST use the target http-URL or https-URL in both the HTTP request-line and HTTP headers, as specified by HTTP <xref target="RFC7230" />. However, the Client MUST use the target ipp-URI or ipps-URI for the value of the &quot;printer-uri&quot; or &quot;job-uri&quot; operation attribute within the application/ipp body of the request. The server MUST use the ipp-URI or ipps-URI for the value of the &quot;printer-uri&quot;, &quot;job-uri&quot;, or &quot;printer-uri-supported&quot; attributes within the application/ipp body of the response.</t>
+      <t>For example, when an IPP Client sends a request directly, i.e., no proxy, to an ipp-URI &quot;ipp://printer.example.com/ipp/print/myqueue&quot;, it opens a TCP connection to port 631 (the IPP implicit port) on the host &quot;printer.example.com&quot; and sends the following data:</t>
+      <figure anchor="Fig.DirectIPPRequest" title="Direct IPP Request"><artwork>
+  POST /ipp/print/myqueue HTTP/1.1
+  Host: printer.example.com:631
+  Content-type: application/ipp
+  Transfer-Encoding: chunked
+  ...
+  &quot;printer-uri&quot; 'ipp://printer.example.com/ipp/print/myqueue'
+         (encoded in application/ipp message body)
+  ...
+</artwork></figure>
+      <t>As another example, when an IPP Client sends the same request as above via a proxy &quot;myproxy.example.com&quot;, it opens a TCP connection to the proxy port 8080 on the proxy host &quot;myproxy.example.com&quot; and sends the following data:</t>
+      <figure anchor="Fig.ProxiedIPPRequest" title="Proxied IPP Request"><artwork>
+  POST http://printer.example.com:631/ipp/print/myqueue HTTP/1.1
+  Host: printer.example.com:631
+  Content-type: application/ipp
+  Transfer-Encoding: chunked
+  ...
+  &quot;printer-uri&quot; 'ipp://printer.example.com/ipp/print/myqueue'
+         (encoded in application/ipp message body)
+  ...
+</artwork></figure>
+      <t>The proxy then connects to the IPP origin server with headers that are the same as the &quot;no-proxy&quot; example above.</t>
+    </section>
+    <section anchor="Sec.IANAConsiderations" title="IANA Considerations">
+
+   <t>The IANA-PRINTER-MIB [RFC3805] has been updated to reference this
+   document; the current version is available from &lt;http://www.iana.org&gt;.</t>
+
+      <t>See the IANA Considerations in the document "Internet
+      Printing Protocol/1.1: Model and Semantics" <xref target="RFC8011" />
+      for information on IANA considerations for IPP extensions. IANA has updated
+      the existing 'application/ipp' media type registration (whose contents
+      are defined in <xref target="Sec.EncodingoftheOperationLayer" />
+      &quot;Encoding of the Operation Layer&quot;) with the following information.</t>
+      <t>Type name: application</t>
+      <t>Subtype name: ipp</t>
+      <t>Required parameters: N/A</t>
+      <t>Optional parameters: N/A</t>
+      <t>Encoding considerations: IPP requests/responses MAY contain long lines and ALWAYS contain binary data (for example, attribute value lengths).</t>
+      <t>Security considerations: IPP requests/responses do not introduce any
+      security risks not already inherent in the underlying transport
+      protocols. Protocol mixed-version interworking rules in <xref
+      target="RFC8011" /> as well as protocol-encoding rules in this document
+      are complete and unambiguous. See also the security considerations in
+      this document and <xref target="RFC8011" />.</t>
+      <t>Interoperability considerations: IPP requests (generated by Clients)
+      and responses (generated by servers) MUST comply with all conformance
+      requirements imposed by the normative specifications <xref
+      target="RFC8011" /> and this document. Protocol-encoding rules specified
+      in RFC 8010 are comprehensive so that interoperability between conforming implementations is guaranteed (although support for specific optional features is not ensured). Both the &quot;charset&quot; and &quot;natural-language&quot; of all IPP attribute values that are a LOCALIZED-STRING are explicit within IPP requests/responses (without recourse to any external information in HTTP, SMTP, or other message transport headers).</t>
+
+      <t>Published specifications: RFCs 8010 and 8011
+
+</t>
+      <t>Applications that use this media type: Internet Printing Protocol
+      (IPP) print clients and print servers that communicate using HTTP/HTTPS
+      or other transport protocols. Messages of type
+      &quot;application/ipp&quot; are self-contained and transport independent, including &quot;charset&quot; and &quot;natural-language&quot; context for any LOCALIZED-STRING value.</t>
+      <t>Fragment identifier considerations: N/A</t>
+      <t>Additional information:
+
+<?rfc subcompact="yes"?>
+<list style="none">
+	<t>Deprecated alias names for this type: N/A</t>
+	<t>Magic number(s): N/A</t>
+	<t>File extension(s): N/A</t>
+	<t>Macintosh file type code(s): N/A</t>
+      </list></t>
+<?rfc subcompact="no"?>
+      <t>Person &amp; email address to contact for further information:
+<list><t>ISTO PWG IPP Workgroup &lt;ipp@pwg.org&gt;</t></list></t>
+      <t>Intended usage: COMMON</t>
+      <t>Restrictions on usage: N/A</t>
+      <t>Author: ISTO PWG IPP Workgroup &lt;ipp@pwg.org&gt;</t>
+      <t>Change controller: ISTO PWG IPP Workgroup &lt;ipp@pwg.org&gt;</t>
+      <t>Provisional registration? (standards tree only): No</t>
+    </section>
+    <section anchor="Sec.InternationalizationConsiderations" title="Internationalization Considerations">
+      <t>See the section on &quot;Internationalization Considerations&quot; in the document &quot;Internet Printing Protocol/1.1: Model and Semantics&quot; <xref target="RFC8011" /> for information on internationalization. This document adds no additional issues.</t>
+    </section>
+    <section anchor="Sec.SecurityConsiderations" title="Security Considerations">
+      <t>The IPP Model and Semantics document <xref target="RFC8011" /> discusses high-level security requirements (Client Authentication, Server Authentication, and Operation Privacy). Client Authentication is the mechanism by which the Client proves its identity to the server in a secure manner. Server Authentication is the mechanism by which the server proves its identity to the Client in a secure manner. Operation Privacy is defined as a mechanism for protecting operations from eavesdropping.</t>
+      <t>Message Integrity is addressed in the document "Internet Printing
+      Protocol (IPP) over HTTPS Transport Binding and the 'ipps' URI Scheme" <xref target="RFC7472" />.</t>
+      <section anchor="Sec.SecurityConformanceRequirements" title="Security Conformance Requirements">
+        <t>This section defines the security requirements for IPP Clients and IPP objects.</t>
+        <section anchor="Sec.DigestAuthentication" title="Digest Authentication">
+          <t>IPP Clients and Printers SHOULD support Digest Authentication <xref target="RFC7616" />. Use of the Message Integrity feature (qop="auth-int") is OPTIONAL.</t>
+          <t>Note: Previous versions of this specification required support for the
+	  MD5 algorithms; however, <xref target="RFC7616" /> makes SHA2-256
+	  mandatory to implement and deprecates MD5, only allowing its use for
+	  backwards compatibility reasons. IPP implementations that support
+	  Digest Authentication MUST support SHA2-256 and SHOULD support MD5
+	  for backwards compatibility.</t>
+          <t>Note: The reason that IPP Clients and Printers SHOULD (rather than MUST) support Digest Authentication is that there is a certain class of Output Devices where it does not make sense. Specifically, a low-end device with limited ROM space and low paper throughput may not need Client Authentication. This class of device typically requires firmware designers to make trade-offs between protocols and functionality to arrive at the lowest-cost solution possible. Factored into the designer's decisions is not just the size of the code, but also the testing, maintenance, usefulness, and time-to-market impact for each feature delivered to the customer. Forcing such low-end devices to provide security in order to claim IPP/1.1 conformance would not make business sense. Print devices that have high-volume throughput and have available ROM space will typically provide support for Client Authentication that safeguards the device from unauthorized access because these devices are prone to a high loss of consumables and paper if unauthorized access occurs.</t>
+        </section>
+        <section anchor="Sec.TransportLayerSecurityTLS" title="Transport Layer Security (TLS)">
+          <t>IPP Clients and Printers SHOULD support Transport Layer Security (TLS) <xref target="RFC5246" /> <xref target="RFC7525" /> for Server Authentication and Operation Privacy. IPP Printers MAY also support TLS for Client Authentication.  IPP Clients and Printers MAY support Basic Authentication <xref target="RFC7617" /> for User Authentication if the channel is secure, e.g., IPP over HTTPS <xref target="RFC7472" />. IPP Clients and Printers SHOULD NOT support Basic Authentication over insecure channels.</t>
+          <t>The IPP Model and Semantics document <xref target="RFC8011" /> defines two Printer attributes (&quot;uri-authentication-supported&quot; and &quot;uri-security-supported&quot;) that the Client can use to discover the security policy of a Printer. That document also outlines IPP-specific security considerations and is the primary reference for security implications with regard to the IPP itself.</t>
+          <t>Note: Because previous versions of this specification did not require TLS support, this version cannot require it for IPP/1.1. However, since printing often involves a great deal of sensitive or private information (medical reports, performance reviews, banking information, etc.) and network monitoring is pervasive (<xref target="RFC7258" />), implementors are strongly encouraged to include TLS support.</t>
+          <t>Note: Because IPP Printers typically use self-signed X.509 certificates, IPP Clients SHOULD support Trust On First Use (defined in <xref target="RFC7435" />) in addition to traditional X.509 certificate validation.</t>
+        </section>
+      </section>
+      <section anchor="Sec.UsingIPPwithTLS" title="Using IPP with TLS">
+        <t>IPP uses the &quot;Upgrading to TLS Within HTTP/1.1&quot; mechanism <xref target="RFC2817" /> for 'ipp' URIs. The Client requests a secure TLS connection by using the HTTP &quot;Upgrade&quot; header while the server agrees in the HTTP response. The switch to TLS occurs either because the server grants the Client's request to upgrade to TLS or a server asks to switch to TLS in its response. Secure communication begins with a server's response to switch to TLS.</t>
+        <t>IPP uses the &quot;HTTPS: HTTP over TLS&quot; mechanism <xref target="RFC2818" /> for 'ipps' URIs. The Client and server negotiate a secure TLS connection immediately and unconditionally.</t>
+      </section>
+    </section>
+    <section anchor="Sec.InteroperabilitywithOtherIPPVersions" title="Interoperability with Other IPP Versions">
+      <t>It is beyond the scope of this specification to mandate conformance with versions of IPP other than 1.1. IPP was deliberately designed, however, to make supporting other versions easy. IPP objects (Printers, Jobs, etc.) SHOULD:<list style="symbols">
+	<t>understand any valid request whose major "version-number" is
+	greater than 0; and</t>
+	<t>respond appropriately with a response containing the same &quot;version-number&quot; parameter value used by the Client in the request (if the Client-supplied "version-number" is supported) or the highest "version-number" supported by the Printer (if the Client-supplied "version-number" is not supported).</t>
+      </list></t>
+      <t>IPP Clients SHOULD:<list style="symbols">
+	<t>understand any valid response whose major "version-number" is greater than 0.</t>
+      </list></t>
+      <section anchor="Sec.TheversionnumberParameter" title="The &quot;version-number&quot; Parameter">
+        <t>The following are rules regarding the &quot;version-number&quot; parameter (see <xref target="Sec.Attributegroup" />):<list style="numbers">
+          <t>Clients MUST send requests containing a &quot;version-number&quot; parameter with the highest supported value, e.g., '1.1', '2.0', etc., and SHOULD try supplying alternate version numbers if they receive a 'server-error-version-not-supported' error return in a response. For example, if a Client sends an IPP/2.0 request that is rejected with the 'server-error-version-not-supported' error and an IPP/1.1 "version-number", it SHOULD retry by sending an IPP/1.1 request.</t>
+          <t>IPP objects (Printers, Jobs, etc.) MUST accept requests
+	  containing a &quot;version-number&quot; parameter with a
+	  '1.1' value (or reject the request for reasons other than
+	  'server-error-version-not-supported').</t>
+
+          <t>IPP objects SHOULD either accept requests whose major version is
+	  greater than 0 or reject such requests with the
+	  'server-error-version-not-supported' status-code. See
+	  Section 4.1.8 of <xref target="RFC8011" />.</t>
+          <t>In any case, security MUST NOT be compromised when a Client supplies a lower &quot;version-number&quot; parameter in a request. For example, if an IPP/2.0 conforming Printer accepts version '1.1' requests and is configured to enforce Digest Authentication, it MUST do the same for a version '1.1' request.</t>
+        </list></t>
+      </section>
+      <section title="Security and URI Schemes">
+        <t>The following are rules regarding security, the &quot;version-number&quot; parameter, and the URI scheme supplied in target attributes and responses:<list style="numbers">
+          <t>When a Client supplies a request, the &quot;printer-uri&quot; or &quot;job-uri&quot; target operation attribute MUST have the same scheme as that indicated in one of the values of the &quot;printer-uri-supported&quot; Printer attribute.</t>
+          <t>When the Printer returns the &quot;job-printer-uri&quot; or &quot;job-uri&quot; Job Description attributes, it SHOULD return the same scheme ('ipp', 'ipps', etc.) that the Client supplied in the &quot;printer-uri&quot; or &quot;job-uri&quot; target operation attributes in the Get-Job-Attributes or Get-Jobs request, rather than the scheme used when the Job was created. However, when a Client requests Job attributes using the Get-Job-Attributes or Get-Jobs operations, the Jobs and Job attributes that the Printer returns depends on: (1) the security in effect when the Job was created, (2) the security in effect in the query request, and (3) the security policy in force.</t>
+          <t>The Printer MUST enforce its security and privacy policies based on the owner of the IPP object and the URI scheme and/or credentials supplied by the Client in the current request.</t>
+        </list></t>
+      </section>
+    </section>
+    <section title="Changes since RFC 2910">
+      <t>The following changes have been made since the publication of RFC 2910:<list style="symbols">
+        <t>Added references to current IPP extension specifications.</t>
+        <t>Added optional support for HTTP/2.</t>
+        <t>Added collection attribute syntax from RFC 3382.</t>
+        <t>Fixed typographical errors.</t>
+        <t>Now reference TLS/1.2 and no longer mandate the TLS/1.0 MTI ciphersuites.</t>
+        <t>Updated all references.</t>
+        <t>Updated document organization to follow current style.</t>
+        <t>Updated example ipp: URIs to follow guidelines in RFC 7472.</t>
+        <t>Updated version compatibility for all versions of IPP.</t>
+        <t>Updated HTTP Digest Authentication to optional for Clients.</t>
+        <t>Removed references to (Experimental) IPP/1.0 and usage of http:/https: URLs.</t>
+      </list></t>
+    </section>
+  </middle>
+  <back>
+    <references title="Normative References">
+      <!-- RFC 20 / STD 80 -->
+      <!-- ?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.20.xml"? -->
+
+<reference  anchor='RFC20' target='http://www.rfc-editor.org/info/rfc20'>
+<front>
+<title>ASCII format for network interchange</title>
+<author initials='V.G.' surname='Cerf' fullname='V.G. Cerf'><organization /></author>
+<date year='1969' month='October' />
+</front>
+<seriesInfo name='STD' value='80'/>
+<seriesInfo name='RFC' value='20'/>
+<seriesInfo name='DOI' value='10.17487/RFC0020'/>
+</reference>
+
+      <!-- RFC7540 -->
+<reference  anchor='RFC7540' target='http://www.rfc-editor.org/info/rfc7540'>
+<front>
+<title>Hypertext Transfer Protocol Version 2 (HTTP/2)</title>
+<author initials='M.' surname='Belshe' fullname='M. Belshe'><organization /></author>
+<author initials='R.' surname='Peon' fullname='R. Peon'><organization /></author>
+<author initials='M.' surname='Thomson' fullname='M. Thomson' role='editor'><organization /></author>
+<date year='2015' month='May' />
+</front>
+<seriesInfo name='RFC' value='7540'/>
+<seriesInfo name='DOI' value='10.17487/RFC7540'/>
+</reference>
+
+      <!-- RFC7541 -->
+
+<reference  anchor='RFC7541' target='http://www.rfc-editor.org/info/rfc7541'>
+<front>
+<title>HPACK: Header Compression for HTTP/2</title>
+<author initials='R.' surname='Peon' fullname='R. Peon'><organization /></author>
+<author initials='H.' surname='Ruellan' fullname='H. Ruellan'><organization /></author>
+<date year='2015' month='May' />
+</front>
+<seriesInfo name='RFC' value='7541'/>
+<seriesInfo name='DOI' value='10.17487/RFC7541'/>
+</reference>
+
+      <!-- RFC2911bis -->
+<!-- draft-sweet-rfc2911bis-11: companion document -->
+      <reference anchor="RFC8011" target="http://www.rfc-editor.org/info/rfc8011">
+        <front>
+          <title>Internet Printing Protocol/1.1: Model and Semantics</title>
+          <author initials="M." surname="Sweet" />
+          <author initials="I." surname="McDonald" />
+          <date year="2016" month="November" />
+        </front>
+	<seriesInfo name='RFC' value='8011'/>
+	<seriesInfo name="DOI" value="10.17487/RFC8011"/>
+      </reference>
+
+      <!-- RFC 5234 / STD 68 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.5234.xml"?-->
+<reference  anchor='RFC5234' target='http://www.rfc-editor.org/info/rfc5234'>
+<front>
+<title>Augmented BNF for Syntax Specifications: ABNF</title>
+<author initials='D.' surname='Crocker' fullname='D. Crocker' role='editor'><organization /></author>
+<author initials='P.' surname='Overell' fullname='P. Overell'><organization /></author>
+<date year='2008' month='January' />
+</front>
+<seriesInfo name='STD' value='68'/>
+<seriesInfo name='RFC' value='5234'/>
+<seriesInfo name='DOI' value='10.17487/RFC5234'/>
+</reference>
+
+      <!-- RFC 7230 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.7230.xml"?-->
+
+<reference  anchor='RFC7230' target='http://www.rfc-editor.org/info/rfc7230'>
+<front>
+<title>Hypertext Transfer Protocol (HTTP/1.1): Message Syntax and Routing</title>
+<author initials='R.' surname='Fielding' fullname='R. Fielding' role='editor'><organization /></author>
+<author initials='J.' surname='Reschke' fullname='J. Reschke' role='editor'><organization /></author>
+<date year='2014' month='June' />
+</front>
+<seriesInfo name='RFC' value='7230'/>
+<seriesInfo name='DOI' value='10.17487/RFC7230'/>
+</reference>
+
+      <!-- RFC 7231 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.7231.xml"?-->
+
+<reference  anchor='RFC7231' target='http://www.rfc-editor.org/info/rfc7231'>
+<front>
+<title>Hypertext Transfer Protocol (HTTP/1.1): Semantics and Content</title>
+<author initials='R.' surname='Fielding' fullname='R. Fielding' role='editor'><organization /></author>
+<author initials='J.' surname='Reschke' fullname='J. Reschke' role='editor'><organization /></author>
+<date year='2014' month='June' />
+</front>
+<seriesInfo name='RFC' value='7231'/>
+<seriesInfo name='DOI' value='10.17487/RFC7231'/>
+</reference>
+
+      <!-- RFC 7232 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.7232.xml"?-->
+
+<reference  anchor='RFC7232' target='http://www.rfc-editor.org/info/rfc7232'>
+<front>
+<title>Hypertext Transfer Protocol (HTTP/1.1): Conditional Requests</title>
+<author initials='R.' surname='Fielding' fullname='R. Fielding' role='editor'><organization /></author>
+<author initials='J.' surname='Reschke' fullname='J. Reschke' role='editor'><organization /></author>
+<date year='2014' month='June' />
+</front>
+<seriesInfo name='RFC' value='7232'/>
+<seriesInfo name='DOI' value='10.17487/RFC7232'/>
+</reference>
+
+      <!-- RFC 7234 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.7234.xml"?-->
+
+<reference  anchor='RFC7234' target='http://www.rfc-editor.org/info/rfc7234'>
+<front>
+<title>Hypertext Transfer Protocol (HTTP/1.1): Caching</title>
+<author initials='R.' surname='Fielding' fullname='R. Fielding' role='editor'><organization /></author>
+<author initials='M.' surname='Nottingham' fullname='M. Nottingham' role='editor'><organization /></author>
+<author initials='J.' surname='Reschke' fullname='J. Reschke' role='editor'><organization /></author>
+<date year='2014' month='June' />
+</front>
+<seriesInfo name='RFC' value='7234'/>
+<seriesInfo name='DOI' value='10.17487/RFC7234'/>
+</reference>
+
+      <!-- RFC 7235 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.7235.xml"?-->
+
+<reference  anchor='RFC7235' target='http://www.rfc-editor.org/info/rfc7235'>
+<front>
+<title>Hypertext Transfer Protocol (HTTP/1.1): Authentication</title>
+<author initials='R.' surname='Fielding' fullname='R. Fielding' role='editor'><organization /></author>
+<author initials='J.' surname='Reschke' fullname='J. Reschke' role='editor'><organization /></author>
+<date year='2014' month='June' />
+</front>
+<seriesInfo name='RFC' value='7235'/>
+<seriesInfo name='DOI' value='10.17487/RFC7235'/>
+</reference>
+
+      <!-- RFC 7472 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.7472.xml"?-->
+
+<reference  anchor='RFC7472' target='http://www.rfc-editor.org/info/rfc7472'>
+<front>
+<title>Internet Printing Protocol (IPP) over HTTPS Transport Binding and the 'ipps' URI Scheme</title>
+<author initials='I.' surname='McDonald' fullname='I. McDonald'><organization /></author>
+<author initials='M.' surname='Sweet' fullname='M. Sweet'><organization /></author>
+<date year='2015' month='March' />
+</front>
+<seriesInfo name='RFC' value='7472'/>
+<seriesInfo name='DOI' value='10.17487/RFC7472'/>
+</reference>
+
+      <!-- PWG5100.12 -->
+      <reference anchor="PWG5100.12" target="http://ftp.pwg.org/pub/pwg/standards/std-ipp20-20151030-5100.12.pdf">
+        <front>
+          <title>IPP Version 2.0, 2.1, and 2.2</title>
+          <author initials="M." surname="Sweet" fullname="Michael Sweet">
+	    <organization>Apple Inc.</organization>
+	  </author>
+          <author initials="I." surname="McDonald" fullname="Ira McDonald">
+	    <organization>High North, Inc.</organization>
+	  </author>
+          <date year="2015" month="October" day="30" />
+        </front>
+      </reference>
+
+      <!-- RFC793 / STD 7 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.0793.xml"?-->
+
+<reference  anchor='RFC793' target='http://www.rfc-editor.org/info/rfc793'>
+<front>
+<title>Transmission Control Protocol</title>
+<author initials='J.' surname='Postel' fullname='J. Postel'><organization /></author>
+<date year='1981' month='September' />
+</front>
+<seriesInfo name='STD' value='7'/>
+<seriesInfo name='RFC' value='793'/>
+<seriesInfo name='DOI' value='10.17487/RFC0793'/>
+</reference>
+
+      <!-- RFC 3629 / STD 63 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.3629.xml"?-->
+
+<reference  anchor='RFC3629' target='http://www.rfc-editor.org/info/rfc3629'>
+<front>
+<title>UTF-8, a transformation format of ISO 10646</title>
+<author initials='F.' surname='Yergeau' fullname='F. Yergeau'><organization /></author>
+<date year='2003' month='November' />
+</front>
+<seriesInfo name='STD' value='63'/>
+<seriesInfo name='RFC' value='3629'/>
+<seriesInfo name='DOI' value='10.17487/RFC3629'/>
+</reference>
+
+      <!-- RFC 3986 / STD 66 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.3986.xml"?-->
+
+<reference  anchor='RFC3986' target='http://www.rfc-editor.org/info/rfc3986'>
+<front>
+<title>Uniform Resource Identifier (URI): Generic Syntax</title>
+<author initials='T.' surname='Berners-Lee' fullname='T. Berners-Lee'><organization /></author>
+<author initials='R.' surname='Fielding' fullname='R. Fielding'><organization /></author>
+<author initials='L.' surname='Masinter' fullname='L. Masinter'><organization /></author>
+<date year='2005' month='January' />
+</front>
+<seriesInfo name='STD' value='66'/>
+<seriesInfo name='RFC' value='3986'/>
+<seriesInfo name='DOI' value='10.17487/RFC3986'/>
+</reference>
+
+      <!-- RFC2579 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.2579.xml"?-->
+
+<reference  anchor='RFC2579' target='http://www.rfc-editor.org/info/rfc2579'>
+<front>
+<title>Textual Conventions for SMIv2</title>
+<author initials='K.' surname='McCloghrie' fullname='K. McCloghrie' role='editor'><organization /></author>
+<author initials='D.' surname='Perkins' fullname='D. Perkins' role='editor'><organization /></author>
+<author initials='J.' surname='Schoenwaelder' fullname='J. Schoenwaelder' role='editor'><organization /></author>
+<date year='1999' month='April' />
+</front>
+<seriesInfo name='STD' value='58'/>
+<seriesInfo name='RFC' value='2579'/>
+<seriesInfo name='DOI' value='10.17487/RFC2579'/>
+</reference>
+
+      <!-- RFC2119 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml"?-->
+
+<reference  anchor='RFC2119' target='http://www.rfc-editor.org/info/rfc2119'>
+<front>
+<title>Key words for use in RFCs to Indicate Requirement Levels</title>
+<author initials='S.' surname='Bradner' fullname='S. Bradner'><organization /></author>
+<date year='1997' month='March' />
+</front>
+<seriesInfo name='BCP' value='14'/>
+<seriesInfo name='RFC' value='2119'/>
+<seriesInfo name='DOI' value='10.17487/RFC2119'/>
+</reference>
+
+      <!-- RFC7616 -->
+
+<reference  anchor='RFC7616' target='http://www.rfc-editor.org/info/rfc7616'>
+<front>
+<title>HTTP Digest Access Authentication</title>
+<author initials='R.' surname='Shekh-Yusef' fullname='R. Shekh-Yusef' role='editor'><organization /></author>
+<author initials='D.' surname='Ahrens' fullname='D. Ahrens'><organization /></author>
+<author initials='S.' surname='Bremer' fullname='S. Bremer'><organization /></author>
+<date year='2015' month='September' />
+</front>
+<seriesInfo name='RFC' value='7616'/>
+<seriesInfo name='DOI' value='10.17487/RFC7616'/>
+</reference>
+
+      <!-- RFC7617 -->
+
+<reference  anchor='RFC7617' target='http://www.rfc-editor.org/info/rfc7617'>
+<front>
+<title>The 'Basic' HTTP Authentication Scheme</title>
+<author initials='J.' surname='Reschke' fullname='J. Reschke'><organization /></author>
+<date year='2015' month='September' />
+</front>
+<seriesInfo name='RFC' value='7617'/>
+<seriesInfo name='DOI' value='10.17487/RFC7617'/>
+</reference>
+
+      <!-- RFC2817 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.2817.xml"?-->
+
+<reference  anchor='RFC2817' target='http://www.rfc-editor.org/info/rfc2817'>
+<front>
+<title>Upgrading to TLS Within HTTP/1.1</title>
+<author initials='R.' surname='Khare' fullname='R. Khare'><organization /></author>
+<author initials='S.' surname='Lawrence' fullname='S. Lawrence'><organization /></author>
+<date year='2000' month='May' />
+</front>
+<seriesInfo name='RFC' value='2817'/>
+<seriesInfo name='DOI' value='10.17487/RFC2817'/>
+</reference>
+
+      <!-- RFC 2818 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.2818.xml"?-->
+
+<reference  anchor='RFC2818' target='http://www.rfc-editor.org/info/rfc2818'>
+<front>
+<title>HTTP Over TLS</title>
+<author initials='E.' surname='Rescorla' fullname='E. Rescorla'><organization /></author>
+<date year='2000' month='May' />
+</front>
+<seriesInfo name='RFC' value='2818'/>
+<seriesInfo name='DOI' value='10.17487/RFC2818'/>
+</reference>
+
+      <!-- RFC 2978 -->
+      <!--?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.2978.xml"?-->
+
+<reference  anchor='RFC2978' target='http://www.rfc-editor.org/info/rfc2978'>
+<front>
+<title>IANA Charset Registration Procedures</title>
+<author initials='N.' surname='Freed' fullname='N. Freed'><organization /></author>
+<author initials='J.' surname='Postel' fullname='J. Postel'><organization /></author>
+<date year='2000' month='October' />
+</front>
+<seriesInfo name='BCP' value='19'/>
+<seriesInfo name='RFC' value='2978'/>
+<seriesInfo name='DOI' value='10.17487/RFC2978'/>
+</reference>
+
+      <!-- RFC 3510 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.3510.xml"?-->
+
+<reference  anchor='RFC3510' target='http://www.rfc-editor.org/info/rfc3510'>
+<front>
+<title>Internet Printing Protocol/1.1: IPP URL Scheme</title>
+<author initials='R.' surname='Herriot' fullname='R. Herriot'><organization /></author>
+<author initials='I.' surname='McDonald' fullname='I. McDonald'><organization /></author>
+<date year='2003' month='April' />
+</front>
+<seriesInfo name='RFC' value='3510'/>
+<seriesInfo name='DOI' value='10.17487/RFC3510'/>
+</reference>
+
+      <!-- RFC5246 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.5246.xml"?-->
+
+<reference  anchor='RFC5246' target='http://www.rfc-editor.org/info/rfc5246'>
+<front>
+<title>The Transport Layer Security (TLS) Protocol Version 1.2</title>
+<author initials='T.' surname='Dierks' fullname='T. Dierks'><organization /></author>
+<author initials='E.' surname='Rescorla' fullname='E. Rescorla'><organization /></author>
+<date year='2008' month='August' />
+</front>
+<seriesInfo name='RFC' value='5246'/>
+<seriesInfo name='DOI' value='10.17487/RFC5246'/>
+</reference>
+
+    </references>
+
+    <references title="Informative References">
+
+      <!-- IANA-IPP -->
+      <reference anchor="IANA-IPP" target="http://www.iana.org/assignments/ipp-registrations/">
+	<front>
+	  <title>IANA Internet Printing Protocol (IPP) Registry</title>
+	  <author fullname="IANA" />
+	  <date />
+	</front>
+      </reference>
+
+      <!-- PWG5100.3 -->
+      <reference anchor="PWG5100.3" target="http://ftp.pwg.org/pub/pwg/candidates/cs-ippprodprint10-20010212-5100.3.pdf">
+        <front>
+          <title>Internet Printing Protocol (IPP): Production Printing
+	  Attributes - Set1</title>
+          <author initials="K." surname="Ocke" />
+          <author initials="T." surname="Hastings" />
+          <date year="2001" month="February" />
+        </front>
+	<seriesInfo name="Candidate Standard" value="5100.3-2001"/>
+      </reference>
+
+      <!-- RFC1179 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.1179.xml"?-->
+
+<reference  anchor='RFC1179' target='http://www.rfc-editor.org/info/rfc1179'>
+<front>
+<title>Line printer daemon protocol</title>
+<author initials='L.' surname='McLaughlin' fullname='L. McLaughlin'><organization /></author>
+<date year='1990' month='August' />
+</front>
+<seriesInfo name='RFC' value='1179'/>
+<seriesInfo name='DOI' value='10.17487/RFC1179'/>
+</reference>
+
+      <!-- RFC7258 -->
+      <!-- ?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.7258.xml"? -->
+
+<reference  anchor='RFC7258' target='http://www.rfc-editor.org/info/rfc7258'>
+<front>
+<title>Pervasive Monitoring Is an Attack</title>
+<author initials='S.' surname='Farrell' fullname='S. Farrell'><organization /></author>
+<author initials='H.' surname='Tschofenig' fullname='H. Tschofenig'><organization /></author>
+<date year='2014' month='May' />
+</front>
+<seriesInfo name='BCP' value='188'/>
+<seriesInfo name='RFC' value='7258'/>
+<seriesInfo name='DOI' value='10.17487/RFC7258'/>
+</reference>
+
+      <!-- RFC7435 -->
+      <!-- ?rfc include="http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.7435.xml"? -->
+
+<reference  anchor='RFC7435' target='http://www.rfc-editor.org/info/rfc7435'>
+<front>
+<title>Opportunistic Security: Some Protection Most of the Time</title>
+<author initials='V.' surname='Dukhovni' fullname='V. Dukhovni'><organization /></author>
+<date year='2014' month='December' />
+</front>
+<seriesInfo name='RFC' value='7435'/>
+<seriesInfo name='DOI' value='10.17487/RFC7435'/>
+</reference>
+
+      <!-- RFC7525 -->
+      <!--?rfc include="http://xml.resource.org/public/rfc/bibxml/reference.RFC.7525.xml"?-->
+
+<reference  anchor='RFC7525' target='http://www.rfc-editor.org/info/rfc7525'>
+<front>
+<title>Recommendations for Secure Use of Transport Layer Security (TLS) and Datagram Transport Layer Security (DTLS)</title>
+<author initials='Y.' surname='Sheffer' fullname='Y. Sheffer'><organization /></author>
+<author initials='R.' surname='Holz' fullname='R. Holz'><organization /></author>
+<author initials='P.' surname='Saint-Andre' fullname='P. Saint-Andre'><organization /></author>
+<date year='2015' month='May' />
+</front>
+<seriesInfo name='BCP' value='195'/>
+<seriesInfo name='RFC' value='7525'/>
+<seriesInfo name='DOI' value='10.17487/RFC7525'/>
+</reference>
+
+    </references>
+
+    <section anchor="Sec.AppendixAProtocolExamples" title="Protocol Examples">
+      <section anchor="Sec.PrintJobRequest" title="Print-Job Request">
+        <t>The following is an example of a Print-Job request with "job-name",
+	"copies", and "sides" specified. The
+	&quot;ipp-attribute-fidelity&quot; attribute is set to
+	'true' so that the print request will fail if the
+	&quot;copies&quot; or the &quot;sides&quot; attribute is not supported or their values are not supported.</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x0002</c><c>Print-Job</c><c>operation-id</c>
+          <c>0x00000001</c><c>1</c><c>request-id</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes-tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x45</c><c>uri type</c><c>value-tag</c>
+          <c>0x000b</c><c></c><c>name-length</c>
+          <c>printer-uri</c><c>printer-uri</c><c>name</c>
+          <c>0x002c</c><c></c><c>value-length</c>
+          <c>ipp://printer.example.com/ipp/print/pinetree</c><c>printer pinetree</c><c>value</c>
+          <c>0x42</c><c>nameWithoutLanguage type</c><c>value-tag</c>
+          <c>0x0008</c><c></c><c>name-length</c>
+          <c>job-name</c><c>job-name</c><c>name</c>
+          <c>0x0006</c><c></c><c>value-length</c>
+          <c>foobar</c><c>foobar</c><c>value</c>
+          <c>0x22</c><c>boolean type</c><c>value-tag</c>
+          <c>0x0016</c><c></c><c>name-length</c>
+          <c>ipp-attribute-fidelity</c><c>ipp-attribute-fidelity</c><c>name</c>
+          <c>0x0001</c><c></c><c>value-length</c>
+          <c>0x01</c><c>true</c><c>value</c>
+          <c>0x02</c><c>start job-attributes</c><c>job-attributes-tag</c>
+          <c>0x21</c><c>integer type</c><c>value-tag</c>
+          <c>0x0006</c><c></c><c>name-length</c>
+          <c>copies</c><c>copies</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>0x00000014</c><c>20</c><c>value</c>
+          <c>0x44</c><c>keyword type</c><c>value-tag</c>
+          <c>0x0005</c><c></c><c>name-length</c>
+          <c>sides</c><c>sides</c><c>name</c>
+          <c>0x0013</c><c></c><c>value-length</c>
+          <c>two-sided-long-edge</c><c>two-sided-long-edge</c><c>value</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+          <c>%!PDF...</c><c>&lt;PDF Document&gt;</c><c>data</c>
+        </texttable>
+      </section>
+      <section title="Print-Job Response (Successful)">
+	<t>Here is an example of a successful Print-Job response to the previous Print-Job request. The Printer supported the &quot;copies&quot; and &quot;sides&quot; attributes and their supplied values. The status-code returned is 'successful-ok'.</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic
+	  Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x0000</c><c>successful-ok</c><c>status-code</c>
+          <c>0x00000001</c><c>1</c><c>request-id</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes-tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x41</c><c>textWithoutLanguage type</c><c>value-tag</c>
+          <c>0x000e</c><c></c><c>name-length</c>
+          <c>status-message</c><c>status-message</c><c>name</c>
+          <c>0x000d</c><c></c><c>value-length</c>
+          <c>successful-ok</c><c>successful-ok</c><c>value</c>
+          <c>0x02</c><c>start job-attributes</c><c>job-attributes-tag</c>
+          <c>0x21</c><c>integer</c><c>value-tag</c>
+          <c>0x0006</c><c></c><c>name-length</c>
+          <c>job-id</c><c>job-id</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>147</c><c>147</c><c>value</c>
+          <c>0x45</c><c>uri type</c><c>value-tag</c>
+          <c>0x0007</c><c></c><c>name-length</c>
+          <c>job-uri</c><c>job-uri</c><c>name</c>
+          <c>0x0030</c><c></c><c>value-length</c>
+          <c>ipp://printer.example.com/ipp/print/pinetree/147</c><c>job 147 on pinetree</c><c>value</c>
+          <c>0x23</c><c>enum type</c><c>value-tag</c>
+          <c>0x0009</c><c></c><c>name-length</c>
+          <c>job-state</c><c>job-state</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>0x0003</c><c>pending</c><c>value</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+        </texttable>
+      </section>
+      <section anchor="Sec.PrintJobResponsefailure" title="Print-Job Response (Failure)">
+        <t>Here is an example of an unsuccessful Print-Job response to the previous Print-Job request. It fails because, in this case, the Printer does not support the &quot;sides&quot; attribute and because the value '20' for the &quot;copies&quot; attribute is not supported. Therefore, no Job is created, and neither a &quot;job-id&quot; nor a &quot;job-uri&quot; operation attribute is returned. The error code returned is 'client-error-attributes-or-values-not-supported'  (0x040b).</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x040b</c><c>client-error-attributes-or-values-not-supported</c><c>status-code</c>
+          <c>0x00000001</c><c>1</c><c>request-id</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x41</c><c>textWithoutLanguage type</c><c>value-tag</c>
+          <c>0x000e</c><c></c><c>name-length</c>
+          <c>status-message</c><c>status-message</c><c>name</c>
+          <c>0x002f</c><c></c><c>value-length</c>
+          <c>client-error-attributes-or-values-not-supported</c><c>client-error-attributes-or-values-not-supported</c><c>value</c>
+          <c>0x05</c><c>start unsupported-attributes</c><c>unsupported-attributes tag</c>
+          <c>0x21</c><c>integer type</c><c>value-tag</c>
+          <c>0x0006</c><c></c><c>name-length</c>
+          <c>copies</c><c>copies</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>0x00000014</c><c>20</c><c>value</c>
+          <c>0x10</c><c>unsupported (type)</c><c>value-tag</c>
+          <c>0x0005</c><c></c><c>name-length</c>
+          <c>sides</c><c>sides</c><c>name</c>
+          <c>0x0000</c><c></c><c>value-length</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+        </texttable>
+      </section>
+      <section anchor="Sec.PrintJobResponsesuccesswithattributesignored" title="Print-Job Response (Success with Attributes Ignored)">
+        <t>Here is an example of a successful Print-Job response to a
+	Print-Job request like the previous Print-Job request, except that the
+	value of "ipp-attribute-fidelity" is 'false'. The print request
+	succeeds, even though, in this case, the Printer supports neither the
+	&quot;sides&quot; attribute nor the value '20' for the
+	&quot;copies&quot; attribute. Therefore, a Job is created and both a
+	&quot;job-id&quot; and a &quot;job-uri&quot; operation attribute are
+	returned. The unsupported attributes are also returned in an
+	Unsupported Attributes group. The error code returned is
+	'successful-ok-ignored-or-substituted-attributes' (0x0001).</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x0001</c><c>successful-ok-ignored-or-substituted-attributes</c><c>status-code</c>
+          <c>0x00000001</c><c>1</c><c>request-id</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes-tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x41</c><c>textWithoutLanguage type</c><c>value-tag</c>
+          <c>0x000e</c><c></c><c>name-length</c>
+          <c>status-message</c><c>status-message</c><c>name</c>
+          <c>0x002f</c><c></c><c>value-length</c>
+          <c>successful-ok-ignored-or-substituted-attributes</c><c>successful-ok-ignored-or-substituted-attributes</c><c>value</c>
+          <c>0x05</c><c>start unsupported-attributes</c><c>unsupported-attributes tag</c>
+          <c>0x21</c><c>integer type</c><c>value-tag</c>
+          <c>0x0006</c><c></c><c>name-length</c>
+          <c>copies</c><c>copies</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>0x00000014</c><c>20</c><c>value</c>
+          <c>0x10</c><c>unsupported  (type)</c><c>value-tag</c>
+          <c>0x0005</c><c></c><c>name-length</c>
+          <c>sides</c><c>sides</c><c>name</c>
+          <c>0x0000</c><c></c><c>value-length</c>
+          <c>0x02</c><c>start job-attributes</c><c>job-attributes-tag</c>
+          <c>0x21</c><c>integer</c><c>value-tag</c>
+          <c>0x0006</c><c></c><c>name-length</c>
+          <c>job-id</c><c>job-id</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>147</c><c>147</c><c>value</c>
+          <c>0x45</c><c>uri type</c><c>value-tag</c>
+          <c>0x0007</c><c></c><c>name-length</c>
+          <c>job-uri</c><c>job-uri</c><c>name</c>
+          <c>0x0030</c><c></c><c>value-length</c>
+          <c>ipp://printer.example.com/ipp/print/pinetree/147</c><c>job 147 on pinetree</c><c>value</c>
+          <c>0x23</c><c>enum  type</c><c>value-tag</c>
+          <c>0x0009</c><c></c><c>name-length</c>
+          <c>job-state</c><c>job-state</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>0x0003</c><c>pending</c><c>value</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+        </texttable>
+      </section>
+      <section anchor="Sec.PrintURIRequest" title="Print-URI Request">
+        <t>The following is an example of Print-URI request with "copies" and "job-name" parameters:</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x0003</c><c>Print-URI</c><c>operation-id</c>
+          <c>0x00000001</c><c>1</c><c>request-id</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes-tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x45</c><c>uri type</c><c>value-tag</c>
+          <c>0x000b</c><c></c><c>name-length</c>
+          <c>printer-uri</c><c>printer-uri</c><c>name</c>
+          <c>0x002c</c><c></c><c>value-length</c>
+          <c>ipp://printer.example.com/ipp/print/pinetree</c><c>printer pinetree</c><c>value</c>
+          <c>0x45</c><c>uri type</c><c>value-tag</c>
+          <c>0x000c</c><c></c><c>name-length</c>
+          <c>document-uri</c><c>document-uri</c><c>name</c>
+          <c>0x0019</c><c></c><c>value-length</c>
+          <c>ftp://foo.example.com/foo</c><c>ftp://foo.example.com/foo</c><c>value</c>
+          <c>0x42</c><c>nameWithoutLanguage type</c><c>value-tag</c>
+          <c>0x0008</c><c></c><c>name-length</c>
+          <c>job-name</c><c>job-name</c><c>name</c>
+          <c>0x0006</c><c></c><c>value-length</c>
+          <c>foobar</c><c>foobar</c><c>value</c>
+          <c>0x02</c><c>start job-attributes</c><c>job-attributes-tag</c>
+          <c>0x21</c><c>integer type</c><c>value-tag</c>
+          <c>0x0006</c><c></c><c>name-length</c>
+          <c>copies</c><c>copies</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>0x00000001</c><c>1</c><c>value</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+        </texttable>
+      </section>
+      <section anchor="Sec.CreateJobRequest" title="Create-Job Request">
+        <t>The following is an example of Create-Job request with no parameters and no attributes:</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x0005</c><c>Create-Job</c><c>operation-id</c>
+          <c>0x00000001</c><c>1</c><c>request-id</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes-tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x45</c><c>uri type</c><c>value-tag</c>
+          <c>0x000b</c><c></c><c>name-length</c>
+          <c>printer-uri</c><c>printer-uri</c><c>name</c>
+          <c>0x002c</c><c></c><c>value-length</c>
+          <c>ipp://printer.example.com/ipp/print/pinetree</c><c>printer pinetree</c><c>value</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+        </texttable>
+      </section>
+      <section anchor="Sec.CreateJobRequestwithCollectionAttributes" title="Create-Job Request with Collection Attributes">
+
+        <t>The following is an example of Create-Job request with the "media-col" collection attribute <xref target="PWG5100.3" /> with the value &quot;media-size={x-dimension=21000 y-dimension=29700} media-type='stationery'&quot;:</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x0005</c><c>Create-Job</c><c>operation-id</c>
+          <c>0x00000001</c><c>1</c><c>request-id</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes-tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x45</c><c>uri type</c><c>value-tag</c>
+          <c>0x000b</c><c></c><c>name-length</c>
+          <c>printer-uri</c><c>printer-uri</c><c>name</c>
+          <c>0x002c</c><c></c><c>value-length</c>
+          <c>ipp://printer.example.com/ipp/print/pinetree</c><c>printer pinetree</c><c>value</c>
+          <c>0x34</c><c>begCollection</c><c>value-tag</c>
+          <c>0x0009</c><c>9</c><c>name-length</c>
+          <c>media-col</c><c>media-col</c><c>name</c>
+          <c>0x0000</c><c>0</c><c>value-length</c>
+          <c>0x4a</c><c>memberAttrName</c><c>value-tag</c>
+          <c>0x0000</c><c>0</c><c>name-length</c>
+          <c>0x000a</c><c>10</c><c>value-length</c>
+          <c>media-size</c><c>media-size</c><c>value (member-name)</c>
+          <c>0x34</c><c>begCollection</c><c>member-value-tag</c>
+          <c>0x0000</c><c>0</c><c>name-length</c>
+          <c>0x0000</c><c>0</c><c>member-value-length</c>
+          <c>0x4a</c><c>memberAttrName</c><c>value-tag</c>
+          <c>0x0000</c><c>0</c><c>name-length</c>
+          <c>0x000b</c><c>11</c><c>value-length</c>
+          <c>x-dimension</c><c>x-dimension</c><c>value (member-name)</c>
+          <c>0x21</c><c>integer</c><c>member-value-tag</c>
+          <c>0x0000</c><c>0</c><c>name-length</c>
+          <c>0x0004</c><c>4</c><c>member-value-length</c>
+          <c>0x00005208</c><c>21000</c><c>member-value</c>
+          <c>0x4a</c><c>memberAttrName</c><c>value-tag</c>
+          <c>0x0000</c><c>0</c><c>name-length</c>
+          <c>0x000b</c><c>11</c><c>value-length</c>
+          <c>y-dimension</c><c>y-dimension</c><c>value (member-name)</c>
+          <c>0x21</c><c>integer</c><c>member-value-tag</c>
+          <c>0x0000</c><c>0</c><c>name-length</c>
+          <c>0x0004</c><c>4</c><c>member-value-length</c>
+          <c>0x00007404</c><c>29700</c><c>member-value</c>
+          <c>0x37</c><c>endCollection</c><c>end-value-tag</c>
+          <c>0x0000</c><c>0</c><c>end-name-length</c>
+          <c>0x0000</c><c>0</c><c>end-value-length</c>
+          <c>0x4a</c><c>memberAttrName</c><c>value-tag</c>
+          <c>0x0000</c><c>0</c><c>name-length</c>
+          <c>0x000a</c><c>10</c><c>value-length</c>
+          <c>media-type</c><c>media-type</c><c>value (member-name)</c>
+          <c>0x44</c><c>keyword</c><c>member-value-tag</c>
+          <c>0x0000</c><c>0</c><c>name-length</c>
+          <c>0x000a</c><c>10</c><c>member-value-length</c>
+          <c>stationery</c><c>stationery</c><c>member-value</c>
+          <c>0x37</c><c>endCollection</c><c>end-value-tag</c>
+          <c>0x0000</c><c>0</c><c>end-name-length</c>
+          <c>0x0000</c><c>0</c><c>end-value-length</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+        </texttable>
+      </section>
+      <section anchor="Sec.GetJobsRequest" title="Get-Jobs Request">
+        <t>The following is an example of Get-Jobs request with parameters but no attributes:</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x000a</c><c>Get-Jobs</c><c>operation-id</c>
+          <c>0x0000007b</c><c>123</c><c>request-id</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes-tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x45</c><c>uri type</c><c>value-tag</c>
+          <c>0x000b</c><c></c><c>name-length</c>
+          <c>printer-uri</c><c>printer-uri</c><c>name</c>
+          <c>0x002c</c><c></c><c>value-length</c>
+          <c>ipp://printer.example.com/ipp/print/pinetree</c><c>printer pinetree</c><c>value</c>
+          <c>0x21</c><c>integer type</c><c>value-tag</c>
+          <c>0x0005</c><c></c><c>name-length</c>
+          <c>limit</c><c>limit</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>0x00000032</c><c>50</c><c>value</c>
+          <c>0x44</c><c>keyword type</c><c>value-tag</c>
+          <c>0x0014</c><c></c><c>name-length</c>
+          <c>requested-attributes</c><c>requested-attributes</c><c>name</c>
+          <c>0x0006</c><c></c><c>value-length</c>
+          <c>job-id</c><c>job-id</c><c>value</c>
+          <c>0x44</c><c>keyword type</c><c>value-tag</c>
+          <c>0x0000</c><c>additional value</c><c>name-length</c>
+          <c>0x0008</c><c></c><c>value-length</c>
+          <c>job-name</c><c>job-name</c><c>value</c>
+          <c>0x44</c><c>keyword type</c><c>value-tag</c>
+          <c>0x0000</c><c>additional value</c><c>name-length</c>
+          <c>0x000f</c><c></c><c>value-length</c>
+          <c>document-format</c><c>document-format</c><c>value</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+        </texttable>
+      </section>
+      <section anchor="Sec.GetJobsResponse" title="Get-Jobs Response">
+        <t>The following is an example of a Get-Jobs response from a previous request with three Jobs. The Printer returns no information about the second Job (because of security reasons):</t>
+        <texttable style="none">
+          <ttcol>Octets</ttcol><ttcol>Symbolic Value</ttcol><ttcol>Protocol field</ttcol>
+          <c></c><c></c><c></c>
+          <c>0x0101</c><c>1.1</c><c>version-number</c>
+          <c>0x0000</c><c>successful-ok</c><c>status-code</c>
+          <c>0x0000007b</c><c>123</c><c>request-id (echoed back)</c>
+          <c>0x01</c><c>start operation-attributes</c><c>operation-attributes-tag</c>
+          <c>0x47</c><c>charset type</c><c>value-tag</c>
+          <c>0x0012</c><c></c><c>name-length</c>
+          <c>attributes-charset</c><c>attributes-charset</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>utf-8</c><c>UTF-8</c><c>value</c>
+          <c>0x48</c><c>natural-language type</c><c>value-tag</c>
+          <c>0x001b</c><c></c><c>name-length</c>
+          <c>attributes-natural-language</c><c>attributes-natural-language</c><c>name</c>
+          <c>0x0005</c><c></c><c>value-length</c>
+          <c>en-us</c><c>en-US</c><c>value</c>
+          <c>0x41</c><c>textWithoutLanguage type</c><c>value-tag</c>
+          <c>0x000e</c><c></c><c>name-length</c>
+          <c>status-message</c><c>status-message</c><c>name</c>
+          <c>0x000d</c><c></c><c>value-length</c>
+          <c>successful-ok</c><c>successful-ok</c><c>value</c>
+          <c>0x02</c><c>start job-attributes (1st  object)</c><c>job-attributes-tag</c>
+          <c>0x21</c><c>integer type</c><c>value-tag</c>
+          <c>0x0006</c><c></c><c>name-length</c>
+          <c>job-id</c><c>job-id</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>147</c><c>147</c><c>value</c>
+          <c>0x36</c><c>nameWithLanguage</c><c>value-tag</c>
+          <c>0x0008</c><c></c><c>name-length</c>
+          <c>job-name</c><c>job-name</c><c>name</c>
+          <c>0x000c</c><c></c><c>value-length</c>
+          <c>0x0005</c><c></c><c>sub-value-length</c>
+          <c>fr-ca</c><c>fr-CA</c><c>value</c>
+          <c>0x0003</c><c></c><c>sub-value-length</c>
+          <c>fou</c><c>fou</c><c>name</c>
+          <c>0x02</c><c>start job-attributes (2nd object)</c><c>job-attributes-tag</c>
+          <c>0x02</c><c>start job-attributes (3rd object)</c><c>job-attributes-tag</c>
+          <c>0x21</c><c>integer type</c><c>value-tag</c>
+          <c>0x0006</c><c></c><c>name-length</c>
+          <c>job-id</c><c>job-id</c><c>name</c>
+          <c>0x0004</c><c></c><c>value-length</c>
+          <c>148</c><c>149</c><c>value</c>
+          <c>0x36</c><c>nameWithLanguage</c><c>value-tag</c>
+          <c>0x0008</c><c></c><c>name-length</c>
+          <c>job-name</c><c>job-name</c><c>name</c>
+          <c>0x0012</c><c></c><c>value-length</c>
+          <c>0x0005</c><c></c><c>sub-value-length</c>
+          <c>de-CH</c><c>de-CH</c><c>value</c>
+          <c>0x0009</c><c></c><c>sub-value-length</c>
+          <c>isch guet</c><c>isch guet</c><c>name</c>
+          <c>0x03</c><c>end-of-attributes</c><c>end-of-attributes-tag</c>
+        </texttable>
+      </section>
+    </section>
+<section anchor="Sec.Ackowledgements" title="Acknowledgements" numbered="no">
+<t>The authors would like to acknowledge the following individuals for their
+contributions to the original IPP/1.1 specifications:</t>
+<t>Sylvan Butler, Roger deBry, Tom Hastings, Robert Herriot (the original
+editor of RFC 2910), Paul Moore, Kirk Ocke, Randy Turner, John Wenn, and Peter Zehler.</t>
+</section>
+  </back>
+</rfc>

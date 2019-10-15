@@ -1,0 +1,934 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc symrefs="yes"?>
+<?rfc comments="yes" ?>
+<?rfc inline="yes" ?>
+
+<rfc number="8494" ipr="trust200902" category="info" submissionType="independent">
+  <front>
+
+
+    <title abbrev="Email over ACP 142">
+      Multicast Email (MULE) over Allied Communications Publication (ACP) 142
+    </title>
+    <author initials="D." surname="Wilson" fullname="David Wilson">
+      <organization>Isode Ltd</organization>
+      <address>
+        <postal>
+          <street>14 Castle Mews</street>
+          <city>Hampton</city>
+          <region>Middlesex</region>
+          <code>TW12 2NP</code>
+          <country>United Kingdom</country>
+        </postal>
+        <email>David.Wilson@isode.com</email>
+      </address>
+    </author>
+    <author role="editor" initials="A." surname="Melnikov" fullname="Alexey Melnikov">
+      <organization>Isode Ltd</organization>
+      <address>
+        <postal>
+          <street>14 Castle Mews</street>
+          <city>Hampton</city>
+          <region>Middlesex</region>
+          <code>TW12 2NP</code>
+          <country>United Kingdom</country>
+        </postal>
+        <email>Alexey.Melnikov@isode.com</email>
+      </address>
+    </author>
+
+    <date month="November" year="2018" />
+
+    <keyword>P_MUL</keyword>
+
+
+    <abstract>
+
+    <t>
+      Allied Communications Publication (ACP) 142 defines P_MUL, which is a protocol
+      for reliable multicast suitable for bandwidth-constrained and
+      delayed acknowledgement (Emissions Control or "EMCON") environments running over UDP.
+      This document defines MULE (Multicast
+      Email), an application protocol for transferring Internet Mail messages
+      (as described in RFC 5322) over P_MUL (as defined in ACP 142).
+  MULE enables transfer between Message Transfer Agents (MTAs).
+  It doesn't provide a service similar to SMTP Submission (as
+  described in RFC 6409).
+    </t>
+
+    <t>
+      This document explains how MULE can be used in conjunction with
+      SMTP (RFC 5321), including some common SMTP extensions,
+      to provide an alternate MTA-to-MTA transfer mechanism.
+    </t>
+
+    <t>
+      This is not an IETF specification; it describes an existing implementation.
+      It is provided in order to facilitate interoperable implementations and
+      third-party diagnostics.
+    </t>
+
+    </abstract>
+    
+  </front>
+  <middle>
+
+    <section title="Introduction">
+
+      <t>
+        P_MUL <xref target="ACP142A"/> is a transport protocol for reliable multicast in bandwidth-constrained and
+        delayed acknowledgement environments running on top of UDP.
+        This document defines MULE, an application protocol
+        for transferring Internet Mail messages <xref target="RFC5322"/> over ACP 142 P_MUL.
+        The objectives of MULE are 1) to take advantage of the bandwidth-saving
+        feature of using the multicast service as supported by modern
+        computer networks and 2) to allow message transfer under EMCON (Emissions Control)
+        conditions. EMCON or "radio silence" means that although receiving
+        nodes are able to receive messages, they are not able to acknowledge
+        the receipt of messages.
+      </t>
+
+      <t>
+        The objective of this protocol is to take advantage of multicast
+        communication for the transfer of messages between MTAs (Message
+        Transfer Agents) on a single multicast network under normal (i.e., dialog-oriented) communication conditions and under EMCON
+        conditions. An "EMCON condition" means that a receiving node is able to
+        receive messages but cannot acknowledge the received messages for a
+	relatively long time (hours or
+        even days).
+      </t>
+
+<t>
+<xref target="fig1"/> illustrates a simple multicast scenario, where the same
+message has to be sent from MTA A (through G/W) to MTA 1, MTA 2, MTA 3, and MTA 4.
+</t>
+        <figure title="Typical MULE Deployment" anchor="fig1">
+
+<artwork><![CDATA[
+                          +-------+                   +-------+
+                          | MTA 1 |<-\             /->| MTA 3 |
+ +-------+     +-----+    +-------+   \ +-------+ /   +-------+
+ | MTA A |<--->| G/W |<---------------->| Router|<
+ +-------+     +-----+    +-------+   / +-------+ \   +-------+
+                          | MTA 2 |<-/             \->| MTA 4 |
+                          +-------+                   +-------+
+
+                        |< -------------- MULE ---------------->|
+]]></artwork>
+          <postamble>Note: The gateway (G/W) and Router
+          might or might not be running on the same system.</postamble>
+        </figure>
+
+
+      <t>
+        Due to multicast use (instead of a unicast communication service) in the
+        above MTA configuration, only one message transmission from the gateway to
+        the Router is required in order to reach MTA 1, MTA 2, MTA 3, and MTA 4,
+        instead of four as required with unicast.
+   This saves the
+   transmission three message transactions and thus results in
+   savings in bandwidth utilization.
+   Depending on the network bandwidth (in some radio
+	networks, it is less than 9.6 Kb/s), this savings can be of vital importance.
+        The savings in bandwidth utilization become even greater with every
+        additional receiving MTA.
+      </t>
+
+      <t>
+        P_MUL employs a connectionless transport protocol to transmit
+        messages. This guarantees reliable message transfer (through ACP 142 retransmissions)
+        even in cases where one or more of the receiving
+        MTAs are not able or allowed to acknowledge completely received
+        messages for a certain period of time.
+      </t>
+
+
+<t>
+    This protocol specification requires fixed multicast groups and             
+    knowledge of the group memberships in one or more multicast groups of each
+    participating node (MTA). 
+Membership in multicast groups needs to be established
+        before MULE messages can be sent.
+      </t>
+
+      <t>
+        MULE enables MTA-to-MTA transfer. It
+        doesn't provide service similar to SMTP Submission <xref target="RFC6409"/>.
+      </t>
+
+    </section>
+    
+    <section title="Conventions Used in This Document">
+      
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+      <t>This document also uses terminology from <xref target="RFC5321"/> and <xref target="RFC5598"/>.</t>
+
+    </section>
+
+    <section title="MULE">
+
+
+      <t>
+      MULE is an electronic mail transport of Internet Mail messages <xref target="RFC5322"/> over
+
+     an ACP 142 P_MUL network. It provides service similar to MTA-to-MTA SMTP <xref target="RFC5321"/>.
+      This document doesn't define a service similar to SMTP Submission <xref target="RFC6409"/>.
+      </t>
+
+      <t>
+      An important feature of MULE is its capability to transport mail
+      across multiple networks, referred to as "MULE mail relaying".
+      A network consists of the nodes that are mutually accessible by ACP 142.
+      Using MULE, a process can transfer mail to another process on the same
+      ACP 142 network or to some other ACP 142 network via a relay or gateway process
+      accessible to both networks.
+      </t>
+
+      <t>
+        MULE reuses the ESMTP extension framework defined in <xref target="RFC5321"/>.
+
+        MULE servers MUST support the following ESMTP extensions:
+        DSN <xref target="RFC3461"/>,
+        SIZE <xref target="RFC1870"/>,
+        8BITMIME <xref target="RFC6152"/>,
+        MT-PRIORITY <xref target="RFC6710"/>,
+        DELIVERBY <xref target="RFC2852"/>,
+        BINARYMIME <xref target="RFC3030"/>, and CHUNKING <xref target="RFC3030"/>.
+        (As the message content size can always be determined from
+        the compression wrapper and the size of the envelope,
+        no special handling is needed for binary messages.)
+      </t>
+
+      <t>
+      Relaying a message using MULE is performed as follows:
+
+        <list style='numbers'>
+
+          <t>
+          The message is reassembled from one or more DATA_PDUs <xref target="ACP142A"/>.
+          </t>
+
+          <t>
+          If the contentType-ShortForm value is 25, the BSMTP-like payload is
+	  extracted from the compressedContent field
+          and uncompressed (the reverse of the compression process specified
+	  in <xref target="payload-compress"/>).
+          If the contentType-ShortForm value is not 25, it is handled as
+	  described in <xref target="ACP142A"/>.
+          This document doesn't further discuss any cases where the
+	  contentType-ShortForm value is not 25.
+          </t>
+
+          <t>
+          The list of recipients is extracted from RCPT-lines (see <xref target="payload-create"/>).
+          If the receiving node is not responsible (directly or indirectly) for any of the recipients,
+          the message is discarded and no further processing is done.
+          </t>
+
+          <t>
+          The relay adds trace header fields, e.g., the Received header
+	  field. See <xref target="RFC7601"/> and Section 4.4 of <xref target="RFC5321"/>.
+          </t>
+
+          <t>
+          The set of ACP 142 destinations for the message is created by extracting right-hand sides (hostnames)
+          of each RCPT-line, eliminating duplicates, and then converting each
+	  hostname into the next ACP 142 destination
+          using static configuration.
+          </t>
+
+          <t>
+            For each unique ACP 142 destination, the following steps are performed:
+
+            <list style='letters'>
+
+              <t>
+                A new BSMTP-like payload is formed, as described in <xref target="payload-create"/>,
+                that only contains RCPT-lines that correspond to recipients that can receive mail
+                through the ACP 142 destination.
+              </t>
+
+              <t>
+                The created payload is compressed and encoded as specified in <xref target="payload-compress"/>.
+              </t>
+
+
+              <t>
+                The compressed payload is sent by P_MUL as a series of an
+		Address_PDU and one or more DATA_PDUs.
+                When the message has an associated MT-PRIORITY value <xref target="RFC6710"/>,
+                the MappedPriority(value) is included as the Priority field of
+		the corresponding ACP 142 PDUs,
+                including Address_PDUs, DATA_PDUs, and
+		DISCARD_MESSAGE_PDUs. Here, MappedPriority(x) is defined as "6
+		- x".
+
+              </t>
+
+            </list>
+
+          </t>
+
+        </list>
+
+      </t>
+
+      <section title="BSMTP-Like Payload Construction" anchor="payload-create">
+
+
+          <t>MULE uses a BSMTP-like payload that differs from Batch SMTP (BSMTP) <xref target="RFC2442"/>
+            in that it eliminates unnecessary information.
+            As with BSMTP, ESMTP capability negotiation is not used,
+            since receiver EMCON restrictions prohibit such real-time
+            interaction.  For that reason, there is no point in including EHLO
+            capabilities.  "MAIL FROM:" and "RCPT TO:" prefixes are also
+            excluded in order to save a few bytes.
+          </t>
+
+          <t>
+            For each received message, the corresponding BSMTP-like payload is
+	    constructed as follows. Note that
+            lines are terminated using CR LF.
+
+
+
+            <list style='numbers'>
+
+              <t>
+                The first line is what would be used for the data following "MAIL FROM:"
+                in the SMTP dialog, i.e., it contains the return-path
+		address (including the angle brackets -- "&lt;" and "&gt;") followed by any ESMTP extension parameters to the MAIL FROM command.
+              </t>
+
+
+              <t>
+                After that, there is a separate line for each recipient of the message.
+                The value is what would follow "RCPT TO:" in the SMTP dialog,
+                i.e., the recipient address (including the angle brackets --
+		"&lt;" and "&gt;")
+                followed by any ESMTP extension parameters to the corresponding RCPT TO command.
+              </t>
+
+              <t>
+                The list of recipients is terminated by an empty line (i.e., just CR LF).
+              </t>
+
+              <t>
+              The message content follows the empty line. There is no need for
+              transparency ("dot stuffing") or terminating with a sequence "CR LF . CR LF", as the end of
+              the message content is indicated by the end of the data
+              (see <xref target="payload-compress"/> for more details).
+              </t>
+              
+            </list>
+          </t>
+
+          <t>
+The following is an example of a BSMTP-like payload:
+	    </t>
+            <figure>
+              <artwork><![CDATA[
+<from@example.com> MT-PRIORITY=4 BODY=8BITMIME RET=HDRS ENVID=QQ314159
+<to1@example.net> NOTIFY=FAILURE ORCPT=rfc822;Bob@ent.example.net
+<to2@example.net> NOTIFY=SUCCESS,FAILURE
+
+From: from@example.com
+To: To1 <to1@example.net>, To2 <to2@example.net>
+Date: 27 Apr 2017 16:17 +0100
+Subject: a test
+MIME-Version: 1.0
+Content-type: text/plain; charset=utf-8
+Content-transfer-encoding: 8bit
+
+This is worth <poundsign>100
+              ]]></artwork>
+              <postamble></postamble>
+            </figure>
+
+
+<t>
+ABNF <xref target="RFC5234"/> for the BSMTP-like payload is:
+</t>
+            <figure>
+              <artwork type="abnf"><![CDATA[
+bsmtp-like-payload = envelope CRLF payload
+envelope = FROM-line 1*RCPT-line
+FROM-line = reverse-path [SP mail-parameters] CRLF
+RCPT-line = forward-path [SP rcpt-parameters] CRLF
+
+payload = *OCTET
+          ; Conforms to message syntax as defined in RFC 5322
+          ; and extended in MIME
+
+OCTET = <any 0-255 octet value>
+reverse-path = <as defined in RFC 5321>
+forward-path = <as defined in RFC 5321>
+mail-parameters = <as defined in RFC 5321>
+rcpt-parameters = <as defined in RFC 5321>
+              ]]></artwork>
+              <postamble></postamble>
+            </figure>
+
+
+      </section>
+
+      <section title="Payload Compression" anchor="payload-compress">
+
+          <t>
+            A BSMTP-like payload (<xref target="payload-create"/>) is first
+	    compressed using zlibCompress <xref target="RFC1950"/>. This
+	    compressed payload is placed in the compressedContent field of
+            the CompressedContentInfo element defined in Section 4.2.6 of
+	    <xref target="STANAG-4406"/>.
+            This is then encoded as BER encoding <xref target="ITU.X690.2002"/> of the CompressedData ASN.1 structure.
+            For convenience, the original definition of the CompressedData
+	    ASN.1 structure is included below.
+            The contentType-ShortForm value used by MULE MUST be 25. (The contentType-OID alternative is never used by MULE.)
+          </t>
+
+          <t>The above procedure is similar to how X.400 messages are sent
+	  using Annex E of <xref target="STANAG-4406"/>.
+
+          This makes it easier to implement MTAs that support both Internet messages and X.400 messages in the same code base.</t>
+          
+          <t>
+            The Compressed Data Type (CDT) consists of content of any type that is
+            compressed using a specified algorithm. The following object identifier identifies the
+            CDT:
+	  </t>            
+
+            <figure>
+              <artwork><![CDATA[
+id-mmhs-CDT ID ::= { iso(1) identified-organization(3) nato(26)
+                     stanags(0) mmhs(4406) object-identifiers(0)
+                     id-mcont(4) 2 }
+              ]]></artwork>
+            </figure>
+            
+
+<t>
+The CDT is defined by the following ASN.1 type.
+Note that this definition is copied from <xref target="STANAG-4406"/>
+and is only reproduced here for the reader's convenience.
+</t>
+            <figure>
+              <artwork><![CDATA[
+DEFINITIONS ::=
+BEGIN
+CompressedData ::= SEQUENCE {
+                   compressionAlgorithm CompressionAlgorithmIdentifier,
+                   compressedContentInfo CompressedContentInfo
+                   }
+CompressionAlgorithmIdentifier ::= CHOICE {
+                     algorithmID-ShortForm [0] AlgorithmID-ShortForm,
+                     algorithmID-OID [1] OBJECT IDENTIFIER 
+                   }
+AlgorithmID-ShortForm ::= INTEGER { zlibCompress (0) }
+CompressedContentInfo ::= SEQUENCE {
+                     CHOICE {
+                       contentType-ShortForm [0] ContentType-ShortForm,
+                       contentType-OID [1] OBJECT IDENTIFIER
+                     },
+                     compressedContent [0] EXPLICIT OCTET STRING
+                   }
+ContentType-ShortForm ::= INTEGER {
+                     unidentified (0),
+                     external (1), -- identified by the
+                                   -- object-identifier
+                                   -- of the EXTERNAL content
+                     p1 (2),
+                     p3 (3),
+                     p7 (4)
+                   }
+END
+              ]]></artwork>
+            </figure>
+
+<t>
+This document effectively adds another enumeration choice to the
+ContentType-ShortForm definition. The updated definition looks like this:
+</t>            
+            <figure>
+              <artwork><![CDATA[
+ContentType-ShortForm ::= INTEGER {
+                     unidentified (0),
+                     external (1), -- identified by the
+                                   -- object-identifier
+                                   -- of the EXTERNAL content
+                     p1 (2),
+                     p3 (3),
+                     p7 (4),
+                     mule (25)
+                   }
+              ]]></artwork>
+            </figure>
+
+      </section>
+
+      <section title="Error Handling">
+
+
+
+        <t>
+
+   MULE doesn't allow a next-hop Message Transfer Agent / Mail Delivery Agent
+   (MTA/MDA) to return immediate Response Codes for the FROM-line or any of the
+   recipients in the RCPT-line. Therefore, when MTAs/MDAs that are compliant with
+   this specification receive a message that can't be relayed further or
+   delivered, they MUST generate a non-delivery DSN report <xref
+   target="RFC6522"/> message
+   that includes the message/delivery-status body part
+   <xref target="RFC3464"/> and submit it
+   using MULE to the FROM-line return-path address.
+
+        </t>
+
+        <t>MULE relays (unlike MULE MDAs) don't need to verify that they understand all FROM-line and/or RCPT-line parameters.
+        This keeps relay-only implementations simpler and avoids the need to upgrade them when MULE MDAs are updated to support
+        extra SMTP extensions.</t>
+    
+      </section>
+    
+    </section>
+
+    <section title="Gatewaying from Internet Mail to MULE" anchor="gateway-from-internet">
+
+        <t>A gateway from Internet Mail to MULE acts as an SMTP server on the receiving side and
+        as a MULE client on the sending side.</t>
+      
+
+        <t>
+          When the content type for a message is an Internet message content
+	  type 
+
+          (which may be 7-bit, 8-bit, or binary MIME), this is transported using
+          ACP 142 <xref target="ACP142A"/> as follows: 
+
+          <list style='numbers'>
+
+            <t>
+              For each mail message, a BSMTP-like payload is formed, as described in <xref target="payload-create"/>.
+            </t>
+
+            <t>
+              The created payload is compressed and encoded, as specified in <xref target="payload-compress"/>.
+            </t>
+
+
+            <t>
+              The compressed payload is sent by P_MUL as a series of an Address_PDU and one or more DATA_PDUs.
+              When the message has an associated MT-PRIORITY value <xref target="RFC6710"/>,
+              the MappedPriority(value) is included as the Priority field of
+	      the corresponding ACP 142 PDUs,
+              including Address_PDUs, DATA_PDUs, and DISCARD_MESSAGE_PDUs. Here, MappedPriority(x) is defined as "6 - x".
+            </t>
+
+          </list>
+
+        </t>
+
+        <t>
+
+          The set of ACP 142 destinations for the message is derived from the next-hop MTAs for each of the recipients.
+        </t>
+
+
+      <section title="Use of BDAT">
+        
+        <t>
+        If a message is received by a gateway through SMTP transfers using
+        the CHUNKING <xref target="RFC3030"/> extension, the message is rebuilt by the receiving MTA
+        into its complete form and is then used as a single
+        MULE message payload.
+        Use of the BINARYMIME <xref target="RFC3030"/> extension is conveyed
+	by inclusion of the BODY=BINARY parameter in the FROM-line.
+        </t>
+        
+      </section>
+
+    </section>
+
+    <section title="Gatewaying from MULE to Internet Mail">
+
+      <t>
+        A gateway from MULE to Internet Mail acts as a MULE server on the receiving side and
+        as an SMTP client on the sending side.
+      </t>
+
+      <t>Gatewaying from an ACP 142 environment to Internet Email is the reverse of the process specified in <xref target="gateway-from-internet"/>.
+
+        <list style='numbers'>
+
+          <t>
+            The ACP 142 message is reassembled from one or more DATA_PDUs.
+          </t>
+
+          <t>
+            If the contentType-ShortForm value is 25, the BSMTP-like payload
+	    is extracted from the compressedContent field
+            and uncompressed (the reverse of the compression process specified
+	    in <xref target="payload-compress"/>).
+
+            If the contentType-ShortForm value is not 25, it is handled as
+	    described in <xref target="ACP142A"/>.
+
+          </t>
+
+
+          <t>
+            The BSMTP-like payload is converted to an SMTP transaction (see <xref target="payload-create"/>).
+            (The first line of the BSMTP-like payload is prepended with "MAIL FROM:", and
+            each following line (until the empty line is encountered) is prepended with "RCPT TO:".
+            After skipping the empty delimiting line, the rest of the payload is the message body.
+            This can be sent using either DATA or a series of BDAT commands,
+	    depending on the capabilities
+            of the receiving SMTP system.
+            For example, the presence of the BODY=BINARY parameter in the
+	    FROM-line would necessitate the use of BDAT or
+            down-conversion of the message to 7-bit compatible representation.)
+          </t>
+          
+        </list>
+
+      </t>
+      
+      <section title="Handling of ESMTP Extensions and Errors">
+
+        <t>
+          ESMTP extension parameters to MAIL FROM and RCPT TO SMTP commands
+	  obtained from a BSMTP-like payload
+          are processed according to specifications of the corresponding ESMTP extensions.
+          This includes dealing with the absence of support for ESMTP
+	  extensions that correspond to MAIL FROM and RCPT TO parameters
+          found in the BSMTP-like payload.
+
+        </t>
+
+        <t>Failures to extract or uncompress BSMTP-like payloads should result in the receiver discarding such payloads.</t>
+
+      </section>
+
+    </section>
+
+    <section title="IANA Considerations">
+
+      <t>IANA has created a new "Multicast Email SMTP
+      Extensions" registry under the "MAIL Parameters" registry.
+      The registration procedure for this new registry is "Specification Required"
+      <xref target="RFC8126"/>.
+      The designated expert(s) will be appointed and managed by the
+      editors of this document
+      together with the Independent Submissions Editor. Selected designated
+      expert(s) should (collectively)
+      have a good knowledge of SMTP (and its extensions and extensibility
+      mechanisms), as well as ACP 142
+      and its limitations.
+      The subsections below provide more details: <xref
+      target="iana-mule-de"/>
+      specifies instructions for the designated expert(s), and <xref
+      target="iana-mule-smtp"/>
+      defines the initial content of the registry.
+      </t>
+
+
+      <section title="Instructions for Designated Experts" anchor="iana-mule-de">
+
+      <t>The designated expert(s) for the new "Multicast Email SMTP Extensions"
+      registry verifies that:
+
+        <list style='numbers'>
+          <t>
+            The requested SMTP extension is already registered in the "SMTP
+	    Service Extensions" registry
+            under the "MAIL Parameters" registry on the IANA website
+            or is well documented on a stable, publicly accessible web page.
+          </t>
+
+          <t>The requested SMTP extension has the correct status as specified
+	  in <xref target="iana-mule-smtp"/>.
+             When deciding on status, the designated expert(s) is provided
+	     with the following guidelines:
+
+               <list style='letters'>
+                 <t>If the SMTP extension only affects commands other than
+                 MAIL FROM and RCPT TO, then the status should be "N/A".
+                 </t>
+
+                 <t>If the SMTP extension only applies to SMTP Submission
+		 <xref target="RFC6409"/> (and
+		 not to SMTP relay or final SMTP delivery),
+                 then the status should be "N/A".
+                 </t>
+
+                 <t>If the SMTP extension changes which commands are allowed during an SMTP transaction
+                 (e.g., if it adds commands alternative to DATA or declares commands other than
+                 MAIL FROM, RCPT TO, DATA, and BDAT to be a part of SMTP transaction),
+                 then the status should be "Disallowed" or "Special".
+                 </t>
+
+                 <t>If the SMTP extension adds extra round trips during SMTP transaction,
+                 then the status should be "Disallowed" or "Special".
+                 </t>
+
+               </list>
+          </t>
+        </list>      
+      
+      </t>
+
+      <t>Registration requests should include the SMTP extension name, status
+      (see <xref target="iana-mule-smtp"/>), and
+      specification reference. They may also include an optional note.</t>
+      
+      </section>
+
+      <section title="SMTP Extension Support in MULE" anchor="iana-mule-smtp">
+
+        <t>The following table
+	summarizes how different SMTP extensions can be used with MULE.
+        Each extension has one of the following statuses: 
+
+<list style="symbols">
+
+<t>Required - support by MULE relays, SMTP-to-MULE gateway,
+or MULE-to-SMTP gateway is required.</t>
+
+<t>Disallowed - incompatible with MULE.</t>
+
+<t>N/A - not relevant because the extension affects commands other than
+MAIL FROM and/or RCPT TO or is only defined for SMTP Submission <xref target="RFC6409"/>. Such
+extensions can still be used on the receiving SMTP side of an SMTP-to-MULE gateway.
+</t>
+
+<t>Supported - can be used with MULE but requires bilateral agreement between
+sender and receiver.</t>
+
+<t>Special - needs to be accompanied by an explanation.</t>
+
+</list>
+</t>
+
+<?rfc compact="no"?>
+
+        <texttable title ="Initial Content of Multicast Email SMTP Extensions Registry" anchor="iana_table">
+          <preamble></preamble>
+
+        <ttcol>SMTP Extension Keyword</ttcol><ttcol>Status</ttcol><ttcol>Reference</ttcol>
+
+        <c>SIZE</c><c>Required</c><c><xref target="RFC1870"/></c>
+        <c>8BITMIME</c><c>Required</c><c><xref target="RFC6152"/></c>
+        <c>DSN</c><c>Required</c><c><xref target="RFC3461"/></c>
+        <c>MT-PRIORITY</c><c>Required</c><c><xref target="RFC6710"/></c>
+        <c>DELIVERBY</c><c>Required</c><c><xref target="RFC2852"/></c>
+        <c>BINARYMIME</c><c>Required</c><c><xref target="RFC3030"/></c>
+        <c>CHUNKING</c><c>Special (*)</c><c><xref target="RFC3030"/></c>
+        <c>ENHANCEDSTATUSCODES</c><c>Special (**)</c><c><xref target="RFC2034"/></c>
+        <c>RRVS</c><c>Supported</c><c><xref target="RFC7293"/></c>
+        <c>SUBMITTER</c><c>Supported</c><c><xref target="RFC4405"/></c>
+        <c>PIPELINING</c><c>N/A</c><c><xref target="RFC2920"/></c>
+        <c>STARTTLS</c><c>N/A</c><c><xref target="RFC3207"/></c>
+        <c>AUTH</c><c>Special (***)</c><c><xref target="RFC4954"/></c>
+        <c>BURL</c><c>N/A</c><c><xref target="RFC4468"/></c>
+        <c>NO-SOLICITING</c><c>N/A</c><c><xref target="RFC3865"/></c>
+        <c>CHECKPOINT</c><c>Disallowed</c><c><xref target="RFC1845"/></c>
+        <c>CONNEG</c><c>Disallowed</c><c><xref target="RFC4141"/></c>
+          
+         
+        </texttable>
+<?rfc compact="yes"?>
+
+        <t>(*) - SMTP CHUNKING MUST be supported on the receiving SMTP side of an SMTP-to-MULE gateway
+        and MAY be used on the sending side of a MULE-to-SMTP gateway.
+        A MULE relay doesn't need to do anything special for this extension.
+        </t>
+
+        <t>(**) - The ENHANCEDSTATUSCODES extension is supported by including relevant status codes in DSN <xref target="RFC3461"/> reports.</t>
+        
+        <t>(***) - The AUTH parameter to the MAIL FROM command is "Supported", but
+	the rest of the AUTH extension is not applicable to MULE.</t>
+        
+        <t>
+        Note that the above table is not exhaustive. Future RFCs can define
+	how SMTP extensions not listed above
+        can be used in MULE.
+        </t>
+
+      </section>
+
+      
+    </section>
+
+    <section title="Security Considerations" anchor="seccons">
+
+      <t>
+      As MULE provides a service similar to SMTP, many of the security
+      considerations from <xref target="RFC5321"/>
+      apply to MULE as well; in particular, Sections 7.1, 7.2, 7.4, 7.6, 7.7,
+      and 7.9 of <xref target="RFC5321"/> apply to MULE.
+      </t>
+
+      <t>As MULE doesn't support capability negotiation or the SMTP HELP command, Section 7.5 of <xref target="RFC5321"/>
+      ("Information Disclosure in Announcements") doesn't apply to MULE.</t>
+
+      <t>As MULE doesn't support the VRFY or EXPN SMTP commands, Section 7.3 of <xref target="RFC5321"/>
+      ("VRFY, EXPN, and Security"), which discusses email harvesting, doesn't apply to MULE.</t>
+
+      <t>Arguably, it is more difficult to cause an application-layer denial-of-service attack on
+      a MULE server than on an SMTP server. This is partially due to the fact that ACP 142 is used
+      in radio/wireless networks with relatively low bandwidth and very long round-trip time
+      (especially if EMCON is in force).
+      However, as MULE is using multicast, multiple MULE nodes can receive the same message
+      and spend CPU resources processing it, even if the message is addressed to recipients that are not going
+      to be handled by such nodes. As MULE lacks transport-layer source authentication,
+      this can be abused by malicious senders.
+      </t>
+
+      <t>For security considerations related to use of zlib compression, see <xref target="RFC6713"/>.</t>
+
+      <t>Due to the multicast nature of MULE, it cannot use TLS or DTLS.
+      Accordingly, it does not support STARTTLS <xref target="RFC3207"/>.
+      Users should not depend on hop-by-hop confidentiality or integrity protection
+      of mail transferred among MULE MTAs (in the same way they can't generally
+      rely on the use of
+      STARTTLS on SMTP MTA-to-MTA links) and should consider the use of end-to-end protection,
+      such as S/MIME <xref target="RFC5750"/> <xref target="RFC5751"/>.</t>
+
+<t>
+S/MIME signatures and/or encryption survive gatewaying between MULE and SMTP environments.
+</t>
+
+    </section>
+    
+  </middle>
+  <back>
+    <references title="Normative References">
+      
+      <?rfc include="reference.RFC.1950"?> 
+      <?rfc include="reference.RFC.2119"?> 
+      <?rfc include="reference.RFC.5321"?> 
+      <?rfc include="reference.RFC.5322"?> 
+      <?rfc include="reference.RFC.1870"?> 
+      <?rfc include="reference.RFC.2852"?> 
+      <?rfc include="reference.RFC.3461"?> 
+      <?rfc include="reference.RFC.3464"?> 
+      <?rfc include="reference.RFC.6522"?> 
+      
+      <?rfc include="reference.RFC.6710"?> 
+      <?rfc include="reference.RFC.6152"?> 
+      <?rfc include="reference.RFC.3030"?> 
+      <?rfc include="reference.RFC.5234"?> 
+      <?rfc include="reference.RFC.5598"?> 
+      <?rfc include="reference.RFC.7601"?> 
+      <?rfc include="reference.RFC.8126"?> 
+      <?rfc include="reference.RFC.8174"?> 
+      <?rfc include="reference.RFC.6713"?> 
+      
+
+
+      <reference anchor="ITU.X690.2002">
+        <front>
+        <title>
+              Information Technology - ASN.1 encoding rules:
+              Specification of Basic Encoding Rules (BER), Canonical
+              Encoding Rules (CER) and Distinguished Encoding Rules
+              (DER)
+        </title>
+        <author>
+        <organization>ITU-T</organization>
+        </author>
+        <date month="August" year="2015"/>
+        </front>
+        <seriesInfo name="ITU-T Recommendation" value="X.690"/>
+      </reference>
+      
+
+      <reference anchor="ACP142A">
+        <front>
+          <title>P_Mul - A Protocol for Reliable Multicast in
+             Bandwidth Constrained and Delayed Acknowledgement (EMCON)
+	     Environments
+          </title>
+
+
+          <author>
+	    <organization>CCEB</organization>
+          </author>
+
+          <date month="October" year="2008" />
+        </front>
+
+        <seriesInfo name="ACP" value="142(A)" />
+
+
+        <format target="https://wss.apan.org/s/CCEB/public/Forms/acps.aspx" type="HTML" />
+
+      </reference>
+
+      <reference anchor="STANAG-4406">
+        <front>
+          <title>Military Message Handling
+	  System</title>
+          <author>
+	    <organization>NATO</organization>
+          </author>
+          <date month="March" year="2005"/>
+        </front>
+	<seriesInfo name="STANAG" value="4406 Ed. 2"/>
+      </reference>
+    </references>
+
+    <references title="Informative References">
+      
+      <?rfc include="reference.RFC.1845"?> 
+      <?rfc include="reference.RFC.2034"?> 
+
+      <?rfc include="reference.RFC.2442"?> 
+
+      <?rfc include="reference.RFC.2920"?> 
+
+      <?rfc include="reference.RFC.3207"?> 
+      <?rfc include="reference.RFC.3865"?> 
+      <?rfc include="reference.RFC.4141"?> 
+      <?rfc include="reference.RFC.4405"?> 
+      <?rfc include="reference.RFC.4468"?> 
+      <?rfc include="reference.RFC.4954"?> 
+
+      <?rfc include="reference.RFC.5750"?> 
+      <?rfc include="reference.RFC.5751"?> 
+
+      <?rfc include="reference.RFC.7293"?> 
+
+      <?rfc include="reference.RFC.6409"?> 
+
+    </references>
+
+    <section title="Acknowledgements" numbered="no">
+	
+      <t>
+      Thank you to Steve Kille for suggestions, comments, and corrections on this document.
+      An additional thank you goes to Barry Leiba, Sean Turner, Dave Crocker, and Nick Hudson
+      for reviews and comments on this document.
+      </t>
+
+      <t>Some text was borrowed from "P_Mul: An Application Protocol for the
+      Transfer of Messages over Multicast Subnetworks and under EMCON
+      Restrictions" (September 1997); we gratefully acknowledge the work
+      of the authors of that document.</t>
+      
+    </section>
+
+    
+  </back>
+</rfc>

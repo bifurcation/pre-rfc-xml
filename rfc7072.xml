@@ -1,0 +1,783 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<!--used v2 -->
+
+<?rfc toc="yes" ?>
+<?rfc tocdepth="4" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc rfcedstyle="yes" ?>
+
+<rfc submissionType="IETF" category="std" consensus="yes" number="7072"
+     ipr="trust200902">
+
+<front>
+
+ <title abbrev="A Reputation Query Protocol">
+	A Reputation Query Protocol
+ </title>
+
+ <author fullname="Nathaniel Borenstein" initials="N." surname="Borenstein">
+  <organization>Mimecast</organization>
+  <address>
+   <postal>
+    <street>203 Crescent St., Suite 303</street>
+    <city>Waltham</city>
+    <region>MA</region>
+    <code>02453</code>
+    <country>USA</country>
+   </postal>
+   <phone>+1 781 996 5340</phone>
+   <email>nsb@guppylake.com</email>
+  </address>
+ </author>
+    
+ <author fullname="Murray S. Kucherawy" initials="M. S." surname="Kucherawy">
+  <address>
+   <postal>
+    <street>270 Upland Drive</street>
+    <city>San Francisco</city>
+    <region>CA</region>
+    <code>94127</code>
+    <country>USA</country>
+   </postal>
+   <email>superuser@gmail.com</email>
+  </address>
+ </author>
+    
+ <date month="November" year="2013" />
+
+ <area>Applications</area>
+ <workgroup>REPUTE Working Group</workgroup>
+
+ <keyword>reputation</keyword>
+ <keyword>domain</keyword>
+ <keyword>security</keyword>
+ <keyword>messaging</keyword>
+ <keyword>dkim</keyword>
+ <keyword>spf</keyword>
+ <keyword>authentication</keyword>
+
+ <abstract>
+  <t> This document defines a mechanism to conduct queries for reputation
+      information over the HyperText Transfer Protocol (HTTP) using
+      JavaScript Object Notation (JSON) as
+      the payload meta-format. </t>
+ </abstract>
+</front>
+
+<middle>
+ <section title="Introduction">
+  <t> This document defines a method to query a reputation data service
+      for information about an entity, using the HyperText Transfer Protocol
+      (HTTP) as the transport mechanism and JSON as the payload
+      meta-format. </t>
+
+  <t> The mechanism is a two-stage query:
+	<list style="numbers">
+		<t> A client retrieves a template from a server that describes
+		    the construction of a Universal Resource Identifier (URI)
+		    that will be the actual query; </t>
+
+		<t> The client then uses the constructed URI to request
+		    the reputation data from the server. </t>
+	</list> </t>
+ </section> <!-- Introduction -->
+
+ <section title="Terminology and Definitions" anchor="terms_and_defs">
+  <t>This section defines terms used in the rest of the document.</t>
+
+  <section title="Key Words" anchor="defs_keywords">
+   <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+      document are to be interpreted as described in
+      <xref target="KEYWORDS"/>.</t>
+  </section> <!-- Keywords -->
+
+  <section title="Other Definitions" anchor="defs_other">
+   <t> Other terms of importance in this document are defined in
+       <xref target="RFC7070"/> and
+       <xref target="RFC7071"/>. </t>
+  </section> <!-- Vocabulary -->
+ </section> <!-- Terminology and Definitions -->
+
+ <section title="Description" anchor="descr">
+  <section title="Overview" anchor="overview">
+  <t> The components to the question being asked are the following:
+
+	<list style="symbols">
+		<t> The subject of the query; </t>
+
+		<t> The name of the host, or the IP address, at which the 
+		    reputation service is available; </t>
+
+		<t> The name of the reputation application, i.e., the
+		    context within which the subject is being evaluated; </t>
+
+		<t> Optionally, names of the specific reputation assertions
+		    or attributes that are being requested. </t>
+	</list> </t>
+
+   <t> There is no discovery protocol for finding reputation services.  These
+       are typically subscription services, negotiated between operators
+       through some out-of-band method.  </t>
+
+   <t> Assertions are discussed in <xref target="RFC7071"/>.  </t>
+
+   <t> The name of the application, if given, is expected to be one registered
+       with IANA in the "Reputation Applications" registry, which is defined in
+       <xref target="RFC7071"/>.  A server receiving a
+       query about an application it does not recognize or explicitly
+       support (e.g., by virtue of private agreements or experimental
+       extensions) MUST return a 404 error code. </t>
+
+   <t> A reputation query made via <xref target="HTTP"/> encodes the question
+       being asked in an HTTP GET method.  The specific syntax of the query
+       itself is specified by retrieving a URI template from the reputation
+       service, completing the template, and then issuing the query. </t>
+  </section>
+
+  <section title="URI Template" anchor="template">
+   <t> The template file is retrieved by requesting the
+       <xref target="WELL-KNOWN-URI"/> "repute-template" from the
+       host providing reputation service, using HTTP.  (The registration
+       for this well-known URI is in <xref target="iana_considerations"/>.)
+       The server returns the template file in a reply that MUST use the
+       text/plain media type (see <xref target="MIME"/>) and SHOULD include
+       an Expires field (see Section 14.21 of <xref target="HTTP"/>) indicating
+       a duration for which the template is to be considered valid by clients
+       and not re-queried. </t>
+
+   <t> If an Expires field is present, the client SHOULD NOT send another 
+       query to the same server prior to the timestamp in the field.  If no
+       Expires field is present, the client SHOULD wait at least one day
+       before sending another query to the same server (i.e., the client
+       assumes a default expiration of one day). </t>
+
+   <t> The template file might contain more than one template.  Such a file
+       MUST have each template separated by a carriage return (ASCII 0x0D)
+       and newline (ASCII 0x0A) character, as is typical for most text-based
+       Internet protocols. </t>
+
+   <t> Each template in the file is expanded using the variables that are the
+       parameters to the query.  These parameters are either the subject about
+       which reputation information is sought (or details associated with it)
+       or other parameters that are established out-of-band with the reputation
+       service; they are not established by any automated discovery described
+       here.  The client then attempts to query each expanded
+       template that uses a URI scheme it is capable of querying, in the order
+       presented in the file, until the client finds one to which it can
+       establish a usable connection and issue the query. </t>
+
+   <t> For example, given the following template:
+
+	<figure><artwork>
+http://{service}/{application}/{subject}/{assertion}
+	</artwork></figure> </t>
+
+   <t> A query about the use of the domain "example.org" in
+       the "email-id" application context to a service run at "example.com",
+       where that application declares a required "subject" parameter,
+       requesting the "SPAM" reputation assertion, would be formed as follows:
+
+	<figure><artwork>
+http://example.com/email-id/example.org/spam
+	</artwork></figure> </t>
+  </section> <!-- Template -->
+
+  <section title="Syntax" anchor="syntax">
+   <t> The syntax for the <xref target="URI"/> of the query is
+       constructed using a template as per <xref target="URI-TEMPLATE"/>.
+       (See <xref target="template"/>.)  Clients MUST provide the following
+       values in the expansion of the template:
+
+	<list style="hanging">
+		<t hangText="application:">
+			The name of the application reputation in whose
+			context the request is being made.  These names
+			are registered with IANA, and conform to the ABNF
+			"token" found in <xref target="MIME"/>. </t>
+
+		<t hangText="service:">
+			The hostname or IP address to which the query is
+			being sent.  This MUST be the same as the host to
+			which the template query was issued.</t>
+
+		<t hangText="subject:">
+			The subject of the query, extracted from some content
+			to be evaluated.  The subject portion of the template
+			conforms to the ABNF "value" found in
+			<xref target="MIME"/>. </t>
+	</list> </t>
+
+   <t> The following variable can also be provided.  It is not mandatory
+       in this model, but a specific application (defined in its own extension
+       document) might declare it mandatory in a specific context:
+
+	<list style="hanging">
+		<t hangText="assertion:">
+			The name of the specific assertion of interest
+			to the client.  Assertion names conform to the ABNF
+			"token" found in <xref target="MIME"/>.  If absent,
+			the client is indicating that it requests all
+			available assertion information. </t>
+	</list> </t>
+
+   <t> If a template contains a variable that is not required and the client
+       does not have a value to insert, it substitutes the empty string
+       into the template in place of that variable.  Service providers crafting
+       templates MUST do so such that a client doing an empty variable
+       expansion will still produce a syntactically and semantically valid
+       and unambiguous URI.  For example, given this template:
+
+       <figure><artwork>
+  http://{service}/{application}/{subject}/{assertion}/{a}/{b}
+       </artwork></figure>
+
+       If "{a}" and "{b}" are optional and "{a}" expands to the empty
+       string, then the resulting URI will have adjacent backslash
+       ("/", ASCII 0x2F) characters and one path component after the
+       assertion.  If the server interpreting the URI's path component
+       removes or ignores adjacent backslash characters (such as is done
+       with the UNIX filesystem), the server will be unable to distinguish an
+       empty "{a}" from an empty "{b}", and it could serve the wrong
+       response.  Where possible, the template needs to be constructed
+       such that expansion of optional variables yields an unambiguous
+       result.  For example, an unambiguous version of the above would
+       be:
+
+       <figure><artwork>
+  http://{service}/{application}/{subject}/{assertion}/a={a}/b={b}
+       </artwork></figure>
+
+       ...or, even better, using URI template set expansions:
+
+       <figure><artwork>
+  http://{service}/{application}/{subject}/{assertion}{?a,b}
+       </artwork></figure> </t>
+
+   <t> Every application space has a set of assertions applicable to its
+       own context.  <xref target="RFC7071"/> defines a single
+       assertion assumed to exist in any application that does not define
+       its own assertion set. </t>
+
+   <t> Reputation applications can extend the set of optional or required
+       query parameters as part of their IANA registration actions.  The set
+       enumerated above establishes the base set common to all of them.
+       Further, additional required or optional extension query parameters
+       might be defined by specific reputation service providers, though these
+       are private arrangements between client and server and will not be
+       registered with IANA. </t>
+
+   <t> Authentication between reputation client and server is outside the
+       scope of this specification.  It could be provided through a variety
+       of available transport-based or object-based mechanisms, including
+       a later extension of this specification. </t>
+  </section> <!-- Syntax -->
+
+  <section title="Response" anchor="response">
+   <t> The response is expected to be contained in a media type designed
+       to deliver reputons.  A media type designed for this purpose,
+       "application/reputon+json", is defined in 
+       <xref target="RFC7071"/>. </t>
+
+   <t> If the server generates responses that contain an Expires field
+       (see Section 14.21 of <xref target="HTTP"/>), that timestamp MUST align
+       with the "expires" field within the response, if any.  Failing to do
+       so can result in a state where the response has expired, but the
+       HTTP reply has not, and the client would in that case be unable
+       to get a fresh answer from the reputation server. </t>
+  </section> <!-- Response -->
+
+  <section title="Protocol Support" anchor="support">
+   <t> A client has to implement HTTP in order to retrieve the query template
+       as described in <xref target="template"/>.  Accordingly, a server can
+       assume the client will be able to handle a URI template that produces
+       a URI for the query using the "http" URI scheme.  The template could
+       yield a query string that uses some other URI scheme, in which case
+       the client could try that URI as well if it supports issuing queries
+       with that URI scheme. </t>
+
+   <t> A server SHOULD include support for providing service over HTTP,
+       and publish templates indicating support for this, as a baseline
+       for interoperability with arbitrary clients. </t>
+  </section> <!-- Protocol Support -->
+ </section> <!-- Description -->
+
+ <section title="IANA Considerations" anchor="iana_considerations">
+  <t> This document registers the "repute-template" well-known URI in the
+      "Well-Known URI" registry as defined by
+      <xref target="WELL-KNOWN-URI"/>, as follows:
+
+	<list style="hanging">
+		<t hangText="URI suffix:"> repute-template </t>
+
+		<t hangText="Change controller:"> IETF </t>
+
+		<t hangText="Specification document(s):"> [RFC7072] </t>
+
+		<t hangText="Related information:"> none </t>
+	</list> </t>
+ </section> <!-- IANA Considerations -->
+
+ <section title="Security Considerations" anchor="sec_considerations">
+  <t> This document defines particular uses of existing protocols for
+      a specific application.  In particular, the basic protocol used
+      for this service to retrieve a URI template from a well-known
+      location is basic HTTP, which is not secure without certain extensions.
+      Security issues relevant to use of URI templates are discussed in
+      <xref target="URI-TEMPLATE"/>, and those relevant to well-known URI
+      definitions and retrieval are discussed in
+      <xref target="WELL-KNOWN-URI"/>. </t>
+
+  <t> The reputation service itself will use HTTP or other transport methods to
+      issue queries and receive replies.  Those protocols have registered URI
+      schemes and, as such, presumably have documented security considerations.
+      The protocol described here operates atop those URI schemes, and does not
+      itself present new security considerations. </t>
+
+  <t> Reputation mechanisms represent an obvious security concern, in terms
+      of the validity and use of the reputation information.  These issues are
+      beyond the scope of this specification.  General information pertaining
+      to using or providing reputation services can be found in
+      <xref target="CONSIDERATIONS"/>. </t>
+
+  <t> The security considerations applicable to HTTP (see Section 15 of
+      <xref target="HTTP"/> apply, since this query mechanism for reputation
+      uses that protocol.  If it is desirable to conceal the content of the
+      query and its response, use of encryption techniques such as
+      HTTP over TLS <xref target="HTTPS"/> can be used. </t>
+ </section> <!-- Security Considerations -->
+</middle>
+
+<back>
+ <references title="Normative References">
+
+
+
+
+<reference anchor='HTTP'>
+
+<front>
+<title abbrev='HTTP/1.1'>Hypertext Transfer Protocol -- HTTP/1.1</title>
+<author initials='R.' surname='Fielding' fullname='Roy T. Fielding'>
+<organization abbrev='UC Irvine'>Department of Information and Computer Science</organization>
+<address>
+<postal>
+<street>University of California, Irvine</street>
+<city>Irvine</city>
+<region>CA</region>
+<code>92697-3425</code></postal>
+<facsimile>+1(949)824-1715</facsimile>
+<email>fielding@ics.uci.edu</email></address></author>
+<author initials='J.' surname='Gettys' fullname='James Gettys'>
+<organization abbrev='Compaq/W3C'>World Wide Web Consortium</organization>
+<address>
+<postal>
+<street>MIT Laboratory for Computer Science, NE43-356</street>
+<street>545 Technology Square</street>
+<city>Cambridge</city>
+<region>MA</region>
+<code>02139</code></postal>
+<facsimile>+1(617)258-8682</facsimile>
+<email>jg@w3.org</email></address></author>
+<author initials='J.' surname='Mogul' fullname='Jeffrey C. Mogul'>
+<organization abbrev='Compaq'>Compaq Computer Corporation</organization>
+<address>
+<postal>
+<street>Western Research Laboratory</street>
+<street>250 University Avenue</street>
+<city>Palo Alto</city>
+<region>CA</region>
+<code>94305</code></postal>
+<email>mogul@wrl.dec.com</email></address></author>
+<author initials='H.' surname='Frystyk' fullname='Henrik Frystyk Nielsen'>
+<organization abbrev='W3C/MIT'>World Wide Web Consortium</organization>
+<address>
+<postal>
+<street>MIT Laboratory for Computer Science, NE43-356</street>
+<street>545 Technology Square</street>
+<city>Cambridge</city>
+<region>MA</region>
+<code>02139</code></postal>
+<facsimile>+1(617)258-8682</facsimile>
+<email>frystyk@w3.org</email></address></author>
+<author initials='L.' surname='Masinter' fullname='Larry Masinter'>
+<organization abbrev='Xerox'>Xerox Corporation</organization>
+<address>
+<postal>
+<street>MIT Laboratory for Computer Science, NE43-356</street>
+<street>3333 Coyote Hill Road</street>
+<city>Palo Alto</city>
+<region>CA</region>
+<code>94034</code></postal>
+<email>masinter@parc.xerox.com</email></address></author>
+<author initials='P.' surname='Leach' fullname='Paul J. Leach'>
+<organization abbrev='Microsoft'>Microsoft Corporation</organization>
+<address>
+<postal>
+<street>1 Microsoft Way</street>
+<city>Redmond</city>
+<region>WA</region>
+<code>98052</code></postal>
+<email>paulle@microsoft.com</email></address></author>
+<author initials='T.' surname='Berners-Lee' fullname='Tim Berners-Lee'>
+<organization abbrev='W3C/MIT'>World Wide Web Consortium</organization>
+<address>
+<postal>
+<street>MIT Laboratory for Computer Science, NE43-356</street>
+<street>545 Technology Square</street>
+<city>Cambridge</city>
+<region>MA</region>
+<code>02139</code></postal>
+<facsimile>+1(617)258-8682</facsimile>
+<email>timbl@w3.org</email></address></author>
+<date year='1999' month='June' />
+<abstract>
+<t>
+   The Hypertext Transfer Protocol (HTTP) is an application-level
+   protocol for distributed, collaborative, hypermedia information
+   systems. It is a generic, stateless, protocol which can be used for
+   many tasks beyond its use for hypertext, such as name servers and
+   distributed object management systems, through extension of its
+   request methods, error codes and headers . A feature of HTTP is
+   the typing and negotiation of data representation, allowing systems
+   to be built independently of the data being transferred.
+</t>
+<t>
+   HTTP has been in use by the World-Wide Web global information
+   initiative since 1990. This specification defines the protocol
+   referred to as "HTTP/1.1", and is an update to RFC 2068 .
+</t></abstract></front>
+
+<seriesInfo name='RFC' value='2616' />
+<format type='TXT' octets='422317' target='http://www.rfc-editor.org/rfc/rfc2616.txt' />
+<format type='PS' octets='5529857' target='http://www.rfc-editor.org/rfc/rfc2616.ps' />
+<format type='PDF' octets='550558' target='http://www.rfc-editor.org/rfc/rfc2616.pdf' />
+<format type='HTML' octets='637302' target='http://xml.resource.org/public/rfc/html/rfc2616.html' />
+<format type='XML' octets='493420' target='http://xml.resource.org/public/rfc/xml/rfc2616.xml' />
+</reference>
+
+
+
+
+<reference anchor='MIME'>
+
+<front>
+<title abbrev='Internet Message Bodies'>Multipurpose Internet Mail Extensions (MIME) Part One: Format of Internet Message Bodies</title>
+<author initials='N.' surname='Freed' fullname='Ned Freed'>
+<organization>Innosoft International, Inc.</organization>
+<address>
+<postal>
+<street>1050 East Garvey Avenue South</street>
+<city>West Covina</city>
+<region>CA</region>
+<code>91790</code>
+<country>US</country></postal>
+<phone>+1 818 919 3600</phone>
+<facsimile>+1 818 919 3614</facsimile>
+<email>ned@innosoft.com</email></address></author>
+<author initials='N.S.' surname='Borenstein' fullname='Nathaniel S. Borenstein'>
+<organization>First Virtual Holdings</organization>
+<address>
+<postal>
+<street>25 Washington Avenue</street>
+<city>Morristown</city>
+<region>NJ</region>
+<code>07960</code>
+<country>US</country></postal>
+<phone>+1 201 540 8967</phone>
+<facsimile>+1 201 993 3032</facsimile>
+<email>nsb@nsb.fv.com</email></address></author>
+<date year='1996' month='November' />
+<abstract>
+<t>STD 11, RFC 822, defines a message representation protocol specifying considerable detail about US-ASCII message headers, and leaves the message content, or message body, as flat US-ASCII text.  This set of documents, collectively called the Multipurpose Internet Mail Extensions, or MIME, redefines the format of messages to allow for</t>
+<t>(1)   textual message bodies in character sets other than US-ASCII,</t>
+<t>(2)   an extensible set of different formats for non-textual message bodies,</t>
+<t>(3)   multi-part message bodies, and</t>
+<t>(4)   textual header information in character sets other than US-ASCII.</t>
+<t>These documents are based on earlier work documented in RFC 934, STD 11, and RFC 1049, but extends and revises them.  Because RFC 822 said so little about message bodies, these documents are largely orthogonal to (rather than a revision of) RFC 822.</t>
+<t>This initial document specifies the various headers used to describe the structure of MIME messages. The second document, RFC 2046, defines the general structure of the MIME media typing system and defines an initial set of media types. The third document, RFC 2047, describes extensions to RFC 822 to allow non-US-ASCII text data in Internet mail header fields. The fourth document, RFC 2048, specifies various IANA registration procedures for MIME-related facilities. The fifth and final document, RFC 2049, describes MIME conformance
+  criteria as well as providing some illustrative examples of MIME message formats, acknowledgements, and the bibliography.</t>
+<t>These documents are revisions of RFCs 1521, 1522, and 1590, which themselves were revisions of RFCs 1341 and 1342.  An appendix in RFC 2049 describes differences and changes from previous versions.</t></abstract></front>
+
+<seriesInfo name='RFC' value='2045' />
+<format type='TXT' octets='72932' target='http://www.rfc-editor.org/rfc/rfc2045.txt' />
+</reference>
+
+
+<!-- draft-ietf-repute-media-type; Companion Doc; RFC7071 -->
+<reference anchor='RFC7071'>
+<front>
+<title>A Media Type for Reputation Interchange</title>
+
+<author initials='N' surname='Borenstein' fullname='Nathaniel Borenstein'>
+    <organization />
+</author>
+
+<author initials='M' surname='Kucherawy' fullname='Murray Kucherawy'>
+    <organization />
+</author>
+
+<date month='November' year='2013' />
+
+<abstract><t>This document defines the format of reputation response data ("reputons"), the media-type for packaging it, and definition of a registry for the names of reputation applications and response sets.</t></abstract>
+
+</front>
+
+<seriesInfo name='RFC' value='7071' />
+
+</reference>
+
+<!-- draft-ietf-repute-model; companion Doc RFC 7070-->
+<reference anchor='RFC7070'>
+<front>
+<title>An Architecture for Reputation Reporting</title>
+
+<author initials='N' surname='Borenstein' fullname='Nathaniel Borenstein'>
+    <organization />
+</author>
+
+<author initials='M' surname='Kucherawy' fullname='Murray Kucherawy'>
+    <organization />
+</author>
+
+<author initials='A' surname='Sullivan' fullname='Andrew Sullivan'>
+    <organization />
+</author>
+
+<date month='November' year='2013' />
+
+<abstract><t>This document describes a general architecture for a reputation-based service, allowing one to request reputation-related data over the Internet, where "reputation" refers to predictions or expectations about an entity or an identifier such as a domain name.  The document roughly follows the recommendations of RFC4101 for describing a protocol model.</t></abstract>
+
+</front>
+
+<seriesInfo name='RFC' value='7070' />
+
+</reference>
+
+
+
+<reference anchor='KEYWORDS'>
+
+<front>
+<title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+<author initials='S.' surname='Bradner' fullname='Scott Bradner'>
+<organization>Harvard University</organization>
+<address>
+<postal>
+<street>1350 Mass. Ave.</street>
+<street>Cambridge</street>
+<street>MA 02138</street></postal>
+<phone>- +1 617 495 3864</phone>
+<email>sob@harvard.edu</email></address></author>
+<date year='1997' month='March' />
+<area>General</area>
+<keyword>keyword</keyword>
+<abstract>
+<t>
+   In many standards track documents several words are used to signify
+   the requirements in the specification.  These words are often
+   capitalized.  This document defines these words as they should be
+   interpreted in IETF documents.  Authors who follow these guidelines
+   should incorporate this phrase near the beginning of their document:
+
+<list>
+<t>
+      The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+      NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
+      "OPTIONAL" in this document are to be interpreted as described in
+      RFC 2119.
+</t></list></t>
+<t>
+   Note that the force of these words is modified by the requirement
+   level of the document in which they are used.
+</t></abstract></front>
+
+<seriesInfo name='BCP' value='14' />
+<seriesInfo name='RFC' value='2119' />
+<format type='TXT' octets='4723' target='http://www.rfc-editor.org/rfc/rfc2119.txt' />
+<format type='HTML' octets='17970' target='http://xml.resource.org/public/rfc/html/rfc2119.html' />
+<format type='XML' octets='5777' target='http://xml.resource.org/public/rfc/xml/rfc2119.xml' />
+</reference>
+
+
+
+<reference anchor='URI'>
+
+<front>
+<title abbrev='URI Generic Syntax'>Uniform Resource Identifier (URI): Generic Syntax</title>
+<author initials='T.' surname='Berners-Lee' fullname='Tim Berners-Lee'>
+<organization abbrev='W3C/MIT'>World Wide Web Consortium</organization>
+<address>
+<postal>
+<street>Massachusetts Institute of Technology</street>
+<street>77 Massachusetts Avenue</street>
+<city>Cambridge</city>
+<region>MA</region>
+<code>02139</code>
+<country>USA</country></postal>
+<phone>+1-617-253-5702</phone>
+<facsimile>+1-617-258-5999</facsimile>
+<email>timbl@w3.org</email>
+<uri>http://www.w3.org/People/Berners-Lee/</uri></address></author>
+<author initials='R.' surname='Fielding' fullname='Roy T. Fielding'>
+<organization abbrev='Day Software'>Day Software</organization>
+<address>
+<postal>
+<street>5251 California Ave., Suite 110</street>
+<city>Irvine</city>
+<region>CA</region>
+<code>92617</code>
+<country>USA</country></postal>
+<phone>+1-949-679-2960</phone>
+<facsimile>+1-949-679-2972</facsimile>
+<email>fielding@gbiv.com</email>
+<uri>http://roy.gbiv.com/</uri></address></author>
+<author initials='L.' surname='Masinter' fullname='Larry Masinter'>
+<organization abbrev='Adobe Systems'>Adobe Systems Incorporated</organization>
+<address>
+<postal>
+<street>345 Park Ave</street>
+<city>San Jose</city>
+<region>CA</region>
+<code>95110</code>
+<country>USA</country></postal>
+<phone>+1-408-536-3024</phone>
+<email>LMM@acm.org</email>
+<uri>http://larry.masinter.net/</uri></address></author>
+<date year='2005' month='January' />
+<area>Applications</area>
+<keyword>uniform resource identifier</keyword>
+<keyword>URI</keyword>
+<keyword>URL</keyword>
+<keyword>URN</keyword>
+<keyword>WWW</keyword>
+<keyword>resource</keyword>
+<abstract>
+<t>
+A Uniform Resource Identifier (URI) is a compact sequence of characters
+that identifies an abstract or physical resource.  This specification
+defines the generic URI syntax and a process for resolving URI references
+that might be in relative form, along with guidelines and security
+considerations for the use of URIs on the Internet.
+The URI syntax defines a grammar that is a superset of all valid URIs,
+allowing an implementation to parse the common components of a URI
+reference without knowing the scheme-specific requirements of every
+possible identifier.  This specification does not define a generative
+grammar for URIs; that task is performed by the individual
+specifications of each URI scheme.
+</t></abstract></front>
+
+<seriesInfo name='STD' value='66' />
+<seriesInfo name='RFC' value='3986' />
+<format type='TXT' octets='141811' target='http://www.rfc-editor.org/rfc/rfc3986.txt' />
+<format type='HTML' octets='214067' target='http://xml.resource.org/public/rfc/html/rfc3986.html' />
+<format type='XML' octets='163534' target='http://xml.resource.org/public/rfc/xml/rfc3986.xml' />
+</reference>
+
+
+
+<reference anchor='URI-TEMPLATE'>
+
+<front>
+<title>URI Template</title>
+<author initials='J.' surname='Gregorio' fullname='J. Gregorio'>
+<organization /></author>
+<author initials='R.' surname='Fielding' fullname='R. Fielding'>
+<organization /></author>
+<author initials='M.' surname='Hadley' fullname='M. Hadley'>
+<organization /></author>
+<author initials='M.' surname='Nottingham' fullname='M. Nottingham'>
+<organization /></author>
+<author initials='D.' surname='Orchard' fullname='D. Orchard'>
+<organization /></author>
+<date year='2012' month='March' />
+<abstract>
+<t>A URI Template is a compact sequence of characters for describing a range of Uniform Resource Identifiers through variable expansion.  This specification defines the URI Template syntax and the process for expanding a URI Template into a URI reference, along with guidelines for the use of URI Templates on the Internet. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='6570' />
+<format type='TXT' octets='79813' target='http://www.rfc-editor.org/rfc/rfc6570.txt' />
+</reference>
+
+
+
+
+<reference anchor='WELL-KNOWN-URI'>
+
+<front>
+<title>Defining Well-Known Uniform Resource Identifiers (URIs)</title>
+<author initials='M.' surname='Nottingham' fullname='M. Nottingham'>
+<organization /></author>
+<author initials='E.' surname='Hammer-Lahav' fullname='E. Hammer-Lahav'>
+<organization /></author>
+<date year='2010' month='April' />
+<abstract>
+<t>This memo defines a path prefix for "well-known locations", "/.well-known/", in selected Uniform Resource Identifier (URI) schemes. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='5785' />
+<format type='TXT' octets='13779' target='http://www.rfc-editor.org/rfc/rfc5785.txt' />
+</reference>
+
+
+
+ </references>
+
+ <references title="Informative References">
+
+
+
+<reference anchor='HTTPS'>
+
+<front>
+<title>HTTP Over TLS</title>
+<author initials='E.' surname='Rescorla' fullname='E. Rescorla'>
+<organization /></author>
+<date year='2000' month='May' />
+<abstract>
+<t>This memo describes how to use Transport Layer Security (TLS) to secure Hypertext Transfer Protocol (HTTP) connections over the Internet.  This memo provides information for the Internet community.</t></abstract></front>
+
+<seriesInfo name='RFC' value='2818' />
+<format type='TXT' octets='15170' target='http://www.rfc-editor.org/rfc/rfc2818.txt' />
+</reference>
+
+
+<!-- draft-ietf-repute-considerations: I-D Exists -->
+<reference anchor='CONSIDERATIONS'>
+<front>
+<title>Operational Considerations Regarding Reputation Services</title>
+
+<author initials='M' surname='Kucherawy' fullname='Murray Kucherawy'>
+    <organization />
+</author>
+
+<date month='May' year='2013' />
+
+<abstract><t>The use of reputation systems is has become a common tool in many applications that seek to apply collected intelligence about traffic sources.  Often this is done because it is common or even expected operator practice.  It is therefore important to be aware of a number of considerations for both operators and consumers of the data.  This document includes a collection of the best advice available regarding providers and consumers of reputation data, based on experience to date.  Much of this is based on experience with email reputation systems, but the concepts are generally applicable.</t></abstract>
+
+</front>
+
+<seriesInfo name='Work in' value='Progress' />
+
+</reference>
+
+ </references>
+
+ <!-- No informative references at this time -->
+
+ <section title="Acknowledgements" anchor="acks">
+  <t> The authors would like to thank the following for their contributions
+      to this work:
+      Simon Hunt,
+      Mark Nottingham,
+      David F. Skoll,
+      and
+      Mykyta Yevstifeyev. </t>
+ </section>
+
+
+  </back>
+</rfc>

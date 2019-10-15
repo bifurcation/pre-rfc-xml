@@ -1,0 +1,913 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc2119 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY rfc2223 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2223.xml">
+<!ENTITY rfc2578 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2578.xml">
+<!ENTITY rfc2579 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2579.xml">
+<!ENTITY rfc2580 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2580.xml">
+<!ENTITY rfc2629 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2629.xml">
+<!ENTITY rfc3410 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3410.xml">
+<!ENTITY rfc4181 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4181.xml">
+]>
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?> 
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+
+<rfc number="8236" category="info" 
+     ipr="trust200902" submissionType="independent">
+    <front>
+    	<title abbrev="J-PAKE">J-PAKE: Password-Authenticated Key Exchange by Juggling</title>
+
+		<author fullname="Feng Hao" initials="F" role="editor"
+            surname="Hao">
+      		<organization>Newcastle University (UK)</organization>
+    		<address>
+        		<postal>
+          		<street>Urban Sciences Building, School of Computing,
+			Newcastle University</street>
+				<city>Newcastle Upon Tyne</city>
+				<country>United Kingdom</country>
+        		</postal>
+
+	        	<phone>+44 (0)191-208-6384</phone>
+				<email>feng.hao@ncl.ac.uk</email>
+      		</address>
+    	</author>
+
+	    <date month="August" year="2017" />
+        
+        <area>Security</area>
+        <keyword>password-authenticated key exchange</keyword>
+        
+        <abstract>
+        <t>This document specifies a Password-Authenticated Key
+        Exchange by Juggling (J-PAKE) protocol. This protocol allows
+        the establishment of a secure end-to-end communication channel
+        between two remote parties over an insecure network solely
+        based on a shared password, without requiring a Public Key
+        Infrastructure (PKI) or any trusted third party.
+        </t>
+        </abstract>
+    </front>   
+    
+    <middle>
+        
+        <section anchor="intro" title="Introduction">
+                        
+            <t>
+            Password-Authenticated Key Exchange (PAKE) is a technique
+            that aims to establish secure communication between two
+            remote parties solely based on their shared password,
+            without relying on a Public Key Infrastructure or any
+            trusted third party <xref target="BM92" />.  The first
+            PAKE protocol, called Encrypted Key Exchange (EKE), was proposed by Steven Bellovin
+            and Michael Merrit in 1992 <xref target="BM92" />. Other
+            well-known PAKE protocols include Simple Password Exponential Key Exchange (SPEKE) by David Jablon
+            in 1996 <xref target="Jab96" /> and Secure Remote Password (SRP) by Tom Wu in
+            1998 <xref target="Wu98" />.  SRP has been revised
+            several times to address reported security and efficiency
+            issues. In particular, the version 6 of SRP, commonly
+            known as SRP-6, is specified in <xref target="RFC5054" />.
+            </t>                       
+            
+            <t>This document specifies a PAKE protocol called Password-Authenticated Key Exchange by Juggling (J-PAKE), which was
+            designed by Feng Hao and Peter Ryan in 2008
+            <xref target="HR08" />.
+            There are a few factors that may be considered in favor of
+            J-PAKE. First, J-PAKE has security proofs, while
+            equivalent proofs are lacking in EKE, SPEKE and
+            SRP-6. Second, J-PAKE follows a
+            completely different design approach from all other PAKE
+            protocols, and is built upon a well-established Zero
+            Knowledge Proof (ZKP) primitive: Schnorr NIZK proof
+            <xref target="RFC8235" />. Third, J-PAKE adopts novel 
+            engineering techniques to optimize the use of ZKP so that overall the protocol is
+            sufficiently efficient for practical use.  Fourth, J-PAKE
+            is designed to work generically in both the finite field
+            and elliptic curve settings (i.e., DSA and ECDSA-like
+            groups, respectively). Unlike SPEKE, it does not require
+            any extra primitive to hash passwords onto a designated
+            elliptic curve. Unlike SPAKE2 <xref target="AP05" /> and SESPAKE <xref target="SOAA15" />, it does
+            not require a trusted setup (i.e., the so-called common reference model) to
+            define a pair of generators whose discrete logarithm must be unknown.            	
+            Finally, J-PAKE has been used in
+            real-world applications at a relatively large scale, e.g.,
+            <xref target="MOZILLA">Firefox sync</xref>, <xref target="PALEMOON">Pale moon sync</xref>, and Google Nest products <xref target="ABM15" />.
+            It has been included into widely distributed open source
+            libraries such as <xref target="BOINC">OpenSSL</xref>, <xref target="MOZILLA_NSS">Network Security Services (NSS)</xref>,
+            and the <xref target="BOUNCY">Bouncy Castle</xref>. Since 2015, J-PAKE has been included
+            in <xref target="THREAD">Thread</xref> as a standard key agreement mechanism for IoT
+            (Internet of Things) applications, and also included in 
+            <xref target="ISO.11770-4">ISO/IEC 11770-4:2017</xref>.
+            </t>
+                    
+        	<section title="Requirements Language">
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+            </section>
+            
+            <section title="Notation">
+            
+            <t>
+            The following notation is used in this document:
+            </t>
+            
+            <t>
+            <list style="symbols">    
+                <t>Alice: the assumed identity of the prover in the protocol </t>
+                <t>Bob: the assumed identity of the verifier in the protocol </t>
+                <t>s: a low-entropy secret shared between Alice and Bob</t>
+                <t>a | b: a divides b</t>
+                <t>a || b: concatenation of a and b</t>           
+                <t>[a, b]: the interval of integers between and including a and b</t>
+                <t>H: a secure cryptographic hash function</t>       
+                <t>p: a large prime</t>
+                <t>q: a large prime divisor of p-1, i.e., q | p-1</t>
+                <t>Zp*: a multiplicative group of integers modulo p</t>
+                <t>Gq: a subgroup of Zp* with prime order q</t>
+                <t>g: a generator of Gq</t>                
+                <t>g^d: g raised to the power of d</t>
+                <t>a mod b: a modulo b</t>
+                <t>Fp: a finite field of p elements, where p is a prime</t>
+                <t>E(Fp): an elliptic curve defined over Fp</t>
+                <t>G: a generator of the subgroup over E(Fp) with prime order n</t>
+                <t>n: the order of G</t>	
+                <t>h: the cofactor of the subgroup generated by G, which is equal to the order of the elliptic curve divided by n</t>			
+                <t>P x [b]: multiplication of a point P with a scalar b over E(Fp)</t>      
+                <t>KDF(a): Key Derivation Function with input a</t>
+				<t>MAC(MacKey, MacData): MAC function with MacKey as the key and MacData as the input data</t>
+            </list>
+            </t>       
+            </section>					
+        </section>
+        
+        <section anchor="protocolFp" title="J-PAKE over Finite Field">
+        
+            <section title="Protocol Setup">
+            
+            <t>
+            When implemented over a finite field, J-PAKE may use the same group parameters as DSA <xref target="FIPS186-4" />.
+            Let p and q be two large primes such that q | p-1. Let Gq denote a subgroup of Zp* with 
+            prime order q.  Let g be a generator for Gq. Any non-identity element in Gq can be a generator. The two communicating parties, Alice and Bob, both agree on (p, q, g), which can be hard-wired in the software code. They can also
+            use the method in NIST FIPS 186-4, Appendix A <xref target="FIPS186-4" /> to generate (p, q, g). Here, DSA group parameters are used only as an example. Other multiplicative groups suitable for cryptography can also be used for the implementation, e.g., groups defined in <xref target="RFC4419" />. A group setting that provides 128-bit security or above is recommended. The security proof of J-PAKE depends on the Decisional Diffie-Hellman (DDH) problem being intractable in the considered group.
+            </t>
+            
+            <t>
+            Let s be a secret value derived from a low-entropy password shared between Alice and Bob. 
+            The value of s is required to fall within the range of [1, q-1]. (Note that s must not be 0 for any non-empty secret.)
+            This range is defined as a necessary condition in <xref target="HR08" /> for proving the "on-line dictionary 
+            attack resistance", since s, s+q, s+2q, ..., are all considered equivalent values as far as the protocol specification
+            is concerned. In a practical implementation, one may obtain s by taking a cryptographic hash of the password and wrapping the result with respect to modulo q. Alternatively, one may simply treat the password as an octet string and convert the string to an integer modulo q by following the method defined in Section 2.3.8 of <xref target="SEC1" />. In either case, one must ensure s is not equal to 0 modulo q.
+            </t>
+
+            </section>
+            
+            <section anchor="two-round-fp" title="Two-Round Key Exchange">            
+            
+            <t>
+            Round 1: Alice selects an ephemeral private key x1 uniformly at random from [0, q-1] and another ephemeral private key x2 uniformly at random from [1, q-1]. Similarly, Bob selects an ephemeral private key x3 uniformly at random from [0, q-1] and another ephemeral private key x4 uniformly at random from [1, q-1]. 
+            </t>
+            
+            <t>
+            <list style="symbols"> 
+            <t>Alice -> Bob: g1 = g^x1 mod p, g2 = g^x2 mod p and ZKPs for x1 and x2</t> 
+            <t>Bob -> Alice: g3 = g^x3 mod p, g4 = g^x4 mod p and ZKPs for x3 and x4</t>
+            </list>
+            </t>           
+            
+            <t>
+            In this round, the sender must send zero knowledge proofs to demonstrate the knowledge of the ephemeral private keys.
+            A suitable technique is to use the Schnorr NIZK proof <xref target="RFC8235" />. As an example, suppose 
+            one wishes to prove the knowledge of the exponent for D = g^d mod p. The generated Schnorr NIZK proof 
+            will contain: {UserID, V = g^v mod p, r = v - d * c mod q},
+            where UserID is the unique identifier for the prover, v is a number chosen uniformly at random from [0, q-1]
+            and c = H(g || V || D || UserID). The "uniqueness" of UserID is defined
+            from the user's perspective -- for example, if Alice communicates with several parties, she shall
+            associate a unique identity with each party. Upon receiving a Schnorr NIZK proof, Alice shall check
+            the prover's UserID is a valid identity and is different from her own identity. During the 
+            key exchange process using J-PAKE, each party shall ensure that the other 
+            party has been consistently using the same identity throughout the protocol execution. Details
+            about the Schnorr NIZK proof, including the generation and the verification procedures,
+            can be found in <xref target="RFC8235" />.
+            </t>
+                        
+            <t>When this round finishes, Alice verifies the received ZKPs
+            as specified in <xref target="RFC8235" /> and also checks that g4 != 1 mod p.
+            Similarly, Bob verifies the received ZKPs and also checks that g2&nbsp;!=&nbsp;1&nbsp;mod&nbsp;p.
+            If any of these checks fails, this session should be aborted.
+            </t>
+            
+            <t>
+            Round 2: 
+            </t>
+            
+            <t>
+            <list style="symbols"> 
+            <t>Alice -> Bob: A = (g1*g3*g4)^(x2*s) mod p and a ZKP for x2*s</t> 
+            <t>Bob -> Alice: B = (g1*g2*g3)^(x4*s) mod p and a ZKP for x4*s</t>
+            </list>
+            </t>
+            
+            <t>
+            In this round, the Schnorr NIZK proof is computed in the same
+            way as in the previous round except that the generator is different. For Alice, the
+            generator used is (g1*g3*g4) instead of g; for Bob, the generator
+            is (g1*g2*g3) instead of g. Since any non-identity element in Gq
+            can be used as a generator, Alice and Bob just need to ensure g1*g3*g4 != 1 mod p
+            and g1*g2*g3 != 1 mod p. With overwhelming probability, these
+            inequalities are statistically guaranteed even when the user is communicating with an adversary 
+	 (i.e., in an active attack). Nonetheless, for absolute guarantee, the receiving party shall
+	 explicitly check if these inequalities hold, and abort the session in case such a check fails. 
+            </t>
+            
+            <t>
+            When the second round finishes, Alice and Bob verify the received ZKPs. If the verification fails, the session is aborted. Otherwise, the two parties compute the common key material as follows:
+            </t>
+            
+            <t>
+            <list style="symbols"> 
+            <t>Alice computes Ka = (B/g4^(x2*s))^x2 mod p</t> 
+            <t>Bob computes Kb = (A/g2^(x4*s))^x4 mod p</t>
+            </list>
+            </t>
+
+            <t>Here, Ka = Kb = g^((x1+x3)*x2*x4*s) mod p. Let K denote the same key material held by both parties. Using K as input, Alice and Bob then apply a Key Derivation Function (KDF) to derive a common session key k. 
+	 If the subsequent secure communication uses a symmetric cipher in an authenticated mode (say AES-GCM), then
+	 one key is sufficient, i.e., k = KDF(K). Otherwise, the session key should comprise an
+	 encryption key (for confidentiality) and a MAC key (for integrity), i.e., k = k_enc || k_mac,
+	 where k_enc = KDF(K || "JPAKE_ENC") and k_mac = KDF(K || "JPAKE_MAC"). The exact choice of the KDF is left to 
+	 specific applications to define.
+            </t>
+            
+            </section>	
+            
+			<section title="Computational Cost">
+			<t>
+			The computational cost is estimated based on counting the number of
+			modular exponentiations since they are the predominant cost factors. 
+			Note that it takes one exponentiation to generate a Schnorr NIZK proof 
+			and two to verify it <xref target="RFC8235" />. For Alice, she needs to 
+			perform 8 exponentiations in the first round, 4 in the second round, and 2 in the final computation of the 
+			session key. Hence, that is 14 modular exponentiations in total.    
+			Based on the symmetry, the computational cost for Bob is exactly the same.
+			</t>
+		</section>
+	            		
+    </section>
+    
+    <section anchor="protocol" title="J-PAKE over Elliptic Curve">
+
+			<section title="Protocol Setup">
+            	
+            	<t>
+	            	The J-PAKE protocol works basically the same in the elliptic curve (EC) setting, except
+	            	that the underlying multiplicative group over a finite field is replaced by 
+            		an additive group over an elliptic curve. Nonetheless, the EC
+            		version of J-PAKE is specified here for completeness.
+            	</t>
+            	
+            	<t>When implemented over an elliptic curve, J-PAKE may use the
+		same EC parameters as ECDSA <xref target="FIPS186-4" />. The
+		FIPS 186-4 standard <xref target="FIPS186-4" /> defines three
+		types of curves suitable for ECDSA: pseudorandom curves over
+		prime fields, pseudorandom curves over binary fields, and
+		special curves over binary fields called Koblitz curves or
+		anomalous binary curves. All these curves that are suitable
+		for ECDSA can also be used to implement J-PAKE. However, for
+		illustration purposes, only curves over prime fields are
+		described in this document. Typically, such curves include
+		NIST P-256, P-384, and P-521. When choosing a curve, a level
+		of 128-bit security or above is recommended. Let E(Fp) be an
+		elliptic curve defined over a finite field Fp, where p is a
+		large prime. Let G be a generator for the subgroup over E(Fp)
+		of prime order n. Here, the NIST curves are used only as an example. Other secure curves such as Curve25519 are also suitable for implementation. The security proof of J-PAKE relies on the assumption that the DDH problem is intractable in the considered group.
+            	</t>
+            		
+				<t>
+            	As before, let s denote the shared secret between Alice and Bob. The value
+            	of s falls within [1, n-1]. In particular, note that s must not be equal to 0 mod n.
+            	</t>
+            		
+            </section>
+            	
+            <section anchor="two-round-ec" title="Two-Round Key Exchange">            
+            		
+            	<t>
+            	Round 1: Alice selects ephemeral private keys x1 and x2 uniformly at random from [1, n-1]. Similarly, Bob selects ephemeral private keys x3 and x4 uniformly at random from [1, n-1].
+            	</t>
+            		
+            	<t>
+            		<list style="symbols"> 
+            			<t>Alice -> Bob: G1 = G x [x1], G2 = G x [x2] and ZKPs for x1 and x2</t> 
+            			<t>Bob -> Alice: G3 = G x [x3], G4 = G x [x4] and ZKPs for x3 and x4</t>
+            		</list>
+            	</t>           
+            				
+            	<t>When this round finishes, Alice and Bob verify the received ZKPs
+            	as specified in <xref target="RFC8235" />. As an example, to 
+            	prove the knowledge of the discrete logarithm of D = G x [d] with respect to the base point G, 
+            	the ZKP contains: {UserID, V = G x [v], r = v - d * c mod n}, where UserID is the unique identifier for the prover, v is a number chosen uniformly at random from [1, n-1] and c = H(G || V || D || UserID). The verifier shall check the prover's UserID is a valid identity and is different from its own identity.
+            	If the verification of the ZKP fails, the session is aborted. 
+            	</t>
+            					
+				<t>
+	            	Round 2: 
+				</t>
+
+				<t>
+					<list style="symbols"> 
+	            		<t>Alice -> Bob: A = (G1 + G3 + G4) x [x2*s] and a ZKP for x2*s</t> 
+            			<t>Bob -> Alice: B = (G1 + G2 + G3) x [x4*s] and a ZKP for x4*s</t>
+            		</list>
+				</t>
+            		
+            	<t>
+            	When the second round finishes, Alice and Bob verify the received ZKPs. The ZKPs are computed in the same way as in the previous round except that the generator is different. For Alice, the new generator is G1 + G3 + G4; for Bob, it is G1 + G2 + G3. Alice and Bob shall check that these new generators are not points at infinity. 
+            	If any of these checks fails, the session is aborted. Otherwise, the two parties compute the common key material as follows:
+            	</t>
+            					
+            	<t>
+	           		<list style="symbols"> 
+	           			<t>Alice computes Ka = (B - (G4 x [x2*s])) x [x2]</t> 
+            			<t>Bob computes Kb = (A - (G2 x [x4*s])) x [x4]</t>
+            		</list>
+            	</t>
+
+				<t>Here, Ka = Kb = G x [(x1+x3)*(x2*x4*s)]. Let K denote the same key material held by both parties. Using K as input, Alice and Bob then apply a Key Derivation Function (KDF) to derive a common
+					session key k. 
+				</t>					
+			</section>
+				
+			<section title="Computational Cost">
+				<t>
+				In the EC setting, the computational cost of J-PAKE is estimated based on counting the number of
+				scalar multiplications over the elliptic curve. Note that it takes one multiplication to generate a Schnorr NIZK proof 
+				and one to verify it <xref target="RFC8235" />. For Alice, she has to 
+				perform 6 multiplications in the first round, 3 in the second round, and 2 in the final computation of the 
+				session key. Hence, that is 11 multiplications in total.    
+				Based on the symmetry, the computational cost for Bob is exactly the same.
+				</t>
+			</section>
+						
+		</section>			
+            				
+		<section anchor="three-pass" title="Three-Pass Variant">
+            					
+			<t>
+	        The two-round J-PAKE protocol is completely symmetric, which significantly simplifies the security analysis. 
+	        In practice, one party normally initiates the communication and the other party
+	        responds. In that case, the protocol will be completed in three passes instead of two rounds.
+	        The two-round J-PAKE protocol can be trivially changed to three passes
+	        without losing security. Take the finite field setting as an example, and assume Alice initiates the key exchange. The three-pass variant works as follows: 
+	        </t>
+            
+	        <t>
+            <list style="numbers"> 
+	            <t>Alice -> Bob: g1 = g^x1 mod p, g2 = g^x2 mod p, ZKPs for x1 and x2.</t> 
+	            <t>Bob -> Alice: g3 = g^x3 mod p, g4 = g^x4 mod p,
+<vspace/>
+B = (g1*g2*g3)^(x4*s) mod p, ZKPs for x3, x4, and x4*s.</t>
+            	<t>Alice -> Bob: A = (g1*g3*g4)^(x2*s) mod p and a ZKP for x2*s.</t>
+            </list>
+            </t>
+            					
+            <t>Both parties compute the session keys in exactly the same way as before. 
+            </t>
+        </section>
+        
+        <section anchor="key-confirmation" title="Key Confirmation">
+	        
+	        <t>The two-round J-PAKE protocol (or the three-pass variant) provides 
+	        	cryptographic guarantee that only the authenticated party who used
+	        	the same password at the other end is able to compute the same
+	        	session key.  So far, the authentication is only implicit. 
+	        	The key confirmation is also implicit <xref target="Stinson06" />.
+	        	The two parties	may use the derived key straight away to start secure communication by 
+	        	encrypting messages	in an authenticated mode. Only the party with the same derived
+	        	session key will be able to decrypt and read those messages.
+	        </t>
+        	
+        	<t>For achieving explicit authentication, an additional key confirmation
+        		procedure should be performed.  This provides explicit assurance that 
+        		the other party has actually derived the same key. 
+        		In this case, the key confirmation is explicit  <xref target="Stinson06" />. 
+        	</t>
+
+			<t>In J-PAKE, explicit key confirmation is recommended whenever the network bandwidth allows it.
+			   It has the benefit of providing explicit and immediate confirmation if the two parties have derived
+			   the same key and hence are authenticated to each other. This allows a practical implementation of
+			   J-PAKE to effectively detect online dictionary attacks (if any), and stop them accordingly by setting a threshold for the
+			   consecutively failed connection attempts.
+			</t>
+
+			<t>To achieve explicit key confirmation, there are several methods available. They are generically applicable to 
+            	all key exchange protocols, not just J-PAKE. 
+            	In general, it is recommended that a different key from the
+		session key be used for key confirmation -- say, 
+            	k' = KDF(K || "JPAKE_KC"). The advantage of using a different 
+            	key for key confirmation is that the session key remains indistinguishable from random after the key 
+            	confirmation process. (However, this perceived advantage is actually 
+            	subtle and only theoretical.)
+            	Two explicit key confirmation methods are presented here.
+            </t>
+            					
+            <t>The first method is based on the one used in the SPEKE protocol <xref target="Jab96" />.
+            	Suppose Alice initiates the key confirmation. Alice sends to Bob H(H(k')), which Bob will verify. If the verification is successful,
+            	Bob sends back to Alice H(k'), which Alice will verify. This key confirmation procedure needs to be completed in two rounds, as shown below. 
+            </t>
+            						
+            <t>
+	        <list style="numbers"> 
+		       	<t>Alice -> Bob: H(H(k'))</t> 
+		        <t>Bob -> Alice: H(k') </t>
+       		</list>
+           	</t>
+            						
+			 <t>The above procedure requires two rounds instead of one, because the second message depends on the first. If both parties attempt to send the first message at the same time without an agreed order, they cannot tell if the message that they receive is a genuine challenge or a replayed message, and consequently may enter a deadlock.            						
+			 </t>
+            						
+            <t>The second method is based on the unilateral key confirmation scheme specified in NIST SP 800-56A 
+            	Revision 1 <xref target="BJS07" />. Alice and Bob send to each other a MAC tag, which they
+            	will verify accordingly. This key confirmation procedure can be completed in one round.
+            </t>
+            
+            <t>In the finite field setting, it works as follows.
+            </t>
+            							
+            <t>
+	        <list style="symbols"> 
+		        <t>Alice -> Bob: MacTagAlice = MAC(k', "KC_1_U" || Alice || Bob || g1 || g2 || g3 || g4)</t> 
+		        <t>Bob -> Alice: MacTagBob = MAC(k', "KC_1_U" || Bob || Alice || g3 || g4 || g1 || g2)</t>
+            </list>
+            </t>
+            
+            <t>In the EC setting, the key confirmation works basically the same.
+           	</t>
+            	
+           	<t>
+           		<list style="symbols"> 
+           			<t>Alice -> Bob: MacTagAlice = MAC(k', "KC_1_U" || Alice || Bob || G1 || G2 || G3 || G4)</t> 
+            		<t>Bob -> Alice: MacTagBob = MAC(k', "KC_1_U" || Bob || Alice || G3 || G4 || G1 || G2)</t>
+            	</list>
+            </t>            							
+            
+            <t>
+            	The second method assumes an additional secure MAC function (e.g., one may use HMAC) and is slightly more complex than the first method. However, it can be completed within one round and it preserves the overall symmetry of the protocol implementation. For this reason, the second method is recommended.
+            </t>        
+            
+    </section>
+            						 	
+    <section title="Security Considerations">
+        <t>A PAKE protocol is designed to provide two functions in one protocol execution.
+        The first one is to provide zero-knowledge authentication of a password. It is called "zero 
+        knowledge" because at the end of the protocol, the two communicating parties will learn 
+        nothing more than one bit information: whether the passwords supplied at two ends are equal. 
+        Therefore, a PAKE protocol is naturally resistant against phishing attacks. The second
+        function is to provide session key establishment if the two passwords are equal. The session 
+        key will be used to protect the confidentiality and integrity of the subsequent communication. 
+        </t>
+        
+        <t>
+        More concretely, a secure PAKE protocol shall satisfy the following security requirements <xref target="HR10" />.
+        </t>
+
+        <t>
+        <list style="numbers">
+            
+            <t>Offline dictionary attack resistance: It does not leak any information
+            that allows a passive/active attacker to perform offline exhaustive 
+            search of the password.</t>
+                        
+            <t>Forward secrecy: It produces session keys that remain secure even
+            when the password is later disclosed.</t>            
+            
+            <t>Known-key security: It prevents a disclosed session key from affecting
+            the security of other sessions.</t>
+                
+            <t>Online dictionary attack resistance: It limits an active attacker
+            to test only one password per protocol execution.</t>
+                
+       </list>
+       </t>
+
+       <t>First, a PAKE protocol must resist offline dictionary attacks. 
+       A password is inherently weak. Typically, it has only about 20-30 bits entropy. 
+       This level of security is subject to exhaustive search. Therefore,
+       in the PAKE protocol, the communication must not reveal any data that
+       allows an attacker to learn the password through offline exhaustive search.
+       </t>
+            
+       <t>Second, a PAKE protocol must provide forward secrecy. The key exchange is authenticated 
+       based on a shared password. However, there is no guarantee on the 
+       long-term secrecy of the password. A secure PAKE scheme shall
+       protect past session keys even when the password is later disclosed. This 
+       property also implies that if an attacker knows the password but only 
+       passively observes the key exchange, he cannot learn the session key.             
+       </t>
+            
+       <t>Third, a PAKE protocol must provide known key security. A session key lasts
+       throughout the session. An exposed session key must not cause 
+       any global impact on the system, affecting the security of other 
+       sessions. 
+       </t>
+            
+       <t>Finally, a PAKE protocol must resist online dictionary attacks. If the attacker
+       is directly engaging in the key exchange, there is no way to 
+       prevent such an attacker trying a random guess of the password. 
+       However, a secure PAKE scheme should minimize the effect of the 
+       online attack. In the best case, the attacker
+       can only guess exactly one password per impersonation attempt.
+       Consecutively failed attempts can be easily detected, and the
+       subsequent attempts shall be thwarted accordingly. It is recommended
+       that the false authentication counter be handled in such a
+       way that any error (which causes the session to fail during the key exchange or key confirmation) 
+       leads to incrementing the false authentication counter.
+       
+       </t>
+            
+       <t>It has been proven in <xref target="HR10" /> that J-PAKE satisfies all of the
+       four requirements based on the assumptions that the Decisional Diffie-Hellman
+       problem is intractable and the underlying Schnorr NIZK proof
+       is secure. An independent study that proves security of J-PAKE
+       in a model with algebraic adversaries and random oracles can be found in <xref target="ABM15" />.
+       By comparison, it has been known that EKE has the problem
+       of leaking partial information about the password to a passive attacker,
+       hence not satisfying the first requirement <xref target="Jas96" />. For SPEKE and
+       SRP-6, an attacker may be able to test more than one password in one online dictionary
+       attack (see <xref target="Zha04" /> and <xref target="Hao10" />), hence they do not
+       satisfy the fourth requirement in the strict theoretical sense. Furthermore,
+       SPEKE is found vulnerable to an impersonation attack and a key-malleability attack <xref target="HS14" />.
+		These two attacks affect the SPEKE protocol specified in Jablon's original 1996 paper <xref target="Jab96" /> as well in the D26 draft of IEEE P1363.2 and the ISO/IEC 11770-4:2006 standard. As a result, the specification of SPEKE in ISO/IEC 11770-4:2006 has been revised to address the identified problems.
+       </t>
+    </section>
+        
+    <section title="IANA Considerations">
+    <t>This document does not require any IANA actions.</t>
+    </section>
+            
+    </middle>    
+    
+    <back>    
+            <references title="Normative References">
+            
+                <?rfc include="reference.RFC.2119.xml"?> 
+                <?rfc include="reference.RFC.5054.xml"?>                     
+                <?rfc include="reference.RFC.8174.xml"?> 
+            
+	            <reference anchor="SEC1" target="http://www.secg.org/sec1-v2.pdf">
+	           	<front>
+	       		<title>Standards for Efficient Cryptography. SEC 1: Elliptic Curve Cryptography</title>
+	       		<author fullname="Standards for Efficient Cryptography Group">
+	          	</author>
+	            <date month="May" year="2009" />
+	           	</front>
+	       		<seriesInfo name="SECG" value="SEC1-v2" />
+	       		</reference>
+	            		            
+	            <reference anchor="ABM15">
+  <front>
+    <title>Security of the J-PAKE Password-Authenticated Key Exchange
+    Protocol</title>
+    <author initials="M." surname="Abdalla" fullname="Michel Abdalla">
+      <organization></organization>
+    </author>
+    <author initials="F." surname="Benhamouda" fullname="Fabrice Benhamouda">
+      <organization></organization>
+    </author>
+    <author initials="P." surname="MacKenzie" fullname="Philip MacKenzie">
+      <organization></organization>
+    </author>
+    <date year="2015" month="May"/>
+  </front>
+  <seriesInfo name="2015" value="IEEE Symposium on Security and Privacy"/>
+  <seriesInfo name="DOI" value="10.1109/sp.2015.41"/>
+		    </reference>
+
+
+                <reference anchor="BM92">
+                <front>
+                <title>Encrypted Key Exchange: Password-based Protocols Secure against Dictionary Attacks</title>
+                <author initials="S." surname="Bellovin" fullname="Steven Bellvin">
+                </author>
+                <author initials="M." surname="Merrit" fullname="Miachel Merrit">
+                </author>                
+                <date month="May" year="1992" />
+                </front>
+                <seriesInfo name="IEEE Symposium" value="on Security and
+					   Privacy" />
+<seriesInfo name="DOI" value="10.1109/risp.1992.213269"/>
+                </reference>
+
+                <reference anchor="HR08">
+
+ <front>
+    <title>Password Authenticated Key Exchange by Juggling</title>
+    <author initials="F." surname="Hao" fullname="Feng Hao">
+      <organization></organization>
+    </author>
+    <author initials="P." surname="Ryan" fullname="Peter Y. A. Ryan">
+      <organization></organization>
+    </author>
+    <date year="2011"/>
+ </front>
+  <seriesInfo name="Lecture Notes in Computer Science," value="pp. 159-171"/>
+  <seriesInfo name="from 16th" value="Security Protocols Workshop (SPW '08)"/>
+  <seriesInfo name="DOI" value="10.1007/978-3-642-22137-8_23"/>
+		</reference>            
+
+                <reference anchor="HR10">
+                <front>
+                <title>J-PAKE: Authenticated Key Exchange Without PKI</title>
+                <author initials="F." surname="Hao" fullname="Feng Hao">
+                </author>
+                <author initials="P." surname="Ryan" fullname="Peter Ryan">
+                </author>                
+                <date year="2010" />
+                </front>
+		<seriesInfo name="Transactions on Computational Science XI," value="pp. 192-206"/>
+		<seriesInfo name="DOI" value="10.1007/978-3-642-17697-5_10"/>
+                </reference>       
+                
+                <reference anchor="HS14">
+  <front>
+    <title>The SPEKE Protocol Revisited</title>
+    <author initials="F." surname="Hao" fullname="Feng Hao">
+      <organization></organization>
+    </author>
+    <author initials="S." surname="Shahandashti" fullname="Siamak F. Shahandashti">
+      <organization></organization>
+    </author>
+    <date month="December" year="2014"/>
+  </front>
+  <seriesInfo name="Security Standardisation Research," value="pp. 26-38"/>
+  <seriesInfo name="DOI" value="10.1007/978-3-319-14054-4_2"/>
+		</reference>
+
+
+                <reference anchor="Jab96">
+  <front>
+    <title>Strong Password-Only Authenticated Key Exchange</title>
+    <author initials="D." surname="Jablon" fullname="David P. Jablon">
+      <organization></organization>
+    </author>
+    <date year="1996" month="October"/>
+  </front>
+  <seriesInfo name="ACM SIGCOMM Computer Communication Review,"
+	      value="Vol. 26, pp. 5-26"/>
+  <seriesInfo name="DOI" value="10.1145/242896.242897"/>
+</reference>
+
+<reference anchor="Stinson06">
+  <front>
+    <title>Cryptography: Theory and Practice</title>
+    <author initials="D." surname="Stinson" fullname="Douglas Stinson">
+    </author>
+    <date year="2006" />
+  </front>
+  <seriesInfo name="3rd Edition," value="CRC" />
+</reference>   
+						
+                <reference anchor="Wu98">
+                <front>
+                <title>The Secure Remote Password Protocol</title>
+                <author initials="T." surname="Wu" fullname="Tom Wu">
+                </author>
+                <date month="March" year="1998" />
+                </front>
+                <seriesInfo name="Internet Society" value="Symposium on Network and Distributed System Security" />
+                </reference>
+
+<!-- draft-hao-schnorr: companion document -->
+<reference anchor="RFC8235" target="https://www.rfc-editor.org/info/rfc8235">
+<front>
+                <title>Schnorr Non-interactive Zero Knowledge Proof</title>                
+                <author initials="F." surname="Hao" fullname="Feng Hao" role="editor">
+                </author>
+
+<date month='August' year='2017'/>
+</front>
+<seriesInfo name="RFC" value="8235"/>
+<seriesInfo name="DOI" value="10.17487/RFC8235"/>
+</reference>
+
+
+            </references>    
+            
+            <references title="Informative References">
+            
+            <?rfc include="reference.RFC.4419.xml"?>                     
+                            
+            <reference anchor="BJS07" target="http://csrc.nist.gov/publications/nistpubs/800-56A/SP800-56A_Revision1_Mar08-2007.pdf"> 
+            <front>
+            <title>Recommendation for Pair-Wise Key Establishment Schemes Using Discrete Logarithm Cryptography (Revised)</title> 
+            <author initials="E." surname="Barker" fullname="Elaine Barker">
+            </author>
+            <author initials="D." surname="Johnson" fullname="Don Johnson">
+            </author>
+            <author initials="M." surname="Smid" fullname="Miles Smid">
+            </author>
+            <date month="March" year="2007" />
+            </front> 
+            <seriesInfo name="" value="NIST Special Publication 800-56A" />
+            </reference>
+            
+            <reference anchor="Jas96"> 
+            <front>
+            <title>Dual-Workfactor Encrypted Key Exchange: Efficiently Preventing Password Chaining and Dictionary Attacks</title> 
+            <author initials="B." surname="Jaspan" fullname="Barry Jaspan">
+            </author>
+            <date month="July" year="1996" />
+            </front> 
+            <seriesInfo name="USENIX" value="Symposium on Security" />
+            </reference>
+            
+            <reference anchor="Zha04"> 
+  <front>
+    <title>Analysis of the SPEKE Password-Authenticated Key Exchange
+    Protocol</title>
+    <author initials="M." surname="Zhang" fullname="M. Zhang">
+      <organization></organization>
+    </author>
+    <date year="2004" month="January"/>
+  </front>
+  <seriesInfo name="IEEE Communications Letters," value="Vol. 8, pp. 63-65"/>
+  <seriesInfo name="DOI" value="10.1109/lcomm.2003.822506"/>
+	    </reference>
+
+            
+            <reference anchor="Hao10"> 
+            <front>
+            <title>On Small Subgroup Non-Confinement Attacks</title> 
+            <author initials="F." surname="Hao" fullname="Feng Hao">
+            </author>
+            <date year="2010" />
+            </front> 
+            <seriesInfo name="IEEE Conference" value="on Computer and
+				       Information Technology" />
+	    <seriesInfo name="DOI" value="10.1109/CIT.2010.187"/>
+            </reference>
+                     
+            <reference anchor="AP05">
+            <front>
+            <title>Simple Password-Based Encrypted Key Exchange Protocols</title>
+            <author initials="M." surname="Abdalla" fullname="Michel Abdalla">
+            </author>
+            <author initials="D." surname="Pointcheval" fullname="David Poincheval">
+            </author>                  
+            <date year="2005" />
+            </front>
+            <seriesInfo name="Topics in Cryptology" value="CT-RSA" />
+            <seriesInfo name="DOI" value="10.1007/978-3-540-30574-3_14"/>
+            </reference>
+        
+        	<reference anchor="FIPS186-4"
+			   target="http://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-4.pdf"> 
+        <front>
+          <title>Digital Signature Standard (DSS)</title>
+          <author>
+            <organization>National Institute of Standards and
+	    Technology</organization>
+          </author>
+          <date year="2013" month="July" />
+        </front>
+        <seriesInfo name="FIPS" value="PUB 186-4" />
+        <seriesInfo name='DOI' value='10.6028/NIST.FIPS.186-4' />
+		</reference>
+        
+        	<reference anchor="SOAA15" target="http://eprint.iacr.org/2015/1237.pdf"> 
+        	<front>
+        		<title>On the Security of One Password Authenticated Key Exchange Protocol
+        		</title> 
+        		<author initials="S." surname="Smyshlyaev" fullname="Stanislav V. Smyshlyaev">
+        		</author>
+        		<author initials="I." surname="Oshkin" fullname="Igor B. Oshkin">
+	        	</author>
+           		<author initials="E." surname="Alekseev" fullname="Evgeniy K. Alekseev">
+    			</author>
+        		<author initials="L." surname="Ahmetzyanova" fullname="Liliya R. Ahmetzyanova">
+				</author>    
+        		<date year="2015" />
+        		</front> 
+        	</reference>
+
+
+   <reference anchor="MOZILLA" target="https://wiki.mozilla.org/index.php?title=Services/KeyExchange&amp;oldid=343704">
+
+     <front>
+       <title>Services/KeyExchange</title>
+
+       <author>
+         <organization>Mozilla Wiki</organization>
+       </author>
+
+       <date month="August" year="2011" />
+     </front>
+   </reference>
+
+
+   <reference anchor="PALEMOON" target="https://www.palemoon.org/sync/">
+
+     <front>
+       <title>Pale Moon Sync</title>
+
+       <author>
+         <organization>Moonchild Productions</organization>
+       </author>
+
+       <date />
+     </front>
+   </reference>
+
+
+
+   <reference anchor="BOINC"
+	      target="http://boinc.berkeley.edu/android-boinc/libssl/crypto/jpake/">
+     <front>
+       <title>Index of /android-boinc/libssl/crypto/jpake</title>
+
+       <author>
+         <organization>BOINC</organization>
+       </author>
+
+       <date month="February" year="2011" />
+     </front>
+   </reference>    
+
+
+
+   <reference anchor="MOZILLA_NSS" target="https://dxr.mozilla.org/mozilla-central/source/security/nss/lib/freebl/jpake.c">
+
+     <front>
+       <title>jpake.c - DXR</title>
+
+       <author>
+         <organization>Mozilla Central</organization>
+       </author>
+
+       <date month="August" year="2016" />
+     </front>
+   </reference>
+
+
+   <reference anchor="BOUNCY"
+	      target="https://www.bouncycastle.org/docs/docs1.5on/org/bouncycastle/crypto/agreement/jpake/package-summary.html">
+
+     <front>
+       <title>org.bouncycastle.crypto.agreement.jpake (Bouncy Castle Library
+       1.57 API Specification)</title>
+
+       <author>
+         <organization>Bouncy Castle Cryptography Library</organization>
+       </author>
+
+       <date month="May" year="2017" />
+     </front>
+   </reference> 
+
+   <reference anchor="THREAD" target="https://portal.threadgroup.org/DesktopModules/Inventures_Document/FileDownload.aspx?ContentID=658">
+     <front>
+       <title>Thread Commissioning</title>
+
+       <author>
+         <organization>Thread</organization>
+       </author>
+
+       <date month="July" year="2015" />
+     </front>
+     <seriesInfo name="White" value="Paper" />
+   </reference>
+
+
+   <reference anchor="ISO.11770-4" target="https://www.iso.org/standard/67933.html">
+
+     <front>
+       <title>Information technology -- Security techniques -- Key management -- Part 4: Mechanisms based on weak secrets</title>
+
+       <author>
+         <organization>ISO/IEC</organization>
+       </author>
+
+       <date month="July" year="2017" />
+     </front>
+     <seriesInfo name="(under" value="development)" />
+   </reference>
+
+
+            </references>
+            
+    <section title="Acknowledgements" numbered="no">
+    <t>The editor would like to thank Dylan Clarke, Siamak Shahandashti, Robert Cragie, Stanislav Smyshlyaev, and Russ Housley for many useful comments. This work is supported by EPSRC First Grant (EP/J011541/1) and ERC Starting Grant (No. 306994).</t>
+    </section>
+            
+            
+        </back>   
+</rfc>

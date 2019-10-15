@@ -1,0 +1,1689 @@
+<?xml version="1.0" encoding="ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+<!-- !ENTITY rfc2119 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml' -->
+<!-- ?xml-stylesheet type='text/xsl' href='http://xml.resource.org/authoring/rfc2629.xslt' ? -->
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc rfcedstyle="yes" ?>
+<?rfc toc="yes" ?>
+<!-- <?rfc tocompact="no" ?> -->
+<!-- <?rfc tocindent="no" ?> -->
+<!-- <?rfc comments="yes" ?> -->
+<!-- <?rfc inline="yes" ?> -->
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<rfc number="5258"
+     category="std"
+     obsoletes="3348"
+     updates="2193">
+  <front>
+    <title abbrev="IMAP4 LIST Command Extensions">Internet Message Access Protocol version 4 - LIST Command Extensions</title>
+    
+    <author initials='B.' surname="Leiba" fullname='Barry Leiba'>
+        <organization>IBM T.J. Watson Research Center</organization>
+        <address>
+          <postal>
+            <street>19 Skyline Drive</street>
+            <city>Hawthorne</city>
+            <region>NY</region>
+            <code>10532</code>
+            <country>US</country>
+          </postal>
+          <phone>+1 914 784 7941</phone>
+          <email>leiba@watson.ibm.com</email>
+        </address>
+    </author>
+    <author initials='A.' surname="Melnikov" fullname='Alexey Melnikov'>
+        <organization>Isode Limited</organization>
+        <address>
+          <postal>
+            <street>5 Castle Business Village</street>
+            <street>36 Station Road</street>
+            <city>Hampton</city>
+            <region>Middlesex</region>
+            <code>TW12 2BX</code>
+            <country>UK</country>
+          </postal>
+          <email>Alexey.Melnikov@isode.com</email>
+          <uri>http://www.melnikov.ca/</uri>
+        </address>
+    </author>
+      
+    <date month ="May" year="2008"/>
+    <keyword>IMAP</keyword>
+    <keyword>extended LIST</keyword>
+    <keyword>email</keyword>
+    <abstract>
+      <t>
+        IMAP4 has two commands for listing mailboxes: LIST and LSUB.  As we
+        have added extensions, such as Mailbox Referrals, that have
+        required specialized lists we have had to expand the number of list
+        commands, since each extension must add its function to both LIST and
+        LSUB, and these commands are not, as they are defined, extensible.
+        If we've needed the extensions to work together, we've had to add a
+        set of commands to mix the different options, the set increasing in
+        size with each new extension.  This document describes an extension
+        to the base LIST command that will allow these additions to be done
+        with mutually compatible options to the LIST command, avoiding the
+        exponential increase in specialized list commands.
+      </t>
+    </abstract>
+    
+  </front>
+  <middle>
+    <section anchor="intro" title="Introduction and Overview">
+      <t>The LIST command is extended by amending the syntax to allow
+      options and multiple patterns to be specified.  The list of options
+      replaces the several commands that are currently used to mix and
+      match the information requested.  The new syntax is backward
+      compatible, with no ambiguity: the new syntax is being used if one of
+      the following conditions is true:
+   <?rfc compact="no" ?>  
+ <list style="numbers">
+        <t>if the first word after the command name begins with a
+        parenthesis ("LIST selection options")</t>
+        
+        <t>if the second word after the command name begins with a
+        parenthesis ("multiple mailbox patterns")</t>
+        
+        <t>if the LIST command has more than 2 parameters ("LIST
+	return options")</t>
+      </list>
+<?rfc compact="yes" ?>
+      </t>
+      
+      <t>Otherwise the original syntax is used.</t>
+      
+      <t>By adding options to the LIST command, we are announcing the intent
+      to phase out and eventually to deprecate the RLIST and RLSUB commands
+      described in <xref target="MBRef"/>.  We are also defining the mechanism to
+      request extended mailbox information, such as is described in the
+      Child Mailbox Extension <xref target="CMbox"/>.  The base
+      LSUB command is not deprecated by this extension; rather, this
+      extension adds a way to obtain subscription information with more
+      options, with those server implementations that support it.  Clients
+      that simply need a list of subscribed mailboxes, as provided by the
+      LSUB command, SHOULD continue to use that command.</t>
+      <?rfc needLines="5" ?>
+      <t>This document defines an IMAP4 extension that is identified by the
+      capability string "LIST-EXTENDED".
+      
+      The LIST-EXTENDED extension makes the
+      following changes to the IMAP4 protocol, which are described in
+      more detail in <xref target="extended"/> and <xref target="children"/>:</t>
+ <?rfc compact="no" ?>     
+      <t><list style="letters">
+        <t>defines new syntax for LIST command options.</t>
+        
+        <t>extends LIST to allow for multiple mailbox patterns.</t>
+        
+        <t>adds LIST command selection options: SUBSCRIBED, REMOTE, and RECURSIVEMATCH.</t>
+        
+        <t>adds LIST command return options: SUBSCRIBED and CHILDREN.</t>
+        
+        <t>adds new mailbox attributes: "\NonExistent", "\Subscribed",
+        "\Remote", "\HasChildren", and "\HasNoChildren".</t>
+        
+        <t>adds CHILDINFO extended data item.</t>
+      </list></t>
+<?rfc compact="yes" ?>
+    </section>
+    <section title="Conventions Used in This Document">
+      <t>In examples, "C:" indicates lines sent by a client that is connected
+      to a server.  "S:" indicates lines sent by the server to the client.</t>
+      
+      <t>The key words "MUST", "MUST NOT", "SHOULD", "SHOULD NOT", and "MAY" are
+      used in this document as specified in RFC 2119 <xref target="Kwds"/>.</t>
+      
+      <t>The term "canonical LIST pattern" refers to
+      the canonical pattern constructed internally by the server from
+      the reference and mailbox name arguments (Section 6.3.8 of <xref target="IMAP4"/>).
+      The <xref target="IMAP4"/> LIST command returns only mailboxes that match the
+      canonical LIST pattern.</t>
+      
+      <t>Other terms are introduced where they are referenced for the first time.</t>
+    </section>
+    <section anchor="extended" title="Extended LIST Command">
+      <t>This extension updates the syntax of the LIST command to allow for multiple
+      mailbox patterns to be specified, if they are enclosed in parentheses.
+      A mailbox name matches a list of mailbox patterns if it matches at least
+      one mailbox pattern. If a mailbox name matches multiple mailbox
+      patterns from the list, the server SHOULD return only a single LIST response.</t>
+      
+      <t>Note that the non-extended LIST command is required to treat an empty
+      ("" string) mailbox name argument as a special request to return the
+      hierarchy delimiter and the root name of the name given in the
+      reference parameter (as per <xref target="IMAP4"/>). However, ANY extended LIST command
+      (extended in any of 3 ways specified in <xref target="intro"/>, or any combination
+      thereof) MUST NOT treat the empty mailbox name as such a special request,
+      and any regular processing described in this document applies.
+      In particular, if an extended LIST command has multiple mailbox names
+      and one (or more) of them is the empty string, the empty string MUST be
+      ignored for the purpose of matching.</t>
+      
+      <t>Some servers might restrict which patterns are allowed in a LIST command.
+      If a server doesn't accept a particular pattern, it MUST silently ignore it.</t>
+      <t>The LIST command syntax is also extended in two additional ways: by adding a
+      parenthesized list of command options between the command name and the
+      reference name (LIST selection options) and an optional <?rfc
+      needLines="7" ?>  list of options at
+      the end that control what kind of information should be returned (LIST return
+      options). See the formal syntax in <xref target="syntax"/> for specific details.</t>
+      
+      <t>A LIST selection option tells the server which mailbox names should be
+      selected by the LIST operation.
+      The server should return information about all mailbox names that match any
+      of the "canonical LIST pattern" (as described above) and satisfy additional
+      selection criteria (if any) specified by the LIST selection options. Let's
+      call any such mailbox name a "matched mailbox name". 
+      When multiple selection options are specified, the server MUST return
+      information about mailbox names that satisfy every selection option, unless
+      a description of a particular specified option prescribes special rules.
+      An example of an option prescribing special rules is the RECURSIVEMATCH
+      selection option described later in this section.
+      We will use the term "selection criteria" when referring collectively to all
+      selection options specified in a LIST command.</t>
+      
+      <t>A LIST return option controls which information is returned for each matched
+      mailbox name. Note that return options MUST NOT cause the server to report
+      information about additional mailbox names. If the client has not specified
+      any return option, only information about attributes should be returned by
+      the server. (Of course, the server is allowed to include any other information
+      at will.)</t>
+      
+      <t>Both selection and return command options will be defined in this document
+      and in approved extension documents; each option will be enabled by a
+      capability string (one capability may enable multiple options), and a client
+      MUST NOT send an option for which the server has not advertised support.
+      A server MUST respond to options it does not recognize with a BAD response.
+      The client SHOULD NOT specify any option more than once; however, if the
+      client does this, the server MUST act as if it received the option only once.
+      The order in which options are specified by the client is not significant.</t>
+      
+      <t>In general, each selection option except RECURSIVEMATCH will have
+      a corresponding return option.  The REMOTE selection option is an anomaly
+      in this regard, and does not have a corresponding return option.
+      That is because it expands, rather than restricts, the set of mailboxes
+      that are returned.  Future extensions to this specification should keep
+      parallelism in mind and define a pair of corresponding options.</t>
+      
+      <t>This extension is identified by the capability string <vspace blankLines="0"/> "LIST-EXTENDED",
+      and support for it is a prerequisite for any future extensions that
+      require specialized forms of the LIST command.  Such extensions MUST
+      refer to this document and MUST add their function through command
+      options as described herein.
+      Note that extensions that don't require support for an extended LIST
+      command, but use extended LIST responses (see below), don't need to advertise
+      the "LIST-EXTENDED" capability string.
+      </t>
+      
+      <t>This extension also defines extensions to the LIST response, allowing
+      a series of extended fields at the end, a parenthesized list of tagged
+      data (also referred to as "extended data item"). The first element of
+      an extended field is a tag, which identifies the type of <?rfc
+      needLines="7" ?>
+ data. Tags
+      MUST be registered with IANA, as described in <xref target="iana.template.dataitems"/> of this
+      document. An example of such an extended set might be
+      </t>
+      
+      <figure><artwork>
+tablecloth (("edge" "lacy") ("color" "red"))) (X-Sample "text"))
+      </artwork></figure>
+      
+      <t>or</t>
+      
+      <figure><artwork>
+tablecloth ("edge" "lacy")) (X-Sample "text" "more text"))
+      </artwork></figure>
+      
+      <t>See the formal syntax, in <xref target="syntax"/>, for the full syntactic details.
+      The server MUST NOT return any extended data item unless the client has
+      expressed its ability to support extended LIST responses, for example, by
+      using an extended LIST command.
+      The server MAY return data in the extended fields that was not directly solicited
+      by the client in the corresponding LIST command. For example, the client can
+      enable extra extended fields by using another IMAP extension that make use of the
+      extended LIST responses.
+      The client MUST ignore all extended fields it doesn't
+      recognize.</t>
+      
+      <t>The LIST-EXTENDED capability also defines several new mailbox attributes.</t>
+      
+      <t>The "\NonExistent" attribute indicates that a mailbox name does not refer
+      to an existing mailbox. Note that this attribute is not meaningful by itself, as mailbox names
+      that match the canonical LIST pattern but don't exist must not be returned
+      unless one of the two conditions listed below is also satisfied:</t>
+      <t>
+      <list style="letters">
+        <t>The mailbox name also satisfies the selection criteria
+        (for example, it is subscribed and the "SUBSCRIBED"
+        selection option has been specified).</t>
+        
+        <t>"RECURSIVEMATCH" has been specified, and
+        the mailbox name has at least one descendant mailbox name that does not match the
+        LIST pattern and does match the selection criteria.
+        </t>
+      </list>
+      </t>
+      
+      <t>In practice, this means that the "\NonExistent" attribute is usually returned
+      with one or more of "\Subscribed", "\Remote", "\HasChildren", or the CHILDINFO extended data
+      item (see their description below).</t>
+      
+      <t>The "\NonExistent" attribute implies "\NoSelect". The "\NonExistent"
+      attribute MUST be supported and MUST be accurately computed.</t>
+      <?rfc
+      needLines="7" ?>
+      <section anchor="select-opts" title="Initial List of Selection Options">
+      
+      <t>The selection options defined in this specification are as follows:</t>
+      <t>
+      <list style="hanging">
+        <t hangText="SUBSCRIBED -">
+          causes the LIST command to list subscribed
+          names, rather than the existing mailboxes.  This will often
+          be a subset of the actual mailboxes.  It's also possible for
+          this list to contain the names of mailboxes that don't exist.
+          In any case, the list MUST include exactly those mailbox names
+          that match the canonical list pattern and are subscribed to.  This
+          option is intended to supplement the LSUB command.
+          Of particular note are the mailbox attributes as returned by this
+          option, compared with what is returned by LSUB. With the
+          latter, the attributes returned may not reflect the actual attribute
+          status on the mailbox name, and the \NoSelect attribute has a second special
+          meaning (it indicates that this mailbox is not, itself,
+          subscribed, but that it has descendant mailboxes that are).  With
+          the SUBSCRIBED selection option described here, the attributes are
+          accurate and complete, and have no special meanings.
+          "LSUB" and "LIST (SUBSCRIBED)" are, thus, not the same thing,
+          and some servers must do significant extra work to respond to
+          "LIST (SUBSCRIBED)".  Because of this, clients SHOULD continue
+          to use "LSUB" unless they specifically want the additional
+          information offered by "LIST (SUBSCRIBED)".
+          <vspace blankLines="1"/>
+          This option defines a new mailbox attribute, "\Subscribed", that
+          indicates that a mailbox name is subscribed to. The "\Subscribed"
+          attribute MUST be supported and MUST be accurately computed
+          when the SUBSCRIBED selection option is specified.
+          <vspace blankLines="1"/>
+          Note that the SUBSCRIBED selection option implies the SUBSCRIBED
+          return option (see below).
+        </t>
+        
+        <t hangText="REMOTE -">
+          causes the LIST command to show remote mailboxes as
+          well as local ones, as described in <xref target="MBRef"/>.  This option
+          is intended to replace the RLIST command and, in conjunction
+          with the SUBSCRIBED selection option, the RLSUB command.
+          <vspace blankLines="1"/>
+          This option defines a new mailbox attribute, "\Remote", that
+          indicates that a mailbox is a remote mailbox.  The "\Remote"
+          attribute MUST be accurately computed when the REMOTE option is
+          specified.
+          <vspace blankLines="1"/>
+          The REMOTE selection option has no interaction with other options.
+          Its effect is to tell the server to apply the other options, if
+          any, to remote mailboxes, in addition to local ones.
+          In particular, it has no interaction with RECURSIVEMATCH (see below).
+          A request for (REMOTE RECURSIVEMATCH) is invalid, because a
+          request for (RECURSIVEMATCH) is.  A request for (REMOTE RECURSIVEMATCH SUBSCRIBED)
+          is asking for all subscribed mailboxes, both local and remote.
+        </t>
+        
+        <t hangText="RECURSIVEMATCH -">
+          this option forces the server to return
+          information about parent mailboxes that don't match other
+          selection options, but have some submailboxes that do.
+          Information about children is returned in the CHILDINFO
+          extended data item, as described in <xref target="childinfo"/>.
+          <vspace blankLines="1"/>
+          Note 1: In order for a parent mailbox to be returned, it still
+          has to match the canonical LIST pattern.
+          <vspace blankLines="1"/>
+          Note 2: When returning the CHILDINFO extended data item,
+          it doesn't matter whether or not the submailbox matches
+          the canonical LIST pattern. See also example 9 in
+          <xref target="examples"/>.
+          <vspace blankLines="1"/>
+          The RECURSIVEMATCH option MUST NOT occur as the only selection
+          option (or only with REMOTE),
+          as it only makes sense when other selection options are
+          also used. The server MUST return BAD tagged response in such case.
+          <vspace blankLines="1"/>
+          Note that even if the RECURSIVEMATCH option is specified, the client
+          MUST still be able to handle a case when a CHILDINFO extended
+          data item is returned and there are no submailboxes
+          that meet the selection criteria of the subsequent LIST command,
+          as they can be deleted/renamed after the LIST response was sent,
+          but before the client had a chance to access them.
+        </t>
+      </list>
+      </t>
+      </section>
+      
+      <section anchor="return-opts" title="Initial List of Return Options">
+      
+	<t>The return options defined in this specification are as follows:</t>
+	<t>
+	<list style="hanging">
+	    <t hangText="SUBSCRIBED -">
+	    causes the LIST command to return subscription
+	    state for all matching mailbox names. The "\Subscribed"
+	    attribute MUST be supported and MUST be accurately computed
+	    when the SUBSCRIBED return option is specified.
+	    Further, all mailbox flags MUST be accurately computed (this
+	    differs from the behavior of the LSUB command).
+	    <vspace blankLines="1"/></t>
+            
+	    <t hangText="CHILDREN -">
+	    requests mailbox child information as originally
+	    proposed in <xref target="CMbox"/>.
+	    See <xref target="children"/>, below, for details.
+	    This option MUST be supported by all servers.
+	    </t>
+	</list>
+	</t>
+      </section>
+      
+      <section anchor="general" title="General Principles for Returning LIST Responses">
+        <t>This section outlines several principles that can be used by server
+        implementations of this document to decide whether a LIST response should be
+        returned, as well as how many responses and what kind of information
+        they may contain.</t>
+        
+        <t>
+        <list style="numbers">
+          <t>At most one LIST response should be returned for each mailbox
+          name that matches the canonical LIST pattern.
+          Server implementors must not assume that clients will be able to
+          assemble mailbox attributes and other information returned in multiple
+          LIST responses.
+          </t>
+          
+          <t>There are only two reasons for including a matching mailbox name
+          in the responses to the LIST command (note that the server is allowed
+          to return unsolicited responses at any time, and such responses are not
+          governed by this rule):
+          
+          <list style="letters">
+            <t>The mailbox name also satisfies the selection criteria.</t>
+            
+            <t>The mailbox name doesn't satisfy the selection criteria, but
+            it has at least one descendant mailbox name that satisfies the
+            selection criteria and that doesn't match the canonical LIST
+            pattern.
+       	    <vspace blankLines="1"/>
+            For more information on this case, see the CHILDINFO extended data
+            item described in <xref target="childinfo"/>.  Note that the CHILDINFO extended
+            data item can only be returned when the RECURSIVEMATCH selection
+            option is specified.</t>
+          </list>
+          </t>
+          <t>Attributes returned in the same LIST response must be treated additively.
+          For example, the following response
+          
+          <list style="empty">
+            <t>S: * LIST (\Subscribed \NonExistent) "/" "Fruit/Peach"</t>
+          </list>
+          
+          means that the "Fruit/Peach" mailbox doesn't exist, but it is
+          subscribed.</t>
+        </list>
+        </t>
+      </section>
+      
+      <section anchor="addreq" title="Additional Requirements on LIST-EXTENDED Clients">
+        <t>All clients that support this extension MUST treat an attribute with
+        a stronger meaning as implying any attribute that can be inferred from it.
+        For example, the client must treat the presence of the \NoInferiors attribute
+        as if the \HasNoChildren attribute was also sent by the server.</t>
+        
+        <texttable>
+          <preamble>The following table summarizes inference rules described in <xref target="extended"/>.</preamble>
+          <ttcol align='center'>returned attribute</ttcol>
+          <ttcol align='center'>implied attribute</ttcol>
+          <c>\NoInferiors</c>
+          <c>\HasNoChildren</c>
+          <c>\NonExistent</c>
+          <c>\NoSelect</c>
+        </texttable>
+      </section>
+      
+      <section anchor="childinfo" title="CHILDINFO Extended Data Item">
+        <t>The CHILDINFO extended data item MUST NOT be returned unless the client
+        has specified the RECURSIVEMATCH selection option.</t>
+        
+        <t>The CHILDINFO extended data item in a LIST response describes the
+        selection criteria that has caused it to be returned and indicates that
+        the mailbox has at least one descendant mailbox that matches the selection
+        criteria.</t>
+        
+        <t>The LSUB command indicates this condition by using the "\NoSelect"
+        attribute, but the LIST (SUBSCRIBED) command MUST NOT do that, since
+        "\NoSelect" retains its original meaning here.  Further, the CHILDINFO
+        extended data item is more general, in that it can be used with any
+        extended set of selection criteria.</t>
+        <t>Note: Some servers allow for mailboxes to exist without requiring
+        their parent to exist. For example, a mailbox "Customers/ABC" can exist
+        while the mailbox "Customers" does not. As CHILDINFO extended data
+        item is not allowed if the RECURSIVEMATCH selection option is not specified,
+        such servers SHOULD use the "\NonExistent \HasChildren" attribute pair to signal
+        to the client that there is a descendant mailbox that matches the selection
+        criteria. See example 11 in <xref target="examples"/>.</t>
+        <t>The returned selection criteria allow the client to distinguish
+        a solicited response from an unsolicited one, as well as to distinguish
+        among solicited responses caused by multiple pipelined LIST commands
+        that specify different criteria.</t>
+        
+        <t>Servers SHOULD ONLY return a non-matching mailbox name along with
+        CHILDINFO if at least one matching child is not also being returned.
+        That is, servers SHOULD suppress redundant CHILDINFO responses.
+        </t>
+        
+        <t>Examples 8 and 10 in <xref target="examples"/> demonstrate the difference between
+        present CHILDINFO extended data item and the "\HasChildren" attribute.</t>
+        
+        <texttable>
+          <preamble>The following table summarizes interaction between the "\NonExistent"
+          attribute and CHILDINFO (the first column indicates whether the parent
+          mailbox exists):</preamble>
+          
+          <ttcol align='center'>exists</ttcol>
+          <ttcol align='center'>meets the selection criteria</ttcol>
+          <ttcol align='center'>has a child that meets the selection criteria</ttcol>
+          <ttcol align='center'>returned LIST-EXTENDED attributes and CHILDINFO</ttcol>
+          
+          <c>no</c>
+          <c>no</c>
+          <c>no</c>
+          <c>no LIST response returned</c>
+          
+          <c>yes</c>
+          <c>no</c>
+          <c>no</c>
+          <c>no LIST response returned</c>
+          
+          <c>no</c>
+          <c>yes</c>
+          <c>no</c>
+          <c>(\NonExistent &lt;attr&gt;)</c>
+          
+          <c>yes</c>
+          <c>yes</c>
+          <c>no</c>
+          <c>(&lt;attr&gt;)</c>
+          
+          <c>no</c>
+          <c>no</c>
+          <c>yes</c>
+          <c>(\NonExistent) + CHILDINFO</c>
+          
+          <c>yes</c>
+          <c>no</c>
+          <c>yes</c>
+          <c>() + CHILDINFO</c>
+          
+          <c>no</c>
+          <c>yes</c>
+          <c>yes</c>
+          <c>(\NonExistent &lt;attr&gt;) + CHILDINFO</c>
+          
+          <c>yes</c>
+          <c>yes</c>
+          <c>yes</c>
+          <c>(&lt;attr&gt;) + CHILDINFO</c>
+          
+          <postamble>where &lt;attr&gt; is one or more attributes that correspond to the
+          selection criteria; for example, for the SUBSCRIBED option the &lt;attr&gt;
+          is \Subscribed.</postamble>
+        </texttable>
+      </section>
+    </section>
+    <section anchor="children" title="The CHILDREN Return Option">
+      <t>The CHILDREN return option implements the Child Mailbox Extension,
+      originally proposed by Mike Gahrns and Raymond Cheng, of Microsoft
+      Corporation.  Most of the information in this section is taken
+      directly from their original specification <xref target="CMbox"/>.  The CHILDREN
+      return option is simply an indication that the client wants this
+      information; a server MAY provide it even if the option is not
+      specified.</t>
+      
+      <t>Many IMAP4 <xref target="IMAP4"/> clients present to the user a hierarchical view of
+      the mailboxes that a user has access to.  Rather than initially
+      presenting to the user the entire mailbox hierarchy, it is often
+      preferable to show to the user a collapsed outline list of the
+      mailbox hierarchy (particularly if there is a large number of
+      mailboxes).  The user can then expand the collapsed outline hierarchy
+      as needed.  It is common to include within the collapsed hierarchy a
+      visual clue (such as a ''+'') to indicate that there are child
+      mailboxes under a particular mailbox.   When the visual clue is
+      clicked, the hierarchy list is expanded to show the child mailboxes.
+      The CHILDREN return option provides a mechanism for a client to
+      efficiently determine whether a particular mailbox has children, without
+      issuing a LIST "" * or a LIST "" % for each mailbox name.
+      The CHILDREN return option defines two new attributes that MUST be
+      returned within a LIST response: \HasChildren and \HasNoChildren.
+      Although these attributes MAY be returned in response to any LIST
+      command, the CHILDREN return option is provided to indicate that the
+      client particularly wants this information.  If the CHILDREN return
+      option is present, the server MUST return these attributes even if
+      their computation is expensive.</t>
+      <t>
+      \HasChildren
+      <list style="hanging" hangIndent="5">
+        <t>The presence of this attribute indicates that the
+        mailbox has child mailboxes.
+        A server SHOULD NOT set this attribute if there are child
+        mailboxes and the user does not have permission to access any
+        of them. In this case, \HasNoChildren SHOULD be used.
+        In many cases, however, a server may not be able to efficiently
+        compute whether a user has access to any child mailbox.
+        Note that even though the \HasChildren attribute for a mailbox
+        must be correct at the time of processing of the mailbox, a client
+        must be prepared to deal with a situation when a mailbox is marked
+        with the \HasChildren attribute, but no child mailbox appears in the
+        response to the LIST command. This might happen, for example, due to
+        children mailboxes being deleted or made inaccessible to the user
+        (using access control) by another client before the server is able to
+        list them.</t>
+      </list>
+      <vspace blankLines="1"/>
+      
+      \HasNoChildren
+      <list style="hanging" hangIndent="5">
+        <t>The presence of this attribute indicates that the
+        mailbox has NO child mailboxes that are accessible to the
+        currently authenticated user.</t>
+      </list>
+      </t>
+      <t>It is an error for the server to return both a
+      \HasChildren and a \HasNoChildren attribute in the same LIST response.</t>
+      <t>Note: the \HasNoChildren attribute should not be confused with the
+      IMAP4 <xref target="IMAP4"/> defined attribute \NoInferiors, which indicates
+      that no child mailboxes exist now and none can be created in the future.</t>
+    </section>
+    <section anchor="examples" title="Examples">
+      <t>
+      <list style="format %d:" counter="Examples" hangIndent="0">
+        <!-- ================================================== -->
+        <t>
+        The first example shows the complete local hierarchy that will be
+        used for the other examples.
+        <figure><artwork>
+   C: A01 LIST "" "*"
+   S: * LIST (\Marked \NoInferiors) "/" "inbox"
+   S: * LIST () "/" "Fruit"
+   S: * LIST () "/" "Fruit/Apple"
+   S: * LIST () "/" "Fruit/Banana"
+   S: * LIST () "/" "Tofu"
+   S: * LIST () "/" "Vegetable"
+   S: * LIST () "/" "Vegetable/Broccoli"
+   S: * LIST () "/" "Vegetable/Corn"
+   S: A01 OK done
+        </artwork></figure>
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        In the next example, we will see the subscribed mailboxes.  This is
+        similar to, but not equivalent with, &lt;LSUB "" "*"&gt;.  Note that the mailbox
+        called "Fruit/Peach" is subscribed to, but does not actually exist
+        (perhaps it was deleted while still subscribed).  The "Fruit"
+        mailbox is not subscribed to, but it has two subscribed children.
+        The "Vegetable" mailbox is subscribed and has two children; one
+        of them is subscribed as well.
+        <figure><artwork>
+   C: A02 LIST (SUBSCRIBED) "" "*"
+   S: * LIST (\Marked \NoInferiors \Subscribed) "/" "inbox"
+   S: * LIST (\Subscribed) "/" "Fruit/Banana"
+   S: * LIST (\Subscribed \NonExistent) "/" "Fruit/Peach"
+   S: * LIST (\Subscribed) "/" "Vegetable"
+   S: * LIST (\Subscribed) "/" "Vegetable/Broccoli"
+   S: A02 OK done
+        </artwork></figure>
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        The next example shows the use of the CHILDREN option.  The client,
+        without having to list the second level of hierarchy, now knows which
+        of the top-level mailboxes have submailboxes (children) and which do
+        not.  Note that it's not necessary for the server to return the
+        \HasNoChildren attribute for the inbox, because the \NoInferiors attribute
+        already implies that, and has a stronger meaning.
+        <figure><artwork>
+   C: A03 LIST () "" "%" RETURN (CHILDREN)
+   S: * LIST (\Marked \NoInferiors) "/" "inbox"
+   S: * LIST (\HasChildren) "/" "Fruit"
+   S: * LIST (\HasNoChildren) "/" "Tofu"
+   S: * LIST (\HasChildren) "/" "Vegetable"
+   S: A03 OK done
+        </artwork></figure>
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        In this example, we see more mailboxes that reside on another server.
+        This is similar to the command
+        &lt;RLIST "" "%"&gt;.
+        <figure><artwork>
+   C: A04 LIST (REMOTE) "" "%" RETURN (CHILDREN)
+   S: * LIST (\Marked \NoInferiors) "/" "inbox"
+   S: * LIST (\HasChildren) "/" "Fruit"
+   S: * LIST (\HasNoChildren) "/" "Tofu"
+   S: * LIST (\HasChildren) "/" "Vegetable"
+   S: * LIST (\Remote) "/" "Bread"
+   S: * LIST (\HasChildren \Remote) "/" "Meat"
+   S: A04 OK done
+        </artwork></figure>
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        The following example also requests the server to include mailboxes
+        that reside on another server.  The server returns information about
+        all mailboxes that are subscribed.  This is similar to the command
+        &lt;RLSUB "" "*"&gt;.  We also see the use of two selection options.
+        <figure><artwork>
+   C: A05 LIST (REMOTE SUBSCRIBED) "" "*"
+   S: * LIST (\Marked \NoInferiors \Subscribed) "/" "inbox"
+   S: * LIST (\Subscribed) "/" "Fruit/Banana"
+   S: * LIST (\Subscribed \NonExistent) "/" "Fruit/Peach"
+   S: * LIST (\Subscribed) "/" "Vegetable"
+   S: * LIST (\Subscribed) "/" "Vegetable/Broccoli"
+   S: * LIST (\Remote \Subscribed) "/" "Bread"
+   S: A05 OK done
+        </artwork></figure>
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        The following example requests the server to include mailboxes
+        that reside on another server.  The server is asked to return
+        subscription information for all returned mailboxes.
+        This is different from the example above.
+        <vspace blankLines="1"/>
+        Note that the output of this command is not a superset of the output
+        in the previous example, as it doesn't include LIST response for the
+        non-existent "Fruit/Peach".
+        <figure><artwork>
+   C: A06 LIST (REMOTE) "" "*" RETURN (SUBSCRIBED)
+   S: * LIST (\Marked \NoInferiors \Subscribed) "/" "inbox"
+   S: * LIST () "/" "Fruit"
+   S: * LIST () "/" "Fruit/Apple"
+   S: * LIST (\Subscribed) "/" "Fruit/Banana"
+   S: * LIST () "/" "Tofu"
+   S: * LIST (\Subscribed) "/" "Vegetable"
+   S: * LIST (\Subscribed) "/" "Vegetable/Broccoli"
+   S: * LIST () "/" "Vegetable/Corn"
+   S: * LIST (\Remote \Subscribed) "/" "Bread"
+   S: * LIST (\Remote) "/" "Meat"
+   S: A06 OK done
+        </artwork></figure>
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        In the following example, the client has specified multiple mailbox
+        patterns.  Note that this example does not use the mailbox hierarchy
+        used in the previous examples.
+        <figure><artwork>
+   C: BBB LIST "" ("INBOX" "Drafts" "Sent/%")
+   S: * LIST () "/" "INBOX"
+   S: * LIST (\NoInferiors) "/" "Drafts"
+   S: * LIST () "/" "Sent/March2004"
+   S: * LIST (\Marked) "/" "Sent/December2003"
+   S: * LIST () "/" "Sent/August2004"
+   S: BBB OK done
+        </artwork></figure>
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        The following example demonstrates the difference between the
+        \HasChildren attribute and the CHILDINFO extended data item.
+        <vspace blankLines="1"/>
+        Let's assume there is the following hierarchy:
+        <figure><artwork>
+   C: C01 LIST "" "*"
+   S: * LIST (\Marked \NoInferiors) "/" "inbox"
+   S: * LIST () "/" "Foo"
+   S: * LIST () "/" "Foo/Bar"
+   S: * LIST () "/" "Foo/Baz"
+   S: * LIST () "/" "Moo"
+   S: C01 OK done
+        </artwork></figure>
+        If the client asks RETURN (CHILDREN), it will get this:
+        <figure><artwork>
+   C: CA3 LIST "" "%" RETURN (CHILDREN)
+   S: * LIST (\Marked \NoInferiors) "/" "inbox"
+   S: * LIST (\HasChildren) "/" "Foo"
+   S: * LIST (\HasNoChildren) "/" "Moo"
+   S: CA3 OK done
+        </artwork></figure>
+        A) Let's also assume that the mailbox "Foo/Baz" is the only
+        subscribed mailbox. Then we get this result:
+        <figure><artwork>
+   C: C02 LIST (SUBSCRIBED) "" "*"
+   S: * LIST (\Subscribed) "/" "Foo/Baz"
+   S: C02 OK done
+        </artwork></figure>
+        Now, if the client issues &lt;LIST (SUBSCRIBED) "" "%"&gt;, the server will
+        return no mailboxes (as the mailboxes "Moo", "Foo", and "Inbox" are NOT
+        subscribed). However, if the client issues this:
+        <figure><artwork>
+   C: C04 LIST (SUBSCRIBED RECURSIVEMATCH) "" "%"
+   S: * LIST () "/" "Foo" ("CHILDINFO" ("SUBSCRIBED"))
+   S: C04 OK done
+        </artwork></figure>
+       (i.e., the mailbox "Foo" is not subscribed, but it has a child that is.)
+        <vspace blankLines="1"/>
+        A1) If the mailbox "Foo" had also been subscribed, the last
+        command would return this:
+        <figure><artwork>
+   C: C04 LIST (SUBSCRIBED RECURSIVEMATCH) "" "%"
+   S: * LIST (\Subscribed) "/" "Foo" ("CHILDINFO" ("SUBSCRIBED"))
+   S: C04 OK done
+        </artwork></figure>
+        or even this:
+        <figure><artwork>
+   C: C04 LIST (SUBSCRIBED RECURSIVEMATCH) "" "%"
+   S: * LIST (\Subscribed \HasChildren) "/" "Foo" ("CHILDINFO"
+      ("SUBSCRIBED"))
+   S: C04 OK done
+        </artwork></figure>
+        A2) If we assume instead that the mailbox "Foo" is not part of the
+        original hierarchy and is not subscribed, the last command will
+        give this result:
+        <figure><artwork>
+   C: C04 LIST (SUBSCRIBED RECURSIVEMATCH) "" "%"
+   S: * LIST (\NonExistent) "/" "Foo" ("CHILDINFO" ("SUBSCRIBED"))
+   S: C04 OK done
+        </artwork></figure>
+        B) Now, let's assume that no mailbox is subscribed. In this case,
+        the command &lt;LIST (SUBSCRIBED RECURSIVEMATCH) "" "%"&gt; will return
+        no responses, as there are no subscribed children (even though
+        "Foo" has children).
+        <vspace blankLines="1"/>
+        C) And finally, suppose that only the mailboxes "Foo" and "Moo" are
+        subscribed.  In that case, we see this result:
+        <figure><artwork>
+   C: C04 LIST (SUBSCRIBED RECURSIVEMATCH) "" "%" RETURN (CHILDREN)
+   S: * LIST (\HasChildren \Subscribed) "/" "Foo"
+   S: * LIST (\HasNoChildren \Subscribed) "/" "Moo"
+   S: C04 OK done
+        </artwork></figure>
+        (which means that the mailbox "Foo" has children, but none of them
+        is subscribed).
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        The following example demonstrates that the CHILDINFO extended data item
+        is returned whether or not children mailboxes match the canonical LIST pattern.
+        <vspace blankLines="1"/>
+        Let's assume there is the following hierarchy:
+        
+        <figure><artwork>
+   C: D01 LIST "" "*"
+   S: * LIST (\Marked \NoInferiors) "/" "inbox"
+   S: * LIST () "/" "foo2"
+   S: * LIST () "/" "foo2/bar1"
+   S: * LIST () "/" "foo2/bar2"
+   S: * LIST () "/" "baz2"
+   S: * LIST () "/" "baz2/bar2"
+   S: * LIST () "/" "baz2/bar22"
+   S: * LIST () "/" "baz2/bar222"
+   S: * LIST () "/" "eps2"
+   S: * LIST () "/" "eps2/mamba"
+   S: * LIST () "/" "qux2/bar2"
+   S: D01 OK done
+        </artwork></figure>
+        And that the following mailboxes are subscribed:
+        <figure><artwork>
+   C: D02 LIST (SUBSCRIBED) "" "*"
+   S: * LIST (\Subscribed) "/" "foo2/bar1"
+   S: * LIST (\Subscribed) "/" "foo2/bar2"
+   S: * LIST (\Subscribed) "/" "baz2/bar2"
+   S: * LIST (\Subscribed) "/" "baz2/bar22"
+   S: * LIST (\Subscribed) "/" "baz2/bar222"
+   S: * LIST (\Subscribed) "/" "eps2"
+   S: * LIST (\Subscribed) "/" "eps2/mamba"
+   S: * LIST (\Subscribed) "/" "qux2/bar2"
+   S: D02 OK done
+        </artwork></figure>
+        The client issues the following command first:
+        <figure><artwork>
+   C: D03 LIST (RECURSIVEMATCH SUBSCRIBED) "" "*2"
+   S: * LIST () "/" "foo2" ("CHILDINFO" ("SUBSCRIBED"))
+   S: * LIST (\Subscribed) "/" "foo2/bar2"
+   S: * LIST (\Subscribed) "/" "baz2/bar2"
+   S: * LIST (\Subscribed) "/" "baz2/bar22"
+   S: * LIST (\Subscribed) "/" "baz2/bar222"
+   S: * LIST (\Subscribed) "/" "eps2" ("CHILDINFO" ("SUBSCRIBED"))
+   S: * LIST (\Subscribed) "/" "qux2/bar2"
+   S: D03 OK done
+        </artwork></figure>
+        and the server may also include (but this would violate a SHOULD NOT in Section 3.5, because CHILDINFO is redundant)
+        <figure><artwork>
+   S: * LIST () "/" "baz2" ("CHILDINFO" ("SUBSCRIBED"))
+   S: * LIST (\NonExistent) "/" "qux2" ("CHILDINFO" ("SUBSCRIBED"))
+        </artwork></figure>
+        The CHILDINFO extended data item is returned for mailboxes "foo2", "baz2",
+        and "eps2", because all of them have subscribed children,
+        even though for the mailbox "foo2" only one of the two subscribed
+        children matches the pattern, for the mailbox "baz2" all the subscribed
+        children match the pattern, and for the mailbox "eps2" none of the
+        subscribed children matches the pattern.
+        <vspace blankLines="1"/>
+        Note that if the client issues
+        <figure><artwork>
+   C: D03 LIST (RECURSIVEMATCH SUBSCRIBED) "" "*"
+   S: * LIST () "/" "foo2" ("CHILDINFO" ("SUBSCRIBED"))
+   S: * LIST (\Subscribed) "/" "foo2/bar1"
+   S: * LIST (\Subscribed) "/" "foo2/bar2"
+   S: * LIST () "/" "baz2" ("CHILDINFO" ("SUBSCRIBED"))
+   S: * LIST (\Subscribed) "/" "baz2/bar2"
+   S: * LIST (\Subscribed) "/" "baz2/bar22"
+   S: * LIST (\Subscribed) "/" "baz2/bar222"
+   S: * LIST (\Subscribed) "/" "eps2" ("CHILDINFO" ("SUBSCRIBED"))
+   S: * LIST (\Subscribed) "/" "eps2/mamba"
+   S: * LIST (\Subscribed) "/" "qux2/bar2"
+   S: D03 OK done
+        </artwork></figure>
+        The LIST responses for mailboxes "foo2", "baz2", and "eps2" still have
+        the CHILDINFO extended data item, even though this information
+        is redundant and the client can determine it by itself.
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        The following example shows usage of multiple mailbox patterns.
+        It also demonstrates that the presence of the CHILDINFO extended data item
+        doesn't necessarily imply \HasChildren.
+        
+        <figure><artwork>
+   C: a1 LIST "" ("foo" "foo/*")
+   S: * LIST () "/" foo
+   S: a1 OK done
+  
+   C: a2 LIST (SUBSCRIBED) "" "foo/*"
+   S: * LIST (\Subscribed \NonExistent) "/" foo/bar
+   S: a2 OK done
+  
+   C: a3 LIST (SUBSCRIBED RECURSIVEMATCH) "" foo RETURN (CHILDREN)
+   S: * LIST (\HasNoChildren) "/" foo ("CHILDINFO" ("SUBSCRIBED"))
+   S: a3 OK done
+        </artwork></figure>
+        </t>
+        
+        <!-- ================================================== -->
+        <t>
+        The following example shows how a server that supports missing
+        mailbox hierarchy elements can signal to a client that didn't
+        specify the RECURSIVEMATCH selection option that there is
+        a child mailbox that matches the selection criteria.
+        <figure><artwork>
+   C: a1 LIST (REMOTE) "" *
+   S: * LIST () "/" music/rock
+   S: * LIST (\Remote) "/" also/jazz
+   S: a1 OK done
+   C: a2 LIST () "" %
+   S: * LIST (\NonExistent \HasChildren) "/" music
+   S: a2 OK done
+   C: a3 LIST (REMOTE) "" %
+   S: * LIST (\NonExistent \HasChildren) "/" music
+   S: * LIST (\NonExistent \HasChildren) "/" also
+   S: a3 OK done
+   C: a3.1 LIST "" (% music/rock)
+   S: * LIST () "/" music/rock
+   S: a3.1 OK done
+        </artwork></figure>
+   Because "music/rock" is the only mailbox under "music", there's no
+   need for the server to also return "music". However clients must
+   handle both cases. 
+        </t>
+        
+        <!-- ================================================== -->
+      </list>
+      </t>
+    </section>
+    <section anchor="syntax" title="Formal Syntax">
+      <t>
+        The following syntax specification uses the Augmented Backus-Naur Form (ABNF) as described in <xref target="ABNF"/>.
+        Terms not defined here are taken from <xref target="IMAP4"/>.
+        In particular, note that the version of "mailbox-list" below,
+        which defines the payload of the LIST response,
+        updates the version defined in the IMAP specification.
+        It is pointed to by "mailbox-data", which is defined in <xref target="IMAP4"/>.
+      </t>
+      <t>
+        "vendor-token" is defined in <xref target="ACAP"/>.
+        Note that this normative reference to ACAP will be an issue in
+        moving this spec forward, since it introduces a dependency on ACAP.
+        The definitions of <vspace needLines="0" /> "vendor-token" and of the IANA registry must
+        eventually go somewhere <?rfc
+      needLines="7" ?> else, in a document that can be moved
+        forward on the standards track independently of ACAP.
+      </t>
+      <t>
+      <list style="hanging" hangIndent="12">
+        <t hangText="childinfo-extended-item =">
+        "CHILDINFO" SP "("
+        <vspace/>
+        list-select-base-opt-quoted
+        <vspace/>
+        *(SP list-select-base-opt-quoted) ")"
+        <vspace/>
+        ; Extended data item (mbox-list-extended-item)
+        <vspace/>
+        ; returned when the RECURSIVEMATCH
+        <vspace/>
+        ; selection option is specified.
+        <vspace/>
+        ; Note 1: the CHILDINFO tag can be returned
+        <vspace/>
+        ;  with and without surrounding quotes, as per
+        <vspace/>
+        ;  mbox-list-extended-item-tag production.
+        <vspace/>
+        ; Note 2: The selection options are always returned
+        <vspace/>
+        ;  quoted, unlike their specification in
+        <vspace/>
+        ;  the extended LIST command.
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="child-mbox-flag =">
+        "\HasChildren" / "\HasNoChildren"
+        <vspace/>
+        ; attributes for CHILDREN return option, at most one
+        <vspace/>
+        ; possible per LIST response
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="eitem-standard-tag =">
+        atom
+        <vspace/>
+        ; a tag for extended list data defined in a Standard
+        <vspace/>
+        ; Track or Experimental RFC.
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="eitem-vendor-tag =">
+        vendor-token "-" atom
+        <vspace/>
+        ; a vendor-specific tag for extended list data
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="list =">
+        "LIST" [SP list-select-opts] SP mailbox SP mbox-or-pat
+        <vspace/>
+        [SP list-return-opts]
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="list-return-opts =">
+        "RETURN" SP
+        <vspace/>
+        "(" [return-option *(SP return-option)] ")"
+        <vspace/>
+        ; list return options, e.g., CHILDREN
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="list-select-base-opt =">
+        "SUBSCRIBED" / option-extension
+        <vspace/>
+        ; options that can be used by themselves
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="list-select-base-opt-quoted =">
+        DQUOTE list-select-base-opt DQUOTE
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="list-select-independent-opt =">
+        "REMOTE" / option-extension
+        <vspace/>
+        ; options that do not syntactically interact with
+        <vspace/>
+        ; other options
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="list-select-mod-opt =">
+        "RECURSIVEMATCH" / option-extension
+        <vspace/>
+        ; options that require a list-select-base-opt
+        <vspace/>
+        ; to also be present
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="list-select-opt =">
+        list-select-base-opt / list-select-independent-opt / list-select-mod-opt
+        <vspace/>
+        ; An option registration template is described in
+        <vspace/>
+        ; <xref target="iana.template.options"/> of this document.
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="list-select-opts =">
+        "(" [
+        <vspace/>
+        &nbsp; (*(list-select-opt SP) list-select-base-opt
+        <vspace/>
+        &nbsp;&nbsp; *(SP list-select-opt))
+        <vspace/>
+        / (list-select-independent-opt
+        <vspace/>
+        &nbsp;&nbsp; *(SP list-select-independent-opt))
+        <vspace/>
+        ] ")"
+        <vspace/>
+        ; Any number of options may be in any order.
+        <vspace/>
+        ; If a list-select-mod-opt appears, then a
+        <vspace/>
+        ;    list-select-base-opt must also appear.
+        <vspace/>
+        ; This allows these:
+        <vspace/>
+        ;   ()
+        <vspace/>
+        ;   (REMOTE)
+        <vspace/>
+        ;   (SUBSCRIBED)
+        <vspace/>
+        ;   (SUBSCRIBED REMOTE)
+        <vspace/>
+        ;   (SUBSCRIBED RECURSIVEMATCH)
+        <vspace/>
+        ;   (SUBSCRIBED REMOTE RECURSIVEMATCH)
+        <vspace/>
+        ; But does NOT allow these:
+        <vspace/>
+        ;   (RECURSIVEMATCH)
+        <vspace/>
+        ;   (REMOTE RECURSIVEMATCH)
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="mailbox-list =">
+        "(" [mbx-list-flags] ")" SP
+        <vspace/>
+        (DQUOTE QUOTED-CHAR DQUOTE / nil) SP mailbox
+        <vspace/>
+        [SP mbox-list-extended]
+        <vspace/>
+        ;   This is the list information pointed to by the ABNF
+        <vspace/>
+        ;   item "mailbox-data", which is defined in <xref target="IMAP4"/>
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="mbox-list-extended =">
+        "(" [mbox-list-extended-item
+        <vspace/>
+        *(SP mbox-list-extended-item)] ")"
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="mbox-list-extended-item =">
+        mbox-list-extended-item-tag SP<vspace/>
+		tagged-ext-val
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="mbox-list-extended-item-tag =">
+        astring
+        <vspace/>
+        ; The content MUST conform to either "eitem-vendor-tag"
+        <vspace/>
+        ; or "eitem-standard-tag" ABNF productions.
+        <vspace/>
+        ; A tag registration template is described in this
+        <vspace/>
+        ; document in <xref target="iana.template.dataitems"/>.
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="mbx-list-oflag =/">
+        child-mbox-flag / "\Subscribed" / "\Remote"
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="mbx-list-sflag =/">
+        "\NonExistent"
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="mbox-or-pat =">
+        list-mailbox / patterns
+        <vspace/>
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="option-extension =">
+        (option-standard-tag / option-vendor-tag)
+        <vspace/>
+        [SP option-value]
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="option-standard-tag =">
+        atom
+        <vspace/>
+        ; an option defined in a Standards Track or
+        <vspace/>
+        ; Experimental RFC
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="option-val-comp =">
+        astring /
+        <vspace/>
+        option-val-comp *(SP option-val-comp) /
+        <vspace/>
+        "(" option-val-comp ")"
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="option-value =">
+        "(" option-val-comp ")"
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="option-vendor-tag =">
+        vendor-token "-" atom
+        <vspace/>
+        ; a vendor-specific option, non-standard
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="patterns =">
+        "(" list-mailbox *(SP list-mailbox) ")"
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="return-option =">
+        "SUBSCRIBED" / "CHILDREN" / option-extension
+        <vspace blankLines="1"/>
+        </t>
+        <t hangText="tagged-ext-comp =">
+        astring /
+        <vspace/>
+        tagged-ext-comp *(SP tagged-ext-comp) /
+        <vspace/>
+        "(" tagged-ext-comp ")"
+        <vspace/>
+        ; Extensions that follow this general
+        <vspace/>
+        ; syntax should use nstring instead of
+        <vspace/>
+        ; astring when appropriate in the context
+        <vspace/>
+        ; of the extension.
+        <vspace/>
+        ; Note that a message set or a "number"
+        <vspace/>
+        ; can always be represented as an "atom".
+        <vspace/>
+        ; A URL should be represented as
+        <vspace/>
+        ; a "quoted" string.
+        </t>
+        <t hangText="tagged-ext-simple =">
+        sequence-set / number
+        </t>
+        <t hangText="tagged-ext-val =">
+        tagged-ext-simple /
+        <vspace/>
+        "(" [tagged-ext-comp] ")"
+        </t>
+        
+        
+      </list>
+      </t>
+    </section>
+    <section title="Internationalization Considerations">
+      <t>The LIST command selection option types defined in this specification
+      involve simple tests of mailbox properties. However, future extensions
+      to LIST-EXTENDED may define selection options that do more sophisticated
+      tests. In the case of a test that requires matching text, in the
+      presence of the COMPARATOR <xref target="I18N"/> extension, the active comparator must
+      be used to do comparisons. Such LIST-EXTENDED extensions MUST indicate in
+      their specification the interaction with the COMPARATOR <xref target="I18N"/>
+      extension.</t>
+    </section>
+    <section anchor="security" title="Security Considerations">
+      <t>This document describes syntactic changes to the specification of the
+      IMAP4 commands LIST, LSUB, RLIST, and RLSUB, and the modified LIST
+      command has the same security considerations as those commands.  They
+      are described in <xref target="IMAP4"/> and <xref target="MBRef"/>.</t>
+      
+      <t>The Child Mailbox Extension provides a client a more efficient means
+      of determining whether a particular mailbox has children.  If a
+      mailbox has children, but the currently authenticated user does not
+      have access to any of them, the server SHOULD respond with a
+      \HasNoChildren attribute.  In many cases, however, a server may not
+      be able to efficiently compute whether a user has access to any child
+      mailbox.  If such a server responds with a \HasChildren attribute,
+      when in fact the currently authenticated user does not have access to
+      any child mailboxes, potentially more information is conveyed about
+      the mailbox than intended.   In most situations, this will not be a
+      security concern, because if information regarding whether a mailbox
+      has children is considered sensitive, a user would not be granted
+      access to that mailbox in the first place.</t>
+      
+      <t>The CHILDINFO extended data item has the same security considerations
+      as the \HasChildren attribute described above.</t>
+    </section>
+    <section anchor="iana" title="IANA Considerations">
+      <section title="Guidelines for IANA">
+        <t>IANA has created two new registries for LIST-EXTENDED
+        options and LIST-EXTENDED response data. The templates and
+        the initial registrations are detailed below.</t>
+      </section>
+      
+      <section anchor="iana.procedure" title="Registration Procedure and Change Control">
+        <t>Registration of a LIST-EXTENDED option is done by filling in the template
+        in <xref target="iana.template.options"/> and sending it via electronic mail to iana@iana.org.
+        Registration of a LIST-EXTENDED extended data item is done by filling in the
+        template in <xref target="iana.template.dataitems"/> and sending it via electronic mail to iana@iana.org.
+        IANA has the right to reject obviously bogus registrations, but will
+        perform no review of claims made in the registration form.</t>
+        
+        <t>A LIST-EXTENDED option/extended data item name that starts with "V-" is reserved
+        for vendor-specific options/extended data items. All options, whether
+        they are vendor specific or global, should be registered with IANA.
+        If a LIST-EXTENDED extended data item is <?rfc needLines="7" ?> returned as a result of requesting
+        a particular LIST-EXTENDED option, the name of the option SHOULD be used
+        as the name of the <vspace needLines="0" /> LIST-EXTENDED extended data item.</t>
+        
+        <t>Each vendor-specific option/extended data item MUST start with its
+        vendor-token ("vendor prefix"). The vendor-token MUST be registered
+        with IANA, using the <xref target="ACAP"/> vendor subtree registry.</t>
+        
+        <t>Standard LIST-EXTENDED option/extended data item names are case insensitive.
+        If the vendor prefix is omitted from a vendor-specific LIST-EXTENDED
+        option/extended data item name, the rest is case insensitive. The vendor
+        prefix itself is not case sensitive, as it might contain non-ASCII
+        characters.</t>
+        
+        <t>While the registration procedures do not require it,
+	authors of <vspace needLines="0" /> LIST-EXTENDED
+        options/extended data items are encouraged to seek community review and
+        comment whenever that is feasible.  Authors may seek community review by
+        posting a specification of their proposed mechanism as an
+	<vspace needLines="0" /> Internet-Draft.  
+        LIST-EXTENDED option/extended data items intended for widespread use
+        should be standardized through the normal IETF process, when appropriate.</t>
+        
+        <t>Comments on registered LIST-EXTENDED options/extended response data should
+        first be sent to the "owner" of the mechanism and/or to the IMAPEXT WG
+        mailing list.
+        Submitters of comments may, after a reasonable attempt to contact the
+        owner, request IANA to attach their comment to the registration itself.
+        If IANA approves of this, the comment will be
+        made accessible in conjunction with the registration
+	LIST-EXTENDED options/extended response data itself.</t>
+        <t>Once a LIST-EXTENDED registration has been published by IANA, the
+        author may request a change to its definition.  The change request
+        follows the same procedure as the registration request.</t>
+        
+        <t>The owner of a LIST-EXTENDED registration may pass responsibility for the
+        registered option/extended data item to another person or agency by
+        informing IANA; this can be done without discussion or review.</t>
+        
+        <t>The IESG may reassign responsibility for a LIST-EXTENDED
+	<vspace needLines="0" /> option/extended data item.
+        The most common case of this will be to enable changes to be made to
+        mechanisms where the author of the registration has died, has moved out
+        of contact, or is otherwise unable to make changes that are important
+        to the community.</t>
+        
+        <t>LIST-EXTENDED registrations may not be deleted; mechanisms that are
+        no longer believed appropriate for use can be declared OBSOLETE by a
+        change to their "intended use" field. Such LIST-EXTENDED
+	<vspace needLines="0" /> options/extended data
+        items will be clearly marked in the lists published by IANA.</t>
+        
+        <t>The IESG is considered to be the owner of all LIST-EXTENDED
+	<vspace needLines="0" /> options/extended data items
+        that are on the IETF standards track.</t>
+      </section>
+      
+      <section anchor="iana.template.options" title="Registration Template for LIST-EXTENDED Options">
+        <t>
+          To: iana@iana.org
+          <vspace blankLines="0"/>
+          Subject: Registration of LIST-EXTENDED option X
+          <vspace blankLines="1"/>
+          LIST-EXTENDED option name:
+          <vspace blankLines="1"/>
+          LIST-EXTENDED option type: (One of SELECTION or RETURN)
+          <vspace blankLines="1"/>
+          Implied return options(s), if the option type is SELECTION: (zero or more)
+          <vspace blankLines="1"/>
+          LIST-EXTENDED option description:
+          <vspace blankLines="1"/>
+          Published specification (optional, recommended):
+          <vspace blankLines="1"/>
+          Security considerations:
+          <vspace blankLines="1"/>
+          Intended usage:
+          <vspace blankLines="0"/>
+          (One of COMMON, LIMITED USE, or OBSOLETE)
+          <vspace blankLines="1"/>
+          Person and email address to contact for further information:
+          <vspace blankLines="1"/>
+          Owner/Change controller:
+          <vspace blankLines="1"/>
+          (Any other information that the author deems interesting may be
+          added below this line.)
+        </t>
+      </section>
+      
+      <section anchor="iana.registrations.options" title="Initial LIST-EXTENDED Option Registrations">
+        <t>The LIST-EXTENDED option registry
+        has been populated with the following entries:</t>
+        
+        <t>
+        <list style="numbers">
+          <t>
+            To: iana@iana.org
+            <vspace blankLines="0"/>
+            Subject: Registration of LIST-EXTENDED option SUBSCRIBED
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option name: SUBSCRIBED
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option type: SELECTION
+            <vspace blankLines="1"/>
+            Implied return options(s): SUBSCRIBED
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option description: Causes the LIST command to list
+                 subscribed mailboxes, rather than the actual mailboxes.
+            <vspace blankLines="1"/>
+            Published specification: RFC 5258, <xref target="extended"/>.
+            <vspace blankLines="1"/>
+            Security considerations: RFC 5258, <xref target="security"/>.
+            <vspace blankLines="1"/>
+            Intended usage: COMMON
+            <vspace blankLines="1"/>
+            Person and email address to contact for further information:
+               Alexey Melnikov &lt;Alexey.Melnikov@isode.com&gt;
+            <vspace blankLines="1"/>
+            Owner/Change controller: iesg@ietf.org
+          <vspace blankLines="2"/>
+          </t>
+          
+          <t>
+            To: iana@iana.org
+            <vspace blankLines="0"/>
+            Subject: Registration of LIST-EXTENDED option REMOTE
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option name: REMOTE
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option type: SELECTION
+            <vspace blankLines="1"/>
+            Implied return options(s): (none)
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option description: Causes the LIST command to return
+                 remote mailboxes as well as local ones, as described in
+                 RFC 2193.
+            <vspace blankLines="1"/>
+            Published specification: RFC 5258, <xref target="extended"/>.
+            <vspace blankLines="1"/>
+            Security considerations: RFC 5258, <xref target="security"/>.
+            <vspace blankLines="1"/>
+            Intended usage: COMMON
+            <vspace blankLines="1"/>
+            Person and email address to contact for further information:
+               Alexey Melnikov &lt;Alexey.Melnikov@isode.com&gt;
+            <vspace blankLines="1"/>
+            Owner/Change controller: iesg@ietf.org
+          <vspace blankLines="2"/>
+          </t>
+          
+          <t>
+            To: iana@iana.org
+            <vspace blankLines="0"/>
+            Subject: Registration of LIST-EXTENDED option SUBSCRIBED
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option name: SUBSCRIBED
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option type: RETURN
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option description: Causes the LIST command to return
+                 subscription state.
+            <vspace blankLines="1"/>
+            Published specification: RFC 5258, <xref target="extended"/>.
+            <vspace blankLines="1"/>
+            Security considerations: RFC 5258, <xref target="security"/>.
+            <vspace blankLines="1"/>
+            Intended usage: COMMON
+            <vspace blankLines="1"/>
+            Person and email address to contact for further information:
+               Alexey Melnikov &lt;Alexey.Melnikov@isode.com&gt;
+            <vspace blankLines="1"/>
+            Owner/Change controller: iesg@ietf.org
+          <vspace blankLines="2"/>
+          </t>
+          
+          <t>
+            To: iana@iana.org
+            <vspace blankLines="0"/>
+            Subject: Registration of LIST-EXTENDED option RECURSIVEMATCH
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option name: RECURSIVEMATCH
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option type: SELECTION
+            <vspace blankLines="1"/>
+            Implied return options(s): (none)
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option description: Requests that CHILDINFO
+              extended data item (childinfo-extended-item) is to be returned.
+            <vspace blankLines="1"/>
+            Published specification: RFC 5258, <xref target="extended"/>.
+            <vspace blankLines="1"/>
+            Security considerations: RFC 5258, <xref target="security"/>.
+            <vspace blankLines="1"/>
+            Intended usage: COMMON
+            <vspace blankLines="1"/>
+            Person and email address to contact for further information:
+               Alexey Melnikov &lt;Alexey.Melnikov@isode.com&gt;
+            <vspace blankLines="1"/>
+            Owner/Change controller: iesg@ietf.org
+          <vspace blankLines="2"/>
+          </t>
+          
+          <t>
+            To: iana@iana.org
+            <vspace blankLines="0"/>
+            Subject: Registration of LIST-EXTENDED option CHILDREN
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option name: CHILDREN
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option type: RETURN
+            <vspace blankLines="1"/>
+            LIST-EXTENDED option description: Requests mailbox child information.
+            <vspace blankLines="1"/>
+            Published specification: RFC 5258, <xref target="extended"/> and <xref target="children"/>.
+            <vspace blankLines="1"/>
+            Security considerations: RFC 5258, <xref target="security"/>.
+            <vspace blankLines="1"/>
+            Intended usage: COMMON
+            <vspace blankLines="1"/>
+            Person and email address to contact for further information:
+               Alexey Melnikov &lt;Alexey.Melnikov@isode.com&gt;
+            <vspace blankLines="1"/>
+            Owner/Change controller: iesg@ietf.org
+          </t>
+        </list>
+        </t>
+      </section>
+      
+      <section anchor="iana.template.dataitems" title="Registration Template for LIST-EXTENDED Extended Data Item">
+        <t>
+          To: iana@iana.org
+          <vspace blankLines="0"/>
+          Subject: Registration of X LIST-EXTENDED extended data item
+          <vspace blankLines="1"/>
+          LIST-EXTENDED extended data item tag:
+          <vspace blankLines="1"/>
+          LIST-EXTENDED extended data item description:
+          <vspace blankLines="1"/>
+          Which LIST-EXTENDED option(s) (and their types) causes this extended
+          data item to be returned (if any):
+          <vspace blankLines="1"/>
+          Published specification (optional, recommended):
+          <vspace blankLines="1"/>
+          Security considerations:
+          <vspace blankLines="1"/>
+          Intended usage:
+          <vspace blankLines="0"/>
+          (One of COMMON, LIMITED USE, or OBSOLETE)
+          <vspace blankLines="1"/>
+          Person and email address to contact for further information:
+          <vspace blankLines="1"/>
+          Owner/Change controller:
+          <vspace blankLines="1"/>
+          (Any other information that the author deems interesting may be
+          added below this line.)
+        </t>
+      </section>
+      
+      <section anchor="iana.registrations.dataitems" title="Initial LIST-EXTENDED Extended Data Item Registrations">
+        <t>The LIST-EXTENDED extended data item registry has been
+        populated with the following entries:</t>
+        
+        <t>
+        <list style="numbers">
+          <t>
+            To: iana@iana.org
+            <vspace blankLines="0"/>
+            Subject: Registration of CHILDINFO LIST-EXTENDED extended data item
+            <vspace blankLines="1"/>
+            LIST-EXTENDED extended data item tag: CHILDINFO
+            <vspace blankLines="1"/>
+            LIST-EXTENDED extended data item description: The CHILDINFO extended data
+              item describes the selection criteria that has caused it to be
+              returned and indicates that the mailbox has one or more child
+              mailboxes that match the selection criteria.
+            <vspace blankLines="1"/>
+            Which LIST-EXTENDED option(s) (and their types) causes this extended
+            data item to be returned (if any): RECURSIVEMATCH selection option
+            <vspace blankLines="1"/>
+            Published specification: RFC 5258, <xref target="childinfo"/>.
+            <vspace blankLines="1"/>
+            Security considerations: RFC 5258, <xref target="security"/>.
+            <vspace blankLines="1"/>
+            Intended usage: COMMON
+            <vspace blankLines="1"/>
+            Person and email address to contact for further information:
+               Alexey Melnikov &lt;Alexey.Melnikov@isode.com&gt;
+            <vspace blankLines="1"/>
+            Owner/Change controller: iesg@ietf.org
+          </t>
+        </list>
+        </t>
+      </section>
+    </section>
+    
+    <section title="Acknowledgements">
+      <t>Mike Gahrns and Raymond Cheng of Microsoft Corporation originally
+      devised the Child Mailbox Extension and proposed it in 1997; the
+      idea, as well as most of the text in <xref target="children"/>, is theirs.</t>
+      
+      <t>This document is the result of discussions on the IMAP4 and IMAPEXT
+      mailing lists and is meant to reflect consensus of those groups.
+      In particular, Mark Crispin, Philip Guenther, Cyrus Daboo, Timo Sirainen,
+      Ken Murchison, Rob Siemborski, Steve Hole, Arnt Gulbrandsen, Larry
+      Greenfield, Dave Cridland, and Pete Maclean were active participants
+      in those discussions or made suggestions to this document.</t>
+    </section>    
+  </middle>
+<?rfc needLines="20" ?>
+  <back>
+    <references title="Normative References">
+      <reference anchor="Kwds">
+        <front>
+          <title>Key words for use in RFCs to Indicate Requirement Levels</title>
+          <author initials="S." surname="Bradner" fullname="Scott Bradner">
+            <organization>Harvard University</organization>
+          </author>
+          <date month="March" year="1997" />
+        </front>
+        <seriesInfo name="RFC" value="2119" />
+      </reference>
+      
+      <reference anchor="ABNF">
+        <front>
+          <title>Augmented BNF for Syntax Specifications: ABNF</title>
+          <author initials="D." surname="Crocker" fullname="Dave Crocker" role="editor">
+            <organization>Internet Mail Consortium</organization>
+          </author>
+          <author initials="P." surname="Overell" fullname="Paul Overell">
+            <organization>Demon Internet Ltd.</organization>
+          </author>
+          <date month="January" year="2008" />
+        </front>
+        <seriesInfo name="STD" value="68" />
+        <seriesInfo name="RFC" value="5234" />
+      </reference>
+      
+      <reference anchor="IMAP4">
+        <front>
+          <title>Internet Message Access Protocol - Version 4rev1</title>
+          <author initials="M." surname="Crispin" fullname="Mark Crispin">
+            <organization>University of Washington</organization>
+          </author>
+          <date month="March" year="2003" />
+        </front>
+        <seriesInfo name="RFC" value="3501" />
+      </reference>
+      
+      <reference anchor="MBRef">
+        <front>
+          <title>IMAP4 Mailbox Referrals</title>
+          <author initials="M." surname="Gahrns" fullname="Mike Gahrns">
+            <organization>Microsoft Corporation</organization>
+          </author>
+          <date month="September" year="1997" />
+        </front>
+        <seriesInfo name="RFC" value="2193" />
+      </reference>
+      <reference anchor="ACAP">
+        <front>
+          <title>ACAP -- Application Configuration Access Protocol</title>
+          <author initials="C." surname="Newman" fullname="Chris Newman">
+            <organization>Innosoft</organization>
+          </author>
+          <author initials="J.G." surname="Myers" fullname="John Gardiner Myers">
+            <organization>Netscape</organization>
+          </author>
+          <date month="November" year="1997" />
+        </front>
+        <seriesInfo name="RFC" value="2244" />
+      </reference>
+      <reference anchor="I18N">
+        <front>
+          <title>Internet Message Access Protocol Internationalization</title>
+          <author initials="C." surname="Newman" fullname="Chris Newman">
+            <organization>Sun</organization>
+          </author>
+          <author initials="A." surname="Gulbrandsen" fullname="Arnt Gulbrandsen">
+            <organization>Oryx Mail Systems</organization>
+          </author>
+          <author initials="A." surname="Melnikov" fullname="Alexey Gulbrandsen">
+            <organization>Isode Limited</organization>
+          </author>
+          <date month="May" year="2008" />
+        </front>
+        <seriesInfo name="RFC" value="5255"/>
+      </reference>
+    </references>
+    
+    <references title="Informative References">
+      <reference anchor="CMbox">
+        <front>
+          <title>The Internet Message Action Protocol (IMAP4) Child
+	  Mailbox Extension</title>
+          <author initials="M." surname="Gahrns" fullname="Mike Gahrns">
+            <organization>Microsoft Corporation</organization>
+          </author>
+          <author initials="R." surname="Cheng" fullname="Raymond Cheng">
+            <organization>Microsoft Corporation</organization>
+          </author>
+          <date month="July" year="2002" />
+        </front>
+        <seriesInfo name="RFC" value="3348" />
+      </reference>
+    </references>
+  </back>
+<vspace blankLines="100" />
+</rfc>

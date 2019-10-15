@@ -1,0 +1,1109 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc symrefs="yes"?>
+
+<?rfc rfcedstyle="yes"?> 
+<?rfc subcompact="no"?>
+
+<rfc number="5110" category="info">
+<front>
+<title abbrev="Multicast Routing Overview">
+Overview of the Internet Multicast Routing Architecture</title>
+
+<author fullname="Pekka Savola" initials="P." surname="Savola">
+	<organization abbrev="CSC/FUNET">CSC - Scientific Computing Ltd.</organization>
+	<address>
+	<postal>
+		<street/>
+		<city>Espoo</city>
+		<country>Finland</country>
+	</postal>
+	<email> psavola@funet.fi </email>
+	</address>
+</author>
+<date month="January" year="2008"/>
+
+<area>Operations &amp; Management</area>
+<workgroup>Internet Engineering Task Force</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in
+the title) for use on http://www.rfc-editor.org/rfcsearch.html. -->
+
+<keyword>example</keyword>
+
+<abstract>
+	<t>This document describes multicast routing architectures that are currently deployed
+on the Internet.  This document briefly describes those
+protocols and references their specifications.</t>
+	<t>This memo also reclassifies several
+older RFCs to Historic. These RFCs describe multicast routing protocols that were never
+widely deployed or have fallen into disuse.</t>
+</abstract>
+</front>
+<middle>
+
+<section title="Introduction">
+
+	<t>This document provides a brief overview of multicast routing architectures that are
+currently deployed on the Internet and how those protocols fit together.  It
+also describes those multicast routing protocols that were never
+widely deployed or have fallen into disuse.  A companion document <xref
+target="ADDRARCH"/> describes multicast addressing
+architectures.</t>
+	<t>Specifically, this memo deals with:</t>
+	<list style="symbols">
+		<t>setting up multicast forwarding state (<xref
+target="forwarding"/>),</t>
+		<t>distributing multicast topology information (<xref
+target="topo"/>),</t>
+		<t>learning active sources (<xref target="sa"/>),</t>
+		<t>configuring and distributing the rendezvous point (RP) information (<xref
+target="config"/>),</t>
+		<t>mechanisms for enhanced redundancy (<xref target="redundancy"/>),</t>
+		<t>interacting with hosts (<xref target="hosts"/>), and</t>
+		<t>restricting the multicast flooding in the link layer (<xref target="between"/>).</t>
+	</list>
+	<t>Section 2 starts by describing a simplistic example how these
+classes of mechanisms fit together. Some multicast data transport issues are also introduced in <xref
+target="data"/>.</t>
+	<t>This memo reclassifies to <xref target="RFC2026">Historic</xref> the following RFCs:</t>
+	<list style="symbols">
+		<t>Border Gateway Multicast Protocol (BGMP) <xref target="RFC3913"/>,</t>
+		<t>Core Based Trees (CBT) <xref target="RFC2189"/> <xref target="RFC2201"/>,</t>
+		<t>Multicast OSPF (MOSPF) <xref target="RFC1584"/>.</t>
+	</list>
+	<t>For the most part, these protocols have fallen into disuse.
+	   There may be legacy deployments of some of these
+	   protocols, which are not affected by this reclassification.
+           See <xref target="forwarding"/> for more on each protocol.</t>
+	<t>Further historical perspective may be found in, for example,
+<xref target="RFC1458"/>, <xref
+target="IMRP-ISSUES"/>, and <xref target="IM-GAPS"/>.</t>
+        <section title="Multicast-Related Abbreviations">
+<figure>
+<artwork>
+ASM     	Any Source Multicast
+BGMP		Border Gateway Multicast Protocol
+BSR     	Bootstrap Router
+CBT		Core Based Trees
+CGMP    	Cisco Group Management Protocol
+DR      	Designated Router
+DVMRP   	Distance Vector Multicast Routing Protocol
+GARP    	(IEEE 802.1D-2004) Generic Attribute Registration Protocol
+GMRP		GARP Multicast Registration Protocol
+IGMP    	Internet Group Management Protocol
+MBGP    	Multiprotocol BGP (*not* "Multicast BGP")
+MLD     	Multicast Listener Discovery
+MRP		(IEEE 802.1ak) Multiple Registration Protocol
+MMRP		(IEEE 802.1ak) Multicast Multiple Registration Protocol
+MOSPF   	Multicast OSPF
+MSDP    	Multicast Source Discovery Protocol
+PGM     	Pragmatic General Multicast 
+PIM     	Protocol Independent Multicast
+PIM-DM  	PIM - Dense Mode
+PIM-SM  	PIM - Sparse Mode
+PIM-SSM		PIM - Source-Specific Multicast
+RGMP    	(Cisco's) Router Group Management Protocol
+RP      	Rendezvous Point
+RPF		Reverse Path Forwarding
+SAFI		Subsequent Address Family Identifier
+SDP		Session Description Protocol
+SSM     	Source-Specific Multicast
+</artwork>
+</figure>
+        </section>
+</section>
+
+<section title="Multicast Routing">
+	<t>In order to give a simplified summary how each of these class of
+mechanisms fits together, consider the following multicast receiver scenario.</t>
+	<t>Certain protocols and configurations need to be in place before
+multicast routing can work.  Specifically, when ASM is employed, a router will need to know
+its RP address(es) (<xref target="config"/>, <xref target="redundancy"/>). 
+With IPv4, RPs need to be connected to other RPs using MSDP so information
+about sources connected to other RPs can be distributed (<xref
+target="sa"/>).
+Further, routers need to know if or how multicast topology differs from
+unicast topology, and routing protocol extensions can provide that
+information (<xref target="topo"/>).</t> 
+	<t>When a host wants to receive a transmission, it first needs to
+find out the multicast group address (and with SSM, source address) using
+various means (e.g., SDP description file <xref target="RFC4566"/> or manually).  Then it will signal its
+interest to its first-hop router using IGMP (IPv4) or MLD (IPv6) (<xref target="hosts"/>).  
+The router
+initiates setting up hop-by-hop multicast forwarding state (<xref
+target="forwarding"/>) to the source (in SSM) or first through the RP (in
+ASM).  Routers use an RP to find out all the sources for a group (<xref target="sa"/>).
+When multicast transmission arrives at the receiver's LAN, it
+is flooded to every Ethernet switch port unless flooding reduction such as IGMP snooping is
+employed (<xref target="between"/>).</t>
+
+	<section anchor="forwarding" title="Setting up Multicast Forwarding State">
+		<t>The most important part of multicast routing is setting
+up the multicast forwarding state. State maintenance requires periodic
+		messaging because forwarding state has a timeout.  This section describes the protocols
+commonly used for this purpose.</t>
+		<section title="PIM-SM">
+		<t>By far, the most common multicast routing protocol is
+PIM-SM <xref target="RFC4601"/>.  The PIM-SM protocol
+includes both Any Source Multicast (ASM) and Source-Specific Multicast (SSM)
+functionality.  PIM-SSM is a subset of PIM-SM that does not use the RPs but
+instead requires that receivers know the (source,group) pair and signal that
+explicitly.  Most current routing platforms support PIM-SM.</t>
+		<t>PIM routers elect a
+designated router on each LAN and the DR is responsible for PIM messaging
+and source registration on behalf of the hosts.  The DR encapsulates
+multicast packets sourced from the LAN in a unicast tunnel to the RP.
+PIM-SM builds a
+unidirectional, group-specific distribution tree consisting of the interested receivers of a
+group.  Initially, the multicast distribution tree is rooted at the RP but
+later the DRs have the option of optimizing the delivery by building (source,group)-specific
+trees.</t>
+		<t>A more lengthy introduction to PIM-SM can be found in
+Section 3 of <xref target="RFC4601"/>.</t>
+		</section>
+		<section title="PIM-DM">
+		<t>Whereas PIM-SM has been designed to avoid unnecessary flooding of
+multicast data, PIM-DM <xref target="RFC3973"/> assumed that almost every
+subnet at a site had at least one receiver for a
+group.  PIM-DM  floods multicast transmissions throughout the network ("flood and prune")
+unless the leaf parts of the network periodically indicate that they are
+not interested in that particular group.</t>
+		<t>PIM-DM may be an acceptable fit in small and/or simple networks, where
+setting up an RP would be unnecessary, and possibly in cases where a large
+percentage of users are expected to want to receive the
+transmission so that the amount of state the network has to keep is
+minimal.</t>
+		<t>PIM-DM was used as a first step in transitioning away
+from DVMRP.  It also became apparent that most networks would not have
+receivers for most groups, and to avoid the bandwidth and state overhead, the
+flooding paradigm was gradually abandoned.  Transitioning from PIM-DM to PIM-SM was easy as
+PIM-SM was designed to use compatible packet formats and dense-mode
+operation could also be satisfied by a sparse protocol.
+PIM-DM is no longer in widespread use.</t>
+
+		<t>Many implementations also support so-called
+"sparse-dense" configuration, where Sparse mode is used by default, but Dense is
+used for configured multicast group ranges (such as Auto-RP in <xref
+target="bsr"/>) only.  Lately, many networks have transitioned away
+from sparse-dense to only sparse mode.</t>
+		</section>
+		<section anchor="bidir" title="Bidirectional PIM">
+		<t>Bidirectional PIM <xref target="RFC5015"/>
+is a multicast forwarding protocol that establishes a common
+shared-path for all sources with a single root.  It can be used as an
+alternative to PIM-SM inside a single domain.  It doesn't have
+data-driven events or data-encapsulation.
+As it doesn't keep source-specific state, it may be an appealing
+approach especially in sites with a large number of sources.</t>
+		<t>As of this writing, there is no inter-domain
+solution to configure a group range to use bidirectional PIM.</t>
+		</section>
+		<section title="DVMRP">
+		<t>Distance Vector Multicast Routing Protocol (DVMRP) <xref target="RFC1075"/> <xref target="DVMRPv3"/>
+<xref target="DVMRPv3-AS"/> was the first protocol
+designed for multicasting.
+To get around initial deployment hurdles, it
+also included tunneling capabilities, which were part of its multicast
+topology functions.</t>
+		<t>Currently, DVMRP is used only very rarely in operator
+networks, having been replaced with PIM-SM.  The most typical deployment of
+DVMRP is at a leaf network, to run from a legacy firewall only supporting
+DVMRP to the internal network.  However, Generic Routing Encapsulation (GRE) tunneling <xref
+target="RFC2784"/> seems to have overtaken DVMRP in this functionality, and there is
+relatively little use for DVMRP except in legacy deployments.</t>
+
+		</section>
+		<section title="MOSPF">
+	<t>MOSPF <xref target="RFC1584"/> was implemented by several vendors and has seen some
+    deployment in intra-domain networks. However, since it is based on
+intra-domain Open Shortest Path First (OSPF) it does not
+    scale to the inter-domain case, operators have found it is easier
+    to deploy a single protocol for use in both intra-domain and inter-domain
+    networks and so it is no longer being actively deployed.</t>
+		</section>
+		<section title="BGMP">
+	<t>BGMP <xref target="RFC3913"/> did not get sufficient support within the service
+provider community to get adopted and moved forward in the IETF
+standards process. There were no reported production implementations
+and no production deployments.</t>
+
+		</section>
+		<section title="CBT">
+	<t>CBT <xref target="RFC2201"/><xref target="RFC2189"/> was an academic project that provided the basis
+for PIM sparse mode shared trees. Once the shared tree functionality
+was incorporated into PIM implementations, there was no longer a need
+for a production CBT implementation. Therefore, CBT never saw production
+deployment.</t>
+		</section>
+		<section title="Interactions and Summary">
+			<t>It is worth noting that it is possible to run
+different protocols with different multicast group ranges.  For example,
+treat some groups as
+dense or bidirectional in an otherwise PIM-SM network; this typically requires manual
+configuration of the groups or a mechanism like BSR (<xref target="bsr"/>).
+It is also possible to interact between
+different protocols; for example, use DVMRP in the leaf network, but PIM-SM
+upstream.  The basics for interactions among different protocols have been
+outlined in <xref target="RFC2715"/>.</t>
+		<t>The following figure gives a concise summary of
+the deployment status of different protocols as of this writing.</t>
+		<figure>
+		<artwork>
+             +--------------+--------------+----------------+
+             | Inter-domain | Intra-domain | Status         |
++------------+--------------+--------------+----------------+
+| PIM-SM     |     Yes      |     Yes      | Active         |
+| PIM-DM     | Not anymore  | Not anymore  | Little use     |
+| BIDIR-PIM  |      No      |     Yes      | Some uptake    |
+| DVMRP      | Not anymore  |  Stub only   | Going out      |
+| MOSPF      |      No      | Not anymore  | Inactive       |
+| CBT        |      No      |     No       | Never deployed |
+| BGMP       |      No      |     No       | Never deployed |
++------------+--------------+--------------+----------------+
+		</artwork>
+		</figure>
+<t>From this table, it is clear that PIM-Sparse Mode is the only
+multicast routing protocol that is deployed inter-domain and,
+therefore, is most frequently used within multicast domains as well.</t>
+
+		</section>
+	</section>
+	<section anchor="topo" title="Distributing Topology Information">
+	<t>PIM has become the de-facto multicast forwarding protocol, but as its name
+implies, it is independent of the underlying unicast routing protocol.
+When unicast and multicast topologies are the same ("congruent"), i.e., use the same routing tables (routing information base, RIB),
+it has been considered sufficient just to distribute one set of reachability
+information to be used in conjunction with a protocol that sets up multicast
+forwarding state (e.g., PIM-SM).</t>
+	<t>However, when PIM which by default built multicast topology based on
+the unicast topology gained popularity, it became apparent that it would
+be necessary to be able to distribute also non-congruent multicast
+reachability information in the regular unicast protocols.  This was
+previously not an issue, because DVMRP built its own reachability
+information.</t>
+	<t>The topology
+information is needed to perform efficient distribution of multicast
+transmissions and to prevent transmission loops by applying it to the Reverse
+Path Forwarding (RPF) check.</t>
+
+	<t>This subsection introduces these protocols.</t>
+	<section title="Multiprotocol BGP">
+		<t><xref target="RFC4760">Multiprotocol Extensions for BGP-4</xref>
+(often referred to as "MBGP"; however, it is worth noting that "MBGP" does
+*not* stand for "Multicast BGP") specifies a
+mechanism by which BGP can be used to distribute different reachability
+information for unicast (SAFI=1) and multicast traffic (SAFI=2). Multiprotocol BGP has been widely deployed
+for years, and is also needed to route IPv6.  Note that SAFI=3 was
+originally specified for "both unicast and multicast" but has since then
+been deprecated.</t>
+		<t>These extensions are in widespread use wherever BGP is
+used to distribute unicast topology information. Multicast-enabled networks
+that use BGP should use Multiprotocol BGP to distribute
+multicast reachability information explicitly even if the topologies are
+congruent to make an explicit statement about multicast reachability.
+A number of significant
+multicast transit providers even require this, by doing the RPF lookups
+solely based on explicitly advertised multicast address family.</t>
+	</section>
+	<section title="OSPF/IS-IS Multi-Topology Extensions">
+		<t>Similar to BGP, some Interior Gateway Protocols (IGPs) also provide the capability
+for signalling differing topologies, for example
+<xref target="M-ISIS">IS-IS multi-topology
+extensions</xref>.  These can be used for a multicast topology that differs
+from unicast.  Similar but not so widely implemented work exists for <xref
+target="RFC4915">OSPF</xref>.</t>
+		<t>It is worth noting that
+inter-domain incongruence and intra-domain 
+incongruence are orthogonal, so one doesn't require the other.
+Specifically, inter-domain incongruence is quite common, while intra-domain
+incongruence isn't, so you see much more deployment of MBGP than
+MT-ISIS/OSPF. Commonly deployed networks have managed well
+without protocols handling intra-domain incongruence.  However, the availability of multi-topology
+mechanisms may in part replace the typically used workarounds such as tunnels.</t>
+	</section>
+	<section title="Issue: Overlapping Unicast/Multicast Topology">
+		<t>An interesting case occurs when some routers do not distribute
+multicast topology information explicitly while others do.  In particular, this happens
+when some multicast sites in the Internet are using plain BGP while some
+use MBGP.</t>
+		<t>Different implementations deal with this in different
+ways.  Sometimes, multicast RPF mechanisms first look up the multicast
+routing table, or M-RIB ("topology database") with a longest prefix match algorithm,
+and if they find any entry (including a default route), that is used;
+if no match is found, the unicast routing table is used instead.</t>
+		<t>An alternative approach is to use longest prefix match on the union of
+multicast and unicast routing tables; an implementation technique here is to
+copy the whole unicast routing table over to the multicast routing table. 
+The important point to remember here, though, is to not override the
+multicast-only routes; if the longest prefix match would find both a
+(copied) unicast route and a multicast-only route, the latter should be
+treated as preferable.</t>
+		<t>Another implemented approach is to just look up the
+information in the unicast routing table, and provide the user capabilities
+to change that as appropriate, using for example copying functions discussed
+above.</t>
+	</section>
+	<section title="Summary">
+		<t>A congruent topology can be deployed
+using unicast routing protocols that provide no support for a separate multicast
+topology.  In intra-domain that approach is often adequate.  However,  it is recommended that
+if inter-domain routing uses BGP, multicast-enabled sites should use MP-BGP
+SAFI=2 for multicast and SAFI=1 for unicast even if the topology was congruent
+to explicitly signal "yes, we use multicast".</t>
+		<t>The following table summarizes the approaches that can be
+used to distribute multicast topology information.</t>
+		<figure>
+		<artwork>
+                       +----------------+--------------+
+                       | Inter-domain   | Intra-domain |
++--------------------- +----------------+--------------+
+| MP-BGP SAFI=2        |      Yes       |     Yes      |
+| MP-BGP SAFI=3        |  Doesn't work  | Doesn't work |
+| IS-IS multi-topology | Not applicable |     Yes      | 
+| OSPF multi-topology  | Not applicable | Few implem.  |
++----------------------+----------------+--------------+
+		</artwork>
+		</figure>
+		<t>"Not applicable" refers
+		to the fact that IGP protocols can't be used in inter-domain
+routing.  "Doesn't work" means that while MP-BGP SAFI=3 was defined and
+		could apply, that part of the specification has not been
+implemented and can't be used in practice.  "Yes" lists the mechanisms which
+		are generally applicable and known to work. "Few implem."
+means that the approach could work but is not commonly available.</t>
+	</section>
+	</section>
+	<section anchor="sa" title="Learning (Active) Sources">
+		<t>To build a multicast distribution tree, the routing
+protocol needs to find out where the sources for the group are.  In case of
+SSM, the user specifies the source IP address or it is otherwise learned out
+of band.</t>
+		<t>In ASM, the RPs know about all the active sources in a
+local PIM domain. 
+As a result, when PIM-SM or BIDIR-PIM is used in intra-domain the sources
+		are learned as a feature of the protocol itself.</t>
+		<t>Having a single PIM-SM domain for the whole Internet is
+		an insufficient model for many reasons, including
+		scalability, administrative boundaries, and different
+		technical tradeoffs.  Therefore, it is required to be able to split up the multicast routing
+infrastructures to smaller domains, and there must be a way to share
+information about active sources using some mechanism
+if the ASM model is to be supported.</t>
+		<t>This section discusses the options of learning active
+sources that apply in an inter-domain environment.</t>
+		<section title="SSM">
+		<t>Source-specific Multicast <xref target="RFC4607"/>
+(sometimes also referred to as "single-source Multicast") does not count on learning active sources in
+the network.  Recipients need to know the source IP addresses using an out of band
+mechanism which are used to subscribe to the (source, group) channel.  The
+multicast routing uses the source address to set up the state and no further
+source discovery is needed.</t>
+		<t>As of this writing, there are attempts to analyze and/or
+define out-of-band source discovery functions which would help SSM in
+particular <xref target="DYNSSM-REQ"/>.</t>
+		</section>
+ 		<section anchor="msdp" title="MSDP">
+		<t>Multicast Source Discovery Protocol <xref
+target="RFC3618"/> was invented as a stop-gap mechanism, when it became
+apparent that multiple PIM-SM domains (and RPs) were needed in the
+network, and information about the active sources needed to be propagated
+between the PIM-SM domains using some other protocol.</t>
+		<t>MSDP is also used to share the state about sources
+between multiple RPs in a single domain for, e.g., redundancy purposes <xref
+target="RFC3446"/>.  The same can be achieved using PIM extensions <xref
+target="RFC4610"/>.
+See <xref target="redundancy"/> for more information.</t>
+		<t>There is no intent to define MSDP for IPv6, but instead
+use only SSM and Embedded-RP <xref
+target="MCAST-ISSUES"/>.</t>
+		</section>
+		<section title="Embedded-RP">
+		<t>Embedded-RP <xref target="RFC3956"/> is an IPv6-only
+technique to map the address of the RP to the multicast group address. 
+Using this method, it is possible to avoid the use of MSDP while still
+allowing multiple multicast domains (in the traditional sense).</t>
+		<t>The model
+works by defining a single RP address for a particular group for all of the
+Internet, so there is no need to share state about that with any other RPs.
+If necessary, RP redundancy can still be achieved with Anycast-RP using
+PIM <xref target="RFC4610"/>.</t>
+		</section>
+		<section title="Summary">
+		<t>The following table summarizes the source discovery
+approaches and their status.</t>
+		<figure>
+		<artwork>
+                       +------+------+------------------------------+
+                       | IPv4 | IPv6 | Status                       |
++----------------------+------+------+------------------------------+
+| Bidir single domain  | Yes  | Yes  | OK but for intra-domain only | 
+| PIM-SM single domain | Yes  | Yes  | OK                           |
+| PIM-SM with MSDP     | Yes  | No   | De-facto v4 inter-domain ASM |
+| PIM-SM w/ Embedded-RP| No   | Yes  | Best inter-domain ASM option |
+| SSM                  | Yes  | Yes  | No major uptake yet          |
++----------------------+------+------+------------------------------+
+		</artwork>
+		</figure>
+		</section>
+	</section>
+	<section anchor="config" title="Configuring and Distributing PIM RP Information">
+		<t>PIM-SM and BIDIR-PIM configuration mechanisms exist, which are
+used to configure the RP addresses and the groups that are to use those RPs in
+the routers.  This section outlines the approaches.</t>
+		<section title="Manual RP Configuration">
+		<t>It is often easiest just to manually configure the RP
+information on the routers when PIM-SM is used.</t>
+		<t>Originally, static RP mapping was considered suboptimal since it required
+explicit configuration changes every time the RP address changed.  However, with
+the advent of anycast RP addressing, the RP address is unlikely to ever
+change.  Therefore, the administrative burden is generally limited to
+initial configuration.  Since there is usually a fair amount of multicast
+configuration
+required on all routers anyway (e.g., PIM on all interfaces), adding the RP
+address statically isn't really an issue.  Further, static anycast RP
+mapping provides the benefits of RP load sharing and redundancy (see <xref
+target="redundancy"/>) without
+the complexity found in dynamic mechanisms like Auto-RP and Bootstrap Router (BSR).</t>
+		<t>With such design, an anycast RP uses an address that is
+configured on a loopback interface of the routers currently acting
+as RPs, and state is distributed using PIM <xref
+target="RFC4610"/> or MSDP <xref target="RFC3446"/>.</t>
+		<t>Using this technique, each router might only need to
+be configured with one, portable RP address.</t>
+		</section>
+		<section title="Embedded-RP">
+		<t>Embedded-RP provides the information about the RP's
+address in the group addresses that are delegated to those who use the RP,
+so unless no other ASM than Embedded-RP is used, the network administrator only needs to
+configure the RP routers.</t>
+		<t>While Embedded-RP in many cases is sufficient for IPv6, 
+other methods of RP configuration are needed if one needs to provide
+ASM service for other than Embedded-RP group addresses. In
+particular, service discovery type of applications may need hard-coded
+addresses that are not dependent on local RP addresses.</t>
+		<t>As the RP's address is exposed to the users and
+applications, it is very important to ensure it does not change often, e.g., by using
+manual configuration of an anycast address.</t>
+		</section>
+		<section anchor="bsr" title="BSR and Auto-RP">
+		<t>BSR <xref target="RFC5059"/> is a mechanism
+for configuring the RP address for groups.  It may no longer be in as wide
+use with IPv4 as it was earlier, and for IPv6, Embedded-RP will in many cases
+be sufficient.</t>
+		<t>Cisco's Auto-RP is an older,
+proprietary method for distributing group to RP mappings, similar to BSR.
+Auto-RP has little use today.</t>
+		<t>Both Auto-RP and BSR require some form of control at the
+routers to ensure that only valid routers are able to advertise themselves
+as RPs.  Further, flooding of BSR and Auto-RP messages must be prevented at
+PIM borders.  Additionally, routers require monitoring that they are actually
+using the RP(s) the administrators think they should be using, for example,
+if a router (maybe in customer's control) is advertising itself
+inappropriately.  All in all, while BSR and Auto-RP provide easy
+configuration, they also provide very significant configuration and
+management complexity.</t>
+		<t>It is worth noting that both Auto-RP and BSR were
+deployed before the use of a manually configured anycast-RP address became
+relatively commonplace, and there is actually relatively little need for
+them today unless there is a need to configure different properties (e.g.,
+sparse, dense, bidirectional) in a dynamic
+fashion.</t>
+		</section>
+		<section title="Summary">
+		<t>The following table summarizes the RP discovery
+mechanisms and their status.  With the exception of Embedded-RP, each
+mechanism operates within a PIM domain.</t>
+		<figure>
+		<artwork>
+                     +------+------+-----------------------+
+                     | IPv4 | IPv6 | Deployment            |
++--------------------+------+------+-----------------------+
+| Static RP          | Yes  | Yes  | Especially in ISPs    |
+| Auto-RP            | Yes  | No   | Legacy deployment     |
+| BSR                | Yes  | Yes  | Some, anycast simpler |
+| Embedded-RP        | No   | Yes  | Growing               |
++--------------------+------+------+-----------------------+
+		</artwork>
+		</figure>
+		</section>
+	</section>
+	<section anchor="redundancy" title="Mechanisms for Enhanced Redundancy">
+		<t>Having only one RP in a PIM-SM domain would be a
+single point of failure for the whole multicast domain.  As a result, a
+number of mechanisms have been developed to either eliminate the RP
+functionality or  to enhance RPs' redundancy, resilience
+against failures, and to recover from failures quickly.  This section
+summarizes these techniques explicitly.</t>
+		<section title="Anycast RP">
+                <t>As mentioned in <xref target="msdp"/>, MSDP is also used to share the state about sources
+between multiple RPs in a single domain, e.g., for redundancy purposes <xref
+target="RFC3446"/>.  The purpose of MSDP in this context is to share the
+same state information on multiple RPs for the same groups to enhance the
+robustness of the service.</t>
+		<t>Recent PIM extensions <xref
+target="RFC4610"/> also provide this functionality.  In
+contrast to MSDP, this approach works for both IPv4 and IPv6.</t>
+		</section>
+		<section title="Stateless RP Failover">
+		<t>While Anycast RP shares state between RPs so that RP
+failure causes only small disturbance, stateless approaches are also
+possible with a more limited resiliency.
+A traditional mechanism has been to use Auto-RP or BSR (see <xref
+target="bsr"/>) to select another RP when the active one failed.  However,
+the same functionality could be achieved using a shared-unicast RP address
+("anycast RP without state sharing") without the complexity of a dynamic
+mechanism.  Further, Anycast RP offers a significantly more extensive
+failure mitigation strategy, so today there is actually very little need to
+use stateless failover mechanisms, especially dynamic ones, for redundancy
+purposes.</t>
+		</section>
+		<section title="Bidirectional PIM">
+		<t>Because bidirectional PIM (see <xref target="bidir"/>) does not
+switch to shortest path tree (SPT), the final multicast tree may be
+established faster.  On the other hand, 
+PIM-SM or SSM may converge more quickly especially in scenarios (e.g.,
+unicast routing change) where bidirectional
+needs to re-do the Designated Forwarder election.</t>
+		</section>
+		<section title="Summary">
+		<t>The following table summarizes the techniques for
+enhanced redundancy.</t>
+		<figure>
+		<artwork>
+                     +------+------+-----------------------+
+                     | IPv4 | IPv6 | Deployment            |
++--------------------+------+------+-----------------------+
+| Anycast RP w/ MSDP | Yes  | No   | De-facto approach     |
+| Anycast RP w/ PIM  | Yes  | Yes  | Newer approach        | 
+| Stateless RP fail. | Yes  | Yes  | Causes disturbance    |
+| BIDIR-PIM          | Yes  | Yes  | Deployed at some sites|
++--------------------+------+------------------------------+
+		</artwork>
+		</figure>
+		</section>
+	</section>
+	<section anchor="hosts" title="Interactions with Hosts">
+		<t>Previous sections have dealt with the components required
+by routers to be able to do multicast routing.  Obviously, the real
+users of multicast are the hosts: either sending or receiving multicast.
+This section describes the required interactions with hosts.</t>
+		<section title="Hosts Sending Multicast">
+		<t>After choosing a multicast group through a
+variety of means, hosts just send the packets to the link-layer multicast address,
+and the designated router will receive all the multicast packets and start
+forwarding them as appropriate.  A host does not need to be a member of the
+group in order to send to it <xref target="RFC1112"/>.</t>
+		<t>In intra-domain or Embedded-RP scenarios, ASM senders may move to a new IP address without
+significant impact on the delivery of their transmission.  SSM senders
+cannot change the IP address unless receivers join the new channel or the
+sender uses an IP mobility technique that is transparent to the
+receivers.</t>
+		</section>
+		<section title="Hosts Receiving Multicast">
+		<t>Hosts signal their interest in receiving a multicast
+group or channel by the use of IGMP <xref target="RFC3376"/> and MLD <xref
+target="RFC3810"/>.  IGMPv2 and MLDv1 are still commonplace, but are also
+often used in new
+deployments.  Some vendors also support
+SSM mapping techniques for receivers which use an older IGMP/MLD version
+where the router maps the join request to an SSM channel based on
+various, usually complex means of configuration.</t>
+		</section>
+		<section title="Summary">
+		<t>The following table summarizes the techniques host
+interaction.</t>
+		<figure>
+		<artwork>
+                     +-------+------+----------------------------+
+                     | IPv4  | IPv6 | Notes                      |
++--------------------+-------+------+----------------------------+
+| Host sending       | Yes   | Yes  | No support needed          |
+| Host receiving ASM | IGMP  | MLD  | Any IGMP/MLD version       |
+| Host receiving SSM | IGMPv3| MLDv2| Any version w/ SSM-mapping |
++--------------------+-------+------+----------------------------+
+		</artwork>
+		</figure>
+		</section>
+	</section>
+	<section anchor="between" title="Restricting Multicast Flooding in
+the Link Layer">
+		<t>Multicast transmission in the link layer, for example Ethernet,
+typically includes some form of flooding the packets through a LAN.  This
+causes unnecessary bandwidth usage and discarding unwanted frames on those
+nodes which did not want to receive the multicast transmission.</t>
+		<t>Therefore a number of techniques have been developed,
+to be used in Ethernet switches between routers, or between routers and
+hosts, to limit the flooding.</t>
+		<t>Some mechanisms operate with IP addresses, others with
+MAC addresses.  If filtering is done based on MAC addresses,
+hosts may receive unnecessary multicast traffic (filtered out in the hosts' IP layer)
+if more than one IP multicast group addresses maps into the same MAC
+address, or if IGMPv3/MLDv2 source filters are used.
+Filtering based on IP destination addresses, or destination and sources
+addresses, will help avoid these but requires parsing of the
+Ethernet frame payload.</t>
+		<t>These options are discussed in this section.</t>
+		<section title="Router-to-Router Flooding Reduction">
+			<t>A proprietary solution, Cisco's RGMP <xref
+target="RFC3488"/> has been developed to reduce the amount of flooding
+between routers in a switched networks.
+This is typically only considered a
+problem in some Ethernet-based Internet Exchange points or VPNs.</t>
+			<t>There have been proposals to observe and possibly react
+("snoop") PIM
+messages <xref target="PIM-SNOOP"/>.</t>
+		</section>
+		<section title="Host/Router Flooding Reduction">
+			<t>There are a number of techniques to help reduce
+flooding both from a router to hosts, and from a host to the routers (and
+other hosts).</t>
+			<t>Cisco's proprietary CGMP <xref target="CGMP"/>
+provides a solution
+where the routers notify the switches, but also allows the switches to snoop
+IGMP packets to enable faster notification of hosts no longer wishing to
+receive a group.  Implementations of CGMP do not support fast leave behaviour
+with IGMPv3.
+Due to IGMP report suppression in IGMPv1 and IGMPv2, multicast is still
+flooded to ports which were once members of a group as long as there is at
+least one receiver on the link.  Flooding restrictions are done based on
+multicast MAC addresses.  Implementations of CGMP do not support IPv6.</t>
+			<t>IEEE 802.1D-2004 specification describes 
+Generic Attribute Registration Protocol (GARP), and GARP Multicast Registration Protocol (GMRP) <xref
+target="GMRP"/> is a link-layer
+multicast group application of GARP that notifies switches about MAC
+multicast group memberships. 
+If GMRP is used in conjunction with IP multicast, then the GMRP
+registration function would become associated with an IGMP "join".
+However, this GMRP-IGMP association is beyond the scope of GMRP.
+GMRP requires support at the host stack and it
+has not been widely implemented.   Further, IEEE 802.1 considers GARP and
+GMRP obsolete
+being replaced by Multiple Registration Protocol (MRP) and Multicast Multiple Registration Protocol (MMRP)
+that are being specified in IEEE 802.1ak <xref target="802.1ak"/>.  MMRP is expected to be mainly used between
+bridges.  Some further information about
+GARP/GMRP is also available in Appendix B of <xref target="RFC3488"/>.</t>
+			<t>IGMP snooping <xref
+target="RFC4541"/> appears to be the most widely implemented
+technique.  IGMP snooping requires that the switches
+implement a significant amount of IP-level packet inspection; this appears
+to be something that is difficult to get right, and often the upgrades are
+also a challenge.  Snooping support is commonplace for IGMPv1 and IGMPv2,
+but fewer switches support IGMPv3 or MLD (any version) snooping.  In the
+worst case, enabling IGMP snooping on a switch that does not support IGMPv3
+snooping breaks multicast capabilities of nodes using IGMPv3.</t>
+			<t>Snooping switches also need to identify the ports
+where routers reside and therefore where to flood the packets. This can be
+accomplished using
+Multicast Router Discovery protocol <xref
+target="RFC4286"/>, looking at certain IGMP queries <xref target="RFC4541"/>,
+looking at PIM Hello and possibly other messages,
+or by manual configuration.   An issue with PIM snooping at LANs is that PIM
+messages can't be turned off or encrypted, leading to security issues <xref
+target="PIM-THREATS"/>.</t>
+			<t>IGMP proxying <xref target="RFC4605"/>
+is sometimes used either as
+a replacement of a multicast routing protocol on a small router, or to
+aggregate IGMP/MLD reports when used with IGMP snooping.</t>
+		</section>
+		<section title="Summary">
+		<t>The following table summarizes the techniques for
+multicast flooding reduction inside a single link for router-to-router and
+last-hop LANs.</t>
+		<figure>
+		<artwork>
+                        +--------+-----+----------------------------+
+                        | R-to-R | LAN | Notes                      |
++-----------------------+--------+-----+----------------------------+
+| Cisco's RGMP          |  Yes   | No  | Replaced by PIM snooping   |
+| PIM snooping          |  Yes   | No  | Security issues in LANs    |
+| IGMP/MLD snooping     |  No    | Yes | Common, IGMPv3 or MLD rare |
+| Multicast Router Disc |  No    | Yes | Few if any implem. yet     |
+| IEEE GMRP and MMRP    |  No    | No  | No host/router deployment  |
+| Cisco's CGMP          |  No    | Yes | Replaced by other snooping |
++-----------------------+--------+-----+----------------------------+
+		</artwork>
+		</figure>
+		</section>
+	</section>
+</section>
+
+<section title="Acknowledgements">
+	<t>Tutoring a couple multicast-related papers, the latest by Kaarle
+Ritvanen <xref target="RITVANEN"/> convinced the author that up-to-date
+multicast routing and address assignment/allocation documentation is necessary.</t>
+	<t>Leonard Giuliano, James Lingard, Jean-Jacques Pansiot, Dave
+Meyer, Stig Venaas, Tom Pusateri, Marshall Eubanks, Dino Farinacci,
+Bharat Joshi, Albert Manfredi,  Jean-Jacques Pansiot, Spencer Dawkins,
+Sharon Chisholm, John Zwiebel, Dan Romascanu, Thomas Morin, Ron Bonica,
+Prashant Jhingran, and Tim Polk provided good comments,
+helping in improving this document.</t>
+</section>
+
+<section title="IANA Considerations">
+	<t>IANA has updated the following registries by adding a
+reference to this document:</t>
+	<list style="symbols">
+		<t>OSPFv2 Options Registry: MC-bit</t>
+		<t>OSPFv2 Link State (LS) Type: Group-membership-LSA</t>
+		<t>OSPFv2 Router Properties Registry: W-bit</t>
+		<t>OSPFv3 Options Registry: MC-bit</t>
+		<t>OSPFv3 LSA Function Code Registry:
+Group-membership-LSA</t>
+		<t>OSPFv3 Prefix Options Registry: MC-bit</t>
+	</list>
+</section>
+
+<section title="Security Considerations">
+	<t>This memo only describes different approaches to multicast
+routing, and this has no security considerations; the
+security analysis of the mentioned protocols is out of scope of this
+memo.</t>
+	<t>However, there has been analysis of the security of multicast
+routing infrastructures <xref target="RFC4609"/>, IGMP/MLD
+<xref target="MLD-SEC"/>, and PIM last-hop issues <xref
+target="PIM-THREATS"/>.</t>
+</section>
+</middle>
+<back>
+
+
+<references title="Normative References">
+        <?rfc include="reference.RFC.4607" ?>
+        <?rfc include="reference.RFC.4915" ?>
+        <?rfc include="reference.RFC.4601" ?>
+        <?rfc include="reference.RFC.5015" ?>
+	<?rfc include="reference.RFC.4760" ?>
+        <?rfc include="reference.RFC.3618" ?>
+        <?rfc include="reference.RFC.3956" ?>
+        <?rfc include="reference.RFC.3376" ?>
+        <?rfc include="reference.RFC.3810" ?>
+        <?rfc include="reference.RFC.2026" ?>
+</references>
+<references title="Informative References">
+
+<!--  include="reference.I-D.ietf-isis-wg-multi-topology" 
+is in the RFC Ed Queue (EDIT rec'd 11/19/07) -->
+
+<reference anchor='M-ISIS'>
+<front>
+<title>M-ISIS: Multi Topology (MT) Routing in IS-IS</title>
+
+<author initials='T' surname='Przygienda' fullname='Tony Przygienda'>
+    <organization />
+</author>
+
+<date month='November' day='13' year='2007' />
+
+<abstract><t>This document describes an optional mechanism within ISIS used today by many ISPs for IGP routing within their clouds. This document describes how to run within a single ISIS domain a set of independent IP topologies that we call Multi-Topologies (MTs). This MT extension can be used for variety of purposes such as an in-band management network ``on top'' of the original IGP topology, maintain separate IGP routing domains for isolated multicast or IPv6 islands within the backbone, or force a subset of an address space to follow a different topology.</t></abstract>
+
+</front>
+
+<seriesInfo name="Work in" value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-isis-wg-multi-topology-12.txt' />
+</reference>
+
+<!--        <?rfc include="reference.I-D.ietf-mboned-addrarch" ?> -->
+
+<reference anchor='ADDRARCH'>
+<front>
+<title>Overview of the Internet Multicast Addressing Architecture</title>
+
+<author initials='P' surname='Savola' fullname='Pekka Savola'>
+    <organization />
+</author>
+
+<date month='October' day='19' year='2006' />
+
+<abstract><t>The lack of up-to-date documentation on IP multicast address allocation and assignment procedures has caused a great deal of confusion. To clarify the situation, this memo describes the allocation and assignment techniques and mechanisms currently (as of this writing) in use.</t></abstract>
+
+</front>
+
+<seriesInfo name="Work in" value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-mboned-addrarch-05.txt' />
+</reference>
+
+<!--        <?rfc include="reference.I-D.ietf-idmr-dvmrp-v3" ?> -->
+<reference anchor='DVMRPv3'>
+<front>
+<title>Distance Vector Multicast Routing Protocol</title>
+
+<author initials='T' surname='Pusateri' fullname='Tom Pusateri'>
+    <organization />
+</author>
+
+<date month='December' day='3' year='2003' />
+
+<abstract><t>DVMRP is an Internet routing protocol that provides an efficient mechanism for connection-less datagram delivery to a group of hosts across an internetwork. It is a distributed protocol that dynamically generates IP Multicast delivery trees using a technique called Reverse Path Multicasting (RPM) [Deer90]. This document is an update to Version 1 of the protocol specified in RFC 1075 [Wait88].</t></abstract>
+
+</front>
+
+<seriesInfo name="Work in" value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-idmr-dvmrp-v3-11.txt' />
+<format type='PS'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-idmr-dvmrp-v3-11.ps' />
+</reference>
+
+<!--        <?rfc include="reference.I-D.ietf-idmr-dvmrp-v3-as" ?> -->
+<reference anchor='DVMRPv3-AS'>
+<front>
+<title>Distance Vector Multicast Routing Protocol Applicability Statement</title>
+
+<author initials='T' surname='Pusateri' fullname='Tom  Pusateri'>
+    <organization />
+</author>
+
+<date month='May' day='12' year='2004' />
+
+<abstract><t>This document provides a framework for the use of Distance Vector Multicast Routing Protocol (DVMRP) Version 3 within a multicast routing domain. It is an interior gateway protocol designed to be used within an autonomous system.</t></abstract>
+
+</front>
+
+<seriesInfo name="Work in"  value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-idmr-dvmrp-v3-as-01.txt' />
+</reference>
+
+<!--        <?rfc include="reference.I-D.ietf-mboned-ipv6-multicast-issues" ?> -->
+
+<reference anchor='MCAST-ISSUES'>
+<front>
+<title>IPv6 Multicast Deployment Issues</title>
+
+<author initials='P' surname='Savola' fullname='Pekka Savola'>
+    <organization />
+</author>
+
+<date month='February' day='16' year='2005' />
+
+<abstract><t>This memo describes known issues with IPv6 multicast, and provides historical reference of how some earlier problems have been resolved.</t></abstract>
+
+</front>
+
+<seriesInfo name="Work in"  value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-mboned-ipv6-multicast-issues-02.txt' />
+</reference>
+
+<!--        <?rfc include="reference.I-D.ietf-pim-sm-bsr" ?> is RFC 5059
+in AUTH48 12/18/07 -->
+<reference anchor='RFC5059'>
+<front>
+<title>Bootstrap Router (BSR) Mechanism for PIM</title>
+<author initials='N' surname='Bhaskar' fullname='Nidhi Bhaskar'>
+    <organization />
+</author>
+<author initials='A' surname='Gall'>
+    <organization />
+</author>
+<author initials='J' surname='Lingard'>
+    <organization />
+</author>
+<author initials='S' surname='Venaas'>
+    <organization />
+</author>
+<date month='December' year='2007' />
+</front>
+<seriesInfo name='RFC' value='5059'/>
+</reference>
+
+<!--	<?rfc include="reference.I-D.ietf-l2vpn-vpls-pim-snooping" ?> -->
+<reference anchor='PIM-SNOOP'>
+<front>
+<title>PIM Snooping over VPLS</title>
+
+<author initials='V' surname='Hemige' fullname='Venu Hemige'>
+    <organization />
+</author>
+
+<date month='March' day='7' year='2007' />
+</front>
+
+<seriesInfo name="Work in"  value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-l2vpn-vpls-pim-snooping-01.txt' />
+</reference>
+
+<!--	<?rfc include="reference.I-D.lehtonen-mboned-dynssm-req" ?>  -->
+<reference anchor='DYNSSM-REQ'>
+<front>
+<title>Requirements for discovery of dynamic SSM sources</title>
+
+<author initials='R' surname='Lehtonen' fullname='Rami Lehtonen'>
+    <organization />
+</author>
+<author initials='S' surname='Venaas'>
+    <organization />
+</author>
+<author initials='M' surname='Hoerdt'>
+    <organization />
+</author>
+
+<date month='February' day='11' year='2005' />
+
+<abstract><t>This draft identifies the need for discovering new SSM sources in a multicast session. It also defines the basic requirements for such functionality.</t></abstract>
+
+</front>
+
+<seriesInfo name="Work in"  value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-lehtonen-mboned-dynssm-req-00.txt' />
+</reference>
+
+<!--	<?rfc include="reference.I-D.daley-magma-smld-prob" ?> -->
+
+<reference anchor='MLD-SEC'>
+<front>
+<title>Trust Models and Security in Multicast Listener Discovery</title>
+
+<author initials='G' surname='Daley' fullname='Greg Daley'>
+    <organization />
+</author>
+
+<author initials='G' surname='Kurup' fullname='Gopi  Kurup'>
+    <organization />
+</author>
+
+<date month='July' day='12' year='2004' />
+
+</front>
+
+<seriesInfo name="Work in"  value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-daley-magma-smld-prob-00.txt' />
+</reference>
+
+<!--	<?rfc include="reference.I-D.ietf-pim-lasthop-threats" ?> -->
+<reference anchor='PIM-THREATS'>
+<front>
+<title>Host Threats to Protocol Independent Multicast (PIM)</title>
+
+<author initials='P' surname='Savola' fullname='Pekka Savola'>
+    <organization />
+</author>
+
+<author initials='J' surname='Lingard' fullname='James  Lingard'>
+    <organization />
+</author>
+
+<date month='October' day='10' year='2007' />
+
+<abstract><t>This memo complements the list of multicast infrastructure security threat analysis documents by describing Protocol Independent Multicast (PIM) threats specific to router interfaces connecting hosts.</t></abstract>
+
+</front>
+
+<seriesInfo name="Work in"  value="Progress"/>
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-pim-lasthop-threats-03.txt' />
+</reference>
+
+        <?rfc include="reference.RFC.4610" ?>
+        <?rfc include="reference.RFC.3973" ?>
+        <?rfc include="reference.RFC.3913" ?>
+        <?rfc include="reference.RFC.2189" ?>
+        <?rfc include="reference.RFC.2201" ?>
+        <?rfc include="reference.RFC.1584" ?>
+        <?rfc include="reference.RFC.3446" ?>
+        <?rfc include="reference.RFC.1075" ?>
+        <?rfc include="reference.RFC.2784" ?>
+	<?rfc include="reference.RFC.3488" ?>
+	<?rfc include="reference.RFC.2715" ?>
+	<?rfc include="reference.RFC.3208" ?>
+	<?rfc include="reference.RFC.3740" ?>
+	<?rfc include="reference.RFC.4541" ?>
+	<?rfc include="reference.RFC.4605" ?>
+	<?rfc include="reference.RFC.4609" ?>
+
+            <reference target="http://www.javvin.com/protocolCGMP.html" anchor="CGMP">
+                <front>
+                    <title>Cisco Group Management Protocol</title>
+                </front>
+            </reference>
+
+            <reference target="http://www.javvin.com/protocolGMRP.html" anchor="GMRP">
+                <front>
+                    <title>GARP Multicast Registration Protocol</title>
+                </front>
+            </reference>
+            <reference target="http://www.ieee802.org/1/pages/802.1ak.html" anchor="802.1ak">
+                <front>
+                    <title>IEEE 802.1ak - Multiple Registration Protocol</title>
+                </front>
+            </reference>
+	<?rfc include="reference.RFC.4566" ?>
+	<?rfc include="reference.RFC.4286" ?>
+	<?rfc include="reference.RFC.1458" ?>
+	<?rfc include="reference.RFC.1112" ?>
+
+<reference anchor="IMRP-ISSUES">
+	<front>
+	<title>Some Issues for an Inter-domain Multicast Routing Protocol</title>
+	<author initials="D" surname="Meyer" fullname="David Meyer">
+		<organization/>
+	</author>
+	<date month="November" year="1997"/>
+	</front>
+<seriesInfo name="Work in"  value="Progress"/>
+
+</reference>
+
+<reference anchor="IM-GAPS">
+	<front>
+	<title>Internet Multicast Gap Analysis from the MBONED Working Group for the IESG [Expired]</title>
+	<author initials="D" surname="Meyer" fullname="David Meyer">
+		<organization/>
+	</author>
+	<author initials="B" surname="Nickless" fullname="Bill Nickless">
+		<organization/>
+	</author>
+	<date month="July" year="2002"/>
+	</front>
+<seriesInfo name="Work in"  value="Progress"/>
+
+<format type="TXT"
+target="http://tools.ietf.org/wg/mboned/draft-ietf-mboned-iesg-gap-analysis/draft-ietf-mboned-iesg-gap-analysis-00.txt"/>
+</reference>
+
+
+<reference anchor="RITVANEN" target="http://www.tml.hut.fi/Studies/T-110.551/2004/papers/">
+<front>
+<title>Multicast Routing and Addressing</title>
+<author initials="K." surname="Ritvanen"></author>
+<date month="HUT Report, Seminar on Internetworking, May" year="2004"/>
+</front>
+</reference>
+</references>
+
+<section anchor="data" title="Multicast Payload Transport Extensions">
+		<t>A couple of mechanisms have been specified to improve
+		the characteristics of the data that can be
+transported over multicast.</t>
+		<t>We describe those mechanisms that have impact on the
+multicast routing infrastructure, e.g., require or specify router assistance
+or involvement in some form.  Purely end-to-end or host-based protocols are
+out of scope.</t>
+		<section title="Reliable Multicast">
+		<t>There has been some work on reliable multicast delivery
+so that applications with reliability requirements could use multicast
+instead of simple unreliable UDP.</t>
+		<t>Most of the mechanisms are host-based and as such out of
+scope of this document, but one relevant from multicast routing perspective is Pragmatic Generic Multicast (PGM)
+<xref target="RFC3208"/>.  It does not require support from the routers,
+bur PGM-aware routers may act in router assistance role in the initial
+delivery and potential retransmission of missing data.</t>
+		</section>
+		<section title="Multicast Group Security">
+		<t>Multicast Security Working Group has been working on
+methods how the integrity, confidentiality, and authentication of data sent
+to multicast groups can be ensured using cryptographic techniques <xref
+target="RFC3740"/>.</t>
+		</section>
+</section>
+</back>
+</rfc>

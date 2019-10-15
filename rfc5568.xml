@@ -1,0 +1,3193 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629-bis.dtd" []>
+
+<rfc number="5568" category="std" obsoletes="5268" >
+<?rfc toc="yes"?>
+<?rfc compact="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc rfcedstyle="yes"?>
+
+<front>
+    <title abbrev="MIP6 Fast Handovers">
+    Mobile IPv6 Fast Handovers
+    </title>
+
+    <author initials="R" surname="Koodli"
+    fullname="Rajeev Koodli" role="editor">
+      <organization> Starent Networks</organization>
+      <address>
+      <postal>
+        <street> </street>
+	  <city> </city> <region> </region><code> </code>
+	    <country>USA</country>
+	    </postal>
+	    <email>rkoodli@starentnetworks.com</email>
+      </address>
+    </author>
+
+    <date month="June" year="2009" />
+
+    <keyword>Fast Handovers</keyword>
+    <keyword>Mobile IPv6</keyword>
+
+<!-- [rfced] Please verify that this document document does not
+require the optional text from Section 6.c.iii of "Legal Provisions
+Relating to IETF Documents" (http://trustee.ietf.org/license-info/).  -->
+
+<abstract>
+<t>
+   Mobile IPv6 enables a mobile node (MN) to maintain its connectivity to the
+   Internet when moving from one Access Router to another, a process
+   referred to as handover.  During handover, there is a period during
+   which the mobile node is unable to send or receive packets because of
+   link-switching delay and IP protocol operations.  This "handover
+   latency" resulting from standard Mobile IPv6 procedures (namely,
+   movement detection, new Care-of Address configuration, and Binding
+   Update) is often unacceptable to real-time traffic such as Voice over
+   IP (VoIP).  Reducing the handover latency could be beneficial to
+   non-real-time, throughput-sensitive applications as well.  This
+   document specifies a protocol to improve handover latency due to
+   Mobile IPv6 procedures.  This document does not address improving
+   the link-switching latency.
+
+</t>
+<t>
+   This documents updates the packet formats for the Handover Initiate
+   (HI) and Handover Acknowledge (HAck) messages to Mobility
+   Header Type.
+</t>
+
+</abstract>
+
+</front>
+
+<middle>
+
+<section title="Introduction">
+<t>
+    Mobile IPv6 <xref target="RFC3775"></xref> describes the protocol
+    operations for a mobile node 
+    to maintain connectivity to the Internet during its handover from
+    one access router to another.   These operations involve
+    link-layer procedures, movement detection, IP address
+    configuration, and location update.  The combined handover latency
+    is often sufficient to affect real-time applications.
+    Throughput-sensitive applications can also benefit from reducing
+    this latency.   This document describes a protocol to 
+    reduce the handover latency.
+
+</t><t>
+
+    This specification addresses the following problems: how to
+    allow a mobile node to send packets as soon as it detects a new
+    subnet link and how to deliver packets to a mobile node as soon
+    as its attachment is detected by the new access router.   The
+    protocol defines IP protocol messages necessary for its operation
+    regardless of link technology.   It does this without depending
+    on specific link-layer features while allowing link-specific
+    customizations.   By definition, this specification considers
+    handovers that interwork with Mobile IP.  Once attached to its new
+    access router, an MN engages in Mobile IP operations including
+    Return Routability <xref target="RFC3775"></xref>.   There are no
+    special requirements for a 
+    mobile node to behave differently with respect to its standard
+    Mobile IP operations.
+</t>
+
+<t>
+   This specification is applicable when a mobile node has to perform
+   IP-layer operations as a result of handovers. This specification
+   does not address improving the link-switching latency. It does  
+   not modify or optimize procedures related to signaling with the
+   home agent of a mobile node. Indeed, while targeted for Mobile
+   IPv6, it could be used with any mechanism that allows communication
+   to continue despite movements. Finally, this specification does not
+   address bulk movement of nodes using aggregate prefixes.
+</t>
+
+<t>
+   This document updates the protocol header format for the Handover Initiate
+   (HI) and Handover Acknowledge (HAck) messages defined in <xref
+   target='RFC5268'/>. Both the Proxy Mobile IPv6 (PMIPv6) protocol <xref
+   target='RFC5213'/> and the Mobile IPv6 protocol use Mobility Header 
+   (MH) as the type for carrying signaling related to route
+   updates. Even though the Fast Handover protocol uses the Mobility
+   Header for mobile node signaling purposes, it has used ICMP for
+   inter - access router communication. Specifying Mobility Header for
+   the HI and HAck messages enables deployment of the protocol
+   alongside PMIP6 and MIP6 protocols; the reasons that led to this
+   change are captured in <xref target='sec:icmp-mh'/>. Hence, this
+   document specifies the Mobility Header formats for HI and HAck
+   messages (<xref target='sec:hi-hack'/>) and the Mobility Header
+   option format for the IPv6 Address/Prefix option (<xref
+   target='sec:mh-ipaddr'/>), and deprecates the use of ICMP for HI
+   and HAck messages.  Implementations of this specification MUST NOT
+   send ICMPv6 HI and HAck messages as defined in
+   <xref target='RFC5268'/>. If implementations of this specification
+   receive ICMPv6 HI and HAck messages as defined in
+   <xref target='RFC5268'/>, they MAY interpret the messages as
+   defined in <xref target='RFC5268'/>.
+</t>   
+   
+</section>
+
+ <section anchor="sec:terms" title="Terminology">
+
+<t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL"
+    in this document are to be interpreted as described in RFC
+    2119 <xref target="RFC2119"></xref>. The use of the term,
+    "silently ignore" is not defined in RFC 2119.  However, the term
+    is used in this document and can be similarly construed. 
+</t><t>
+    The following terminology and abbreviations are used in this
+    document in addition to those defined
+    in <xref target="RFC3775"></xref>.   The reference 
+    handover scenario is illustrated in <xref target="horef"></xref>.
+</t>
+
+<figure anchor="horef" title="Reference Scenario for Handover">
+<artwork><![CDATA[
+           v             +--------------+
+        +-+              |  Previous    |         <
+        | | ------------ |    Access    | ------- >-----\
+        +-+              |    Router    |         <       \
+            MN           |    (PAR)     |                  \
+          |              +--------------+             +---------------+
+          |                     ^              IP     | Correspondent |
+          |                     |          Network    |  Node         |
+          V                     |                     +---------------+
+                                v                          /
+           v             +--------------+                 /
+        +-+              |     New      |         <      /
+        | | ------------ |    Access    | ------- >-----/
+        +-+              |    Router    |         <
+            MN           |    (NAR)     |
+                         +--------------+
+ ]]></artwork> 
+</figure>
+
+<t><list style="empty">
+<t>
+       Mobile Node (MN): 
+                 A Mobile IPv6 host.
+</t>
+<t>
+       Access Point (AP): 
+                 A Layer 2 device connected to an IP subnet that
+                 offers wireless connectivity to an MN. An Access
+                 Point Identifier (AP-ID) refers the AP's L2 address.
+                 Sometimes, AP-ID is also referred to as a Basic Service
+                 Set IDentifier (BSSID).
+</t>
+<t>
+       Access Router (AR): 
+                 The MN's default router.
+</t>
+<t>
+       Previous Access Router (PAR): 
+                 The MN's default router prior to its handover.
+</t>
+<t>
+       New Access Router (NAR): 
+                 The MN's anticipated default router subsequent to its
+                 handover.
+</t>
+<t>
+       Previous CoA (PCoA): 
+                 The MN's Care-of Address valid on PAR's subnet.
+</t>
+<t>
+       New CoA (NCoA): 
+                 The MN's Care-of Address valid on NAR's subnet.
+</t>
+<t>
+       Handover: 
+                 A process of terminating existing connectivity and
+                 obtaining new IP connectivity.
+</t>
+<t>
+       Router Solicitation for Proxy Advertisement (RtSolPr): 
+                 A message from the MN to the PAR requesting information
+                 for a potential handover.
+</t>
+<t>
+       Proxy Router Advertisement (PrRtAdv): 
+                 A message from the PAR to the MN that provides
+                 information about neighboring links facilitating
+                 expedited movement detection.   The message can also act
+                 as a trigger for network-initiated handover.
+</t>
+<t>
+       [AP-ID, AR-Info] tuple: 
+                 Contains an access router's L2 and IP addresses, and
+                 prefix valid on the interface to which the Access
+                 Point (identified by AP-ID) is attached.   The triplet
+                 [Router's L2 address, Router's IP address, and Prefix]
+                 is called "AR-Info".   See
+                 also <xref target="sec:prefixmgmt"></xref>. 
+</t>
+<t>
+       Neighborhood Discovery: The process of resolving neighborhood
+       AP-IDs to AR-Info.
+</t>
+<t>
+       Assigned Addressing: 
+                 A particular type of NCoA configuration in which the
+                 NAR assigns an IPv6 address for the MN. The method by
+                 which the NAR manages its address pool is not specified in
+                 this document.
+</t>
+<t>
+       Fast Binding Update (FBU): 
+                 A message from the MN instructing its PAR to redirect
+                 its traffic (toward NAR).
+</t>
+<t>
+       Fast Binding Acknowledgment (FBack): 
+                 A message from the PAR in response to an FBU.
+</t>
+<t>
+       Predictive Fast Handover:
+          The fast handover in which an MN is able to send an FBU when it
+          is attached to the PAR, which then establishes forwarding
+          for its traffic (even before the MN attaches to the NAR).
+</t>
+<t>
+       Reactive Fast Handover:
+          The fast handover in which an MN is able to send the FBU
+          only after attaching to the NAR. 
+</t>
+<t>
+       Unsolicited Neighbor Advertisement (UNA): 
+                 The message in <xref target="RFC4861"></xref> with 'O' bit cleared.
+</t>
+<t>
+       Fast Neighbor Advertisement (FNA): 
+                 This message from
+                 RFC 4068 <xref target="RFC4068"></xref> is deprecated.
+                 The UNA message above is the preferred message in this
+                 specification.
+</t>
+<t>
+       Handover Initiate (HI): 
+                 A message from the PAR to the NAR regarding an MN's
+                 handover.
+</t>
+<t>
+       Handover Acknowledge (HAck): 
+                 A message from the NAR to the PAR as a response to HI.
+</t>
+
+</list></t>
+
+                 
+</section>
+
+
+<section title="Protocol Overview">
+
+<section title="Addressing the Handover Latency" anchor="sec:hvrlatency">
+<t>
+    The ability to immediately send packets from a new subnet link
+    depends on the "IP connectivity" latency, which in turn depends
+    on the movement detection latency and the new CoA configuration
+    latency.   Once an MN is IP-capable on the new subnet link, it
+    can send a Binding Update to its Home Agent and one or more
+    correspondents.   Once its correspondents process the
+    Binding Update successfully, which typically involves the Return Routability
+    procedure, the MN can receive packets at the new CoA. So, the
+    ability to receive packets from correspondents directly at its
+    new CoA depends on the Binding Update latency as well as the IP
+    connectivity latency.
+</t>
+
+<t>
+    The protocol enables an MN to quickly detect that it has moved to
+    a new subnet by providing the new access point and the associated
+    subnet prefix information when the MN is still connected to
+    its current subnet (i.e., PAR in Figure 1).   For instance, an MN
+    may discover available access points using link-layer-specific
+    mechanisms (e.g., a "scan" in a Wireless Local Area Network (WLAN)) and then request subnet
+    information corresponding to one or more of those discovered access
+    points.  The MN may do this after performing router discovery or
+    at any time while connected to its current router. The result of
+    resolving an identifier associated with an 
+    access point is an [AP-ID, AR-Info] tuple, which an MN can use in
+    readily detecting movement.  When attachment to an access point
+    with AP-ID takes place, the MN knows the corresponding new router's
+    coordinates including its prefix, IP address, and L2 address.   The
+    "Router Solicitation for Proxy Advertisement (RtSolPr)" and "Proxy
+    Router Advertisement (PrRtAdv)" messages
+    in <xref target="ned"></xref> are used for aiding 
+    movement detection.
+</t>
+<t>
+    Through the RtSolPr and PrRtAdv messages, the MN also formulates a
+    prospective new CoA (NCoA) when it is still present on the PAR's
+    link.   Hence, the latency due to new prefix discovery subsequent to
+    handover is eliminated.   Furthermore, this prospective address can
+    be used immediately after attaching to the new subnet link (i.e.,
+    NAR's link) when the MN has received a "Fast Binding Acknowledgment
+    (FBack)" (see <xref target="sec:fback"></xref>) message prior to
+    its movement.   In the event it moves 
+    without receiving an FBack, the MN can still start using NCoA
+    after announcing its attachment through an unsolicited Neighbor
+    Advertisement message (with the 'O' bit set to zero)
+    <xref target='RFC4861'/>;
+    NAR responds to this UNA message in case it wishes to provide a
+    different IP address to use. In this way, NCoA configuration
+    latency is reduced.
+</t>
+<t>
+    The information provided in the PrRtAdv message can be used even
+    when DHCP <xref target='RFC3315'/> is used to configure an NCoA on
+    the NAR's link. In this case, the protocol supports forwarding
+    using PCoA, and the MN performs DHCP once it attaches to the NAR's
+    link. The MN still formulates an NCoA for FBU processing; however,
+    it MUST NOT send data packets using the NCoA in the FBU. 
+</t> 
+<t>
+
+    In order to reduce the Binding Update latency, the protocol
+    specifies a binding between the Previous CoA (PCoA) and NCoA. An
+    MN sends a "Fast Binding Update"
+    (see <xref target="sec:fbu"></xref>) message to its Previous Access
+    Router to establish this tunnel.   When feasible, the MN SHOULD send an
+    FBU from the PAR's link.   Otherwise, the MN should send the FBU
+    immediately after detecting attachment to the NAR. An FBU message MUST
+    contain the Binding Authorization Data for FMIPv6 (BADF) option
+    (see <xref target="sec:badf"></xref>) in order to ensure that only
+    a legitimate MN that owns the PCoA is able to establish a binding.
+    Subsequent sections describe the protocol mechanics.   
+    In any case, the result is that the
+    PAR begins tunneling packets arriving for PCoA to NCoA. Such a
+    tunnel remains active until the MN completes the Binding Update
+    with its correspondents.   In the opposite direction, the MN SHOULD
+    reverse tunnel packets to the PAR, again until it completes the Binding
+    Update.   And, PAR MUST forward the inner packet in the tunnel to
+    its destination (i.e., to the MN's correspondent).   Such a reverse
+    tunnel ensures that packets containing a PCoA as a source IP address
+    are not dropped due to ingress filtering.   Even though the MN is
+    IP-capable on the new link, it cannot use the NCoA directly with its
+    correspondents without the correspondents first establishing a
+    binding cache entry (for the NCoA). Forwarding support for the PCoA is
+    provided through a reverse tunnel between the MN and the PAR.
+</t>
+<t>
+
+    Setting up a tunnel alone does not ensure that the MN receives
+    packets as soon as it is attached to a new subnet link, unless the
+    NAR can detect the MN's presence. A neighbor discovery operation involving
+    a neighbor's address resolution (i.e., Neighbor Solicitation and
+    Neighbor Advertisement) typically results in considerable delay,
+    sometimes lasting multiple seconds.   For instance, when arriving
+    packets trigger the NAR to send Neighbor Solicitation before the MN
+    attaches, subsequent retransmissions of address resolution are
+    separated by a default period of one second each.   In order to
+    circumvent this delay, an MN announces its attachment immediately
+    with an UNA message that allows the NAR to forward packets to the MN
+    right away. Through tunnel establishment for PCoA and fast
+    advertisement, the protocol provides expedited forwarding of
+    packets to the MN. 
+</t>
+<t>
+
+    The protocol also provides the following important functionalities.
+    The access routers can exchange messages to confirm that a
+    proposed NCoA is acceptable.   For instance, when an MN sends an FBU
+    from the PAR's link, FBack can be delivered after the NAR considers
+    the NCoA acceptable for use.   This is especially useful when addresses are
+    assigned by the access router.   The NAR can also rely on its
+    trust relationship with the PAR before providing forwarding support
+    for the MN. That is, it may create a forwarding entry for the NCoA,
+    subject to "approval" from the PAR, which it trusts.   In addition,
+    buffering for handover traffic at the NAR may be desirable. Even though the
+    Neighbor Discovery protocol provides a small buffer (typically
+    one or two packets) for packets awaiting address resolution, this
+    buffer may be inadequate for traffic, such as VoIP, already in
+    progress.   The routers may also wish to maintain a separate buffer
+    for servicing the handover traffic.   Finally, the access
+    routers could transfer network-resident contexts, such as access
+    control, Quality of Service (QoS), and header compression, in conjunction with handover
+    (although the context transfer process itself is not specified in
+    this document).
+    For all these operations, the protocol provides "Handover Initiate
+    (HI)" and "Handover Acknowledge (HAck)" messages
+    (see <xref target="sec:hi-hack"></xref>).   Both of these
+    messages SHOULD be used.   The access routers MUST have the necessary
+    security association established by means outside the scope of this
+    document.
+
+</t>
+
+</section>
+
+<section anchor="protoop" title="Protocol Operation">
+<t>
+    The protocol begins when an MN sends an RtSolPr message to its access router
+    to resolve one or more Access Point Identifiers to subnet-specific
+    information.   In response, the access router (e.g., PAR in
+    Figure 1) sends a PrRtAdv message containing one or more
+    [AP-ID, AR&nbhy;Info] tuples.   The MN may send an RtSolPr at any convenient
+    time, for instance as a response to some link-specific event (a
+    "trigger") or simply after performing router discovery.   However,
+    the expectation is that prior to sending an RtSolPr, the MN will have 
+    discovered the available APs by link-specific methods.   The RtSolPr
+    and PrRtAdv messages do not establish any state at the access
+    router; their packet formats are defined
+    in <xref target="ned"></xref>. 
+</t>
+<t>
+
+    With the information provided in the PrRtAdv message, the MN
+    formulates a prospective NCoA and sends an FBU message to the
+    PAR. The purpose of the FBU is to authorize the PAR to bind the PCoA to the NCoA, so that
+    arriving packets can be tunneled to the new location of the MN.
+    The FBU should be sent from the PAR's link whenever feasible.   For
+    instance, an internal link-specific trigger could enable FBU
+    transmission from the previous link.
+</t>
+<t>
+
+    When it is not feasible, the FBU is sent from the new link.   
+</t>
+<t>
+
+    The format and semantics of FBU processing are specified in
+    <xref target="sec:fbu"></xref>.   The FBU message MUST contain the
+    BADF option (see <xref target="sec:badf"></xref>) to secure the message.
+</t>
+<t>
+
+    Depending on whether an FBack is received on the previous
+    link (which clearly depends on whether the FBU was sent in the first
+    place), there are two modes of operation.
+</t>
+
+<t><list style="numbers">
+<t>
+        The MN receives FBack on the previous link.   This means that
+        packet tunneling is already in progress by the time the
+        MN handovers to the NAR. The MN SHOULD send the UNA immediately after
+        attaching to the NAR, so that arriving as well as buffered packets
+        can be forwarded to the MN right away.
+
+        Before sending FBack to the MN, the PAR can determine whether the NCoA is
+        acceptable to the NAR through the exchange of HI and HAck messages.
+        When Assigned Addressing (i.e., addresses are assigned by the
+        router) is used, the proposed NCoA in the FBU is carried in an HI message
+        (from PAR to NAR), and NAR MAY assign the proposed NCoA. Such
+        an assigned NCoA MUST be returned in HAck (from NAR to PAR),
+        and PAR MUST in turn provide the assigned 
+        NCoA in FBack.   If there is an assigned NCoA returned in FBack,
+        the MN MUST use the assigned address (and not the proposed
+        address in FBU) upon attaching to NAR.
+</t>
+
+<t>
+      The MN does not receive the FBack on the previous link because the
+      MN has not sent the FBU or the MN has left the link after sending
+      the FBU (which itself may be lost), but before receiving an
+      FBack. Without receiving an FBack in the latter case, the MN
+      cannot ascertain whether the PAR has processed the
+      FBU successfully. Hence, the MN (re)sends the FBU message to the PAR immediately
+      after sending the UNA message.   If the NAR 
+        chooses to supply a different IP address to use than the NCoA,
+        it MAY send a Router Advertisement with the "Neighbor Advertisement
+        Acknowledge (NAACK)" option in which it includes an alternate
+        IP address for the MN to use. Detailed UNA processing rules
+        are specified in <xref target="sec:una"></xref>.
+</t>
+</list></t>
+
+<t>
+    The scenario in which an MN sends an FBU and receives an FBack on PAR's
+    link is illustrated in <xref target='predictive'/>.   For
+    convenience, this scenario is characterized as the "predictive" mode of
+    operation.   The scenario in which the MN sends an FBU from the NAR's
+    link is illustrated in <xref target='reactive'/>.   For 
+    convenience, this scenario is characterized as the "reactive" mode of operation.
+    Note that the reactive mode also includes the case in which an FBU has
+    been sent from the PAR's link, but an FBack has not yet been received.   The
+    figure is intended to illustrate that the FBU is forwarded through the
+    NAR, but it is processed only by the PAR.
+</t>
+
+<figure anchor="predictive" title="Predictive Fast Handover">
+<artwork><![CDATA[
+                MN                    PAR                    NAR
+                 |                     |                      |
+                 |------RtSolPr------->|                      |
+                 |<-----PrRtAdv--------|                      |
+                 |                     |                      |
+                 |------FBU----------->|----------HI--------->|
+                 |                     |<--------HAck---------|
+                 |          <--FBack---|--FBack--->           |
+                 |                     |                      |
+              disconnect             forward                  |
+                 |                   packets  ===============>|
+                 |                     |                      |
+                 |                     |                      |
+            connect                    |                      |
+                 |                     |                      |
+                 |------------UNA --------------------------->|
+                 |<=================================== deliver packets
+                 |                                            |
+ ]]></artwork> 
+</figure>
+
+                    
+
+<figure anchor="reactive" title="Reactive Fast Handover">
+<artwork><![CDATA[
+                MN                    PAR                    NAR
+                 |                     |                      |
+                 |------RtSolPr------->|                      |
+                 |<-----PrRtAdv--------|                      |
+                 |                     |                      |
+              disconnect               |                      |
+                 |                     |                      |
+                 |                     |                      |
+              connect                  |                      |
+                 |-------UNA-----------|--------------------->|
+                 |-------FBU-----------|---------------------)|
+                 |                     |<-------FBU----------)|
+                 |                     |----------HI--------->|
+                 |                     |<-------HAck----------|
+                 |                     |(HI/HAck if necessary)|
+                 |                   forward                  |
+                 |              packets(including FBAck)=====>|
+                 |                     |                      |
+                 |<=================================== deliver packets
+                 |                                            |
+ ]]></artwork> 
+</figure>
+
+<t>
+    Finally, the PrRtAdv message may be sent unsolicited, i.e.,
+    without the MN first sending an RtSolPr. This mode is described in
+    <xref target="netinit"></xref>.
+</t>
+
+</section>
+
+<section anchor="netinit" title="Protocol Operation during Network-Initiated Handover">
+<t>
+    In some wireless technologies, the handover control may reside
+    in the network even though the decision to undergo handover may
+    be mutually arrived at between the MN and the network.   In
+    such networks, the PAR can send an unsolicited PrRtAdv containing
+    the link-layer address, IP address, and subnet prefix of the NAR
+    when the network decides that a handover is imminent.   The MN MUST
+    process this PrRtAdv to configure a new Care-of Address on the
+    new subnet, and MUST send an FBU to the PAR prior to switching to the
+    new link.   After transmitting PrRtAdv, the PAR MUST continue to
+    forward packets to the MN on its current link until the FBU is
+    received.   The rest of the operation is the same as that described
+    in <xref target="protoop"></xref>.
+</t>
+<t>
+    The unsolicited PrRtAdv also allows the network to inform the MN
+    about geographically adjacent subnets without the MN having to
+    explicitly request that information.   This can reduce the amount
+    of wireless traffic required for the MN to obtain a neighborhood
+    topology map of links and subnets.   Such usage of PrRtAdv is
+    decoupled from the actual handover; see <xref target="sec:prrtadv"></xref>. 
+
+</t>
+
+</section>
+</section>
+
+
+<section title="Protocol Details" anchor="proto_det">
+<t>
+    All descriptions refer to Figure 1.
+</t>
+<t>
+    After discovering one or more nearby access points, the MN sends
+    RtSolPr to the PAR in order to resolve access point identifiers to subnet
+    router information.   A convenient time to do this is after
+    performing router discovery.   However, the MN can send RtSolPr at
+    any time, e.g., when one or more new access points are discovered.
+    The MN can also send RtSolPr more than once during its attachment
+    to PAR. The trigger for sending RtSolPr can originate from a
+    link-specific event, such as the promise of a better signal
+    strength from another access point coupled with fading signal
+    quality with the current access point.   Such events, often broadly
+    referred to as "L2 triggers", are outside the scope of this
+    document.   Nevertheless, they serve as events that invoke this
+    protocol.   For instance, when a "link up" indication is obtained
+    on the new link, protocol messages (e.g., UNA) can be transmitted immediately.   Implementations SHOULD make use of such triggers
+    whenever available.
+</t>
+<t>
+    The RtSolPr message contains one or more AP-IDs.   A wildcard
+    requests all available tuples.
+</t>
+<t>
+
+    As a response to RtSolPr, the PAR sends a PrRtAdv message that indicates one of the following possible conditions.
+</t>
+
+<t><list style="numbers">
+<t>
+        If the PAR does not have an entry corresponding to the new
+        access point, it MUST respond indicating that the new access point
+        is unknown.   The MN MUST stop fast handover protocol operations
+        on the current link.   The MN MAY send an FBU from its new link.
+</t>
+
+<t>
+        If the new access point is connected to the PAR's current
+        interface (to which the MN is attached), the PAR MUST respond with a Code
+        value indicating that the new access point is connected to the
+        current interface, but not send any prefix information.   This
+        scenario could arise, for example, when several wireless access
+        points are bridged into a wired network.   No further protocol
+        action is necessary.
+</t>
+
+<t>
+        If the new access point is known and the PAR has information
+        about it, then the PAR MUST respond indicating that the new access
+        point is known and supply the [AP-ID, AR-Info] tuple.   If the
+        new access point is known, but does not support fast handover,
+        the PAR MUST indicate this with Code 3 (see <xref target="sec:prrtadv"></xref>).
+</t>
+
+<t>
+        If a wildcard is supplied as an identifier for the new access
+        point, the PAR SHOULD supply neighborhood [AP-ID, AR-Info]
+        tuples that are subject to path MTU restrictions (i.e., provide any 'n'
+        tuples without exceeding the link MTU).
+</t>
+
+</list></t>
+
+<t>
+   When further protocol action is necessary, some implementations MAY
+   choose to begin buffering copies of incoming packets at the PAR.  If
+   such First In First Out (FIFO) buffering is used, the PAR MUST continue forwarding the
+   packets to the PCoA (i.e., buffer and forward).
+   While the protocol does not forbid such an implementation
+    support, care must be taken to ensure that the PAR continues
+    forwarding packets to the PCoA (i.e., uses a buffer and forward
+    approach).   The PAR SHOULD stop buffering once it begins forwarding
+   packets to the NCoA.
+</t><t>
+    The method by which access routers exchange information about
+    their neighbors and thereby allow construction of Proxy Router
+    Advertisements with information about neighboring subnets is
+    outside the scope of this document.
+</t><t>
+    The RtSolPr and PrRtAdv messages MUST be implemented by an MN and
+    an access router that supports fast handovers.   However, when
+    the parameters necessary for the MN to send packets immediately
+    upon attaching to the NAR are supplied by the link-layer handover
+    mechanism itself, use of the above messages is optional on such links.
+</t><t>
+   After a PrRtAdv message is processed, the MN sends an FBU at a time
+   determined by link-specific events, and includes the proposed NCoA.
+    The MN SHOULD send the FBU from the PAR's link whenever
+    "anticipation" of handover is feasible.   When anticipation is not
+    feasible or when it has not received an FBack, the MN sends an FBU
+    immediately after attaching to NAR's link.   In response to the
+   FBU, the PAR establishes a binding between the PCoA ("Home Address")
+   and the NCoA, and sends the FBack to the MN. Prior to establishing this
+   binding, the PAR SHOULD send an HI message to the NAR, and receive
+   a HAck in
+   response. In order to determine the NAR's address for the HI
+   message, the PAR can perform the longest prefix match of NCoA (in
+   FBU) with the prefix list of neighboring access routers.   When the
+   source IP address of the FBU is the PCoA, i.e., the FBU is sent from
+   the PAR's link, the HI message MUST have a Code value set to 0;
+   see <xref target="sec:hi"></xref>.   When the source IP address of
+   the FBU is not PCoA, i.e., the FBU is sent from the NAR's link, the
+   HI message MUST have a Code value of 1; see <xref target="sec:hi"></xref>.
+</t><t>
+    The HI message contains the PCoA, link-layer address and the NCoA
+    of the MN. In response to processing an HI message with Code 0, the
+    NAR:
+</t>
+<t><list style="numbers">
+<t>
+        determines whether the NCoA supplied in the HI message is unique
+        before beginning to defend it. It sends a Duplicate Address Detection (DAD) probe
+        <xref target='RFC4862'/> for NCoA to verify
+        uniqueness. However, in deployments where the probability of
+        address collisions is considered extremely low (and hence not
+        an issue), the parameter DupAddrDetectTransmits (see
+        <xref target='RFC4862'/>) is set to zero on the NAR, allowing it to
+        avoid performing DAD on the NCoA. The NAR similarly
+        sets DupAddrDetectTransmits to zero in other deployments where
+        DAD is not a concern. Once the NCoA is determined to be unique,
+        the NAR starts proxying <xref target="RFC4861"></xref> the address 
+        for PROXY_ND_LIFETIME during which the MN is expected to
+        connect to the NAR. In case there is already an NCoA present in
+        its data structure (for instance, it has already processed an
+        HI message earlier), the NAR MAY verify if the LLA is the same as
+        its own or that of the MN itself. If so, the NAR MAY allow the use
+        of the NCoA. 
+</t>
+
+<t>
+        allocates the NCoA for the MN when Assigned Addressing is used,
+        creates a proxy neighbor cache entry, and begins defending it.
+        The NAR MAY allocate the NCoA proposed in HI.
+</t>
+
+<t>
+
+        MAY create a host route entry for the PCoA (on the interface to
+        which the MN is attaching) in case the NCoA cannot be accepted
+        or assigned.   This host route entry SHOULD be implemented
+        such that until the MN's presence is detected, either through
+        explicit announcement by the MN or by other means, arriving
+        packets do not invoke neighbor discovery.   The NAR SHOULD also
+        set up a reverse tunnel to the PAR in this case.
+</t>
+
+<t>
+        provides the status of the handover request in the Handover
+        Acknowledge (HAck) message to the PAR.
+</t>
+</list></t>
+
+<t>
+    When the Code value in HI is 1, the NAR MUST skip the above operations.
+    Sending an HI message with Code
+    1 allows the NAR to validate the neighbor cache entry it creates
+    for the MN during UNA processing.   That is, the NAR can make use
+    of the knowledge that its trusted peer (i.e., the PAR) has a trust
+    relationship with the MN.
+</t><t>
+    If HAck contains an assigned NCoA, the FBack MUST include it,
+    and the MN MUST use the address provided in the FBack.   The PAR
+    MAY send the FBack to the previous 
+    link as well to facilitate faster reception in the event that the MN
+    is still present.   The result of the FBU and FBack processing
+    is that the PAR begins tunneling the MN's packets to the NCoA. If the MN does
+    not receive an FBack message even after retransmitting the FBU for
+    FBU_RETRIES, it must assume that fast handover support is not
+    available and stop the protocol operation.
+</t><t>
+    As soon as the MN establishes link connectivity with the NAR, it:
+</t>
+<t><list style="numbers">
+<t>
+        sends an UNA message (see <xref target="sec:una"></xref>).   If
+        the MN has not received an FBack by the time UNA is being
+        sent, it SHOULD send an FBU message following the UNA
+        message. 
+</t>
+
+<t>
+        joins the all-nodes multicast group and the solicited-node
+        multicast group corresponding to the NCoA.
+</t>
+
+<t>
+
+        starts a DAD probe for NCoA; see <xref target="RFC4862"></xref>.
+</t>
+
+</list></t>
+<t>
+    When a NAR receives an UNA message, it:
+</t>
+<t><list style="numbers">
+<t>
+        deletes its proxy neighbor cache entry, if it exists, updates the
+        state to STALE <xref target='RFC4861'/>, and forwards arriving
+        and buffered packets. 
+</t>
+
+<t>
+
+        updates an entry in INCOMPLETE state
+        <xref target='RFC4861'/>, if it exists, to STALE 
+        and forwards arriving and buffered packets.   This would be the
+        case if NAR had previously sent a Neighbor Solicitation that
+        went unanswered perhaps because the MN had not yet attached to
+        the link.
+</t>
+</list></t>
+
+<t>
+
+    The buffer for handover traffic should be linked to this UNA
+    processing.   The exact mechanism is implementation dependent.
+</t><t>
+    The NAR may choose to provide a different IP address other than the
+    NCoA. This is possible if it is proxying the NCoA. In such a case,
+    it: 
+</t>
+
+<t><list style="numbers">
+<t>
+
+        MAY send a Router Advertisement with the NAACK option in which
+        it includes an alternate IP address for use.   This message MUST
+        be sent to the source IP address present in UNA using the same
+        Layer 2 address present in UNA.
+</t>
+</list></t>
+
+<t>
+
+    If the MN receives an IP address in the NAACK option, it MUST
+    use it and send an FBU using the new CoA. As a special case, the
+    address supplied in NAACK could be the PCoA itself, in which case the
+    MN MUST NOT send any more FBUs.   The Status codes for the NAACK option
+    are specified in <xref target="sec:naack"></xref>.
+</t><t>
+    Once the MN has confirmed its NCoA (either through DAD or when
+    provided for by the NAR), it SHOULD send a Neighbor Advertisement
+    message with the 'O' bit set, to the all-nodes multicast address.
+    This message allows the MN's neighbors to update their neighbor cache
+    entries.
+</t><t>
+    For data forwarding, the PAR tunnels packets using its global IP
+    address valid on the interface to which the MN was attached.   The
+    MN reverse tunnels its packets to the same global address of PAR.
+    The tunnel end-point addresses must be configured accordingly.
+    When the PAR receives a reverse-tunneled packet, it must verify if a
+    secure binding exists for the MN identified by the PCoA in the tunneled
+    packet, before forwarding the packet.
+</t>
+</section>
+
+<section title="Other Considerations">
+
+<section anchor="hocapx" title="Handover Capability Exchange">
+<t>
+    The MN expects a PrRtAdv in response to its RtSolPr message.
+    If the MN does not receive a PrRtAdv message even after
+    RTSOLPR_RETRIES, it must assume that the PAR does not support the fast
+    handover protocol and stop sending any more RtSolPr messages.
+</t><t>
+    Even if an MN's current access router is capable of providing
+    fast handover support, the new access router to which the MN
+    attaches may be incapable of fast handover.  This is indicated to
+    the MN during  "runtime", through the PrRtAdv message with Code 3 (see <xref target="sec:prrtadv"></xref>).
+</t>
+</section>
+
+<section title="Determining New Care-of Address" anchor="sec:detCoA">
+<t>  
+   Typically, the MN formulates its prospective NCoA using the
+   information provided in a PrRtAdv message and sends the FBU.  The PAR
+   MUST use the NCoA present in the FBU in its HI message.  The NAR MUST
+   verify if the NCoA present in HI is already in use.  In any case, the NAR
+   MUST respond to HI using a HAck, in which it may include another NCoA
+   to use, especially when assigned address configuration is used.  If
+   there is a CoA present in the HAck, the PAR MUST include it in the FBack
+   message. However, the MN itself does
+    not have to wait on the PAR's link for this exchange to take place.   It
+    can handover any time after sending the FBU message; sometimes it
+    may be forced to handover without sending the FBU. In any case, it
+    can still confirm using the NCoA from the NAR's link by sending the UNA
+    message.
+</t><t>
+    If a PrRtAdv message carries an NCoA, the MN MUST use it as its
+    prospective NCoA.
+</t><t>
+    When DHCP is used, the protocol supports forwarding for the PCoA
+    only. In this case, the MN MUST perform DHCP operations once it
+    attaches to the NAR even though it formulates an NCoA for
+    transmitting the FBU. This is indicated in the PrRtAdv message
+    with Code 5.  
+</t>
+
+</section>
+
+ <section anchor="sec:prefixmgmt" title="Prefix Management">
+<t>
+    As defined in <xref target="sec:terms"></xref>, the Prefix part of
+    "AR-Info" is the 
+    prefix valid on the interface to which the AP is attached.   This
+    document does not specify how this Prefix is managed, its length,
+    or its assignment policies.   The protocol operation specified in this
+    document works regardless of these considerations.   Often, but not
+    necessarily always, this Prefix may be the aggregate prefix (such
+    as /48) valid on the interface.   In some deployments, each MN may
+    have its own per-mobile prefix (such as a /64) used for generating
+    the NCoA. Some point-to-point links may use such a deployment.
+</t><t>
+    When per-mobile prefix assignment is used, the "AR-Info"
+    advertised in PrRtAdv still includes the (aggregate) prefix valid
+    on the interface to which the target AP is attached, unless the
+    access routers communicate with each other (using HI and HAck
+    messages) to manage the per-mobile prefix.   The MN still formulates an
+    NCoA using the aggregate prefix.   However, an alternate NCoA based
+    on the per-mobile prefix is returned by NAR in the HAck message.
+    This alternate NCoA is provided to the MN in either the FBack
+    message or in the NAACK option.
+</t>
+</section>
+
+<section title="Packet Loss">
+<t>
+    Handover involves link switching, which may not be exactly
+    coordinated with fast handover signaling.   Furthermore, the
+    arrival pattern of packets is dependent on many factors, including
+    application characteristics, network queuing behaviors, etc.   Hence,
+    packets may arrive at the NAR before the MN is able to establish its
+    link there.   These packets will be lost unless they are buffered
+    by the NAR. Similarly, if the MN attaches to the NAR and then sends an
+    FBU message, packets arriving at the PAR until the FBU is processed will be
+    lost unless they are buffered.   This protocol provides an option to
+    indicate a request for buffering at the NAR in the HI message.   When
+    the PAR requests this feature (for the MN), it SHOULD also provide
+    its own support for buffering.
+</t>
+<t>
+   Whereas buffering can enable a smooth handover, the buffer size and
+   the rate at which buffered packets are eventually forwarded are
+   important considerations when providing buffering support.  There are
+   a number of aspects to consider:</t>
+
+<list style="symbols">
+
+  <t> Some applications transmit less data over a given period of data
+      than others, and this implies different buffering requirements.
+      For instance, Voice over IP typically needs smaller buffers
+      compared to high-resolution streaming video, as the latter has
+      larger packet sizes and higher arrival rates. </t>
+
+  <t> When the mobile node appears on the new link, having the buffering
+      router send a large number of packets in quick succession may
+      overtax the resources of the router, the mobile node itself, or
+      the path between these two. </t>
+</list>
+<list style="empty">
+     <t> In particular, transmitting a large amount of buffered packets in
+      succession can congest the path between the buffering router and
+      the mobile node.  Furthermore, nodes (such as a base station) on
+      the path between the buffering router and the mobile node may drop
+      such packets.  If a base station buffers too many such packets,
+      they may contribute to additional jitter for packets arriving
+      behind them, which is undesirable for real-time communication. </t>
+</list>
+
+<list style="symbols">
+  <t> Since routers are not involved in end-to-end communication, they
+      have no knowledge of transport conditions. </t>
+
+  <t> The wireless connectivity of the mobile node may vary over time.
+      It may achieve a smaller or higher bandwidth on the new link,
+      signal strength may be weak at the time it just enters the area of
+      this access point, and so on.</t>
+
+</list> 
+
+  <t> As a result, it is difficult to design an algorithm that would
+   transmit buffered packets at appropriate spacing under all scenarios.
+   The purpose of fast handovers is to avoid packet loss.  Yet, draining
+   buffered packets too fast can, by itself, cause loss of the packets,
+   as well as blocking or loss of following packets meant for the mobile
+   node. </t>
+
+   <t>This specification does not restrict implementations from providing
+   specialized buffering support for any specific situation.  However,
+   attention must be paid to the rate at which buffered packets are
+   forwarded to the MN once attachment is complete.  Routers
+   implementing this specification MUST implement at least the default
+   algorithm, which is based on the original arrival rates of the
+   buffered packets.  A maximum of 5 packets MAY be sent one after
+   another, but all subsequent packets SHOULD use a sending rate that is
+   determined by metering the rate at which packets have entered the
+   buffer, potentially using smoothing techniques such as recent
+   activity over a sliding time window and weighted averages [RFC3290].</t>
+
+   <t>It should be noted, however, that this default algorithm is crude and
+   may not be suitable for all situations.  Future revisions of this
+   specification may provide additional algorithms, once enough
+   experience of the various conditions in deployed networks is
+   attained.
+</t>
+</section>
+
+<section title="DAD Handling">
+<t>
+    Duplicate Address Detection (DAD) was defined in <xref target='RFC4862'/> to
+    avoid address duplication on links when stateless address
+    auto-configuration is used.   The use of DAD to verify the
+    uniqueness of an IPv6 address configured through stateless
+    auto-configuration adds delays to a handover.
+    The probability of an interface identifier duplication on the
+    same subnet is very low; however, it cannot be ignored. Hence, the
+    protocol specified in this document SHOULD only be used in
+    deployments where the probability of such address collisions is
+    extremely low or it is not a concern (because of the address
+    management procedure deployed). The protocol requires the NAR to
+    send a DAD probe before it starts defending the NCoA. However, this
+    DAD delay can be turned off by setting DupAddrDetectTransmits to
+    zero on the NAR (<xref target='RFC4862'/>).   
+</t>
+<t>    
+    This document specifies messages that can be used to provide
+    duplicate-free addresses, but the document does not specify how to
+    create or manage such duplicate-free addresses.   
+     In some cases, the NAR may already have the knowledge required to
+    assess whether or not the MN's address is a duplicate before the
+    MN moves to the new subnet.   For example, in some deployments,
+    the NAR may maintain a pool of duplicate-free addresses in a list
+    for handover purposes. In such cases, the NAR can provide this
+    disposition in the HAck message (see <xref target='sec:hack'/>) or
+    in the NAACK option (see <xref target='sec:naack'/>).  
+</t>
+</section>
+
+
+<section title="Fast or Erroneous Movement">
+<t>
+    Although this specification is for fast handover, the protocol is 
+    limited in terms of how fast an MN can move.   A special case
+    of fast movement is ping-pong, where an MN moves between the same
+    two access points rapidly.   Another instance of the same problem
+    is erroneous movement, i.e., the MN receives information prior to
+    a handover that it is moving to a new access point, but it either
+    moves to a different one or it aborts movement altogether.   All of the
+    above behaviors are usually the result of link-layer idiosyncrasies
+    and thus are often resolved at the link layer itself.
+</t><t>
+    IP layer mobility, however, introduces its own limits.   IP-layer
+    handovers should occur at a rate suitable for the MN to update the
+    binding of, at least, its Home Agent and preferably that of every
+    correspondent node (CN) with which it is in communication.   An MN that moves faster than
+    necessary for this signaling to complete (which may be of the order
+    of a few seconds) may start losing packets.   The signaling cost 
+    over the air interface and in the network may increase significantly,
+    especially in the case of rapid movement between several access
+    routers.   To avoid the signaling overhead, the following measures
+    are suggested.
+</t><t>
+    An MN returning to the PAR before updating the necessary bindings
+    when present on the NAR MUST send a Fast Binding Update with the Home
+    Address equal to the MN's PCoA and a lifetime of zero to the PAR.
+    The MN should have a security association with the PAR since it
+    performed a fast handover to the NAR. The PAR, upon receiving this
+    Fast Binding Update, will check its set of outgoing (temporary
+    fast handover) tunnels.   If it finds a match, it SHOULD terminate
+    that tunnel; i.e., start delivering packets directly to the node
+    instead. In order for the PAR to process such an FBU, the lifetime of
+    the security association has to be at least that of the tunnel
+    itself. 
+</t><t>
+    Temporary tunnels for the purposes of fast handovers should use
+    short lifetimes (of the order of tens of seconds).   The lifetime of such tunnels should be enough to allow an
+    MN to update all its active bindings.   The default lifetime of the
+    tunnel should be the same as the lifetime value in the FBU message.
+</t><t>
+    The effect of erroneous movement is typically limited to the loss of
+    packets since routing can change and the PAR may forward packets
+    toward another router before the MN actually connects to that
+    router.   If the MN discovers itself on an unanticipated access
+    router, it SHOULD send a new Fast Binding Update to the PAR. This
+    FBU supersedes the existing binding at the PAR, and the packets will be
+    redirected to the newly confirmed location of the MN.
+</t>
+</section>
+</section>
+
+<section title="Message Formats">
+<t>
+    All the ICMPv6 messages have a common Type specified in
+    <xref target='RFC4443'/>. The messages are distinguished based on
+    the Subtype field (see below). For all the ICMPv6 messages, the
+    checksum is defined in <xref target="RFC4443"></xref>. 
+</t>
+
+<section anchor="ned" title="New Neighborhood Discovery Messages">
+
+<section anchor="sec:rtsolpr" title="Router Solicitation for Proxy
+				     Advertisement (RtSolPr)"> 
+<t>
+    Mobile nodes send Router Solicitation for Proxy Advertisement messages in
+    order to prompt routers for Proxy Router Advertisements.   All the
+    Link-Layer Address options have the format defined
+    in <xref target="sec:lla"></xref>. 
+</t>
+
+<figure anchor="rtsolpr" title="Router Solicitation for Proxy
+                       Advertisement (RtSolPr) Message">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |      Type     |      Code     |             Checksum          |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |    Subtype    |    Reserved   |            Identifier         |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |    Options ...
+  +-+-+-+-+-+-+-+-+-+-+-+-
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+<t> IP Fields: </t>
+<list style="empty">
+<t>    Source Address: 
+                     An IP address assigned to the sending interface. </t>
+
+<t>    Destination Address: 
+                     The address of the access router or the all routers
+                     multicast address. </t>
+
+<t>    Hop Limit:       255. See RFC 2461.  </t>
+</list>
+
+<t> ICMP Fields: </t>
+<list style="empty">
+<t>    Type: 154  </t>
+
+<t>    Code:             0  </t>
+
+<t>    Checksum:        The ICMPv6 checksum.  </t>
+
+<t>    Subtype:         2  </t>
+
+<t>    Reserved:        MUST be set to zero by the sender and ignored by
+                     the receiver.  </t>
+
+<t>    Identifier:      MUST be set by the sender so that replies can be
+                     matched to this Solicitation.  </t>
+</list>
+
+<t> Valid Options: </t>
+<list style="empty">
+<t>    Source Link-Layer Address:
+                     When known, the link-layer address of the sender
+                     SHOULD be included using the Link-Layer Address (LLA)
+                     option. See the LLA option format below. </t>
+
+<t>    New Access Point Link-Layer Address:
+                     The link-layer address or identification of the
+                     access point for which the MN requests routing
+                     advertisement information. It MUST be included
+                     in all RtSolPr messages. More than one such address
+                     or identifier can be present. This field can also
+                     be a wildcard address. See the LLA option below. </t>
+</list>
+</list>
+
+<t>
+    Future versions of this protocol may define new option types.
+    Receivers MUST silently ignore any options that they do not
+    recognize and continue processing the rest of the message.
+</t><t>
+  Including the source LLA option allows the receiver to record the
+   sender's L2 address so that neighbor discovery can be avoided when
+   the receiver needs to send packets back to the sender (of the RtSolPr
+   message).
+</t><t>
+    When a wildcard is used for the New Access Point LLA, no other New
+    Access Point LLA options must be present.
+</t><t>
+    A Proxy Router Advertisement (PrRtAdv) message should be received
+    by the MN in response to an RtSolPr.  If such a message is not received
+   in a timely manner (no less than twice the typical round trip time
+   (RTT) over the access link, or 100 milliseconds if RTT is not known),
+   it SHOULD resend the RtSolPr message.  Subsequent
+    retransmissions can be up to RTSOLPR_RETRIES, but MUST use an
+    exponential backoff in which the timeout period (i.e., 2xRTT or 100
+    milliseconds) is doubled prior to each instance of retransmission.
+    If Proxy Router Advertisement is not received by the time the MN
+    disconnects from the PAR, the MN SHOULD send an FBU immediately after
+    configuring a new CoA.
+</t><t>
+    When RtSolPr messages are sent more than once, they MUST be rate-limited with MAX_RTSOLPR_RATE per second.   During each use of
+    an RtSolPr, exponential backoff is used for retransmissions.
+</t>
+
+</section>
+
+<section title="Proxy Router Advertisement (PrRtAdv)" anchor="sec:prrtadv"> 
+
+<t>
+   Access routers send Proxy Router Advertisement messages gratuitously
+   if the handover is network-initiated or as a response to an RtSolPr
+   message from an MN, providing the link-layer address, IP address, and
+   subnet prefixes of neighboring routers.
+   All the Link-Layer Address options have the format defined in
+   6.4.3. 
+</t>
+
+<figure anchor="prrtadv" title="Proxy Router Advertisement (PrRtAdv) Message">
+
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |      Type     |      Code     |           Checksum            |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |    Subtype    |    Reserved   |           Identifier          |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |    Options ...
+  +-+-+-+-+-+-+-+-+-+-+-+-
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+<t> IP Fields: </t>
+<list style="empty">
+<t>    Source Address:
+                     MUST be the link-local address assigned to the
+                     interface from which this message is sent. </t>
+<t>
+    Destination Address:
+                     The Source Address of an invoking Router
+                     Solicitation for Proxy Advertisement or the address
+                     of the node the access router is instructing to
+                     handover. </t>
+<t>
+    Hop Limit:       255. See RFC 2461. </t>
+
+</list>
+<t> ICMP Fields: </t>
+<list style="empty">
+<t>    Type:    154  </t>
+
+<t>    Code:             0, 1, 2, 3, 4, or 5. See below.  </t>
+
+<t>    Checksum:        The ICMPv6 checksum.  </t>
+
+<t>    Subtype:         3  </t>
+
+<t>    Reserved:        MUST be set to zero by the sender and ignored by
+                     the receiver.  </t>
+
+<t>    Identifier:      Copied from the Router Solicitation for Proxy
+                     Advertisement or set to zero if
+                     unsolicited.  </t>
+</list>
+
+<t> Valid Options in the following order: </t>
+<list style="empty">
+<t>    Source Link-Layer Address: 
+                     When known, the link-layer address of the sender
+                     SHOULD be included using the Link-Layer Address
+                     option. See the LLA option format below.  </t>
+
+<t>    New Access Point Link-Layer Address: 
+                     The link-layer address or identification of the
+                     access point is copied from RtSolPr
+                     message. This option MUST be present.  </t>
+
+<t>    New Router's Link-Layer Address:
+                     The link-layer address of the access router for
+                     which this message is proxied. This option MUST be
+                     included when the Code is 0 or 1.  </t>
+
+<t>    New Router's IP Address:
+                     The IP address of the NAR. This option MUST be
+                     included when the Code is 0 or 1.  </t>
+
+<t>    New Router Prefix Information Option:
+                     Specifies the prefix of the access
+                     router the message is proxied for and is used
+                     for address auto-configuration. This option MUST be
+                     included when Code is 0 or 1. However, when this
+                     prefix is the same as what is used in the New
+                     Router's IP Address option (above), the Prefix
+                     Information option need not be present.  </t>
+
+<t>    New CoA Option:
+                     MAY be present when PrRtAdv is sent
+                     unsolicited. The PAR MAY compute a new CoA using the NAR's
+                     prefix information and the MN's L2 address or by
+                     any other means.  </t>
+</list>
+</list>
+
+<t>
+    Future versions of this protocol may define new option types.
+    Receivers MUST silently ignore any options they do not recognize
+    and continue processing the message.
+</t><t>
+    Currently, Code values 0, 1, 2, 3, 4, and 5 are defined.
+</t><t>
+    A Proxy Router Advertisement with Code 0 means that the MN should
+    use the [AP-ID, AR-Info] tuple (present in the options above) for
+    movement detection and NCoA formulation.   In this case, the Option-Code field
+    in the New Access Point LLA option is 1 to reflect
+    the LLA of the access point for which the rest of the options are
+    related.   Multiple tuples may be present.
+</t><t>
+    A Proxy Router Advertisement with Code 1 means that the message has been
+    sent unsolicited.   If a New CoA option is present following the New
+    Router Prefix Information option, the MN MUST use the supplied
+    NCoA and send an FBU immediately or else stand to lose service.
+    This message acts as a network-initiated handover trigger; see
+    <xref target='netinit'/>.   In this case, the Option-Code field in the New
+    Access Point LLA option (see below) is 1 to reflect
+    the LLA of the access point for which the rest of the options are
+    related. 
+</t><t>
+    A Proxy Router Advertisement with Code 2 means that no new router
+    information is present.   Each New Access Point LLA option contains
+    an Option-Code value (described below) that indicates a specific
+    outcome.
+</t>
+<list style="empty">
+      <t>  When the Option-Code field in the New Access Point LLA option
+        is 5, handover to that access point does not require a change of
+        CoA. This would be the case, for instance, when a number of
+        access points are connected to the same router interface, or
+        when network-based mobility management mechanisms ensure that
+        the specific mobile node always observes the same prefix
+        regardless of whether there is a separate router attached to
+        the target access point. </t>
+<t>     No other options are required in this case.  </t>
+<t>
+        When the Option-Code field in the New Access Point LLA option
+        is 6, the PAR is not aware of the Prefix Information requested.
+        The MN SHOULD attempt to send an FBU as soon as it regains
+        connectivity with the NAR. No other options are required in
+        this case. </t>
+
+     <t>  When the Option-Code field in the New Access Point LLA option
+        is 7, it means that the NAR does not support fast handover.
+        The MN MUST stop fast handover protocol operations.   No other
+        options are required in this case. </t>
+</list>
+
+<t>
+    A Proxy Router Advertisement with Code 3 means that new router
+    information is only present for a subset of access points
+    requested.   The Option-Code field values (those defined above, as
+well as the value of 1) distinguish different outcomes for individual access
+    points.
+</t><t>
+    A Proxy Router Advertisement with Code 4 means that the
+    subnet information regarding neighboring access points is sent
+    unsolicited, but the message is not a handover trigger, unlike when
+    the message is sent with Code 1.   Multiple tuples may be present.
+</t><t>
+    A Proxy Router Advertisement with Code 5 means that the MN may use
+    the new router information present for detecting movement to a
+    new subnet, but the MN must perform DHCP  <xref target='RFC3315'/>
+    upon attaching to the NAR's link. The PAR and NAR will forward
+    packets to the PCoA of the MN. The MN must still formulate an NCoA
+    for transmitting FBU (using the information sent in this message),
+    but that NCoA will not be used for forwarding packets.  
+</t><t>
+    When a wildcard AP identifier is supplied in the RtSolPr
+    message, the PrRtAdv message should include any 'n' [Access Point
+    Identifier, Link-Layer Address option, Prefix Information Option]
+    tuples corresponding to the PAR's neighborhood.
+</t>
+</section>
+</section>
+
+
+<section anchor="mh-messages" title="New Mobility Header Messages">
+<t>
+    Mobile IPv6 uses a new IPv6 header type called Mobility Header
+    <xref target='RFC3775'/>.
+    The Handover Initiate, Handover Acknowledge, Fast Binding Update,
+    Fast Binding Acknowledgment, and the (deprecated) Fast Neighbor
+    Advertisement messages use the Mobility Header. 
+</t>
+
+
+<section anchor="sec:hi-hack" title="Inter - Access Router Messages">
+
+<section anchor="sec:hi" title="Handover Initiate (HI)">
+
+<t>
+    The Handover Initiate (HI) is a Mobility Header message sent by an Access
+    Router (typically a PAR) to another access router (typically a NAR) to
+    initiate the process of an MN's handover.
+</t>
+
+<figure anchor="hi" title="Handover Initiate (HI) Message">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+                                  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                                  |           Sequence #          |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |S|U|  Reserved |      Code     |                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               .
+  |                                                               |
+  .                                                               .
+  .                          Mobility options                     .
+  .                                                               .
+  |                                                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+<t> IP Fields: </t>
+<list style="empty">
+
+<t>    Source Address: 
+                     The IP address of the PAR </t>
+
+<t>    Destination Address: 
+                     The IP address of the NAR </t> 
+
+</list>
+
+<list style="empty">
+
+<t> Sequence #:     MUST be set by the sender so replies can be
+      matched to this message. </t>
+
+
+<t>    'S' flag:     Assigned address configuration flag. When set, this
+                     message requests a new CoA to be returned by the
+                     destination. MAY be set when Code = 0. MUST be 0
+                     when Code = 1. </t>
+
+<t>    'U' flag:     Buffer flag. When set, the destination SHOULD buffer
+                     any packets toward the node indicated in the options
+                     of this message. Used when Code = 0, SHOULD be set
+                     to 0 when Code = 1. </t>
+
+<t>    Code:             0 or 1. See below </t>
+
+<t>   Reserved:        MUST be set to zero by the sender and ignored by
+                    the receiver. </t>
+
+</list>
+
+<t> Valid Options: </t>
+<list style="empty">
+
+<t>    Link-Layer Address of MN:
+                     The link-layer address of the MN that is
+                     undergoing handover to the destination (i.e., NAR).
+                     This option MUST be included so that the destination
+                     can recognize the MN. </t>
+
+<t>    Previous Care-of Address:
+                     The IP address used by the MN while
+                     attached to the originating router. This option
+                     SHOULD be included so that a host route can be
+                     established if necessary. </t>
+
+<t>    New Care-of Address:
+                     The IP address the MN wishes to use when
+                     connected to the destination. When the 'S' bit is
+                     set, the NAR MAY assign this address. </t>
+</list>
+</list>
+
+
+<t>
+    The PAR uses a Code value of 0 when it processes an FBU with the PCoA
+    as source IP address.   The PAR uses a Code value of 1 when it
+    processes an FBU whose source IP address is not the PCoA.
+</t><t>
+    If a Handover Acknowledge (HAck) message is not received as a
+    response in a short time period (no less than twice the typical
+    round trip time (RTT) between source and destination, or 100
+    milliseconds if RTT is not known), the Handover Initiate SHOULD be
+    resent.   Subsequent retransmissions can be up to HI_RETRIES, but
+    MUST use exponential backoff in which the timeout period (i.e.,
+    2xRTT or 100 milliseconds) is doubled during each instance of
+    retransmission.
+</t>
+</section>
+
+
+<section anchor="sec:hack" title="Handover Acknowledge (HAck)">
+<t>
+    The Handover Acknowledge message is a new Mobility Header message that
+    MUST be sent (typically by the NAR to the PAR) as a reply to the Handover
+    Initiate message.
+</t>
+
+<figure anchor="hack" title="Handover Acknowledge (HAck) Message">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+                                  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                                  |           Sequence #          |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |    Reserved   |      Code     |                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               .
+  |                                                               |
+  .                                                               .
+  .                          Mobility options                     .
+  .                                                               .
+  |                                                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+<t> IP Fields: </t>
+<list style="empty">
+
+<t>    Source Address:
+                  Copied from the destination address of the Handover
+                  Initiate Message to which this message is a
+                  response. </t>
+
+<t>    Destination Address:
+                  Copied from the source address of the Handover
+                  Initiate Message to which this message is a
+                  response. </t>
+
+</list>
+
+<list style="empty">
+<t> Sequence #:  Copied from the corresponding field in the HI message
+      to which this message is a response, to enable the receiver to
+      match this HAck message with an outstanding HI message.  </t>
+
+
+<t>
+    Code:
+</t>
+<list style="empty">
+  
+<t>               0: Handover Accepted, NCoA valid </t>
+<t>
+                  1: Handover Accepted, NCoA not valid or in use </t>
+<t>
+                  2: Handover Accepted, NCoA assigned
+                      (used in Assigned Addressing) </t><t>
+                  3: Handover Accepted, use PCoA </t><t>
+                  4: Message sent unsolicited, usually to trigger an
+                      HI message </t><t>
+                128: Handover Not Accepted, reason unspecified </t><t>
+                129: Administratively prohibited </t><t>
+                130: Insufficient resources </t>
+</list>
+
+<t>
+    Reserved:      MUST be set to zero by the sender and ignored by
+                  the receiver.
+ </t>
+
+</list>
+
+<t>
+ Valid Options:
+</t>
+
+<list style="empty">
+<t>    New Care-of Address:
+         If the 'S' flag in the Handover Initiate message is set,
+         this option MUST be used to provide the NCoA that the MN should
+         use when connected to this router. This option MAY be
+         included, even when the 'S' bit is not set, e.g., Code 2
+         above.
+</t>
+
+</list>
+</list>
+
+<t>
+    Upon receiving an HI message, the NAR MUST respond with a Handover
+    Acknowledge message.   If the 'S' flag is set in the HI message, the
+    NAR SHOULD include the New Care-of Address option and a Code 3.
+</t>
+
+<t>
+    The NAR MAY provide support for the PCoA (instead of accepting or
+    assigning an NCoA), establish a host route entry for the PCoA, and set up
+    a tunnel to the PAR to forward the MN's packets sent with the PCoA as a
+    source IP address.   This host route 
+    entry SHOULD be used to forward packets once the NAR detects that
+    the particular MN is attached to its link.   The NAR indicates
+    forwarding support for the PCoA using Code value 3 in the HAck message.
+    Subsequently, the PAR establishes a tunnel to the NAR in order to forward
+    packets arriving for the PCoA.
+</t>
+
+<t>
+    When responding to an HI message containing a Code value 1, the Code
+    values 1, 2, and 4 in the HAck message are not relevant.
+</t>
+
+<t>
+    Finally, the New Access Router can always refuse handover, in which
+    case it MUST indicate the reason in one of the available Code
+    values.
+</t>
+
+</section>
+
+</section>
+
+
+<section anchor="sec:fbu" title="Fast Binding Update (FBU)">
+
+<t>
+    The Fast Binding Update message has a Mobility Header Type value
+    of 8.  The FBU is identical to the Mobile IPv6 Binding Update (BU)
+    message.  However, the processing rules are slightly
+    different. Furthermore, additional flags (as part of the Reserved
+    field below) defined by other related protocols are not relevant
+    in this message, and MUST be set to zero.  
+</t>
+
+<figure anchor="fbu" title=" Fast Binding Update (FBU) Message">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+                                  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                                  |           Sequence #          |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |A|H|L|K|       Reserved        |            Lifetime           |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                                                               |
+  .                                                               .
+  .                           Mobility options                    .
+  .                                                               .
+  |                                                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+<t> IP Fields: </t>
+<list style="empty">
+
+<t>        Source Address:        The PCoA or NCoA </t>
+
+<t>           Destination Address:
+                                 The IP address of the Previous Access
+                                 Router </t>
+</list>
+
+<t>       'A' flag:          MUST be set to one to request that PAR send a Fast
+                         Binding Acknowledgment message. </t>
+
+<t>       'H' flag:          MUST be set to one.   See
+  <xref target='RFC3775'/>. </t>
+
+<t>       'L' flag:           See <xref target='RFC3775'/>. </t>
+
+<t>       'K' flag:           See <xref target='RFC3775'/>. </t>
+
+<t>       Reserved:          This field is unused.   MUST be set to zero. </t>
+
+<t>       Sequence Number:   See <xref target='RFC3775'/>. </t>
+
+<t>       Lifetime:          The requested time in seconds for which the
+                         sender wishes to have a binding. </t>
+
+<t>       Mobility Options:
+                         MUST contain an alternate CoA option set to
+                         the NCoA when an FBU is sent from the PAR's link.
+                         MUST contain the Binding Authorization Data for
+                         the FMIP (BADF) option.   See
+                         <xref target='sec:badf'/>.   MAY contain the 
+                         Mobility Header LLA option (see
+                         <xref target='sec:mhlla'/>). </t>
+
+</list>
+<t>
+    The MN sends an FBU message any time after receiving a PrRtAdv
+    message.   If the MN moves prior to receiving a PrRtAdv message,
+    it SHOULD send an FBU to the PAR after configuring the NCoA on the NAR
+    according to Neighbor Discovery and IPv6 Address Configuration
+    protocols. When the MN moves without having received a PrRtAdv
+    message, it cannot transmit an UNA message upon attaching to the
+    NAR's link. 
+</t>
+<t> 
+   The source IP address is the PCoA when the FBU is sent from the
+   PAR's link, and the source IP address is the NCoA when the FBU sent
+   from the NAR's link. When 
+   the source IP address is the PCoA, the MN MUST include the alternate CoA
+   option set to NCoA. The PAR MUST process the FBU even though the
+   address in the alternate CoA option is different from that in the
+   source IP address, and ensure that the address in the alternate CoA
+   option is used in the New CoA option in the HI message to the NAR.  
+</t>
+<t>
+    The FBU MUST also include the Home Address Option set to PCoA. An 
+    FBU message MUST be protected so that the PAR is able to determine
+    that the FBU message is sent by an MN that legitimately owns the
+    PCoA. 
+</t>
+</section>
+
+<section anchor="sec:fback" title="Fast Binding Acknowledgment
+				   (FBack)"> 
+<t>
+    The FBack message format is identical to the Mobile IPv6 Binding
+    Acknowledgment (BAck) message.  However, the processing rules are
+    slightly different. Furthermore, additional flags (as part of the
+    Reserved field below) defined by other related protocols are not
+    relevant in this message, and MUST be set to zero.
+</t>
+
+<t>
+    The Fast Binding Acknowledgment message has a Mobility Header Type
+    value of 9.  The FBack message is sent by the PAR to 
+    acknowledge receipt of a Fast Binding Update message in which
+    the 'A' bit is set.   If PAR sends an HI message to the NAR after
+    processing an FBU, the FBack message SHOULD NOT be sent to the MN
+    before the PAR receives a HAck message from the NAR. The PAR MAY
+    send the FBack immediately in the reactive mode, however.   The Fast
+    Binding Acknowledgment MAY also be sent to the MN on the old link.
+</t>
+
+<figure anchor="fback" title="Fast Binding Acknowledgment (FBack) Message">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+                                  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                                  |     Status      |K|  Reserved |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |            Sequence #         |            Lifetime           |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                                                               |
+  .                                                               .
+  .                           Mobility options                    .
+  .                                                               .
+  |                                                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+<t> IP Fields: </t>
+<list style="empty">
+
+<t>           Source address:        The IP address of the Previous Access
+                                 Router </t>
+
+<t>           Destination Address:   The NCoA, and optionally the PCoA </t>
+</list>
+
+<t>       Status:
+                            8-bit unsigned integer indicating the
+                            disposition of the Fast Binding Update.
+                            Values of the Status field that are less than 128
+                            indicate that the Binding Update was accepted
+                            by the receiving node.   The following such
+                            Status values are currently defined: </t>
+<list style="empty">
+                       <t>  0: Fast Binding Update accepted </t><t>
+                            1: Fast Binding Update accepted but NCoA is
+                            invalid.   Use NCoA supplied in "alternate"
+                            CoA </t>
+</list>
+                       <t>     Values of the Status field greater than or
+                            equal to 128 indicate that the Binding Update
+                            was rejected by the receiving node.   The
+                            following such Status values are currently
+                            defined: </t>
+<list style="empty">
+                       <t>  128: Reason unspecified </t> <t>
+                            129: Administratively prohibited </t> <t>
+                            130: Insufficient resources </t> <t>
+                            131: Incorrect interface identifier
+                            length </t>
+</list>
+
+<t>       'K' flag:             See <xref target='RFC3775'/>. </t>
+
+<t>       Reserved:             An unused field.   MUST be set to
+  zero. </t>
+
+<t>       Sequence Number:      Copied from the FBU message for use by the MN
+                            in matching this acknowledgment with an
+                            outstanding FBU. </t>
+
+<t>       Lifetime:
+                            The granted lifetime in seconds for which the
+                            sender of this message will retain a binding
+                            for traffic redirection. </t>
+
+<t>       Mobility Options:     MUST contain an "alternate" CoA if Status is 1.
+                            MUST contain the Binding Authorization Data
+                            for FMIP (BADF) option.   See <xref target="sec:badf"/>. </t>
+
+</list>
+</section>
+</section>
+
+<section anchor="sec:una" title="Unsolicited Neighbor Advertisement (UNA)">
+<t>
+    This is the same message as in <xref target='RFC4861'/> with the
+    requirement that the 'O' bit is always set to zero.   Since this
+    is an unsolicited  message, the 'S' bit is zero, and since this is
+    sent by an MN, the 'R' bit is also zero.
+</t><t>
+    If the NAR is proxying the NCoA (as a result of HI and HAck exchange),
+    then UNA processing has additional steps (see below). If the NAR is
+    not proxying the NCoA (for instance, HI and HAck exchange has not
+    taken place), then UNA processing follows the same procedure as
+    specified in <xref target='RFC4861'/>. Implementations MAY
+    retransmit UNAs subject to the specification in Section 7.2.6 of
+    <xref target='RFC4861'/> while noting that the
+    default RetransTimer value is large for handover purposes. 
+</t><t>
+    The Source Address in UNA MUST be the NCoA. The destination address
+    is typically the all-nodes multicast address; however, some
+    deployments may not prefer transmission to a multicast address. In
+    such cases, the destination address SHOULD be the NAR's IP address.
+</t><t>
+    The Target Address MUST include the NCoA, and the Target link-layer
+    address MUST include the MN's LLA.
+</t><t>
+    The MN sends an UNA message to the NAR, as soon as it regains
+    connectivity on the new link.   Arriving or buffered packets can
+    be immediately forwarded.   If the NAR is proxying the NCoA, it creates
+    a neighbor cache entry in STALE state but forwards packets as
+    it determines bidirectional reachability according to the standard
+    Neighbor Discovery procedure. If there is an entry
+    in INCOMPLETE state without a link-layer address, the NAR sets it to
+    STALE, again according to the procedure in
+    <xref target='RFC4861'/>. 
+</t><t>
+    The NAR MAY wish to provide a different IP address to the MN than
+    the one in the UNA message. In such a case, the NAR MUST delete the proxy
+    entry for the NCoA and send a Router Advertisement with a
+    NAACK option containing the new IP address. 
+</t><t>
+    The combination of the NCoA (present in the source IP address) and the
+    Link-Layer Address (present as a Target LLA) SHOULD be used to
+    distinguish the MN from other nodes.
+</t>
+</section>
+
+<section anchor="sec:options" title="New Options">
+<t>
+    All the options, with the exception of Binding Data Authorization
+    for FMIPv6 (BADF) discussed in <xref target='sec:badf'/>, use the
+    Type, Length, and Option-Code format shown in
+    <xref target='options'/>.  
+</t><t>
+    The Type values are defined from the Neighbor Discovery options
+    space and Mobility Header options space.   The Length field is in
+    units of 8 octets for Neighbor Discovery options, and is in units
+    of octets for Mobility Header options.  And, Option-Code provides
+    additional information for each of the options (see individual
+    options below). 
+</t>
+
+<figure anchor="options" title="Option Format">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |      Type     |     Length    |  Option-Code  |               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  ~                                  ...                          ~
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+
+<section anchor="sec:ipaddr" title="IP Address/Prefix Option">
+<t>
+    This option is sent in the Proxy Router Advertisement message.
+</t>
+
+<figure anchor="ipaddr" title="IPv6 Address/Prefix Option">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |     Type      |   Length      | Option-Code   | Prefix Length |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                             Reserved                          |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                                                               |
+  +                                                               +
+  |                                                               |
+  +                             IPv6 Address                      +
+  |                                                               |
+  +                                                               +
+  |                                                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+
+<t>    Type:
+         17 </t>
+<t>
+    Length:
+         The size of this option in 8 octets including the Type,
+         Option-Code, and Length fields.  </t>
+<t>
+    Option-Code:  </t>
+<list style="empty">
+<t>      1:    Old Care-of Address </t><t>
+         2:    New Care-of Address </t><t>
+         3:    NAR's IP address </t><t>
+         4:    NAR's Prefix, sent in PrRtAdv. The Prefix Length
+         field contains the number of valid leading bits in the prefix.
+         The bits in the prefix after the prefix length are reserved
+         and MUST be initialized to zero by the sender and ignored by
+         the receiver.</t>
+
+</list>
+<t>
+    Prefix Length:
+         8-bit unsigned integer that indicates the length of the IPv6
+         Address Prefix. The value ranges from 0 to 128.
+         </t>
+<t>
+    Reserved:
+         MUST be set to zero by the sender and MUST be
+         ignored by the receiver. </t>
+<t>
+    IPv6 address:
+         The IP address defined by the Option-Code field. </t>
+
+</list>
+</section>
+
+<section anchor="sec:mh-ipaddr" title="Mobility Header IP
+Address/Prefix Option"> 
+<t>
+    This option is sent in the Handover Initiate and Handover
+    Acknowledge messages. This option has an alignment requirement of
+    8n+4. 
+</t>
+
+<figure anchor="mh-ipaddr" title="Mobility Header IPv6 Address/Prefix Option">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |     Type      |   Length      | Option-Code   | Prefix Length |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                                                               |
+  +                                                               +
+  |                                                               |
+  +                    IPv6 Address/Prefix                        +
+  |                                                               |
+  +                                                               +
+  |                                                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+
+<t>    Type:
+         17 </t>
+<t>
+    Length:
+         The size of this option in octets excluding the Type
+         and Length fields.  </t>
+<t>
+    Option-Code:  </t>
+<list style="empty">
+<t>      1:    Old Care-of Address </t><t>
+         2:    New Care-of Address </t><t>
+         3:    NAR's IP address </t><t>
+         4:    NAR's Prefix, sent in PrRtAdv. The Prefix Length
+         field contains the number of valid leading bits in the prefix.
+         The bits in the prefix after the prefix length are reserved
+         and MUST be initialized to zero by the sender and ignored by
+         the receiver.</t>
+
+</list>
+<t>
+    Prefix Length:
+         8-bit unsigned integer that indicates the length of the IPv6
+         Address Prefix. The value ranges from 0 to 128.
+         </t>
+<t>
+    IPv6 address/prefix:
+         The IP address/prefix defined by the Option-Code field. </t>
+
+</list>
+</section>
+
+
+<section anchor="sec:lla" title="Link-Layer Address (LLA) Option">
+
+<figure anchor="lla" title="Link-Layer Address Option">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |     Type      |    Length     |  Option-Code  |       LLA...
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+
+<t>    Type:
+         19 </t>
+
+<t>    Length:
+         The size of this option in 8 octets including the Type,
+         Option-Code, and Length fields. </t>
+<t>
+    Option-Code: </t>
+<list style="empty">
+<t>      0: Wildcard requesting resolution for all nearby access
+         points </t><t>
+         1: Link-Layer Address of the New Access Point </t><t>
+         2: Link-Layer Address of the MN </t><t>
+         3: Link-Layer Address of the NAR (i.e., Proxied Originator) </t><t>
+         4: Link-Layer Address of the source of RtSolPr or PrRtAdv
+            message </t><t>
+         5: The access point identified by the LLA belongs to the
+            current interface of the router </t><t>
+         6: No prefix information available for the access point
+            identified by the LLA </t><t>
+         7: No fast handover support available for the access point
+            identified by the LLA</t>
+
+</list>
+
+<t>    LLA:
+         The variable-length link-layer address. </t>
+</list>
+
+<t>
+    The LLA option does not have a length field for the LLA itself.
+    The implementations must consult the specific link layer over which
+    the protocol is run in order to determine the content and length of
+    the LLA.
+</t><t>
+    Depending on the size of individual LLA option, appropriate padding
+    MUST be used to ensure that the entire option size is a multiple of
+    8 octets.
+</t><t>
+    The New Access Point Link-Layer Address contains the link-layer
+    address of the access point for which handover is about to be
+    attempted.   This is used in the Router Solicitation for Proxy
+    Advertisement message.
+</t><t>
+    The MN Link-Layer Address option contains the link-layer address of
+    an MN. It is used in the Handover Initiate message.
+</t><t>
+    The NAR (i.e., Proxied Originator) Link-Layer Address option
+    contains the link-layer address of the access router to which the
+    Proxy Router Solicitation message refers.
+</t>
+
+</section>
+
+
+<section anchor="sec:mhlla" title= "Mobility Header Link-Layer Address
+				    (MH-LLA) Option">
+<t>
+    This option is identical to the LLA option, but is carried in
+    the Mobility Header messages, e.g., FBU. In the future, other
+    Mobility Header messages may also make use of this option.   The
+    format of the option is shown in <xref target='mhlla'/>.   There
+    are no alignment requirements for this option.
+</t>
+
+<figure anchor="mhlla" title="Mobility Header Link-Layer Address Option">
+<artwork><![CDATA[
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                                 |     Type      |     Length    |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Option-Code   |                  LLA                     ....
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+
+<t>    Type:
+         7  </t>
+
+<t>    Length:
+         The size of this option in octets not including the Type
+         and Length fields. </t>
+
+<t>    Option-Code:
+         2&nbsp;&nbsp;&nbsp;Link-Layer Address of the MN. </t>
+
+<t>    LLA:
+         The variable-length link-layer address. </t>
+
+</list>
+</section>
+
+<section anchor="sec:badf" title="Binding Authorization Data for
+				  FMIPv6 (BADF)">
+
+<t>
+    This option MUST be present in FBU and FBack messages.   The
+    security association between the MN and the PAR is established by
+    companion protocols <xref target='RFC5269'/>.   This option
+    specifies how to compute and verify a Message Authentication Code (MAC) using the established
+    security association. 
+</t>
+
+<t>    The format of this option is shown in <xref target='badf'/>. </t>
+
+
+<figure anchor="badf" title="Binding Authorization Data for FMIPv6 (BADF) Option">
+<artwork><![CDATA[
+     0                   1                   2                   3
+     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+                                    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                                    |     Type      | Option Length |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                            SPI                                |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                                                               |
+    +                                                               +
+    |                         Authenticator                         |
+    +                                                               +
+    |                                                               |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+
+<t>    Type:
+         21 </t>
+
+<t>
+    Option Length:
+         The length of the Authenticator in bytes </t>
+<t>
+    SPI:
+         Security Parameter Index. SPI = 0 is reserved for the
+         Authenticator computed using SEND-based handover keys. </t>
+<t>
+    Authenticator:
+         Same as in RFC 3775, with "correspondent" replaced by
+         the PAR's IP address, and Kbm (binding management key) replaced by the shared key
+         between the MN and the PAR. </t>
+</list>
+<t>
+    The default MAC calculation is done using HMAC_SHA1 with the first
+    96 bits used for the MAC. Since there is an Option Length field,
+    implementations can use other algorithms such as HMAC_SHA256.
+</t>
+<t>
+    This option MUST be the last Mobility Option present.
+</t>
+</section>
+
+<section anchor="sec:naack" title="Neighbor Advertisement
+				   Acknowledgment (NAACK)"> 
+
+<figure anchor="naack" title="Neighbor Advertisement Acknowledgment Option">
+<artwork><![CDATA[
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |      Type     |     Length    | Option-Code   |    Status     |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                             Reserved                          |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ ]]></artwork> 
+</figure>
+
+<list style="empty">
+
+<t>    Type: 20 </t>
+
+<t>    Length:
+         8-bit unsigned integer.   Length of the option, in 8
+         octets. The length is 1 when a new CoA is not supplied. The
+         length is 3 when a new CoA is present (immediately following
+         the Reserved field) </t>
+
+<t>    Option-Code:
+         0 </t>
+
+<t>    Status:
+         8-bit unsigned integer indicating the disposition of the
+         Unsolicited 
+         Neighbor Advertisement message. The following Status
+         values are currently defined: </t>
+<list style="empty">
+
+<t>          1:  NCoA is invalid, perform address configuration </t><t>
+             2:  NCoA is invalid, use the supplied NCoA. The supplied 
+                 NCoA (in the form of an IP Address Option) MUST be
+                 present following the Reserved field. </t><t>
+             3:  NCoA is invalid, use NAR's IP address as NCoA in
+                 FBU </t><t>
+             4:  PCoA supplied, do not send FBU </t><t>
+           128:  Link-Layer Address unrecognized </t>
+
+</list>
+<t>    Reserved:
+         MUST be set to zero by the sender and MUST be
+         ignored by the receiver. </t>
+</list>
+<t>
+    The NAR responds to an UNA with the NAACK option to notify the MN
+    to use a different NCoA than the one that the MN has used. If the
+    NAR proposes a different NCoA, the Router Advertisement
+    MUST use the source IP address in the UNA message as the
+    destination address, and use the L2 address present in UNA. The MN
+    MUST use the NCoA if it is supplied with the NAACK option. If the
+    NAACK indicates that the Link-Layer Address is unrecognized (for
+    instance, if the MN uses an LLA valid on PAR's link but the same
+    LLA is not valid on NAR's link due to a different access
+    technology), the MN MUST NOT use the NCoA or the PCoA and SHOULD
+    start immediately the process of acquiring a different NCoA at the
+    NAR.  
+</t>
+<t>
+    In the future, new option types may be defined.
+</t>
+</section>
+</section>
+
+</section>
+
+<section anchor="protocon" title="Related Protocol and Device Considerations">
+<t>
+The protocol specified here, as a design principle, introduces no or
+minimal changes to related protocols. For example, no changes to the
+base Mobile IPv6 protocol are needed in order to implement this
+protocol. Similarly, no changes to the IPv6 stateless address
+auto-configuration protocol <xref target='RFC4862'/> and DHCP
+<xref target='RFC3315'/> are introduced. The protocol specifies an
+optional extension to Neighbor Discovery <xref target='RFC4861'/> in
+which an access router may send a router advertisement as a response
+to the UNA message (see <xref target='sec:una'/>).  Other than
+this extension, the specification does not modify Neighbor Discovery
+behavior (including the procedures performed when attached to the PAR
+and when attaching to the NAR). 
+</t>
+
+<t>
+The protocol does not require changes to any intermediate Layer 2
+device between an MN and its access router that supports this
+specification. This includes the wireless access points, switches,
+snooping devices, and so on.
+</t>
+
+</section>
+
+<section anchor="compatible" title="Evolution from and Compatibility
+				    with RFC 4068"> 
+ 
+<t>
+  This document has evolved from
+  <xref target='RFC4068'/>. Specifically, a new handover key
+  establishment protocol (see <xref target='RFC5269'/>) has been
+  defined to enable a security association between a mobile node and its
+  access router. This allows the secure update of the routing of packets
+  during a handover. In the future, new specifications may be defined
+  to establish such security associations depending on the particular
+  deployment scenario.
+</t>
+
+<t> 
+ The protocol has improved from the 
+  experiences in implementing <xref target='RFC4068'/>, and from
+  experimental usage. The input has improved the specification of
+  parameter fields (such as lifetime, codepoints, etc.) as well as
+  inclusion of new parameter fields in the existing messages. As of
+  this writing,  there are two publicly available implementations,
+  <xref target='fmipv6'/> and <xref target='tarzan'/>, and multiple
+  proprietary implementations. Some experience suggests that
+  the protocol meets the delay and packet loss requirements when used
+  appropriately with particular radio access
+  protocols. For instance, see <xref target='RFC5184'/> and 
+  <xref target='mip6-book'/>. Nevertheless, it is important to
+  recognize that handover performance is a function of both IP-layer
+  operations, which this protocol specifies, and the particular radio
+  access technology itself, which this protocol relies upon but does
+  not modify. 
+</t>
+
+<t>
+An existing implementation of <xref target='RFC4068'/> needs to be
+updated in order to support this specification. The primary addition
+is the establishment of a security association between an MN and its
+access router (i.e., MN and PAR). One way to establish such a security
+association is specified in <xref target='RFC5269'/>. An
+implementation that complies with the specification in this document
+is likely to also work with <xref target='RFC4068'/>, except for the
+Binding Authorization Data for FMIPv6 option (see
+<xref target='sec:badf'/>) that can only be processed when a security
+association is in place between a mobile node and its access
+router. This specification deprecates the Fast Neighbor Advertisement
+(FNA) message. However, it is acceptable for a NAR to
+process this message from a mobile node as specified in
+<xref target='RFC4068'/>. 
+</t>
+</section>
+
+<section anchor="confparm" title="Configurable Parameters">
+<t>
+Mobile nodes rely on configuration parameters shown in the table
+below. Each mobile node MUST have a configuration mechanism to adjust
+the parameters. Such a configuration mechanism may be either local
+(such as a command line interface) or based on central management of a
+number of mobile nodes.
+</t>
+ 
+<texttable>
+<ttcol align='center'> Parameter Name </ttcol>
+<ttcol align='center'> Default Value  </ttcol>
+<ttcol align='center'> Definition </ttcol>
+<c>  RTSOLPR_RETRIES </c>
+<c>      3           </c>
+<c> <xref target="sec:rtsolpr"></xref> </c> 
+<c> MAX_RTSOLPR_RATE </c>
+<c>     3            </c>
+<c> <xref target="sec:rtsolpr"></xref> </c> 
+<c>       FBU_RETRIES  </c>
+<c>           3        </c> 
+<c> <xref target="sec:fbu"></xref> </c> 
+<c>       PROXY_ND_LIFETIME </c>
+<c>     1.5 seconds </c>                
+<c> <xref target="sec:hack"></xref> </c> 
+<c>       HI_RETRIES  </c>
+<c>           3   </c>
+<c> <xref target="sec:hi"></xref> </c> 
+</texttable>
+
+</section>
+
+<section anchor="sec:seccon" title="Security Considerations">
+<t>
+    The following security vulnerabilities are identified and
+    suggested solutions are mentioned.
+</t>
+<list style="empty">
+<t>        Insecure FBU: in this case, packets meant for one address
+        could be stolen or redirected to some unsuspecting node.
+        This concern is the same as that in an MN and Home Agent
+        relationship.
+</t><t>
+        Hence, the PAR MUST ensure that the FBU packet arrived from a
+        node that legitimately owns the PCoA. The access router and its
+        hosts may use any available mechanism to establish a security
+        association that MUST be used to secure FBU. The current
+        version of this protocol relies on a companion protocol
+        <xref target='RFC5269'/> 
+        to establish such a security association.   Using the shared
+        handover key from <xref target='RFC5269'/>, the
+        Authenticator in BADF option (see <xref target='sec:badf'/>)
+        MUST be computed, and the BADF option included in FBU and
+        FBack messages. 
+</t>
+
+
+<t>     Secure FBU, malicious or inadvertent redirection:   in this
+        case, the FBU is secured, but the target of binding happens to
+        be an unsuspecting node either due to inadvertent operation
+        or due to malicious intent.   This vulnerability can lead to
+        an MN with a genuine security association with its access router
+        redirecting traffic to an incorrect address.
+</t>
+
+<t>
+        However, the target of malicious traffic redirection is limited
+        to an interface on an access router with which the PAR has a
+        security association.   The PAR MUST verify that the NCoA to
+        which the PCoA is being bound actually belongs to the NAR's prefix.   In
+        order to do this, HI and HAck message exchanges are to be used.
+        When the NAR accepts the NCoA in HI (with Code = 0), it
+        proxies the NCoA so
+        that any arriving packets are not sent on the link until the MN
+        attaches and announces itself through the UNA. Therefore, any inadvertent
+        or malicious redirection to a host is avoided.   It is still
+        possible to jam a NAR's buffer with redirected traffic.   However,
+        since a NAR's handover state corresponding to an NCoA has a finite
+        (and short) lifetime corresponding to a small multiple of
+        anticipated handover latency, the extent of this vulnerability
+        is arguably small.
+</t>
+
+<t>     Sending an FBU from a NAR's link:  A malicious node may send an FBU
+        from a NAR's link providing an unsuspecting node's address as an
+        NCoA. This is similar to base Mobile IP where the MN can
+        provide some other node's IP address as its CoA to its Home
+        Agent; here, the PAR acts like a "temporary Home Agent" having a
+        security association with the mobile node and providing
+        forwarding support for the handover traffic. As in base Mobile
+        IP, this misdelivery is traceable to the MN that has a
+        security association with the router. So, it is possible to
+        isolate such an MN if it continues to misbehave. Similarly, an
+        MN that has a security association with the PAR may provide
+        the LLA of some other node on NAR's link, which can cause
+        misdelivery of packets (meant for the NCoA) to an unsuspecting
+        node. It is possible to trace the MN in this case as well. 
+
+</t>
+</list>
+<t>
+Apart from the above, the RtSolPr (<xref target='sec:rtsolpr'/>) and
+PrRtAdv (<xref target='sec:prrtadv'/>) messages inherit the weaknesses
+of the Neighbor Discovery protocol <xref target='RFC4861'/>. Specifically,
+when its access router is compromised, the MN's RtSolPr message may be
+answered by an attacker that provides a rogue router as the
+resolution. Should the MN attach to such a rogue router, its
+communication can be compromised. Similarly, a network-initiated
+PrRtAdv message (see <xref target='netinit'/>) from an attacker could
+cause an MN to handover to a rogue router. Where these weaknesses are a
+concern, a solution such as Secure Neighbor Discovery (SEND)
+<xref target='RFC3971'/> SHOULD be considered. 
+</t>
+
+<t>
+The protocol provides support for buffering packets during an MN's
+handover. This is done by securely exchanging the Handover Initiate (HI) and
+Handover Acknowledge (HAck) messages in response to the FBU message
+from an MN. It is possible that an MN may fail, either inadvertently
+or purposely, to undergo handover to the NAR, which typically provides
+buffering support. This can cause the NAR to waste its memory containing
+the buffered packets, and in the worst case, could create resource
+exhaustion concerns. Hence, implementations must limit the size of the
+buffer as a local policy configuration that may consider parameters
+such as the average handover delay, expected size of packets, and so
+on. 
+</t>    
+
+<t>
+   The Handover Initiate (HI) and Handover Acknowledge (HAck)
+   messages exchanged between the PAR and NAR MUST 
+   be protected using end-to-end security association(s) offering
+   integrity and data origin authentication.
+</t>
+<t>
+   The PAR and the NAR MUST implement IPsec <xref target='RFC4301'/>
+   for protecting the HI and HAck messages.  IPsec Encapsulating
+   Security Payload (ESP) 
+   <xref target='RFC4303'/> in transport mode with mandatory integrity
+   protection SHOULD be used for protecting the signaling messages.
+   Confidentiality protection of these messages is not required.
+</t>
+<t>
+   The security associations can be created by using either manual
+   IPsec configuration or a dynamic key negotiation protocol such as 
+   Internet Key Exchange Protocol version 2 (IKEv2) <xref
+   target='RFC4306'/>. If IKEv2 is used, the PAR and the 
+   NAR can use any of the authentication mechanisms, as specified in
+   RFC 4306, for mutual authentication. However, to ensure a baseline
+   interoperability, the implementations MUST support shared secrets
+   for mutual authentication. The following sections describe
+   the Peer Authorization Database (PAD) and Security Policy
+   Database (SPD) entries specified in <xref target='RFC4301'/> when
+   IKEv2 is used for setting up the required IPsec security
+   associations. 
+</t>
+
+<section title="Peer Authorization Database Entries When Using IKEv2">
+<t>
+   This section describes PAD entries on the PAR and the
+   NAR.  The PAD entries are only example configurations.  Note that
+   the PAD is a logical concept, and a particular PAR or NAR
+   implementation can implement the PAD in any implementation-specific manner.  The PAD state may also be distributed across
+   various databases in a specific implementation.
+</t>
+<list style="empty">
+<t>      PAR PAD:</t>
+<list style="empty">
+<t>         - IF remote_identity = nar_identity_1 
+<vspace />
+              THEN authenticate (shared secret/certificate/EAP)
+              and authorize CHILD_SA for remote address nar_address_1 </t>
+</list>
+<t>       NAR PAD: </t>
+<list style="empty">
+<t>         - IF remote_identity = par_identity_1 
+<vspace />
+            THEN authenticate (shared secret/certificate/EAP)
+            and authorize CHILD_SAs for remote address par_address_1 </t>
+</list>
+</list>
+<t>
+   The list of authentication mechanisms in the above examples is
+   not exhaustive.  There could be other credentials used for
+   authentication stored in the PAD.
+</t>
+</section>
+
+<section title="Security Policy Database Entries">
+<t>
+   This section describes the security policy entries 
+   on the PAR and the NAR required to protect the HI and HAck
+   messages. The SPD entries are only example configurations.  A
+   particular PAR or NAR implementation could configure different
+   SPD entries as long as they provide the required security.
+</t>
+<t>
+   In the examples shown below, the identity of the PAR is assumed
+   to be par_1, the address of the PAR is assumed to be
+   par_address_1, and the address of the NAR is assumed to be
+   nar_address_1.
+</t>
+
+<figure><artwork>
+       PAR SPD-S:
+
+          - IF local_address = par_address_1 &
+               remote_address = nar_address_1 &
+               proto = MH &
+               local_mh_type = HI &
+               remote_mh_type = HAck
+          THEN use SA ESP transport mode Initiate using IDi = par_1 to
+          address nar_address_1
+
+       NAR SPD-S:
+
+          - IF local_address = nar_address_1 &
+               remote_address = par_address_1 &
+               proto = MH &
+               local_mh_type = HAck &
+               remote_mh_type = HI
+          THEN use SA ESP transport mode
+</artwork></figure>
+
+</section>
+</section>
+
+<section anchor="ianacon" title="IANA Considerations">
+<!-- [rfced] Please review the IANA actions section to ensure that the
+IANA assigned values have been included correctly in the text.  -->
+
+<t>
+   This document defines two new Mobility Header messages that have
+   been allocated from the Mobility Header Type registry.</t>
+
+<list style="empty">
+<t>14      Handover Initiate Message (<xref target='sec:hi'/>)
+</t>
+<t>15      Handover Acknowledge Message (<xref target='sec:hack'/>)
+</t>
+</list>
+
+<t>
+    This document defines a new Mobility Option that has received Type
+    assignment from the Mobility Options Type registry.
+</t>
+<list style="numbers">
+<t>
+        Mobility Header IPv6 Address/Prefix option (34), described
+        in <xref target='sec:mh-ipaddr'/> </t>
+</list>
+
+<t>
+    This document defines a new ICMPv6 message, which has been
+    allocated from the ICMPv6 Type registry.</t> 
+
+<list style="empty">
+<t>154      FMIPv6 Messages
+</t>
+</list>
+
+<t>
+This document creates a new registry for the 'Subtype' field in the
+above ICMPv6 message, called the "FMIPv6 Message Types".  IANA has
+assigned the following values.</t> 
+
+<texttable>
+<ttcol align='center'> Subtype </ttcol>
+<ttcol align='center'> Description  </ttcol>
+<ttcol align='center'> Reference </ttcol>
+<c>  2</c>
+<c>      RtSolPr           </c>
+<c> <xref target="sec:rtsolpr"></xref> </c> 
+<c> 3 </c>
+<c>     PrRtAdv            </c>
+<c> <xref target="sec:prrtadv"></xref> </c> 
+<c>      4  </c>
+<c>          HI - Deprecated        </c> 
+<c> <xref target="sec:hi"></xref> </c> 
+<c>       5 </c>
+<c>     HAck - Deprecated </c>                
+<c> <xref target="sec:hack"></xref> </c> 
+</texttable>
+
+<t> The values '0' and '1' are reserved.  The upper limit is 255.  An
+RFC is required for new message assignment. The Subtype values 4 and 5
+are deprecated but marked as unavailable for future allocations. </t> 
+
+<t>
+    The document defines a new Mobility Option that has received
+    Type assignment from the Mobility Options Type registry.
+</t>
+<list style="numbers">
+<t>
+        Binding Authorization Data for FMIPv6 (BADF) option (21), described
+        in <xref target="sec:badf"></xref> </t>
+</list>
+
+<t>
+The document has already received Type assignments for the following
+(see <xref target='RFC4068'/>):
+</t><t></t>
+ 
+<t>
+    The document defines the following Neighbor Discovery
+    <xref target='RFC4861'/> options that have received Type assignment from
+    IANA. 
+</t>
+
+<texttable>
+<ttcol align='center'> Type </ttcol>
+<ttcol align='center'> Description  </ttcol>
+<ttcol align='center'> Reference </ttcol>
+<c>   17 </c>
+<c>      IP Address/Prefix Option           </c>
+<c> <xref target="sec:ipaddr"></xref> </c> 
+<c> 19 </c>
+<c>     Link-layer Address Option            </c>
+<c> <xref target="sec:lla"></xref> </c> 
+<c>      20  </c>
+<c>  Neighbor Advertisement Acknowledgment Option        </c> 
+<c> <xref target="sec:naack"></xref> </c> 
+</texttable>
+
+<t>
+    The document defines the following Mobility Header messages that
+    have received Type allocation from the Mobility Header Types registry.
+</t>
+<list style="numbers">
+<t>        Fast Binding Update (8), described
+  in <xref target="sec:fbu"></xref> </t>
+
+<t>        Fast Binding Acknowledgment (9), described
+  in <xref target="sec:fback"></xref> </t> 
+</list>
+<t>
+    The document defines the following Mobility Option that has
+    received Type assignment from the Mobility Options Type registry. 
+</t>
+<list style="numbers">
+<t>
+        Mobility Header Link-Layer Address option (7), described in
+        <xref target="sec:mhlla"></xref> </t>
+</list>
+</section>
+
+<section anchor="ack" title= "Acknowledgments">
+<t>
+    The editor would like to thank all those who have provided feedback
+    on this specification, but can only mention a few here:
+    Vijay Devarapalli, Youn-Hee Han, Emil Ivov, Syam Madanapalli,
+    Suvidh Mathur, Andre Martin, Javier Martin, Koshiro Mitsuya,
+    Gabriel Montenegro, Takeshi Ogawa, Sun Peng, YC Peng, Alex
+    Petrescu, Domagoj Premec, Subba Reddy, K. Raghav, Ranjit Wable, and
+    Jonathan Wood.   Behcet Sarikaya and Frank Xia are acknowledged for
+    the feedback on operation over point-to-point links.   The editor would
+    like to acknowledge a contribution from James Kempf to improve
+    this specification. Vijay Devarapalli provided text for the
+    security configuration between access routers
+    in <xref target='sec:seccon'/>. Thanks to Jari Arkko for the
+    detailed AD Review, which has improved this document. The editor
+    would also like to thank the MIPSHOP working group chair Gabriel
+    Montenegro and the erstwhile MOBILE IP working group chairs
+    Basavaraj Patil and Phil Roberts for providing much support for
+    this work. 
+</t>
+</section>
+
+</middle>
+		
+<back>
+
+<references title='Normative References'>
+<?rfc include="reference.RFC.2119" ?>
+
+<reference anchor='RFC3775'>
+
+<front>
+<title>Mobility Support in IPv6</title>
+<author initials='D.' surname='Johnson' fullname='D. Johnson'>
+<organization /></author>
+<author initials='C.' surname='Perkins' fullname='C. Perkins'>
+<organization /></author>
+<author initials='J.' surname='Arkko' fullname='J. Arkko'>
+<organization /></author>
+<date year='2004' month='June' />
+<abstract>
+<t>This document specifies a protocol which allows nodes to remain
+reachable while moving around in the IPv6 Internet.  Each mobile node
+is always identified by its home address, regardless of its current
+point of attachment to the Internet.  While situated away from its
+home, a mobile node is also associated with a care-of address, which
+provides information about the mobile node's current location.  IPv6
+packets addressed to a mobile node's home address are transparently
+routed to its care-of address.  The protocol enables IPv6 nodes to
+cache the binding of a mobile node's home address with its care-of
+address, and to then send any packets destined for the mobile node
+directly to it at this care-of address.  To support this operation,
+Mobile IPv6 defines a new IPv6 protocol and a new destination option.
+All IPv6 nodes, whether mobile or stationary, can communicate with
+mobile nodes. [STANDARDS TRACK]</t></abstract></front> 
+
+<seriesInfo name='RFC' value='3775' />
+
+</reference>
+
+
+
+
+<reference anchor='RFC3315'>
+
+<front>
+<title>Dynamic Host Configuration Protocol for IPv6 (DHCPv6)</title>
+<author initials='R.' surname='Droms' fullname='R. Droms'>
+<organization /></author>
+<author initials='J.' surname='Bound' fullname='J. Bound'>
+<organization /></author>
+<author initials='B.' surname='Volz' fullname='B. Volz'>
+<organization /></author>
+<author initials='T.' surname='Lemon' fullname='T. Lemon'>
+<organization /></author>
+<author initials='C.' surname='Perkins' fullname='C. Perkins'>
+<organization /></author>
+
+<author initials='M.' surname='Carney' fullname='M. Carney'>
+<organization /></author>
+<date year='2003' month='July' /></front>
+
+<seriesInfo name='RFC' value='3315' />
+
+</reference>
+
+
+<reference anchor='RFC4861'>
+
+<front>
+<title>Neighbor Discovery for IP version 6 (IPv6)</title>
+<author initials='T.' surname='Narten' fullname='T. Narten'>
+<organization /></author>
+<author initials='E.' surname='Nordmark' fullname='E. Nordmark'>
+<organization /></author>
+<author initials='W.' surname='Simpson' fullname='W. Simpson'>
+<organization /></author>
+<author initials='H.' surname='Soliman' fullname='H. Soliman'>
+<organization /></author>
+<date year='2007' month='September' />
+<abstract>
+
+<t>This document specifies the Neighbor Discovery protocol for IP
+Version 6.  IPv6 nodes on the same link use Neighbor Discovery to
+discover each other's presence, to determine each other's link-layer
+addresses, to find routers, and to maintain reachability information
+about the paths to active neighbors. [STANDARDS
+TRACK]</t></abstract></front> 
+
+<seriesInfo name='RFC' value='4861' />
+
+</reference>
+
+
+<reference anchor='RFC4862'>
+
+<front>
+<title>IPv6 Stateless Address Autoconfiguration</title>
+<author initials='S.' surname='Thomson' fullname='S. Thomson'>
+<organization /></author>
+<author initials='T.' surname='Narten' fullname='T. Narten'>
+<organization /></author>
+<author initials='T.' surname='Jinmei' fullname='T. Jinmei'>
+<organization /></author>
+<date year='2007' month='September' />
+<abstract>
+<t>This document specifies the steps a host takes in deciding how to
+autoconfigure its interfaces in IP version 6.  The autoconfiguration
+process includes generating a link-local address, generating global
+addresses via stateless address autoconfiguration, and the Duplicate
+Address Detection procedure to verify the uniqueness of the addresses
+on a link. [STANDARDS TRACK]</t></abstract></front> 
+
+<seriesInfo name='RFC' value='4862' />
+
+</reference>
+
+
+<reference anchor='RFC4443'>
+
+<front>
+<title>Internet Control Message Protocol (ICMPv6) for the Internet
+Protocol Version 6 (IPv6) Specification</title> 
+<author initials='A.' surname='Conta' fullname='A. Conta'>
+<organization /></author>
+<author initials='S.' surname='Deering' fullname='S. Deering'>
+<organization /></author>
+<author initials='M.' surname='Gupta' fullname='M. Gupta'>
+<organization /></author>
+<date year='2006' month='March' />
+<abstract>
+<t>This document describes the format of a set of control messages
+used in ICMPv6 (Internet Control Message Protocol).  ICMPv6 is the
+Internet Control Message Protocol for Internet Protocol version 6
+(IPv6). [STANDARDS TRACK]</t></abstract></front> 
+
+<seriesInfo name='RFC' value='4443' />
+
+</reference>
+
+
+<reference anchor='RFC4301'>
+
+<front>
+<title>Security Architecture for the Internet Protocol</title>
+<author initials='S.' surname='Kent' fullname='S. Kent'>
+<organization /></author>
+<author initials='K.' surname='Seo' fullname='K. Seo'>
+<organization /></author>
+<date year='2005' month='December' />
+<abstract>
+<t>This document describes an updated version of the "Security
+Architecture for IP", which is designed to provide security services
+for traffic at the IP layer.  This document obsoletes RFC 2401
+(November 1998). [STANDARDS TRACK]</t></abstract></front> 
+
+<seriesInfo name='RFC' value='4301' />
+
+</reference>
+
+
+<reference anchor='RFC4303'>
+
+<front>
+<title>IP Encapsulating Security Payload (ESP)</title>
+<author initials='S.' surname='Kent' fullname='S. Kent'>
+<organization /></author>
+<date year='2005' month='December' />
+<abstract>
+<t>This document describes an updated version of the Encapsulating
+Security Payload (ESP) protocol, which is designed to provide a mix of
+security services in IPv4 and IPv6.  ESP is used to provide
+confidentiality, data origin authentication, connectionless integrity,
+an anti-replay service (a form of partial sequence integrity), and
+limited traffic flow confidentiality.  This document obsoletes RFC
+2406 (November 1998). [STANDARDS TRACK]</t></abstract></front> 
+
+<seriesInfo name='RFC' value='4303' />
+
+</reference>
+
+
+<reference anchor='RFC4306'>
+
+<front>
+<title>Internet Key Exchange (IKEv2) Protocol</title>
+<author initials='C.' surname='Kaufman' fullname='C. Kaufman'>
+<organization /></author>
+<date year='2005' month='December' />
+<abstract>
+<t>This document describes version 2 of the Internet Key Exchange
+(IKE) protocol. IKE is a component of IPsec used for performing mutual
+authentication and establishing and maintaining security associations
+(SAs).&lt;/t>&lt;t> This version of the IKE specification combines the
+contents of what were previously separate documents, including
+Internet Security Association and Key Management Protocol (ISAKMP, RFC
+2408), IKE (RFC 2409), the Internet Domain of Interpretation (DOI, RFC
+2407), Network Address Translation (NAT) Traversal, Legacy
+authentication, and remote address acquisition.&lt;/t>&lt;t> Version 2
+of IKE does not interoperate with version 1, but it has enough of the
+header format in common that both versions can unambiguously run over
+the same UDP port. [STANDARDS TRACK]</t></abstract></front> 
+
+<seriesInfo name='RFC' value='4306' />
+
+</reference>
+
+<?rfc include="reference.RFC.5268" ?>
+
+ <reference anchor='RFC5269'>
+
+<front>
+<title>Distributing a Symmetric Fast Mobile IPv6 (FMIPv6) Handover Key
+Using SEcure Neighbor Discovery (SEND)</title> 
+<author initials='J.' surname='Kempf' fullname='J. Kempf'>
+<organization /></author>
+<author initials='R.' surname='Koodli' fullname='R. Koodli'>
+<organization /></author>
+<date year='2008' month='June' />
+</front> 
+
+<seriesInfo name='RFC' value='5269' />
+
+</reference>
+
+
+</references><!-- end of Normative References -->
+
+
+<references title='Informative References'>
+
+<?rfc include="reference.RFC.5213" ?>
+
+<!-- draft-ietf-mext-nemo-v4traversal in Queue -->
+        <reference anchor="RFC5555">
+	  <front> <title>Mobile IPv6 Support for Dual Stack Hosts and Routers</title>
+         <author initials="H."
+         surname="Soliman" role="editor"><organization/> </author>
+        <date month="June" year="2009" /></front>
+    <seriesInfo name="RFC" value="5555" />
+	  </reference>
+
+<!-- draft-ietf-mipshop-pfmipv6-->
+       <reference anchor="pfmipv6" >
+	  <front> <title> Fast Handovers for Proxy Mobile
+    IPv6 </title>
+         <author initials="H" surname="Yokota"><organization/> </author>
+	 <author initials="K"
+	 surname="Chowdhury"><organization/> </author> 
+	 <author initials="R"
+	 surname="Koodli"><organization/> </author> 
+	 <author initials="B"
+	 surname="Patil"><organization/> </author> 
+	 <author initials="F" surname="Xia"><organization/> </author> 
+        <date month="May" year="2009" /></front>
+    <seriesInfo name="Work in" value="Progress"/>
+	  </reference>
+
+        <reference anchor="x.s0057"
+        target="http://www.3gpp2.org/Public_html/Specs/X.S0057-0_v1.0_090406.pdf">
+	  <front> <title>E-UTRAN - eHRPD Connectivity and Interworking: Core Network Aspects</title>
+         <author ><organization>3GPP2</organization></author>
+        <date month="April" year="2009" /></front>
+    <seriesInfo name="3GPP2" value="X.S0057-0"/>
+	  </reference>
+
+
+<reference anchor='RFC3290'>
+
+<front>
+<title>An Informal Management Model for Diffserv Routers</title>
+<author initials='Y.' surname='Bernet' fullname='Y. Bernet'>
+<organization /></author>
+<author initials='S.' surname='Blake' fullname='S. Blake'>
+<organization /></author>
+<author initials='D.' surname='Grossman' fullname='D. Grossman'>
+<organization /></author>
+<author initials='A.' surname='Smith' fullname='A. Smith'>
+<organization /></author>
+<date year='2002' month='May' />
+<abstract>
+
+<t>This document proposes an informal management model of
+Differentiated Services (Diffserv) routers for use in their management
+and configuration.  This model defines functional datapath elements
+(e.g., classifiers, meters, actions, marking, absolute dropping,
+counting, multiplexing), algorithmic droppers, queues and schedulers.
+It describes possible configuration parameters for these elements and
+how they might be interconnected to realize the range of traffic
+conditioning and per-hop behavior (PHB) functionalities described in
+the Diffserv Architecture.  This memo provides information for the
+Internet community.</t></abstract></front> 
+
+<seriesInfo name='RFC' value='3290' />
+
+</reference>
+
+<reference anchor='RFC3971'>
+
+<front>
+<title>SEcure Neighbor Discovery (SEND)</title>
+<author initials='J.' surname='Arkko' fullname='J. Arkko'>
+<organization /></author>
+<author initials='J.' surname='Kempf' fullname='J. Kempf'>
+<organization /></author>
+<author initials='B.' surname='Zill' fullname='B. Zill'>
+<organization /></author>
+<author initials='P.' surname='Nikander' fullname='P. Nikander'>
+<organization /></author>
+<date year='2005' month='March' />
+<abstract>
+
+<t>IPv6 nodes use the Neighbor Discovery Protocol (NDP) to discover
+other nodes on the link, to determine their link-layer addresses to
+find routers, and to maintain reachability information about the paths
+to active neighbors.  If not secured, NDP is vulnerable to various
+attacks.  This document specifies security mechanisms for NDP.  Unlike
+those in the original NDP specifications, these mechanisms do not use
+IPsec. [STANDARDS TRACK]</t></abstract></front> 
+
+<seriesInfo name='RFC' value='3971' />
+
+</reference>
+
+
+
+<reference anchor='RFC4068'>
+
+<front>
+<title>Fast Handovers for Mobile IPv6</title>
+<author initials='R.' surname='Koodli' fullname='R. Koodli'>
+<organization /></author>
+<date year='2005' month='July' />
+</front> 
+
+<seriesInfo name='RFC' value='4068' />
+
+</reference>
+
+<reference anchor='RFC5184'>
+
+<front>
+<title>Unified Layer 2 (L2) Abstractions for Layer 3 (L3)-Driven Fast
+Handover</title> 
+<author initials='F.' surname='Teraoka' fullname='F. Teraoka'>
+<organization /></author>
+<author initials='K.' surname='Gogo' fullname='K. Gogo'>
+<organization /></author>
+<author initials='K.' surname='Mitsuya' fullname='K. Mitsuya'>
+<organization /></author>
+<author initials='R.' surname='Shibui' fullname='R. Shibui'>
+<organization /></author>
+<author initials='K.' surname='Mitani' fullname='K. Mitani'>
+<organization /></author>
+
+<date year='2008' month='May' />
+</front> 
+
+<seriesInfo name='RFC' value='5184' />
+</reference>
+
+
+        <reference anchor="fmipv6" target="http://fmipv6.org">
+	  <front> <title>fmipv6.org : Home Page</title>
+         <author><organization/> </author>
+</front>
+	  </reference>
+
+        <reference anchor="tarzan" target="http://software.nautilus6.org/TARZAN/">
+	  <front> <title>Nautilus6 - Tarzan</title>
+         <author><organization/> </author>
+</front>
+	  </reference>
+
+
+        <reference anchor="mip6-book" target="">
+	  <front> <title>Mobile Inter-networking with IPv6</title>
+         <author initials="R."
+         surname="Koodli"><organization/> </author>
+<author initials="C." surname="Perkins"><organization/> </author>
+        <date year="2007" /></front>
+    <seriesInfo name="Chapter 22," value="John Wiley & Sons, Inc." />
+	  </reference>
+
+</references><!-- end of Normative References -->
+
+
+<section title="Contributors">
+
+<t>
+    This document has its origins in the fast handover design team
+    in the erstwhile MOBILE IP working group.   The members of this
+    design team in alphabetical order were: Gopal Dommety, Karim
+    El-Malki, Mohammed Khalil, Charles Perkins, Hesham Soliman, George
+    Tsirtsis, and Alper Yegin.
+</t>
+
+</section>
+
+<section anchor="sec:icmp-mh" title="Changes since RFC 5268">
+<t>
+This document specifies the Mobility Header format for HI and HAck
+messages, and the Mobility Header Option format for IPv6
+Address/Prefix option. The use of ICMP for HI and HAck messages is
+deprecated. The following developments led the WG to adopt this
+change:
+</t>
+
+<t><list style="symbols">
+<t>
+The Proxy Mobile IPv6 protocol <xref target='RFC5213'/> has been
+adopted for the deployment of fourth-generation mobile networks. This
+has established Mobility Header as the default type for critical IP
+mobility  signaling. </t> 
+
+<t>
+The Mobile IPv6 protocol <xref target='RFC3775'/> (particularly, the
+Dual-stack MIP6 or DSMIP6 <xref target='RFC5555'/>) protocol, which is
+also expected to be deployed in the fourth-generation mobile networks,
+similarly relies on Mobility Header for critical IP mobility
+signaling. 
+</t>
+
+<t>
+The Fast Handover protocol specified in this document is used as the
+basis for the Fast Handover for Proxy MIP6 <xref target='pfmipv6'/>,
+which is adopted by the "enhanced HRPD" (CDMA) networks <xref
+target='x.s0057'/>.   
+Hence, the Fast Handover protocol, when used in deployments using
+either PMIP6 or MIP6, needs to support the Mobility 
+Header for all its critical mobility signaling messages. At the same
+time, use of ICMP, primarily due to legacy, is unlikely to
+facilitate critical IP mobility signaling without a non-trivial 
+departure from deploying the new Mobility Header signaling protocols. 
+</t>
+ 
+</list></t>
+ 
+<t>
+   Therefore, it follows that specifying the Mobility Header for the HI
+   and HAck messages is necessary for the deployment of the protocol
+   along-side PMIP6 and MIP6 protocols.  
+</t>
+
+</section>
+
+<section title="Changes since RFC 4068">
+<t>
+The following are the major changes and clarifications: </t>
+<list style="symbols">
+
+<t> Specified security association between the MN and its Access
+  Router in the companion document <xref target="RFC5269"></xref>. </t> 
+
+<t> Specified Binding Authorization Data for Fast Handovers (BADF)
+  option to carry the security parameters used for verifying the
+  authenticity of FBU and FBack messages. The handover key used for
+  computing the Authenticator is specified in companion
+  documents.  </t>    
+
+<t> Specified the security configuration for inter - access router
+  signaling (HI, HAck). </t> 
+
+<t> Added a section on prefix management between access routers and
+  illustrated protocol operation over point-to-point links. </t>
+
+<t> Deprecated FNA, which is a Mobility Header message. In its place,
+  the Unsolicited Neighbor Advertisement (UNA) message from RFC 4861
+  is used. </t>
+
+<t> Combined the IPv6 Address Option and IPv6 Prefix
+  Option.  </t> 
+
+<t> Added description of the DAD requirement on NAR when determining
+  NCoA uniqueness in <xref target="proto_det" />, "Protocol Details".</t>
+
+<t> Added a new code value for a gratuitous HAck message to trigger a
+  HI message. </t>
+
+<t> Added Option-Code 5 in PrRtAdv message to indicate NETLMM (Network-based Localized Mobility Management) usage.
+  </t> 
+
+<t> Clarified protocol usage when DHCP is used for NCoA
+  formulation (Sections <xref target="sec:prrtadv" format="counter"/>, <xref target="sec:hvrlatency" format="counter"/>, and <xref target="sec:detCoA" format="counter"/>). Added a new Code value (5)
+  in PrRtAdv (<xref target="sec:prrtadv"/>). </t>
+
+<t> Clarified that IPv6 Neighbor Discovery operations are a must in
+  <xref target="protocon" />, "Related Protocol and Device Considerations". </t>
+
+<t> Clarified "PAR = temporary HA" for FBUs sent by a genuine MN to an
+  unsuspecting CoA. </t>
+
+</list>
+
+
+
+</section>
+
+</back>
+</rfc>
+

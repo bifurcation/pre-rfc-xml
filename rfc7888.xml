@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+        <!ENTITY rfc2119 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml'>
+        <!ENTITY rfc3501 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.3501.xml'>
+        <!ENTITY rfc3502 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.3502.xml'>
+        <!ENTITY rfc3516 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.3516.xml'>
+        <!ENTITY rfc4466 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.4466.xml'>
+        <!ENTITY rfc4469 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.4469.xml'>
+]>
+
+<rfc number="7888" category="std" ipr="pre5378Trust200902"
+     submissionType="IETF" consensus="yes" obsoletes="2088">
+
+        <?rfc toc="yes" ?>
+	<?rfc symrefs="yes" ?>
+	<?rfc sortrefs="yes"?>
+	<?rfc compact="yes"?>
+	<?rfc subcompact="no"?>
+	<front>
+		<title>IMAP4 Non-synchronizing Literals</title>
+
+    <author initials="A." surname="Melnikov" fullname="Alexey Melnikov" role="editor">
+			<organization>Isode Ltd</organization>
+			<address>
+        <postal>
+          <street>14 Castle Mews</street>
+          <city>Hampton</city>
+          <region>Middlesex</region>
+          <code>TW12 2NP</code>
+          <country>United Kingdom</country>
+        </postal>
+        <email>Alexey.Melnikov@isode.com</email>
+			</address>
+		</author>
+		<date month="May" year="2016"/>
+    
+    <keyword>IMAP</keyword>
+    <keyword>LITERAL+</keyword>
+    <keyword>LITERAL-</keyword>
+    <keyword>APPENDLIMIT</keyword>
+
+    <abstract>
+			<t>
+        The Internet Message Access Protocol (RFC 3501) contains the "literal"
+        syntactic construct for communicating strings.  When sending a
+        literal from client to server, IMAP requires the client to wait for
+        the server to send a command continuation request between sending the
+        octet count and the string data.  This document specifies an
+        alternate form of literal that does not require this network round
+        trip.
+      </t>
+
+      <t>
+      This document specifies 2 IMAP extensions: LITERAL+ and LITERAL-.
+      LITERAL+ allows the alternate form of literals in all IMAP commands.
+      LITERAL- is the same as LITERAL+, but it disallows the alternate form of literals
+      unless they are 4096 bytes or less.
+      </t>
+
+      <t>This document obsoletes RFC 2088.</t>
+
+    </abstract>
+	
+	</front>
+  
+	<middle>
+		
+	  <section title="Introduction">
+
+      <t>
+        The Internet Message Access Protocol <xref target="RFC3501"/> contains the "literal"
+        syntactic construct for communicating strings.  When sending a
+        literal from client to server, IMAP requires the client to wait for
+        the server to send a command continuation request between sending the
+        octet count and the string data.  This document specifies an
+        alternate form of literal that does not require this network round
+        trip.
+      </t>
+
+      <t>
+        This document specifies 2 IMAP extensions: LITERAL+ and LITERAL-.
+        LITERAL+ allows the alternate form of literals
+        (called "non-synchronized literals" below) in all IMAP commands.
+        LITERAL- is the same as LITERAL+, but it disallows the alternate form
+        of literals unless they are 4096 bytes or less.
+      </t>
+
+    </section>
+
+	  <section title="Conventions">
+    
+			<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+      "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY",
+      and "OPTIONAL" in this document are to be interpreted as
+      described in <xref target="RFC2119"/>.</t>
+
+			<t>In examples, "C:" and "S:" indicate lines sent by
+			the client and server, respectively. If a single "C:" or "S:"
+			label applies to multiple lines, then the line breaks between
+			those lines are for editorial clarity only and are not part
+			of the actual protocol exchange.</t>
+		
+		</section>
+
+		<section title="Specification">
+
+      <t>
+      The non-synchronizing literal is added as an alternate form of literal,
+      and it may appear in communication from client to server instead of the
+      IMAP <xref target="RFC3501"/> form of literal.  The IMAP form of literal,
+      used in communication from client to server, is referred to as a
+      synchronizing literal.
+      The non-synchronizing literal form MUST NOT be sent from server to client.
+      </t>
+
+      <t>
+      Non-synchronizing literals may be used with any IMAP server
+      implementation that returns "LITERAL+" or "LITERAL-" as one of the supported
+      capabilities to the CAPABILITY command.  If the server does not
+      advertise either of the above capabilities, the client can only
+      use synchronizing literals. The difference between LITERAL+ and LITERAL- extensions
+      is explained in <xref target="literal-"/>.
+      </t>
+
+      <t>
+      The non-synchronizing literal is distinguished from the original
+      synchronizing literal by having a plus ('+') between the octet count
+      and the closing brace ('}').  The server does not generate a command
+      continuation request in response to a non-synchronizing literal, and
+      clients are not required to wait before sending the octets of a non-synchronizing literal.
+      </t>
+
+      <t>
+      The protocol receiver of an IMAP server MUST check the end of every
+      received line (a sequence of octets that ends with a CRLF) for an open brace
+      ('{') followed by an octet count, a
+      plus ('+'), and a close brace ('}') immediately preceding the CRLF.
+
+
+   This sequence (if found by the receiver) is the octet count of a
+   non-synchronizing literal, and the server MUST treat the specified
+   number of following octets and the following line (as defined in <xref target="RFC3501"/>) as part of the
+   same command.
+
+      </t>
+
+      <t>
+      It's important to note that the literal is not delimited by CRLF.
+      It ends after the number of bytes specified by the octet count, and
+      the current command continues from there.  There might be a CRLF
+      immediately after; it ends the command.  Or, there might be more
+      octets, specifying other command parameters, before the CRLF.  If
+      a SP (space) character is needed between parameters, it's important that
+      the SP appear after the literal, in its appropriate place.
+      </t>
+
+      <t>
+      A server MAY still process commands and reject errors on a
+      line-by-line basis, as long as it checks for non-synchronizing
+      literals at the end of each line.
+      </t>
+
+      <t>
+      Example:
+      </t>
+      
+<figure>
+<artwork>
+C: A001 LOGIN {11+}
+C: FRED FOOBAR {7+}
+C: fat man
+S: A001 OK LOGIN completed
+
+This is semantically equivalent to this version that uses quoted
+strings instead of literals:
+ 
+C: A001 LOGIN "FRED FOOBAR" "fat man"
+S: A001 OK LOGIN completed
+ 
+Note that the space after FOOBAR in the first version corresponds
+to the space between the two quoted strings in the second.
+</artwork>
+</figure>
+
+		</section>
+
+    
+		<section title="Considerations on When to Use and Not to Use Synchronizing Literals" anchor="why">
+
+      <t>Understanding of this section is important for both client and server developers
+      of this IMAP extension.</t>
+      
+			<t>
+      While non-synchronizing literals have clear advantages for clients, such as simplicity of use,
+      they might be more difficult to handle on the server side. When a client uses a non-synchronizing literal
+      that is too big for the server to accept, a server
+      implementation that is compliant with LITERAL+ has to make a choice between a couple non-optimal choices:
+      
+      <list style="numbers">
+        
+        <t>Read the number of bytes specified in the non-synchronizing literal and reject
+        the command that included the literal anyway. (The server is allowed to send the tagged
+        BAD/NO response before reading the whole non-synchronizing literal.) This is quite wasteful
+        of bandwidth if the literal is large.</t>
+
+        <t>Send an untagged BYE response explaining the reason for rejecting the literal (possibly accompanied
+        by an ALERT response code in another response)
+        and close the connection. This will force the client to reconnect or report the error to the user.
+        In the latter case, the error is unlikely to be understandable to the user.
+        Additionally, some naive clients are known to blindly reconnect in this case and
+        repeat the operation that caused the problem, introducing an infinite loop.
+
+        </t>
+      </list>
+
+			</t>
+
+      <t>The problem described above is most common when using the APPEND command, because most commands
+      don't need to send lots of data from the client to the server. Some server implementations impose limits
+      on literals (both synchronizing and non-synchronizing) accepted from clients in order to defend against
+      denial-of-service attacks. Implementations can generally impose much lower limits on literal sizes for
+      all commands other than APPEND.
+      In order to address literal size issue in APPEND, this document introduces a new extension LITERAL-,
+      described in <xref target="literal-"/>.</t>
+
+      <t>The situation can also be improved by implementing support for the APPENDLIMIT extension <xref target="RFC7889"/>,
+      which allows a server to advertise its APPEND limit, so that well-behaved clients can check it
+      and avoid uploading big messages in the first place.
+      </t>
+
+		</section>
+
+		<section title="LITERAL- Capability" anchor="literal-">
+
+      <t>The LITERAL- extension is almost identical to LITERAL+, with one exception:
+      when LITERAL- is advertised, non-synchronizing literals used in any command
+      MUST NOT be larger than 4096 bytes. Any literal larger than 4096 bytes MUST be sent as
+      a synchronizing literal as specified in RFC 3501.
+      
+      A server that is compliant with LITERAL- and encounters a non-synchronizing literal larger than 4096 bytes
+      proceeds as described in <xref target="why"/>. If responding to an APPEND command, the tagged BAD
+      response MUST contain the TOOBIG response code <xref target="RFC4469"/>.
+      If responding with an untagged BYE response, it SHOULD include the TOOBIG response code.
+      Note that the form of the non-synchronizing literal does not change: it still uses the "+" in
+      the literal itself, even if the applicable extension is LITERAL-.
+      </t>
+      
+      <t>Because LITERAL- is a more restricted version of LITERAL+, IMAP servers MUST NOT advertise both
+      of these capabilities at the same time. (A server implementation can choose to have a configuration option
+      to indicate which one to advertise.)</t>
+      
+    </section>
+
+    <section title="Interaction with BINARY Extension">
+
+
+      <t>
+       <xref target="RFC4466"/> updated the non-terminal "literal8" defined in <xref target="RFC3516"/>
+       to allow for non-synchronizing literals if both BINARY <xref target="RFC3516"/> and
+       LITERAL+ extensions are supported by the server.
+      </t>
+
+      <t>
+       This document also allows use of this extended "literal8" syntax when
+       both BINARY <xref target="RFC3516"/> and
+       LITERAL- extensions are supported by the server.
+      </t>
+
+    </section>
+
+    <section title="Interaction with MULTIAPPEND Extension">
+
+      <t>
+       <xref target="RFC3502"/> describes MULTIAPPEND extension and how it can be used with LITERAL+.
+       The LITERAL- extension can be used with the MULTIAPPEND extension in the same way.
+      </t>
+
+    </section>
+
+    <section title="Formal Syntax">
+			<t>
+			The following syntax specification uses the Augmented Backus-Naur 
+			Form (ABNF) notation as specified in <xref target="ABNF"/>.
+			</t>
+      
+			<t>
+			Non-terminals referenced but not defined below are as defined by 
+			<xref target="RFC3501"/>.
+			</t>
+
+     
+<figure>
+<artwork type="abnf">
+  literal = "{" number ["+"] "}" CRLF *CHAR8
+             ; Number represents the number of CHAR8 octets
+
+  CHAR8   = &lt;defined in RFC 3501&gt;
+  
+  literal8 = &lt;defined in RFC 4466&gt;
+</artwork>
+</figure>
+
+		</section>
+    
+		<section title="Security Considerations">
+
+      <t>
+      Use of non-synchronizing literals can consume extra resources (e.g. memory) on IMAP servers and can be used
+      for denial-of-service attacks. The LITERAL- extension partially improved this situation.
+
+      </t>
+      
+			<t>This document doesn't raise any security
+			concerns beyond those raised
+      by <xref target="RFC3501"/>.</t>
+
+		</section>
+		
+		<section title="IANA Considerations">
+		    <t>
+		    IMAP4 capabilities are registered by publishing a Standards Track or
+		    IESG-approved Experimental RFC.  The registry is currently located
+		    at <eref target="http://www.iana.org/assignments/imap-capabilities"/>.</t>
+
+
+		    <t>
+		    IANA has updated the above registry
+        so that the reference for "LITERAL+" points to this document.
+		    </t>
+      
+		    <t>
+		     IANA has added the "LITERAL-" capability
+        to the above registry, with this document as the reference.</t>
+		</section>
+
+	</middle>
+	<back>
+		<references title="Normative References">
+
+<reference  anchor='ABNF' target='http://www.rfc-editor.org/info/rfc5234'>
+<front>
+<title>Augmented BNF for Syntax Specifications: ABNF</title>
+<author initials='D.' surname='Crocker' fullname='D. Crocker' role='editor'><organization /></author>
+<author initials='P.' surname='Overell' fullname='P. Overell'><organization /></author>
+<date year='2008' month='January' />
+<abstract><t>Internet technical specifications often need to define a formal syntax.  Over the years, a modified version of Backus-Naur Form (BNF), called Augmented BNF (ABNF), has been popular among many Internet specifications.  The current specification documents ABNF. It balances compactness and simplicity with reasonable representational power.  The differences between standard BNF and ABNF involve naming rules, repetition, alternatives, order-independence, and value ranges.  This specification also supplies additional rule definitions and encoding for a core lexical analyzer of the type common to several Internet specifications.  [STANDARDS-TRACK]</t></abstract>
+</front>
+<seriesInfo name='STD' value='68'/>
+<seriesInfo name='RFC' value='5234'/>
+<seriesInfo name='DOI' value='10.17487/RFC5234'/>
+</reference>
+
+      &rfc2119;
+      &rfc3501;
+      &rfc3516;
+      &rfc4466;
+      &rfc4469;
+
+    </references>
+
+		<references title="Informative References">
+
+      &rfc3502;
+
+<reference anchor="RFC7889" target="http://www.rfc-editor.org/info/rfc7889">
+
+<front>
+<title>The IMAP APPENDLIMIT Extension</title>
+
+<author initials="J" surname="SrimushnamBoovaraghamoorthy"
+	fullname="Jayantheesh SrimushnamBoovaraghamoorthy">
+            <organization/>
+</author>
+
+<author initials='N' surname='Bisht' fullname='Narendra Bisht'>
+    <organization />
+</author>
+
+<date month='May' year='2016' />
+
+<abstract><t>This document defines an extension to the IMAP service whereby a server can inform the client about maximum message upload sizes, allowing the client to avoid sending APPEND commands that will fail because the messages are too large.</t></abstract>
+
+</front>
+
+<seriesInfo name="RFC" value="7889"/>
+<seriesInfo name="DOI" value="10.17487/RFC7889"/>
+</reference>
+
+    </references>
+
+    <section title="Changes since RFC 2088">
+
+      <t>
+      Added IANA registration.
+      </t>
+
+      <t>
+      Updated references. Also updated considerations about interactions of IMAP extensions.
+      </t>
+
+      <t>
+      Added implementation considerations based on the IMAP mailing list discussions.
+      </t>
+      
+      <t>Added description of a new capability: LITERAL-.</t>
+
+    </section>
+
+    <section title="Acknowledgments" numbered="no">
+
+      <t>John G.&nbsp;Myers edited the original LITERAL+ extension.</t>
+      
+			<t>
+			Valuable comments, both in agreement and in dissent, were received from
+			Dave Cridland, Michael M.&nbsp;Slusarz, Arnt Gulbrandsen, Jayantheesh SrimushnamBoovaraghamoorthy,
+      Jamie Nicolson, Barry Leiba, and SM.
+			</t>
+
+		</section>
+
+
+  </back>
+</rfc>

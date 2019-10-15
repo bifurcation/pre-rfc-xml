@@ -1,0 +1,1027 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc strict="yes" ?>
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc symrefs="no"?>
+<?rfc sortrefs="yes" ?>
+<?rfc rfcedstyle="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="5403"
+    category="std" updates="2203">
+
+<!-- [rfced] Should this document obsolete v1 (since it is v2), instead of just
+   update v1? 
+-->
+
+<front>
+    <title abbrev="RPCSEC_GSSv2">RPCSEC_GSS Version 2</title>
+
+    <author fullname="Mike Eisler" 
+            initials="M." 
+            surname="Eisler">
+        <organization abbrev="NetApp">NetApp</organization>
+        <address>
+            <postal>
+                <street>5765 Chase Point Circle</street>
+                <city>Colorado Springs</city>
+                <region>CO</region>
+                <code>80919</code>
+                <country>US</country>
+            </postal>
+            <phone>+1-719-599-9026</phone>
+            <email>mike@eisler.com</email>
+        </address>
+    </author>
+
+    <date year="2009" month="January"/>
+
+    <area>Transport</area>
+    <workgroup>NFSv4</workgroup>
+
+<keyword>Kerberos</keyword>
+<keyword>ONC</keyword>
+<keyword>RPC</keyword>
+<keyword>security</keyword>
+<keyword>authentication</keyword>
+<keyword>integrity</keyword>
+<keyword>GSS</keyword>
+<keyword>GSS-API</keyword>
+<keyword>privacy</keyword>
+<keyword>confidentiality</keyword>
+<keyword>encryption</keyword>
+<keyword>MIC</keyword>
+<keyword>NFS</keyword>
+<keyword>credential</keyword>
+<keyword>verifier</keyword>
+<keyword>mechanism</keyword>
+<keyword>context</keyword>
+
+    <abstract>
+      <t>
+      This document describes version 2 of the RPCSEC_GSS protocol.
+      Version 2 is the same as version 1 (specified in RFC 2203)
+      except that support for channel bindings has been added.
+   RPCSEC_GSS allows remote procedure call (RPC) protocols to access
+   the Generic Security Services Application Programming Interface
+   (GSS-API).
+
+      </t>
+    </abstract>
+
+</front>
+<middle>
+<section anchor="intro" title="Introduction and Motivation" >
+<t>
+
+This document describes RPCSEC_GSS version 2 (RPCSEC_GSSv2).
+RPCSEC_GSSv2 is the same as
+RPCSEC_GSS version 1 (RPCSEC_GSSv1) <xref target="RFC2203"/> except that support for
+channel bindings <xref target="RFC5056"/> has been added. The primary motivation for
+channel bindings is to securely take advantage of hardware-assisted encryption that might exist at lower levels of the
+networking protocol stack, such as at the Internet Protocol
+(IP) layer in the form of IPsec (see <xref
+target="I-D.ietf-btns-connection-latching"/> and <xref
+target="I-D.williams-ipsec-channel-binding"/> for
+information on IPsec channel bindings). The secondary
+motivation is that even if lower levels are not any more
+efficient at encryption than the RPCSEC_GSS layer, if
+encryption is occurring at the lower level, it can be
+redundant at the RPCSEC_GSS level.
+
+</t>
+<t>
+RPCSEC_GSSv2 and RPCSEC_GSSv1 are protocols that exchange
+tokens emitted by the Generic Security Services (GSS) framework, which is
+defined in
+<xref target="RFC2743"/>, and differ only in the support for GSS
+channel bindings in RPCSEC_GSSv2.
+GSS itself supports channel bindings,
+and in theory RPCSEC_GSSv2 could use native GSS channel bindings to
+achieve the effects described in this section. However, as Section 1.1.6 of
+<xref target="RFC2743"/> states, not all implementations of all GSS
+mechanisms support channel bindings. This is sufficient
+justification for the approach taken in this document:
+modify the RPCSEC_GSS protocol to support channel bindings
+independent of the capabilities of the GSS mechanism being
+used.
+
+</t>
+
+<t>
+Once an RPCSEC_GSS target and initiator are mutually
+assured that they are each using the same secure, end-to-end channel, the overhead of computing message integrity
+codes (MICs) for authenticating and integrity-protecting RPC
+requests and replies can be eliminated because the channel
+is performing the same function. Similarly, if the channel
+also provides confidentiality, the overhead of RPCSEC_GSS
+privacy protection can also be eliminated.
+
+</t>
+
+<t>
+ The External Data Representation (XDR) <xref target="RFC4506"/> description is provided in this document in a way
+ that makes it simple for the reader to extract into a ready-to-compile form. The reader can feed this document into the
+ following shell script to produce the machine-readable XDR
+ description of RPCSEC_GSSv2:
+</t>
+<figure>
+<artwork>
+#!/bin/sh
+grep "^  *///" | sed 's?^  *///??'
+</artwork>
+</figure>
+<t>
+That is, if the above script is stored in a file called
+"extract.sh", and this document is in a file called
+"spec.txt", then the reader can do:
+
+</t>
+<figure>
+<artwork>
+ sh extract.sh < spec.txt > rpcsec_gss_v2.x
+</artwork>
+</figure>
+
+<t>
+ The effect of the script is to remove leading white space
+ from each line of the specification, plus a sentinel sequence of "///".
+</t>
+
+
+    <section title="Requirements Language">
+<t>The key words &quot;MUST&quot;, &quot;MUST NOT&quot;,
+&quot;REQUIRED&quot;, &quot;SHALL&quot;, &quot;SHALL NOT&quot;,
+&quot;SHOULD&quot;, &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;,
+&quot;MAY&quot;, and &quot;OPTIONAL&quot; in this document are to be
+interpreted as described in <xref target="RFC2119">RFC 2119</xref>.
+</t>
+
+    </section>
+    </section>
+
+<section anchor="chan_explained" title="Channel Bindings Explained">
+<t>
+If a channel between two parties is secure, there must
+be shared information between the two parties. This
+information might be secret or not. The requirement
+for secrecy depends on the specifics of the channel.
+</t>
+<t>
+
+For example, the shared information could be the
+concatenation of the public key of the source and
+destination of the channel (where each public key has
+a corresponding private key). Suppose the channel is
+not end-to-end, i.e., a man-in-the-middle (MITM) exists,
+and there are two channels, one from the initiator to
+the MITM, and one from the MITM to the target.  The MITM
+cannot simply force each channel to use the same public
+keys, because a public key derives from a private key,
+and the key management system for each node will surely
+assign unique or random private keys. At most, the MITM can
+force one end of each channel to use the same public key.
+The MIC of the public keys from the initiator will not be
+verified by the target, because at least one of the public
+keys will be different. Similarly, the MIC of the public
+keys from the target will not be verified by the initiator
+because at least one of the public keys will be different.
+
+</t>
+<t>
+
+A higher-layer protocol using the secure channel can safely
+exploit the channel to the mutual benefit of the higher-level parties if each higher-level party can prove:
+
+<list style='symbols'>
+<t>
+They each know the channel's shared information.
+</t>
+<t>
+The proof of the knowledge of the shared information is in fact being conveyed
+by each of the higher-level parties, and not some other entities.
+</t>
+</list>
+</t>
+<t>
+RPCSEC_GSSv2 simply adds an optional round-trip that has
+the initiator compute a GSS MIC on the channel binding's
+shared information, and sends the MIC to the target. The
+target verifies the MIC, and in turn sends its own MIC of
+the shared information to the initiator that then verifies the
+target's MIC.  This accomplishes three things. First, the
+initiator and target are mutually authenticated. Second,
+the initiator and target prove they know the channel's
+shared information, and thus are using the same channel. Third,
+the first and second things are done simultaneously.
+</t>
+
+
+</section>
+
+<section anchor="protocol" title="The RPCSEC_GSSv2 Protocol">
+<t>
+The RPCSEC_GSSv2 protocol will now be explained. The entire protocol is not
+presented. Instead the differences between RPCSEC_GSSv2 and RPCSEC_GSSv1 are
+shown.
+</t>
+
+<section anchor="compat" title="Compatibility with RPCSEC_GSSv1">
+<t>
+The functionality of RPCSEC_GSSv1 is fully supported by
+RPCSEC_GSSv2.
+</t>
+</section>
+
+<section anchor="new_version" title="New Version Number">
+<figure anchor="cred">
+ <artwork>
+///  enum rpc_gss_service_t {
+///    /* Note: the enumerated value for 0 is reserved. */
+///    rpc_gss_svc_none         = 1,
+///    rpc_gss_svc_integrity    = 2,
+///    rpc_gss_svc_privacy      = 3,
+///    rpc_gss_svc_channel_prot = 4 /* new */
+///  };
+///
+///   enum rpc_gss_proc_t {
+///     RPCSEC_GSS_DATA          = 0,
+///     RPCSEC_GSS_INIT          = 1,
+///     RPCSEC_GSS_CONTINUE_INIT = 2,
+///     RPCSEC_GSS_DESTROY       = 3,
+///     RPCSEC_GSS_BIND_CHANNEL  = 4 /* new */
+///  };
+///
+///  struct rpc_gss_cred_vers_1_t {
+///    rpc_gss_proc_t    gss_proc; /* control procedure */
+///    unsigned int      seq_num;  /* sequence number */
+///    rpc_gss_service_t service;  /* service used */
+///    opaque            handle<>; /* context handle */
+///  };
+///
+///  const RPCSEC_GSS_VERS_1 = 1;
+///  const RPCSEC_GSS_VERS_2 = 2; /* new */
+///
+///  union rpc_gss_cred_t switch (unsigned int rgc_version) {
+///    case RPCSEC_GSS_VERS_1:
+///    case RPCSEC_GSS_VERS_2: /* new */
+///      rpc_gss_cred_vers_1_t rgc_cred_v1;
+///  };
+///
+ </artwork>
+</figure>
+<t>
+As is apparent from the above, the RPCSEC_GSSv2 credential
+has the same format as the RPCSEC_GSSv1 credential (albeit
+corrected so that the definition is in legal XDR
+description language that is also compatible with <xref
+target="RFC1831"/>; hence, the field "version", a keyword
+in RFC 1831, is replaced
+with "rgc_version"). Setting the rgc_version field to 2
+indicates that the initiator and target support channel
+bindings.
+
+</t>
+</section>
+
+<section anchor="new_procedure" title="New Procedure - RPCSEC_GSS_BIND_CHANNEL">
+<figure anchor="bind_request">
+ <artwork>
+///  struct rgss2_bind_chan_MIC_in_args {
+///    opaque          rbcmia_bind_chan_hash<>;
+///  };
+///
+///  typedef opaque    rgss2_chan_pref<>;
+///  typedef opaque    rgss2_oid<>;
+///
+///  struct rgss2_bind_chan_verf_args {
+///    rgss2_chan_pref rbcva_chan_bind_prefix;
+///    rgss2_oid       rbcva_chan_bind_oid_hash;
+///    opaque          rbcva_chan_mic<>;
+///  };
+///
+ </artwork>
+</figure>
+<t>
+  Once an RPCSEC_GSSv2 handle has been established
+  over a secure channel, the initiator MAY issue
+  RPCSEC_GSS_BIND_CHANNEL (<xref target="cred"/>). Targets MUST support
+  RPCSEC_GSS_BIND_CHANNEL. Like RPCSEC_GSS_INIT and
+  RPCSEC_GSS_CONTINUE_INIT requests, the NULL RPC
+  procedure MUST be used. Unlike those two requests,
+  the arguments of the NULL procedure are not overloaded,
+  because the verifier is of sufficient size for the purpose
+  of RPCSEC_GSS_BIND_CHANNEL.  The gss_proc field is set
+  to RPCSEC_GSS_BIND_CHANNEL. The seq_num field is set as
+  if gss_proc were set to RPCSEC_GSS_DATA.  The service
+  field is set to rpc_gss_svc_none. The handle field
+  is set to that of an RPCSEC_GSS handle as returned by
+  RPCSEC_GSS_INIT or RPCSEC_GSS_CONTINUE_INIT.
+
+</t>
+
+<t>
+
+  The RPCSEC_GSS_BIND_CHANNEL request is similar to the
+  RPCSEC_GSS_DATA request in that the verifiers of both contain
+  MICs.
+
+  As described in Section 5.3.1 of <xref target="RFC2203"/>,
+  when gss_proc is RPCSEC_GSS_DATA, the verifier of an RPC
+  request is set to the output of GSS_GetMIC() on the RPC
+  header.
+
+  When gss_proc is RPCSEC_GSS_BIND_CHANNEL the verifier of an
+  RPC request is set to the XDR
+  encoding on a value of data type rgss2_bind_chan_verf_args,
+  which includes a MIC as described below.
+  The rgss2_bind_chan_verf_args data type consists of three
+  fields:
+  <list style='symbols'>
+  <t>
+   rbcva_chan_bind_prefix. This is the channel binding
+   prefix as described in <xref target="RFC5056"/> up to,
+   but excluding, the colon (ASCII 0x3A) that separates
+   the prefix from the suffix.
+
+  </t>
+
+  <t>
+   rbcva_chan_bind_hash_oid. This is the object identifier (OID) of the hash
+   algorithm used to compute rbcmia_bind_chan_hash. This field
+   contains an OID encoded in ASN.1 as used
+   by GSS-API in the mech_type argument to
+   GSS_Init_sec_context (<xref target="RFC2743"/>). See
+   <xref target="RFC4055"/> for the OIDs of the SHA one-way hash algorithms.
+
+  </t>
+
+  <t>
+   rbcva_chan_mic.
+
+   This is the output of GSS_GetMIC() on the concatenation
+   of the XDR-encoded RPC header ("up to and including the credential"
+   as per <xref target="RFC2203"/>) and the XDR encoding of
+   an instance of type data rgss2_bind_chan_MIC_in_args.
+
+   The data type rgss2_bind_chan_MIC_in_args consists of one
+   field, rbcmia_bind_chan_hash, which is a hash of the
+   channel bindings as defined in <xref target="RFC5056"/>.
+   The channel bindings are a "canonical octet string
+   encoding of the channel bindings", starting "with the
+   channel bindings prefix followed by a colon (ASCII
+   0x3A)". The reason a hash of the channel bindings and
+   not the actual channel bindings are used to compute rbcva_chan_mic
+   is that some channel bindings, such as those composed of
+   public keys, can be relatively large, and thus place a higher space
+   burden on the implementations to manage. One way hashes consume less
+   space.
+
+  </t>
+
+  </list>
+
+</t>
+<figure anchor="bind_reply">
+ <artwork>
+///  enum rgss2_bind_chan_status {
+///    RGSS2_BIND_CHAN_OK           = 0,
+///    RGSS2_BIND_CHAN_PREF_NOTSUPP = 1,
+///    RGSS2_BIND_CHAN_HASH_NOTSUPP = 2
+///  };
+///
+///  union rgss2_bind_chan_res switch
+///     (rgss2_bind_chan_status rbcr_stat) {
+///
+///    case RGSS2_BIND_CHAN_OK:
+///      void;
+///
+///    case RGSS2_BIND_CHAN_PREF_NOTSUPP:
+///      rgss2_chan_pref rbcr_pref_list<>;
+///
+///    case RGSS2_BIND_CHAN_HASH_NOTSUPP:
+///      rgss2_oid       rbcr_oid_list<>;
+///  };
+///
+///  struct rgss2_bind_chan_MIC_in_res {
+///    unsigned int        rbcmr_seq_num;
+///    opaque              rbcmr_bind_chan_hash<>;
+///    rgss2_bind_chan_res rbcmr_res;
+///  };
+///
+///  struct rgss2_bind_chan_verf_res {
+///    rgss2_bind_chan_res rbcvr_res;
+///    opaque              rbcvr_mic<>;
+///  };
+///
+ </artwork>
+</figure>
+<t>
+  The RPCSEC_GSS_BIND_CHANNEL reply is similar to the
+  RPCSEC_GSS_DATA reply in that the verifiers of both contain
+  MICs.
+  When gss_proc is RPCSEC_GSS_DATA, the
+  verifier of an RPC reply is set to the output of
+  GSS_GetMIC() on the seq_num of the credential of
+  the corresponding request (as described in Section
+  5.3.3.2 of <xref target="RFC2203"/>). When gss_proc is
+  RPCSEC_GSS_BIND_CHANNEL, the verifier of an RPC reply is
+  set to the XDR encoding of an instance of data type
+  rgss2_bind_chan_verf_res,
+  which includes a MIC as described below.
+  The data type rgss2_bind_chan_verf_res consists of two fields.
+
+  <list style='symbols'>
+
+  <t>
+
+    rbcvr_res.
+
+    The data type of this field is rgss2_bind_chan_res. The rgss2_bind_chan_res
+    data type is a switched union consisting of three cases switched on
+    the status contained in the rbcr_stat field.
+
+    <list style='symbols'>
+
+    <t>
+     RGSS2_BIND_CHAN_OK. If this status is returned, the target
+     accepted the channel bindings, and successfully verified
+     rbcva_chan_mic in the request. No additional
+     results will be in rbcvr_res. 
+
+    </t>
+
+    <t>
+     RGSS2_BIND_CHAN_PREF_NOTSUPP. If this status is returned, the
+     target did not support the prefix in the 
+     rbcva_chan_bind_prefix field of the arguments, and
+     thus the RPCSEC_GSS_BIND_CHANNEL request was rejected.
+     The target returned a list of prefixes it does support in
+     the field rbcr_pref_list. Note that a channel can have
+     multiple channel bindings each with different
+     prefixes. The initiator is free to pick its preferred
+     prefix. If the target does not support the prefix, the
+     status RGSS2_BIND_CHAN_PREF_NOTSUPP will be returned,
+     and the initiator can select its next most preferred
+     prefix among the prefixes the target does support.
+
+    </t>
+
+    <t>
+
+     RGSS2_BIND_CHAN_HASH_NOTSUPP. If this status is returned, the
+     target did not support the hash algorithm identified in
+     the rbcva_chan_bind_hash_oid field of the arguments, and
+     thus the RPCSEC_GSS_BIND_CHANNEL request was rejected.
+     The target returned a list of OIDs of hash algorithms it does support in
+     the field rbcr_oid_list. The array rbcr_oid_list MUST have one or
+     more elements.
+
+    </t>
+    </list>
+
+  </t>
+
+  <t>
+    rbcvr_mic.
+
+    The value of this field is equal to the output of
+    GSS_GetMIC() on the XDR encoding of an instance of data type
+    rgss2_bind_chan_MIC_in_res. The data type rgss2_bind_chan_MIC_in_res
+    consists of three fields.
+
+    <list style='symbols'>
+
+    <t>
+      rbcmr_seq_num.
+
+      The value of this field is equal to the field seq_num in
+      the RPCSEC_GSS credential (data type
+      rpc_gss_cred_vers_1_t).
+
+    </t>
+    <t>
+
+      rbcmr_bind_chan_hash. This is the result of the one way hash of
+      the channel bindings (including the prefix). If
+      rbcr_stat is not RGSS2_BIND_CHAN_HASH_NOTSUPP, then
+      the hash algorithm that is used to compute rbcmr_bind_chan_hash is
+      that identified by the rbcva_chan_bind_oid_hash field in the arguments
+      to RPCSEC_GSS_BIND_CHANNEL. If rbcr_stat is RGSS2_BIND_CHAN_HASH_NOTSUPP,
+      then the hash algorithm used to compute rbcmr_bind_chan_hash
+      is that identified by rbcr_oid_list[0] in the results.
+    </t>
+
+    <t>
+
+      rbcmr_res. The value of this field is equal to the value of
+      the rbcvr_res field.
+
+    </t>
+
+    </list>
+  </t>
+  </list>
+</t>
+
+</section>
+
+<section anchor="newsvc" title="New Security Service - rpc_gss_svc_channel_prot">
+<t>
+RPCSEC_GSSv2 targets MUST support rpc_gss_svc_channel_prot.
+</t>
+
+<t>
+The rpc_gss_svc_channel_prot service (<xref
+target="cred"/>) is valid only if RPCSEC_GSSv2 is being
+used, an RPCSEC_GSS_BIND_CHANNEL procedure has been
+executed successfully, and the secure channel still
+exists.  When rpc_gss_svc_channel_prot is used, the RPC
+requests and replies are similar to those of
+rpc_gss_svc_none except that the verifiers on the request
+and reply always have the flavor set to AUTH_NONE, and the
+contents are zero length.
+
+</t>
+<t>
+Note that even though NULL verifiers are used when rpc_gss_svc_channel_prot
+is used, non-NULL RPCSEC_GSS credentials are used. In order to
+identify the principal sending the request, the same credential
+is used as before, except that service field is set to
+rpc_gss_svc_channel_prot.
+</t>
+</section>
+</section>
+
+<section title="Version Negotiation">
+<t>
+An initiator that supports version 2 of RPCSEC_GSS simply issues
+an RPCSEC_GSS request with the rgc_version field set to
+RPCSEC_GSS_VERS_2. If the target does not recognize 
+RPCSEC_GSS_VERS_2, the target will return an RPC error per Section
+5.1 of <xref target="RFC2203"/>.
+</t>
+<t>
+The initiator MUST NOT attempt to use an RPCSEC_GSS handle returned
+by version 2 of a target with version 1 of the same target.
+The initiator MUST NOT attempt to use an RPCSEC_GSS handle returned
+by version 1 of a target with version 2 of the same target.
+</t>
+</section>
+
+<section title="Native GSS Channel Bindings">
+<t>
+To ensure interoperability, implementations of RPCSEC_GSSv2 SHOULD NOT
+transfer tokens between the initiator and target that use native
+GSS channel bindings (as defined in Section 1.1.6 of <xref target="RFC2743"/>).
+</t>
+</section>
+
+<section title="Operational Recommendation for Deployment">
+<t>
+RPCSEC_GSSv2 is a superset of RPCSEC_GSSv1, and so can be
+used in all situations where RPCSEC_GSSv1 is used.
+RPCSEC_GSSv2 should be used when the new functionality,
+channel bindings, is desired or needed.
+
+</t>
+</section>
+
+<section title="Implementation Notes">
+<t>
+Once a successful RPCSEC_GSS_BIND_CHANNEL procedure has been
+performed on an RPCSEC_GSSv2 context handle, the initiator's
+implementation may map application requests for rpc_gss_svc_none
+and rpc_gss_svc_integrity to rpc_gss_svc_channel_prot credentials.
+And if the secure channel has privacy enabled, requests for
+rpc_gss_svc_privacy can also be mapped to rpc_gss_svc_channel_prot.
+</t>
+</section>
+
+<section anchor="acks" title="Acknowledgments" >
+<t>
+Nicolas Williams had the idea for extending RPCSEC_GSS to
+support channel bindings. Alex Burlyga, Lars Eggert, Pasi Eronen, and
+Dan Romascanu  reviewed the document
+and gave valuable feedback for improving its readability.
+
+</t>
+</section>
+<section anchor="securityconsider" title="Security Considerations">
+<t>
+	The base security considerations consist of:
+
+        <list style="symbols">
+        <t>
+           All security considerations from <xref target="RFC2203"/>.
+        </t>
+
+        <t>
+           All security considerations from <xref target="RFC5056"/>.
+        </t>
+          
+        <t>
+           All security considerations from the actual secure channel being used.
+        </t>
+ 
+        </list>
+</t>
+<t>
+
+	Even though RPCSEC_GSS_DATA requests that use
+	rpc_gss_svc_channel_prot protection do not involve
+	construction of more GSS tokens, the
+	target SHOULD stop allowing RPCSEC_GSS_DATA
+	requests with rpc_gss_svc_channel_prot protection
+	once the GSS context expires.
+
+</t>
+<t>
+
+	With the use of channel bindings, it becomes
+	extremely critical that the message integrity code
+	(MIC) used by the GSS mechanism that RPCSEC_GSS is
+	using be difficult to forge. While this requirement
+	is true for RPCSEC_GSSv1, and indeed any protocol
+	that uses GSS MICs, the distinction in the
+	seriousness is that for RPCSEC_GSSv1, forging a
+	single MIC at most allows the attacker to succeed
+	in injecting one bogus request. Whereas, with
+	RPCSEC_GSSv2 combined with channel bindings, by
+	forging a single MIC the attacker will succeed
+	in injecting bogus requests as long as the channel
+	exists. An example illustrates. Suppose we have an
+	RPCSEC_GSSv1 initiator, a man-in-the-middle (MITM),
+	an RPCSEC_GSSv1 target, and an RPCSEC_GSSv2
+	target.  The attack is as follows.
+
+        <list style="symbols">
+  
+        <t>
+	  The MITM intercepts the initiator's RPCSEC_GSSv1
+	  RPCSEC_GSS_INIT message and changes the version
+	  number from 1 to 2 before forwarding to the
+	  RPCSEC_GSSv2 target, and changes the reply's
+	  version number from 2 to 1 before forwarding to
+	  the RPCSEC_GSSv1 initiator.  Neither the client
+	  nor the server notice.
+
+        </t>
+
+        <t>
+	  Once the RPCSEC_GSS handle is in an established
+	  state, the initiator sends its first
+	  RPCSEC_GSS_DATA request. The MITM constructs an
+	  RPCSEC_GSS_BIND_CHANNEL request, using the
+	  message integrity code (MIC) of the
+	  RPCSEC_GSS_DATA request.  It is likely the
+	  RPCSEC_GSSv2 target will reject the request. The
+	  MITM continues to reiterate each time the
+	  initiator sends another RPCSEC_GSS_DATA request.
+	  With enough iterations, the probability of a MIC
+	  from an RPCSEC_GSS_DATA being successfully
+	  verified in the forged RPCSEC_GSS_BIND_CHANNEL
+	  increases. Once the MITM succeeds, it can send
+	  RPCSEC_GSS_DATA requests with a security service
+	  of rpc_gss_svc_channel_prot, which does not have
+	  MICs in the RPC request's verifier.
+
+        </t>
+        </list>
+	The implementation of RPCSEC_GSSv2 can use at least
+	two methods to thwart these attacks.
+
+        <list style="symbols">
+
+        <t>
+	  The target SHOULD require a stronger MIC when sending an
+	  RPCSEC_GSS_BIND_CHANNEL request instead of an
+	  RPCSEC_GSS_DATA request -- e.g., if HMACs
+	  are used for the MICs, require the widest
+	  possible HMAC (in terms of bit length) that the GSS
+	  mechanism supports. If HMACs are being used,
+	  and the target expects N RPCSEC_GSS_DATA requests
+	  to be sent on the context before it expires, then
+	  the target SHOULD require an HMAC for
+	  RPCSEC_GSS_BIND_CHANNEL that is log base 2 N bits
+	  longer than what it normally requires for
+	  RPCSEC_GSS_DATA requests.  If a long enough MIC
+	  is not available, then the target could
+	  artificially limit the number of RPCSEC_GSS_DATA
+	  requests it will allow on the context before
+	  deleting the context.
+
+	</t>
+
+        <t>
+	  Each time an RPCSEC_GSSv2 target experiences a
+	  failure to verify the MIC of an
+	  RPCSEC_GSS_BIND_CHANNEL request, it SHOULD reduce
+	  the lifetime of the underlying GSS context, by a
+	  significant fraction, thereby preventing the MITM
+	  from using the established context for its
+	  attack. A possible heuristic is that if the
+	  target believes the possibility that failure to
+	  verify the MIC was because of an attack is X
+	  percent, then the context's lifetime would be reduced
+	  by X percent. For simplicity, an implementer might
+	  set X to be 50 percent, so that the context
+	  lifetime is halved on each failed verification of
+	  an RPCSEC_GSS_BIND_CHANNEL request and thus
+	  rapidly reduced to zero on subsequent requests.
+	  For example, with a context lifetime of 8 hours
+	  (or 28800 seconds), 15 failed attempts by the
+	  MITM would cause the context to be destroyed.
+
+        </t>
+
+        </list>
+ 
+	  A method of mitigation that was considered was to
+	  protect the RPCSEC_GSS version number with
+          RPCSEC_GSSv2's RPCSEC_GSS_INIT
+	  and RPCSEC_GSS_CONTINUE_INIT tokens. Thus, the
+	  version number of RPCSEC_GSS would be in the tokens.
+	  This method does not completely mitigate the
+	  attack; it just moves the MIC guessing to the
+	  RPCSEC_GSS_INIT message. In addition, without
+	  changing GSS, or the GSS mechanism, there is no way
+	  to include the RPCSEC_GSS version number in the
+	  tokens. So for these reasons this method was not
+	  selected.
+
+</t>
+</section>
+
+</middle>
+<back>
+  <references title="Normative References">
+
+    <reference anchor='RFC2119'>
+      <front>
+	<title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+	<author initials='S.' surname='Bradner' fullname='Scott Bradner'>
+	  <organization>Harvard University</organization>
+	  <address>
+	    <postal>
+	      <street>1350 Mass. Ave.</street>
+	      <street>Cambridge</street>
+	    <street>MA 02138</street></postal>
+	    <phone>- +1 617 495 3864</phone>
+	<email>sob@harvard.edu</email></address></author>
+	<date year='1997' month='March' />
+      </front>
+      <seriesInfo name='BCP' value='14' />
+      <seriesInfo name='RFC' value='2119' />
+      <format type='TXT' target='ftp://ftp.isi.edu/in-notes/rfc2119.txt' />
+    </reference>
+
+    <reference anchor='RFC2203'>
+    
+      <front>
+      <title>RPCSEC_GSS Protocol Specification</title>
+
+        <author initials='M.' surname='Eisler' fullname='Michael Eisler'>
+        <organization>Sun Microsystems, Inc.</organization>
+        <address>
+        <postal>
+        <street>M/S UCOS03</street>
+        <street>2550 Garcia Avenue</street>
+        <street>Mountain View</street>
+        <street>CA 94043</street></postal>
+        <phone>+1 (719) 599-9026</phone>
+        <email>mre@eng.sun.com</email></address></author>
+  
+        <author initials='A.' surname='Chiu' fullname='Alex Chiu'>
+        <organization>Sun Microsystems, Inc.</organization>
+        <address>
+        <postal>
+        <street>M/S UMPK17-203</street>
+        <street>2550 Garcia Avenue</street>
+        <street>Mountain View</street>
+        <street>CA 94043</street></postal>
+        <phone>+1 (415) 786-6465</phone>
+        <email>hacker@eng.sun.com</email></address></author>
+  
+        <author initials='L.' surname='Ling' fullname='Lin Ling'>
+        <organization>Sun Microsystems, Inc.</organization>
+        <address>
+        <postal>
+        <street>M/S UMPK17-201</street>
+        <street>2550 Garcia Avenue</street>
+        <street>Mountain View</street>
+        <street>CA 94043</street></postal>
+        <phone>+1 (415) 786-5084</phone>
+        <email>lling@eng.sun.com</email></address></author>
+
+      <date year='1997' month='September' />
+      <area>Security</area>
+      <keyword>generic security service</keyword>
+      <keyword>remote procedure call</keyword>
+      <keyword>security</keyword>
+      <abstract>
+      <t>
+         This memo describes an ONC/RPC security flavor that allows RPC
+         protocols to access the Generic Security Services Application
+         Programming Interface (referred to henceforth as GSS-API).
+      </t></abstract></front>
+      
+      <seriesInfo name='RFC' value='2203' />
+      <format type='TXT' octets='50937' target='ftp://ftp.isi.edu/in-notes/rfc2203.txt' />
+      <format type='HTML' octets='64234' target='http://xml.resource.org/public/rfc/html/rfc2203.html' />
+      <format type='XML' octets='50069' target='http://xml.resource.org/public/rfc/xml/rfc2203.xml' />
+    </reference>
+
+
+<reference anchor='RFC4506'>
+
+<front>
+<title>XDR: External Data Representation Standard</title>
+<author initials='M.' surname='Eisler' fullname='M. Eisler'>
+<organization /></author>
+<date year='2006' month='May' />
+<abstract>
+<t>This document describes the External Data Representation Standard (XDR) protocol as it is currently deployed and accepted.  This document obsoletes RFC 1832. [STANDARDS TRACK]</t></abstract></front>
+
+<seriesInfo name='STD' value='67' />
+<seriesInfo name='RFC' value='4506' />
+<format type='TXT' octets='55477' target='ftp://ftp.isi.edu/in-notes/rfc4506.txt' />
+
+</reference>
+
+
+    <reference anchor='RFC5056'>
+    
+      <front>
+      <title>On the Use of Channel Bindings to Secure Channels</title>
+
+        <author initials='N.' surname='Williams' fullname='Nicolas Williams'>
+        <organization>Sun Microsystems</organization>
+        </author>
+
+      <date year='2007' month='November' />
+      </front>
+      
+      <seriesInfo name='RFC' value='5056' />
+    </reference>
+
+    <reference anchor='RFC2743'>
+
+      <front>
+        <title abbrev='GSS-API'>Generic Security Service Application
+        Program Interface Version 2, Update 1</title>
+        <author initials='J.' surname='Linn' fullname='John Linn'>
+          <organization>RSA Laboratories</organization>
+          <address>
+            <postal>
+              <street>20 Crosby Drive</street>
+              <city>Bedford</city>
+              <region>MA</region>
+              <code>01730</code>
+            <country>US</country></postal>
+            <phone>+1 781 687 7817</phone>
+        <email>jlinn@rsasecurity.com</email></address></author>
+        <date year='2000' month='January' />
+
+        <abstract>
+          <t>The Generic Security Service Application Program
+          Interface (GSS-API), Version 2, as defined in, provides
+          security services to callers in a generic fashion,
+          supportable with a range of underlying mechanisms and
+          technologies and hence allowing source-level portability of
+          applications to different environments. This specification
+          defines GSS-API services and primitives at a level
+          independent of underlying mechanism and programming language
+          environment, and is to be complemented by other, related
+          specifications:
+          </t>
+
+          <t>documents defining specific parameter bindings for
+          particular language environments
+          </t>
+
+          <t>documents defining token formats, protocols, and
+          procedures to be implemented in order to realize GSS-API
+          services atop particular security mechanisms
+          </t>
+
+          <t>This
+          memo obsoletes making specific, incremental changes in
+          response to implementation experience and liaison
+          requests. It is intended, therefore, that this memo or a
+          successor version thereto will become the basis for
+          subsequent progression of the GSS-API specification on the
+          standards track.
+          </t>
+ 
+       </abstract>
+       </front>
+      <seriesInfo name='RFC' value='2743' />
+      <format type='TXT' octets='229418'
+              target='ftp://ftp.isi.edu/in-notes/rfc2743.txt' />
+    </reference>
+
+  <reference anchor='RFC4055'>
+
+    <front>
+    <title>Additional Algorithms and Identifiers for RSA Cryptography
+    for use in the Internet X.509 Public Key Infrastructure
+    Certificate and Certificate Revocation List (CRL) Profile</title>
+    <author initials='J.' surname='Schaad' fullname='J. Schaad'>
+    <organization /></author>
+    <author initials='B.' surname='Kaliski' fullname='B. Kaliski'>
+    <organization /></author>
+    <author initials='R.' surname='Housley' fullname='R. Housley'>
+    <organization /></author>
+    <date year='2005' month='June' />
+    <abstract>
+    <t>&lt;p>This document supplements RFC 3279. It describes the
+    conventions for using the RSA Probabilistic Signature Scheme
+    (RSASSA-PSS) signature algorithm, the RSA Encryption Scheme -
+    Optimal Asymmetric Encryption Padding (RSAES-OAEP) key transport
+    algorithm and additional one-way hash functions with the
+    Public-Key Cryptography Standards (PKCS) #1 version 1.5 signature
+    algorithm in the Internet X.509 Public Key Infrastructure
+    (PKI). Encoding formats, algorithm identifiers, and parameter
+    formats are specified. [STANDARDS
+    TRACK]&lt;/p>
+    </t>
+    </abstract>
+    </front>
+
+    <seriesInfo name='RFC' value='4055' />
+    <format type='TXT' octets='57479' target='ftp://ftp.isi.edu/in-notes/rfc4055
+.txt' />
+    </reference>
+
+
+
+  </references>
+
+  <references title="Informative References">
+
+  <reference anchor='RFC1831'>
+
+      <front>
+        <title abbrev='Remote Procedure Call Protocol Version 2'>RPC:
+        Remote Procedure Call Protocol Specification Version 2</title>
+        <author initials='R.' surname='Srinivasan' fullname='Raj Srinivasan'>
+          <organization>Sun Microsystems, Inc., ONC Technologies</organization>
+          <address>
+            <postal>
+              <street>2550 Garcia Avenue</street>
+              <street>M/S MTV-5-40</street>
+              <city>Mountain View</city>
+              <region>CA</region>
+              <code>94043</code>
+            <country>US</country></postal>
+            <phone>+1 415 336 2478</phone>
+            <facsimile>+1 415 336 6015</facsimile>
+        <email>raj@eng.sun.com</email></address></author>
+        <date year='1995' month='August' />
+	<abstract>
+       <t>This document describes the ONC Remote Procedure Call (ONC
+      RPC Version 2) protocol as it is currently deployed and
+      accepted.  "ONC" stands for "Open Network
+      Computing".</t></abstract></front>
+
+      <seriesInfo name='RFC' value='1831' />
+      <format type='TXT' octets='37798' target='ftp://ftp.isi.edu/in-notes/rfc1831.txt' />
+    </reference>
+ 
+
+<reference anchor='I-D.ietf-btns-connection-latching'>
+<front>
+<title>IPsec Channels: Connection Latching</title>
+
+<author initials='N' surname='Williams' fullname='Nicolas Williams'>
+    <organization />
+</author>
+
+<date month='November' day='3' year='2008' />
+
+</front>
+
+<seriesInfo name='Work in' value='Progress' />
+</reference>
+
+<reference anchor='I-D.williams-ipsec-channel-binding'>
+<front>
+<title>End-Point Channel Bindings for IPsec Using IKEv2 and Public Keys</title>
+
+<author initials='N' surname='Williams' fullname='Nicolas  Williams'>
+    <organization />
+</author>
+
+<date month='April' day='21' year='2008' />
+
+</front>
+<seriesInfo name='Work in' value='Progress' />
+</reference>
+
+  </references>
+</back>
+</rfc>

@@ -1,0 +1,2723 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM 'rfc2629.dtd' [
+  <!ENTITY rfc2629 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.2629.xml'>
+]>
+
+<rfc number="5155" category="std">
+
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt" ?>
+
+<?rfc rfcedstyle="yes" ?>
+
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc iprnotified="no" ?>
+<?rfc subcompact="no"?>
+<?rfc comments="yes" ?>
+
+  <front>
+    <title abbrev="NSEC3">
+      DNS Security (DNSSEC) Hashed Authenticated Denial of Existence
+    </title>
+
+    <author initials="B" surname="Laurie" fullname="Ben Laurie">
+      <organization>Nominet</organization>
+
+      <address>
+        <postal>
+          <street>17 Perryn Road</street>
+          <city>London</city>
+          <code>W3 7LR</code>
+          <country>England</country>
+        </postal>
+
+        <phone>+44 20 8735 0686</phone>
+        <email>ben@links.org</email>
+      </address>
+
+    </author>
+
+    <author initials="G" surname="Sisson" fullname="Geoffrey Sisson">
+      <organization>Nominet</organization>
+      <address>
+        <postal>
+          <street>Minerva House</street>
+          <street>Edmund Halley Road</street>
+          <street>Oxford Science Park</street>
+          <city>Oxford</city>
+          <code>OX4 4DQ</code>
+          <country>UNITED KINGDOM</country>
+        </postal>
+
+        <phone>+44 1865 332211</phone>
+        <email>geoff-s@panix.com</email>
+      </address>
+    </author>
+
+    <author initials="R" surname="Arends" fullname="Roy Arends">
+      <organization>Nominet</organization>
+      <address>
+        <postal>
+          <street>Minerva House</street>
+          <street>Edmund Halley Road</street>
+          <street>Oxford Science Park</street>
+          <city>Oxford</city>
+          <code>OX4 4DQ</code>
+          <country>UNITED KINGDOM</country>
+        </postal>
+
+        <phone>+44 1865 332211</phone>
+        <email>roy@nominet.org.uk</email>
+      </address>
+    </author>
+
+    <author initials="D" surname="Blacka" fullname="David Blacka">
+      <organization>VeriSign, Inc.</organization>
+      <address>
+        <postal>
+          <street>21355 Ridgetop Circle</street>
+          <city>Dulles</city> <region>VA</region> <code>20166</code>
+          <country>US</country>
+        </postal>
+        <phone>+1 703 948 3200</phone>
+        <email>davidb@verisign.com</email>
+      </address>
+    </author>
+
+    <date month="February" year="2008"/>
+    <area>Internet</area>
+
+    <abstract>
+
+      <t>The Domain Name System Security (DNSSEC) Extensions introduced
+      the NSEC resource record (RR) for authenticated denial of existence.
+      This document introduces an alternative resource record, NSEC3,
+      which similarly provides authenticated denial of existence.
+      However, it also provides measures against zone enumeration and
+      permits gradual expansion of delegation-centric zones.</t>
+
+    </abstract>
+  </front>
+
+  <middle>
+
+    <section title="Introduction">
+
+      <section title="Rationale">
+
+        <t>The DNS Security Extensions included the NSEC RR to provide
+        authenticated denial of existence.  Though the NSEC RR meets
+        the requirements for authenticated denial of existence, it
+        introduces a side-effect in that the contents of a zone can be
+        enumerated. This property introduces undesired policy
+        issues.</t>
+
+        <t> The enumeration is enabled by the set of NSEC records that 
+	    exists inside a signed zone. An NSEC record lists two names
+	    that are ordered canonically, in order to show that nothing exists 
+	    between the two names. The complete set of NSEC records lists
+	    all the names in a zone. It is trivial to enumerate the content of a 
+	    zone by querying for names that do not exist.
+        </t>
+	
+        <t>An enumerated zone can be used, for example, as a source
+        of probable e-mail addresses for spam, or as a key
+        for multiple WHOIS queries to reveal registrant data that many
+        registries may have legal obligations to protect.  Many registries
+        therefore prohibit the copying of their zone data; however, the use
+        of NSEC RRs renders these policies unenforceable.</t>
+
+        <t>A second problem is that the cost to cryptographically secure 
+		delegations to unsigned zones is high, relative to the perceived 
+		security benefit, in two cases: large, delegation-centric zones, and 
+		zones where insecure delegations will be updated rapidly. In these 
+		cases, the costs of maintaining the NSEC RR chain may be extremely 
+		high and use of the "Opt-Out" convention may be more appropriate (for 
+		these unsecured zones).</t>
+		
+        <t>This document presents the NSEC3 Resource Record which can
+        be used as an alternative to NSEC to mitigate these issues.</t>
+
+        <t>Earlier work to address these issues include <xref target="DNSEXT-NO"/>, <xref target="RFC4956"/>, and <xref target="DNSEXT-NSEC2v2"/>.</t>
+      </section>
+
+      <section title="Requirements">
+
+        <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+        "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+        "OPTIONAL" in this document are to be interpreted as described
+        in <xref target="RFC2119"/>.</t>
+
+      </section>
+<?rfc needLines="10" ?>
+      <section title="Terminology">
+
+        <t>The reader is assumed to be familiar with the basic DNS and
+        DNSSEC concepts described in <xref target="RFC1034"/>,
+        <xref target="RFC1035"/>, <xref target="RFC4033"/>, 
+         <xref target="RFC4034"/>,
+         <xref target="RFC4035"/>, and
+        subsequent RFCs that update them: <xref target="RFC2136"/>, 
+        <xref target="RFC2181"/>, and <xref target="RFC2308"/>.</t>
+
+        <t>The following terminology is used throughout this
+        document:</t>
+
+        <t>
+          <list style="hanging">
+
+            <t hangText="Zone enumeration:"> the practice of
+            discovering the full content of a zone via successive queries.
+            Zone enumeration was non-trivial prior to the introduction
+            of DNSSEC.</t>
+
+            <t hangText="Original owner name:"> the owner name
+            corresponding to a hashed owner name.</t>
+
+            <t hangText="Hashed owner name:"> the owner name
+            created after applying the hash function to an
+            owner name.</t>
+
+            <t hangText="Hash order:"> the order in which hashed
+            owner names are arranged according to their numerical
+            value, treating the leftmost (lowest numbered) octet as
+            the most significant octet.  Note that this order is the
+            same as the canonical DNS name order specified in <xref
+            target="RFC4034"/>, when the hashed
+            owner names are in base32, encoded with an Extended Hex Alphabet 
+            <xref target="RFC4648"/>.</t>
+
+            <t hangText="Empty non-terminal:"> a domain name
+            that owns no resource records, but has one or more
+            subdomains that do.</t>
+
+            <t hangText="Delegation:"> an NS RRSet with a
+            name different from the current zone apex (non-zone-apex),
+            signifying a delegation to a child zone.</t>
+
+            <t hangText="Secure delegation:"> a name
+            containing a delegation (NS RRSet) and a signed DS RRSet,
+            signifying a delegation to a signed child zone.</t>
+
+            <t hangText="Insecure delegation:"> a name
+            containing a delegation (NS RRSet), but lacking a DS
+            RRSet, signifying a delegation to an unsigned child zone.</t>
+
+            <t hangText="Opt-Out NSEC3 resource record:"> an NSEC3
+            resource record that has the Opt-Out flag set to
+            1.</t>
+
+            <t hangText="Opt-Out zone:"> a zone with at least
+            one Opt-Out NSEC3 RR.</t>
+
+            <t hangText="Closest encloser:"> the longest existing
+            ancestor of a name. See also Section 3.3.1 of <xref
+            target="RFC4592"/>.</t>
+
+            <t hangText="Closest provable encloser:"> the
+            longest ancestor of a name that can be proven to exist.
+            Note that this is only different from the closest encloser
+            in an Opt-Out zone.</t>
+
+            <t hangText="Next closer name:"> the name one
+            label longer than the closest provable encloser of a name.</t>
+
+            <t hangText="Base32:"> the "Base 32 Encoding with Extended
+            Hex Alphabet" as specified in <xref target="RFC4648"/>.
+            Note that trailing padding characters ("=") are not used in
+            the NSEC3 specification.</t>
+
+            <t hangText="To cover:"> An NSEC3 RR is said to "cover"
+            a name if the hash of the name or "next closer" name
+            falls between the owner name and the next hashed owner name 
+            of the NSEC3. In other words, if it proves the nonexistence of
+            the name, either directly or by proving the nonexistence of
+            an ancestor of the name.</t>
+
+            <t hangText="To match:"> An NSEC3 RR is said to "match" a
+            name if the owner name of the NSEC3 RR is the same as the
+            hashed owner name of that name.</t>
+          </list>
+        </t>
+
+      </section>
+
+    </section>
+
+    <section title="Backwards Compatibility" anchor="backward">
+
+      <t>This specification describes a protocol change that is not
+      generally backwards compatible with <xref target="RFC4033"/>, 
+      <xref target="RFC4034"/>, and <xref target="RFC4035"/>.  In
+      particular, security-aware resolvers that are unaware of this
+      specification (NSEC3-unaware resolvers) may fail to validate the
+      responses introduced by this document.</t>
+ 
+      <t>In order to aid deployment, this specification uses a
+      signaling technique to prevent NSEC3-unaware resolvers from
+      attempting to validate responses from NSEC3-signed zones.</t>
+
+      <t>This specification allocates two new DNSKEY algorithm
+      identifiers for this purpose.  Algorithm 6, DSA-NSEC3-SHA1 
+      is an alias for algorithm 3, DSA.  Algorithm 7, 
+      RSASHA1-NSEC3-SHA1 is an alias for algorithm 5,
+      RSASHA1.  These are not new algorithms, they are 
+      additional identifiers for the existing algorithms.</t>
+
+      <t>Zones signed according to this specification MUST only use
+      these algorithm identifiers for their DNSKEY RRs. Because these
+      new identifiers will be unknown algorithms to existing,
+      NSEC3-unaware resolvers, those resolvers will then treat
+      responses from the NSEC3 signed zone as insecure, as detailed in
+Section 5.2 of <xref target="RFC4035"/>.</t>
+
+      <t>These algorithm identifiers are used with the NSEC3 hash 
+	  algorithm SHA1. Using other NSEC3 hash algorithms requires allocation of a new alias (see <xref target="sec_cons_unknown_hash"/>).</t>
+
+      <t>Security aware resolvers that are aware of this specification
+      MUST recognize the new algorithm identifiers and treat them as
+      equivalent to the algorithms that they alias.</t>
+
+      <t>A methodology for transitioning from a DNSSEC signed
+      zone to a zone signed using NSEC3 is discussed in <xref
+      target="nsectonsec3"/>.</t>
+
+    </section>
+
+    <section anchor="nsec3rr" title="The NSEC3 Resource Record">
+
+      <t>The NSEC3 Resource Record (RR) provides authenticated denial
+      of existence for DNS Resource Record Sets.</t>
+
+      <t>The NSEC3 RR lists RR types present at the original owner name 
+      of the NSEC3 RR. It includes the next hashed owner name in the
+      hash order of the zone. The complete set of NSEC3 RRs in a zone
+      indicates which RRSets exist for the original owner name of the
+      RR and form a chain of hashed owner names in the zone. This
+      information is used to provide authenticated denial of existence
+      for DNS data.  To provide protection against zone enumeration,
+      the owner names used in the NSEC3 RR are cryptographic hashes of
+      the original owner name prepended as a single label to the name 
+      of the zone. The
+      NSEC3 RR indicates which hash function is used to construct the
+      hash, which salt is used, and how many iterations of the hash
+      function are performed over the original owner name.  The hashing
+      technique is described fully in <xref target="hash" />.</t>
+
+      <t>Hashed owner names of unsigned delegations may be excluded
+      from the chain. An NSEC3 RR whose span covers the hash of an
+      owner name or "next closer" name of an unsigned delegation is referred
+      to as an Opt-Out NSEC3 RR and is indicated by the presence of
+      a flag.</t>
+
+      <t>The owner name for the NSEC3 RR is the base32 encoding of the
+      hashed owner name prepended as a single label to the name of the 
+      zone.</t>
+
+      <t>The type value for the NSEC3 RR is 50. </t>
+
+      <t>The NSEC3 RR RDATA format is class independent and is
+      described below.</t>
+
+      <t>The class MUST be the same as the class of the original owner name.</t>
+
+      <t>The NSEC3 RR SHOULD have the same TTL value as the SOA
+      minimum TTL field. This is in the spirit of negative caching
+      <xref target="RFC2308"/>.</t>
+<?rfc needLines="10" ?>
+      <section title="RDATA Fields">
+
+        <section title="Hash Algorithm">
+
+          <t>The Hash Algorithm field identifies the cryptographic
+          hash algorithm used to construct the hash-value.</t>
+
+          <t>The values for this field are defined in the NSEC3 hash algorithm
+          registry defined in <xref target="iana" />.</t>
+
+        </section>
+
+        <section title="Flags">
+
+          <t>The Flags field contains 8 one-bit flags that can be used
+          to indicate different processing. All undefined flags must
+          be zero.  The only flag defined by this specification is the
+          Opt-Out flag.</t>
+
+          <section title="Opt-Out Flag">
+            <t>If the Opt-Out flag is set, the NSEC3 record covers zero
+	        or more unsigned delegations.</t>
+        <t> If the Opt-Out flag is clear, the NSEC3 record covers zero 
+	        unsigned delegations. </t>
+            <t>The Opt-Out Flag indicates whether this NSEC3 RR
+            may cover unsigned delegations. It is the least
+            significant bit in the Flags field. See <xref
+            target="opt-out"/> for details about the use of this
+            flag.</t>
+
+          </section>
+
+        </section>
+
+        <section title="Iterations">
+
+          <t>The Iterations field defines the number of additional
+          times the hash function has been performed.  More iterations result
+          in greater resiliency of the hash value against dictionary
+          attacks, but at a higher computational cost for both the server and
+          resolver. See <xref target="hash"/> for details of the use
+          of this field, and <xref target="iter-limit" /> for
+          limitations on the value.</t>
+
+        </section>
+
+        <section title="Salt Length">
+
+          <t>The Salt Length field defines the length of the Salt field in
+          octets, ranging in value from 0 to 255.</t>
+
+        </section>
+
+        <section title="Salt">
+
+          <t>The Salt field is appended to the original owner name
+          before hashing in order to defend against pre-calculated
+          dictionary attacks. See <xref target="hash" /> for details
+          on how the salt is used.</t>
+
+        </section>
+
+        <section title="Hash Length">
+
+          <t>The Hash Length field defines the length of the Next
+          Hashed Owner Name field, ranging in value from 1 to 255 octets.</t>
+
+        </section>
+
+        <section title="Next Hashed Owner Name">
+
+          <t>The Next Hashed Owner Name field contains the next hashed
+          owner name in hash order. This value is in binary format.
+          Given the ordered set of all hashed owner names, the
+          Next Hashed Owner Name field contains the hash of an owner name that
+          immediately follows the owner name of the given NSEC3
+          RR. The value of the Next Hashed Owner Name field in the
+          last NSEC3 RR in the zone is the same as the hashed owner name
+          of the first NSEC3 RR in the zone in hash order.  Note that,
+          unlike the owner name of the NSEC3 RR, the value of this field
+          does not contain the appended zone name.</t>
+
+        </section>
+
+        <section title="Type Bit Maps">
+
+          <t>The Type Bit Maps field identifies the RRSet types that
+          exist at the original owner name of the NSEC3 RR.</t>
+
+        </section>
+
+      </section>
+
+      <section title="NSEC3 RDATA Wire Format">
+
+        <t>The RDATA of the NSEC3 RR is as shown below:</t>
+
+        <figure><artwork>
+                     1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Hash Alg.   |     Flags     |          Iterations           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Salt Length  |                     Salt                      /
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Hash Length  |             Next Hashed Owner Name            /
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/                         Type Bit Maps                         /
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        </artwork></figure>
+
+        <t>Hash Algorithm is a single octet.</t>
+
+        <t>Flags field is a single octet, the Opt-Out flag is the least
+        significant bit, as shown below:</t>
+
+        <figure><artwork>
+ 0 1 2 3 4 5 6 7 
++-+-+-+-+-+-+-+-+
+|             |O|
++-+-+-+-+-+-+-+-+
+        </artwork></figure>
+
+
+        <t>Iterations is represented as a 16-bit unsigned integer, with the
+        most significant bit first.</t>
+
+        <t>Salt Length is represented as an unsigned octet. Salt Length 
+        represents the length of the Salt field in
+        octets. If the value is zero, the following Salt field is
+        omitted.</t>
+
+        <t>Salt, if present, is encoded as a sequence of binary
+        octets.  The length of this field is determined by the
+        preceding Salt Length field.</t>
+
+        <t>Hash Length is represented as an unsigned octet. Hash Length represents 
+        the length of the Next Hashed Owner Name field in octets.</t>
+
+        <t>The next hashed owner name is not base32 encoded, unlike the owner name
+        of the NSEC3 RR. It is the unmodified binary hash value. It does not
+        include the name of the containing zone.  The length of this
+        field is determined by the preceding Hash Length field.</t>
+
+        <section title="Type Bit Maps Encoding">
+
+          <t>The encoding of the Type Bit Maps field is the same as that
+          used by the NSEC RR, described in <xref target="RFC4034"/>.
+          It is explained and clarified here for clarity.</t>
+
+          <t>The RR type space is split into 256 window blocks, each
+          representing the low-order 8 bits of the 16-bit RR type
+          space. Each block that has at least one active RR type is
+          encoded using a single octet window number (from 0 to 255),
+          a single octet bitmap length (from 1 to 32) indicating the
+          number of octets used for the bitmap of the window block, and up
+          to 32 octets (256 bits) of bitmap.</t>
+
+          <t>Blocks are present in the NSEC3 RR RDATA in increasing
+          numerical order.</t>
+
+          <figure><artwork>
+   Type Bit Maps Field = ( Window Block # | Bitmap Length | Bitmap )+
+
+   where "|" denotes concatenation.
+          </artwork></figure>
+
+          <t>Each bitmap encodes the low-order 8 bits of RR types
+          within the window block, in network bit order.  The first
+          bit is bit 0.  For window block 0, bit 1 corresponds to RR
+          type 1 (A), bit 2 corresponds to RR type 2 (NS), and so
+          forth.  For window block 1, bit 1 corresponds to RR type
+          257, bit 2 to RR type 258.  If a bit is set to 1, it
+          indicates that an RRSet of that type is present for the
+          original owner name of the NSEC3 RR.  If a bit is set to 0, it indicates
+          that no RRSet of that type is present for the original owner 
+          name of the NSEC3 RR.</t>
+
+          <t>Since bit 0 in window block 0 refers to the non-existing
+          RR type 0, it MUST be set to 0.  After verification, the
+          validator MUST ignore the value of bit 0 in window block
+          0.</t>
+
+          <t>Bits representing Meta-TYPEs or QTYPEs as specified in
+          Section 3.1 of <xref target="RFC2929"/> or within
+          the range reserved for assignment only to QTYPEs and
+          Meta-TYPEs MUST be set to 0, since they do not appear in
+          zone data.  If encountered, they must be ignored upon
+          reading.</t>
+
+          <t>Blocks with no types present MUST NOT be included.
+          Trailing zero octets in the bitmap MUST be omitted.  The
+          length of the bitmap of each block is determined by the type code
+          with the largest numerical value, within that block, among
+          the set of RR types present at the original owner name of the 
+          NSEC3 RR.  Trailing octets not specified MUST be
+          interpreted as zero octets.</t>
+
+        </section>
+
+      </section>
+
+      <section title="Presentation Format">
+
+        <t>The presentation format of the RDATA portion is as
+        follows:</t>
+
+        <t>
+          <list style="symbols">
+
+            <t>The Hash Algorithm field is represented as an unsigned
+            decimal integer. The value has a maximum of 255.</t>
+
+            <t>The Flags field is represented as an unsigned
+            decimal integer.  The value has a maximum of 255.</t>
+
+            <t>The Iterations field is represented as an unsigned
+            decimal integer.  The value is between 0 and 65535,
+            inclusive.</t>
+
+            <t>The Salt Length field is not represented.</t>
+
+            <t>The Salt field is represented as a sequence of
+            case-insensitive hexadecimal digits.  Whitespace is not
+            allowed within the sequence. The Salt field is represented
+            as "-" (without the quotes) when the Salt Length field has
+            a value of 0.</t>
+
+            <t>The Hash Length field is not represented.</t>
+
+            <t>The Next Hashed Owner Name field is represented as an
+            unpadded sequence of case-insensitive base32 digits,
+            without whitespace.</t>
+
+            <t>The Type Bit Maps field is represented as a sequence of
+            RR type mnemonics.  When the mnemonic is not known, the
+            TYPE representation as described in Section 5 of <xref
+            target="RFC3597"/> MUST be used.</t>
+
+          </list>
+        </t>
+
+      </section>
+
+    </section>
+
+    <section anchor="nsec3param" title="The NSEC3PARAM Resource Record" >
+
+      <t>The NSEC3PARAM RR contains the NSEC3 parameters (hash
+      algorithm, flags, iterations, and salt) needed by authoritative servers 
+      to calculate hashed owner names. The presence of an NSEC3PARAM RR at a zone
+      apex indicates that the specified parameters may be used by
+      authoritative servers to choose an appropriate set of NSEC3
+      RRs for negative responses. The NSEC3PARAM RR is not used by
+      validators or resolvers.</t>
+
+      <t>If an NSEC3PARAM RR is present at the apex of a zone with a
+      Flags field value of zero, then there MUST be an NSEC3 RR using the
+      same hash algorithm, iterations, and salt parameters present at 
+      every hashed owner name in the zone.
+      That is, the zone MUST contain a complete set of NSEC3 RRs with
+      the same hash algorithm, iterations, and salt parameters.</t>
+
+      <t>The owner name for the NSEC3PARAM RR is the name of the zone
+      apex.</t>
+
+      <t>The type value for the NSEC3PARAM RR is 51.</t> 
+
+      <t>The NSEC3PARAM RR RDATA format is class independent and is
+      described below.</t>
+
+      <t>The class MUST be the same as the NSEC3 RRs to which this
+      RR refers.</t>
+
+      <section title="RDATA Fields">
+
+        <t>The RDATA for this RR mirrors the first four fields in the
+        NSEC3 RR.</t>
+
+        <section title="Hash Algorithm">
+
+          <t>The Hash Algorithm field identifies the cryptographic
+          hash algorithm used to construct the hash-value.</t>
+
+          <t>The acceptable values are the same as the corresponding
+          field in the NSEC3 RR.</t>
+
+        </section>
+
+        <section title="Flag Fields">
+
+          <t>The Opt-Out flag is not used and is set to zero.</t>
+
+          <t>All other flags are reserved for future use, and must be 
+          zero.</t>
+
+          <t>NSEC3PARAM RRs with a Flags field value other than
+          zero MUST be ignored.</t>
+
+        </section>
+
+        <section title="Iterations">
+
+          <t>The Iterations field defines the number of additional
+          times the hash is performed.</t>
+
+          <t>Its acceptable values are the same as the corresponding
+          field in the NSEC3 RR.</t>
+
+        </section>
+
+        <section title="Salt Length">
+
+          <t>The Salt Length field defines the length of the salt in
+          octets, ranging in value from 0 to 255.</t>
+
+        </section>
+
+        <section title="Salt">
+
+          <t>The Salt field is appended to the original owner name
+          before hashing.</t>
+
+        </section>
+
+      </section>
+
+      <section title="NSEC3PARAM RDATA Wire Format">
+
+        <t>The RDATA of the NSEC3PARAM RR is as shown below:</t>
+
+        <figure><artwork>
+                     1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Hash Alg.   |     Flags     |          Iterations           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Salt Length  |                     Salt                      /
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        </artwork></figure>
+
+        <t>Hash Algorithm is a single octet.</t>
+
+        <t>Flags field is a single octet.</t>
+
+        <t>Iterations is represented as a 16-bit unsigned integer, with the
+        most significant bit first.</t>
+
+        <t>Salt Length is represented as an unsigned octet. 
+        Salt Length represents the length of the following Salt
+        field in octets.  If the value is zero, the Salt field is
+        omitted.</t>
+
+        <t>Salt, if present, is encoded as a sequence of binary 
+        octets.  The length of this field is determined by the 
+        preceding Salt Length field.</t>
+
+      </section>
+<?rfc needLines="15" ?>
+      <section title="Presentation Format">
+
+        <t>The presentation format of the RDATA portion is as
+        follows:</t>
+
+        <t>
+          <list style="symbols">
+
+            <t>The Hash Algorithm field is represented as an unsigned
+            decimal integer.  The value has a maximum of 255.</t>
+
+            <t>The Flags field is represented as an unsigned decimal
+            integer. The value has a maximum value of 255.</t>
+
+            <t>The Iterations field is represented as an unsigned
+            decimal integer. The value is between 0 and 65535,
+            inclusive.</t>
+
+            <t>The Salt Length field is not represented.</t>
+
+            <t>The Salt field is represented as a sequence of
+            case-insensitive hexadecimal digits.  Whitespace is not
+            allowed within the sequence.  This field is represented
+            as "-" (without the quotes) when the Salt Length field is
+            zero.</t>
+          </list>
+        </t>
+
+      </section>
+
+    </section>
+
+    <section anchor="hash" title="Calculation of the Hash">
+
+      <t>The hash calculation uses three of the NSEC3 RDATA fields:
+      Hash Algorithm, Salt, and Iterations.</t>
+
+      <t>Define H(x) to be the hash of x using the Hash Algorithm
+      selected by the NSEC3 RR, k to be the number of Iterations,
+      and || to indicate concatenation. Then define:</t>
+
+      <t>
+        <list style="empty">
+          <t>IH(salt, x, 0) = H(x || salt), and</t>
+
+          <t>IH(salt, x, k) = H(IH(salt, x, k-1) || salt), if k > 0</t>
+        </list>
+      </t>
+
+      <t>Then the calculated hash of an owner name is</t>
+
+      <t><list style="empty">
+        <t>IH(salt, owner name, iterations),</t>
+      </list></t>
+
+      <t>where the owner name is in the canonical form, defined as:</t>
+
+      <t>The wire format of the owner name where:</t>
+
+      <t><list style="numbers">
+
+        <t>The owner name is fully expanded (no DNS name compression)
+        and fully qualified;</t>
+
+        <t>All uppercase US-ASCII letters are replaced by the
+        corresponding lowercase US-ASCII letters;</t>
+
+        <t>If the owner name is a wildcard name, the owner name is in
+        its original unexpanded form, including the "*" label (no
+        wildcard substitution);</t>
+
+      </list></t>
+
+      <t>This form is as defined in Section 6.2 of <xref
+      target="RFC4034"/>.</t>
+
+      <t>The method to calculate the Hash is based on <xref
+      target="RFC2898"/>.
+  </t>
+
+    </section>
+
+    <section anchor="opt-out" title="Opt-Out">
+
+      <t>In this specification, as in <xref target="RFC4033"/>,
+      <xref target="RFC4034"/> and <xref target="RFC4035"/>, NS RRSets at
+      delegation points are not signed and may be accompanied by a DS
+      RRSet.  With the Opt-Out bit clear, the security status of the
+      child zone is determined by the presence or absence of this DS
+      RRSet, cryptographically proven by the signed NSEC3 RR at the
+      hashed owner name of the delegation.  Setting the Opt-Out flag
+      modifies this by allowing insecure delegations to exist within
+      the signed zone without a corresponding NSEC3 RR at the
+      hashed owner name of the delegation.</t>
+
+      <!-- The following paragraph needs to be restated somehow.  At
+           the moment, it is redundant wrt to the definition of
+           "covers".  However, I believe that somehow the idea that
+           Opt-Out NSEC3 RRs cover the "next closer" names of delegations
+           needs to be reinforced. -->
+
+      <t>An Opt-Out NSEC3 RR is said to cover a delegation if the hash
+      of the owner name or "next closer" name of the delegation is between
+      the owner name of the NSEC3 RR and the next hashed owner name.</t>
+
+      <t>An Opt-Out NSEC3 RR does not assert the existence or
+      non-existence of the insecure delegations that it may cover.
+      This allows for the addition or removal of these delegations
+      without recalculating or re-signing RRs in the NSEC3 RR chain.
+      However, Opt-Out NSEC3 RRs do assert the (non)existence of
+      other, authoritative RRSets.</t>
+
+      <t>An Opt-Out NSEC3 RR MAY have the same original owner name
+      as an insecure delegation.  In this case, the delegation is
+      proven insecure by the lack of a DS bit in the type map and the
+      signed NSEC3 RR does assert the existence of the
+      delegation.</t> 
+
+      <t>Zones using Opt-Out MAY contain a mixture of Opt-Out NSEC3
+      RRs and non-Opt-Out NSEC3 RRs.  If an NSEC3 RR is
+      not Opt-Out, there MUST NOT be any hashed owner names of insecure
+      delegations (nor any other RRs) between it and the name 
+      indicated by the next hashed owner name in the NSEC3 RDATA.  If
+      it is Opt-Out, it MUST only cover hashed owner names or hashed
+      "next closer" names of insecure delegations.</t>
+
+      <t>The effects of the Opt-Out flag on signing, serving, and
+      validating responses are covered in following sections.</t>
+
+    </section>
+<?rfc needLines="10"?>
+    <section title="Authoritative Server Considerations">
+
+      <section title="Zone Signing">
+
+        <t>Zones using NSEC3 must satisfy the following properties:</t>
+
+        <t><list style="symbols">
+
+          <t>Each owner name within the zone that owns authoritative
+          RRSets MUST have a corresponding NSEC3 RR.  Owner names that
+          correspond to unsigned delegations MAY have a corresponding
+          NSEC3 RR.  However, if there is not a corresponding NSEC3 RR, 
+          there MUST be an Opt-Out NSEC3 RR that covers the "next closer" 
+          name to the delegation.  Other non-authoritative RRs are not 
+          represented by NSEC3 RRs.</t>
+
+          <t>Each empty non-terminal MUST have a corresponding NSEC3 RR, unless
+          the empty non-terminal is only derived from an insecure
+          delegation covered by an Opt-Out NSEC3 RR.</t>
+
+          <t>The TTL value for any NSEC3 RR SHOULD be the same as the
+          minimum TTL value field in the zone SOA RR.</t>
+
+          <t>The Type Bit Maps field of every NSEC3 RR in
+          a signed zone MUST indicate the presence of all types
+          present at the original owner name, except for the types
+          solely contributed by an NSEC3 RR itself.  Note that this
+          means that the NSEC3 type itself will never be present in
+          the Type Bit Maps.</t>
+
+        </list></t>
+
+        <t>The following steps describe a method of proper
+        construction of NSEC3 RRs.  This is not the only such
+        possible method.</t>
+
+        <t><list style="numbers">
+          <t> Select the hash algorithm and the values for salt and iterations.
+	      </t>
+          <t>For each unique original owner name in the zone add an
+          NSEC3 RR.
+          <list style="symbols">
+
+            <t>If Opt-Out is being used, owner names of unsigned
+            delegations MAY be excluded.</t>
+
+            <t>The owner name of the NSEC3 RR is the hash
+            of the original owner name, prepended as a single label 
+            to the zone name.</t>
+
+            <t>The Next Hashed Owner Name field is left blank for the
+            moment.</t>
+
+            <t>If Opt-Out is being used, set the Opt-Out bit to
+            one.</t>
+
+            <t>For collision detection purposes, optionally keep track
+            of the original owner name with the NSEC3 RR.</t>
+
+            <t>Additionally, for collision detection purposes,
+            optionally create an additional NSEC3 RR corresponding to the
+            original owner name with the asterisk label prepended
+            (i.e., as if a wildcard existed as a child of this
+            owner name) and keep track of this original owner name.
+            Mark this NSEC3 RR as temporary.</t>
+
+          </list></t>
+
+          <t>For each RRSet at the original owner name, set the
+          corresponding bit in the Type Bit Maps field.</t>
+
+          <t>If the difference in number of labels between the apex
+          and the original owner name is greater than 1, additional
+          NSEC3 RRs need to be added for every empty non-terminal between
+          the apex and the original owner name.  This process may
+          generate NSEC3 RRs with duplicate hashed owner names.
+          Optionally, for collision detection, track the original
+          owner names of these NSEC3 RRs and create temporary
+          NSEC3 RRs for wildcard collisions in a similar fashion to step
+          1.</t>
+
+          <t>Sort the set of NSEC3 RRs into hash order.</t>
+
+          <t>Combine NSEC3 RRs with identical hashed owner names by
+          replacing them with a single NSEC3 RR with the Type Bit Maps
+          field consisting of the union of the types represented by
+          the set of NSEC3 RRs.  If the original owner name was
+          tracked, then collisions may be detected when combining, as
+          all of the matching NSEC3 RRs should have the same original
+          owner name.  Discard any possible temporary NSEC3 RRs.</t>
+
+          <t>In each NSEC3 RR, insert the next hashed owner name by
+          using the value of the next NSEC3 RR in hash order.  The
+          next hashed owner name of the last NSEC3 RR in the zone contains
+          the value of the hashed owner name of the first NSEC3 RR in the
+          hash order.</t>
+
+          <t>Finally, add an NSEC3PARAM RR with the same Hash
+          Algorithm, Iterations, and Salt fields to the zone apex.</t>
+
+        </list></t>
+
+        <t>If a hash collision is detected, then a new salt has to be
+        chosen, and the signing process restarted.</t>
+
+      </section>
+
+      <section title="Zone Serving">
+
+        <t>This specification modifies DNSSEC-enabled DNS responses
+        generated by authoritative servers.  In particular, it
+        replaces the use of NSEC RRs in such responses with NSEC3
+        RRs.</t>
+<?rfc needLines="10"?>
+        <t>In the following response cases, the NSEC RRs dictated
+        by DNSSEC <xref target="RFC4035" /> are replaced
+        with NSEC3 RRs that prove the same facts.  Responses that
+        would not contain NSEC RRs are unchanged by this specification.</t>
+
+        <t>When returning responses containing multiple NSEC3 RRs, all
+        of the NSEC3 RRs MUST use the same hash algorithm, iteration,
+        and salt values.  The Flags field value MUST be either zero or
+        one.</t>
+
+        <section title="Closest Encloser Proof">
+
+          <t>For many NSEC3 responses a proof of the closest encloser
+          is required.  This is a proof that some ancestor of the
+          QNAME is the closest encloser of QNAME.</t>
+
+          <t>This proof consists of (up to) two different NSEC3
+          RRs:</t>
+
+          <t><list style="symbols">
+
+            <t>An NSEC3 RR that matches the closest (provable)
+            encloser.</t>
+
+            <t>An NSEC3 RR that covers the "next closer" name to the
+            closest encloser.</t>
+
+          </list></t>
+
+          <t>The first NSEC3 RR essentially proposes a possible closest
+          encloser, and proves that the particular encloser does, in
+          fact, exist.  The second NSEC3 RR proves that the possible
+          closest encloser is the closest, and proves that the QNAME (and
+          any ancestors between QNAME and the closest encloser) does
+          not exist.</t>
+
+          <t>These NSEC3 RRs are collectively referred to as the
+          "closest encloser proof" in the subsequent descriptions.</t>
+
+          <t>For example, the closest encloser proof for the
+          nonexistent "alpha.beta.gamma.example." owner name might
+          prove that "gamma.example." is the closest encloser.  This
+          response would contain the NSEC3 RR that matches 
+          "gamma.example.", and would also contain the NSEC3 RR 
+          that covers "beta.gamma.example." (which is the "next closer"
+          name).</t>
+
+          <t>It is possible, when using <xref
+          target="opt-out">Opt-Out</xref>, to not be able to prove the
+          actual closest encloser because it is, or is part of an
+          insecure delegation covered by an Opt-Out span.  In this
+          case, instead of proving the actual closest encloser, the
+          closest provable encloser is used.  That is, the closest
+          enclosing authoritative name is used instead.  In this case,
+          the set of NSEC3 RRs used for this proof is referred to
+          as the "closest provable encloser proof".</t>
+
+        </section>
+
+        <section title="Name Error Responses" anchor="auth-nxdomain">
+
+          <t>To prove the nonexistence of QNAME, a closest encloser
+          proof and an NSEC3 RR covering the (nonexistent) wildcard RR at the
+          closest encloser MUST be included in the response.  This
+          collection of (up to) three NSEC3 RRs proves both that
+          QNAME does not exist and that a wildcard that could have
+          matched QNAME also does not exist.</t>
+
+          <t>For example, if "gamma.example." is the closest provable
+          encloser to QNAME, then an NSEC3 RR covering "*.gamma.example." 
+          is included in the authority section of the response.</t>
+
+        </section>
+
+        <section title="No Data Responses, QTYPE is not DS">
+
+          <t>The server MUST include the NSEC3 RR that matches
+          QNAME.  This NSEC3 RR MUST NOT have the bits
+          corresponding to either the QTYPE or CNAME set in its Type
+          Bit Maps field.</t>
+
+        </section>
+
+       <section title="No Data Responses, QTYPE is DS">
+
+         <t>If there is an NSEC3 RR that matches QNAME, the server
+         MUST return it in the response.  The bits corresponding with
+         DS and CNAME MUST NOT be set in the Type Bit Maps field of
+         this NSEC3 RR.</t>
+
+         <t>If no NSEC3 RR matches QNAME, the server MUST return a
+         closest provable encloser proof for QNAME.  The NSEC3 RR 
+         that covers the "next closer" name MUST have the Opt-Out bit
+         set (note that this is true by definition -- if the Opt-Out
+         bit is not set, something has gone wrong).</t>
+
+         <t>If a server is authoritative for both sides of a zone cut
+         at QNAME, the server MUST return the proof from the parent
+         side of the zone cut.</t>
+
+        </section>
+
+        <section title="Wildcard No Data Responses">
+
+          <t>If there is a wildcard match for QNAME, but QTYPE is not
+          present at that name, the response MUST include a closest
+          encloser proof for QNAME and MUST include the NSEC3 RR
+          that matches the wildcard.  This combination proves both
+          that QNAME itself does not exist and that a wildcard that
+          matches QNAME does exist.  Note that the closest encloser to
+          QNAME MUST be the immediate ancestor of the wildcard RR 
+          (if this is not the case, then something has gone
+          wrong).</t>
+
+        </section>
+<?rfc needLines="10"?>
+        <section title="Wildcard Answer Responses">
+
+          <t>If there is a wildcard match for QNAME and QTYPE, then,
+          in addition to the expanded wildcard RRSet returned in the
+          answer section of the response, proof that the wildcard
+          match was valid must be returned.</t>
+
+          <t>This proof is accomplished by proving that both QNAME
+          does not exist and that the closest encloser of the QNAME and
+          the immediate ancestor of the wildcard are the same (i.e., the
+          correct wildcard matched).</t>
+
+          <t>To this end, the NSEC3 RR that covers the "next closer" name
+          of the immediate ancestor of the wildcard MUST be returned.
+          It is not necessary to return an NSEC3 RR that matches the
+          closest encloser, as the existence of this closest encloser
+          is proven by the presence of the expanded wildcard in the
+          response.</t>
+
+        </section>
+
+        <section title="Referrals to Unsigned Subzones">
+
+          <t>If there is an NSEC3 RR that matches the delegation name,
+          then that NSEC3 RR MUST be included in the response.  The
+          DS bit in the type bit maps of the NSEC3 RR MUST NOT be set.</t>
+
+          <t>If the zone is Opt-Out, then there may not be an NSEC3
+          RR corresponding to the delegation.  In this case, the
+          closest provable encloser proof MUST be included in the
+          response.  The included NSEC3 RR that covers the "next closer"
+          name for the delegation MUST have the Opt-Out flag set to one.
+          (Note that this will be the case unless something has gone
+          wrong).</t>
+
+        </section>
+
+        <section title="Responding to Queries for NSEC3 Owner Names" >
+
+          <t>The owner names of NSEC3 RRs are not represented in
+          the NSEC3 RR chain like other owner names. As a result, each NSEC3 owner
+          name is covered by another NSEC3 RR, effectively negating the existence of the NSEC3 RR. 
+          This is a paradox, since the existence of an NSEC3 RR can be proven by its RRSIG RRSet.
+          </t>
+          
+
+          <t>If the following conditions are all true:</t>
+          <t>
+            <list style="symbols">
+
+              <t>the QNAME equals the owner name of an existing NSEC3 RR, and</t>
+
+              <t>no RR types exist at the QNAME, nor at any descendant of QNAME,</t>
+
+            </list>
+          </t>
+
+          <t>then the response MUST be constructed as a <xref
+          target="auth-nxdomain">Name Error response</xref>.  Or, in
+          other words, the authoritative name server will act as if the owner name of the NSEC3 RR did not
+          exist.</t>
+<?rfc needLines="10"?>
+          <t>Note that NSEC3 RRs are returned as a result of an AXFR
+          or IXFR query.</t>
+
+        </section>
+
+        <section title="Server Response to a Run-Time Collision">
+
+          <t>If the hash of a non-existing QNAME collides with the
+          owner name of an existing NSEC3 RR, then the server will be unable to
+          return a response that proves that QNAME does not exist.  In
+          this case, the server MUST return a response with an RCODE
+          of 2 (server failure).</t>
+
+          <t>Note that with the hash algorithm specified in this
+          document, SHA-1, such collisions are highly unlikely.</t>
+
+        </section>
+
+      </section>
+
+      <section title="Secondary Servers">
+
+        <t>Secondary servers (and perhaps other entities) need to
+        reliably determine which NSEC3 parameters (i.e., hash, salt,
+        and iterations) are present at every hashed owner name, in
+        order to be able to choose an appropriate set of NSEC3 RRs
+        for negative responses. This is indicated by an NSEC3PARAM RR
+        present at the zone apex.</t>
+
+        <t>If there are multiple NSEC3PARAM RRs present, there are
+        multiple valid NSEC3 chains present.  The server must choose
+        one of them, but may use any criteria to do so.</t>
+
+      </section>
+
+      <section title="Zones Using Unknown Hash Algorithms">
+
+        <t>Zones that are signed according to this specification, but
+        are using an unrecognized NSEC3 hash algorithm value, cannot be
+        effectively served.  Such zones SHOULD be rejected when
+        loading.  Servers SHOULD respond with RCODE=2 (server failure)
+        responses when handling queries that would fall under such
+        zones.</t>
+
+      </section>
+
+      <section title="Dynamic Update">
+
+        <t>A zone signed using NSEC3 may accept dynamic updates 
+        <xref target="RFC2136"/>.
+        However, NSEC3 introduces some special considerations for
+        dynamic updates.</t>
+
+        <t>Adding and removing names in a zone MUST account for the
+        creation or removal of empty non-terminals.</t>
+
+        <t>
+          <list style="symbols">
+
+            <t>When removing a name with a corresponding NSEC3 RR, any
+            NSEC3 RRs corresponding to empty non-terminals created by 
+            that name MUST be removed.  Note
+            that more than one name may be asserting the existence of
+            a particular empty non-terminal.</t>
+
+            <t>When adding a name that requires adding an NSEC3 RR,
+            NSEC3 RRs MUST also be added for any empty non-terminals that
+            are created.  That is, if there is not an existing NSEC3 RR
+            matching an empty non-terminal, it must be created and
+            added.</t>
+
+          </list>
+        </t>
+
+        <t>The presence of Opt-Out in a zone means that some additions
+        or delegations of names will not require changes to the NSEC3
+        RRs in a zone.</t>
+
+        <t>
+          <list style="symbols">
+
+            <t>When removing a delegation RRSet, if that delegation
+            does not have a matching NSEC3 RR, then it was opted out.
+            In this case, nothing further needs to be done.</t>
+
+            <t>When adding a delegation RRSet, if the "next closer" name 
+            of the delegation is covered by an existing Opt-Out NSEC3
+            RR, then the delegation MAY be added without modifying the
+            NSEC3 RRs in the zone.</t>
+
+          </list>
+        </t>
+
+        <t>The presence of Opt-Out in a zone means that when adding or
+        removing NSEC3 RRs, the value of the Opt-Out flag that
+        should be set in new or modified NSEC3 RRs is ambiguous.
+        Servers SHOULD follow this set of basic rules to resolve the
+        ambiguity.</t>
+
+        <t>The central concept to these rules is that the state of the
+        Opt-Out flag of the covering NSEC3 RR is preserved.</t>
+
+        <t>
+          <list style="symbols">
+
+            <t>When removing an NSEC3 RR, the value of the Opt-Out
+            flag for the previous NSEC3 RR (the one whose next hashed
+            owner name is modified) should not be changed.</t>
+
+            <t>When adding an NSEC3 RR, the value of the Opt-Out flag
+            is set to the value of the Opt-Out flag of the NSEC3 RR that 
+            previously covered the owner name of the NSEC3 RR.  That is, 
+            the now previous NSEC3 RR.</t>
+
+          </list>
+        </t>
+
+        <t>If the zone in question is consistent with its use of the
+        Opt-Out flag (that is, all NSEC3 RRs in the zone have the same
+        value for the flag) then these rules will retain that
+        consistency.  If the zone is not consistent in the use of the
+        flag (i.e., a partially Opt-Out zone), then these rules will
+        not retain the same pattern of use of the Opt-Out flag.</t>
+
+        <t>For zones that partially use the Opt-Out flag, if there is
+        a logical pattern for that use, the pattern could be
+        maintained by using a local policy on the server.</t>
+
+      </section>
+
+    </section>
+
+    <section title="Validator Considerations">
+
+      <section title="Responses with Unknown Hash Types">
+
+        <t>A validator MUST ignore NSEC3 RRs with unknown hash
+        types.  The practical result of this is that responses
+        containing only such NSEC3 RRs will generally be considered
+        bogus.</t>
+
+      </section>
+
+      <section title="Verifying NSEC3 RRs">
+
+	<t>A validator MUST ignore NSEC3 RRs with a Flag fields
+	value other than zero or one.</t>
+
+        <t>A validator MAY treat a response as bogus if the response
+        contains NSEC3 RRs that contain different values for hash
+        algorithm, iterations, or salt from each other for that zone.</t>
+
+      </section>
+
+      <section anchor="cep" title="Closest Encloser Proof">
+
+        <t>In order to verify a closest encloser proof, the validator
+        MUST find the longest name, X, such that</t>
+
+        <t><list style="symbols">
+
+          <t>X is an ancestor of QNAME that is matched by an NSEC3 RR
+          present in the response.  This is a candidate for the
+          closest encloser, and</t>
+
+          <t>The name one label longer than X (but still an ancestor
+          of -- or equal to -- QNAME) is covered by an NSEC3 RR present in
+          the response.</t>
+
+        </list></t>
+
+        <t>One possible algorithm for verifying this proof is as
+        follows:</t>
+
+        <t><list style="numbers">
+
+          <t>Set SNAME=QNAME. Clear the flag.</t>
+
+          <t>Check whether SNAME exists:
+
+          <list style="symbols">
+
+            <t>If there is no NSEC3 RR in the response that matches
+            SNAME (i.e., an NSEC3 RR whose owner name is the same as the
+            hash of SNAME, prepended as a single label to the zone name), 
+            clear the flag.</t>
+
+            <t>If there is an NSEC3 RR in the response that covers
+            SNAME, set the flag.</t>
+
+            <t>If there is a matching NSEC3 RR in the response and the
+            flag was set, then the proof is complete, and SNAME is the
+            closest encloser.</t>
+
+            <t>If there is a matching NSEC3 RR in the response, but
+            the flag is not set, then the response is bogus.</t>
+
+          </list></t>
+
+          <t>Truncate SNAME by one label from the left, go to step 2.</t>
+
+        </list></t>
+
+        <t>Once the closest encloser has been discovered, the
+        validator MUST check that the NSEC3 RR that has the closest
+        encloser as the original owner name is from the proper zone. The DNAME
+        type bit must not be set and the NS type bit may only be set
+        if the SOA type bit is set. If this is not the case, it would
+        be an indication that an attacker is using them to falsely
+        deny the existence of RRs for which the server is not
+        authoritative.</t>
+
+        <t>In the following descriptions, the phrase "a closest
+        (provable) encloser proof for X" means that the algorithm
+        above (or an equivalent algorithm) proves that X does not
+        exist by proving that an ancestor of X is its closest
+        encloser.</t>
+
+      </section>
+
+      <section title="Validating Name Error Responses">
+
+        <t>A validator MUST verify that there is a closest encloser
+        proof for QNAME present in the response and that there is an
+        NSEC3 RR that covers the wildcard at the closest encloser (i.e.,
+        the name formed by prepending the asterisk label to the
+        closest encloser).</t>
+
+      </section>
+
+      <section title="Validating No Data Responses, QTYPE is not DS">
+
+        <t>The validator MUST verify that an NSEC3 RR that matches
+        QNAME is present and that both the QTYPE and the CNAME type
+        are not set in its Type Bit Maps field.</t>
+
+        <t>Note that this test also covers the case where the NSEC3
+        RR exists because it corresponds to an empty non-terminal,
+        in which case the NSEC3 RR will have an empty Type Bit
+        Maps field.</t>
+
+      </section>
+
+      <section title="Validating No Data Responses, QTYPE is DS">
+
+        <t>If there is an NSEC3 RR that matches QNAME present in the
+        response, then that NSEC3 RR MUST NOT have the bits corresponding
+        to DS and CNAME set in its Type Bit Maps field.</t>
+
+        <t>If there is no such NSEC3 RR, then the validator MUST
+        verify that a closest provable encloser proof for QNAME is
+        present in the response, and that the NSEC3 RR that covers the
+        "next closer" name has the Opt-Out bit set.</t>
+
+      </section>
+
+      <section title="Validating Wildcard No Data Responses">
+
+        <t>The validator MUST verify a closest encloser proof for
+        QNAME and MUST find an NSEC3 RR present in the response that
+        matches the wildcard name generated by prepending the asterisk
+        label to the closest encloser.  Furthermore, the bits
+        corresponding to both QTYPE and CNAME MUST NOT be set in the
+        wildcard matching NSEC3 RR.</t>
+
+      </section>
+
+      <section title="Validating Wildcard Answer Responses">
+
+        <t>The verified wildcard answer RRSet in the response provides
+        the validator with a (candidate) closest encloser for QNAME.
+        This closest encloser is the immediate ancestor to the
+        generating wildcard.</t>
+
+        <t>Validators MUST verify that there is an NSEC3 RR that covers
+        the "next closer" name to QNAME present in the response.  This
+        proves that QNAME itself did not exist and that the correct
+        wildcard was used to generate the response.</t>
+
+      </section>
+
+      <section title="Validating Referrals to Unsigned Subzones">
+
+        <t>The delegation name in a referral is the owner name of the NS
+        RRSet present in the authority section of the referral
+        response.</t>
+
+        <t>If there is an NSEC3 RR present in the response that
+        matches the delegation name, then the validator MUST ensure
+        that the NS bit is set and that the DS bit is not set in the
+        Type Bit Maps field of the NSEC3 RR.  The validator MUST also
+        ensure that the NSEC3 RR is from the correct (i.e.,
+        parent) zone.  This is done by ensuring that the SOA bit is
+        not set in the Type Bit Maps field of this NSEC3 RR.</t>
+
+        <t>Note that the presence of an NS bit implies the absence of
+        a DNAME bit, so there is no need to check for the DNAME bit in
+        the Type Bit Maps field of the NSEC3 RR.</t>
+
+        <t>If there is no NSEC3 RR present that matches the delegation
+        name, then the validator MUST verify a closest provable
+        encloser proof for the delegation name.  The validator MUST
+        verify that the Opt-Out bit is set in the NSEC3 RR that covers
+        the "next closer" name to the delegation name.</t>
+
+      </section>
+
+    </section>
+
+    <section title="Resolver Considerations">
+
+      <section title="NSEC3 Resource Record Caching">
+
+        <t>Caching resolvers MUST be able to retrieve the appropriate
+        NSEC3 RRs when returning responses that contain them.  In
+        DNSSEC <xref target="RFC4035"/>, in many cases it is possible 
+        to find the
+        correct NSEC RR to return in a response by name (e.g.,
+        when returning a referral, the NSEC RR will always have
+        the same owner name as the delegation).  With this
+        specification, that will not be true, nor will a cache be able
+        to calculate the name(s) of the appropriate NSEC3 RR(s).
+        Implementations may need to use new methods for caching and
+        retrieving NSEC3 RRs.</t>
+
+      </section>
+
+      <section title="Use of the AD Bit">
+
+        <t>The AD bit, as defined by 
+        <xref target="RFC4035" />, MUST NOT be set when returning a
+        response containing a closest (provable) encloser proof in
+        which the NSEC3 RR that covers the "next closer" name has the
+        Opt-Out bit set.</t>
+
+        <t>This rule is based on what this closest encloser proof
+        actually proves: names that would be covered by the Opt-Out
+        NSEC3 RR may or may not exist as insecure delegations.  As
+        such, not all the data in responses containing such closest
+        encloser proofs will have been cryptographically verified, so
+        the AD bit cannot be set.</t>
+
+      </section>
+
+    </section>
+
+    <section title="Special Considerations">
+
+      <section title="Domain Name Length Restrictions">
+
+        <t>Zones signed using this specification have additional
+        domain name length restrictions imposed upon them.  In
+        particular, zones with names that, when converted into hashed
+        owner names exceed the 255 octet length limit imposed by <xref
+        target="RFC1035"/>, cannot use this
+        specification.</t>
+
+        <t>The actual maximum length of a domain name in a particular
+        zone depends on both the length of the zone name (versus the
+        whole domain name) and the particular hash function used.</t>
+
+        <t>As an example, SHA-1 produces a hash of 160 bits. The base-32
+	    encoding of 160 bits results in 32 characters. The 32 characters
+	    are prepended to the name of the zone as a single label, which includes
+	    a length field of a single octet. The maximum length of the zone name, when
+	    using SHA-1, is 222 octets (255 - 33).
+    </t>
+        
+	     
+      </section>
+
+      <section title="DNAME at the Zone Apex">
+
+	<t> The DNAME specification in Section 3 of <xref target="RFC2672"/>
+        has a 'no-descendants' limitation. If a 
+        DNAME RR is present at node N, there MUST be no data at any 
+        descendant of N.</t>
+        
+        <t> If N is the apex of the zone, there will be NSEC3 and 
+        RRSIG types present at descendants of N.  This specification 
+        updates the DNAME specification to allow NSEC3 and RRSIG types 
+        at descendants of the apex regardless of the existence of 
+        DNAME at the apex.</t>
+      
+      </section>
+   
+      <section title="Iterations" anchor="iter-limit">
+
+        <t>Setting the number of iterations used allows the zone owner
+        to choose the cost of computing a hash, and therefore the cost of
+        generating a dictionary. Note that this is distinct from the
+        effect of salt, which prevents the use of a single precomputed
+        dictionary for all time.</t>
+
+        <t>Obviously the number of iterations also affects the zone
+        owner's cost of signing and serving the zone as well as the
+        validator's cost of verifying responses from the zone. We
+        therefore impose an upper limit on the number of
+        iterations. We base this on the number of iterations that
+        approximates the cost of verifying an RRSet.</t>
+
+        <t>The limits, therefore, are based on the size of the
+        smallest zone signing key, rounded up to the nearest table
+        value (or rounded down if the key is larger than the largest
+        table value).</t>
+
+        <t>A zone owner MUST NOT use a value higher than shown in the
+        table below for iterations for the given key size. A resolver
+        MAY treat a response with a higher value as insecure, after the
+        validator has verified that the signature over the NSEC3 RR 
+        is correct.</t>
+
+	<texttable>
+	  <ttcol>Key Size</ttcol><ttcol>Iterations</ttcol>
+	  <c>1024</c><c>150</c>
+	  <c>2048</c><c>500</c>
+	  <c>4096</c><c>2,500</c>
+	</texttable>
+
+<!--
+	<texttable>
+	  <ttcol>DSA Key Size</ttcol><ttcol>Iterations</ttcol>
+	  <c>1024</c><c>1,500</c>
+	  <c>2048</c><c>5,000</c>
+	</texttable>
+	
+	 Removed. I agree with Tim Pol's suggestion to use a single table for both key types
+-->
+        <t>This table is based on an approximation of the ratio between the 
+	    cost of an SHA-1 calculation and the cost of an RSA verification for 
+	    keys of size 1024 bits (150 to 1), 2048 bits (500 to 1), and 4096 bits (2500 to 1).</t>
+        <t>The ratio between SHA-1 calculation and DSA verification is higher 
+	    (1500 to 1 for keys of size 1024). A higher iteration count degrades performance, 
+	    while DSA verification is already more expensive than RSA for the same key size. 
+	    Therefore the values in the table MUST be used independent of the key algorithm.
+    </t>
+      </section>
+
+      <section anchor="nsectonsec3"
+               title="Transitioning a Signed Zone from NSEC to NSEC3">
+
+        <t>When transitioning an already signed and trusted zone to
+        this specification, care must be taken to prevent client validation
+        failures during the process.</t>
+
+        <t>The basic procedure is as follows:</t>
+        <t>
+          <list style="numbers">
+
+            <t>Transition all DNSKEYs to DNSKEYs using the algorithm
+            aliases described in <xref target="backward" />.  The
+            actual method for safely and securely changing the DNSKEY 
+            RRSet of the zone is outside the scope of this specification.
+            However, the end result MUST be that all DS RRs in the
+            parent use the specified algorithm aliases.
+            <vspace blankLines="1" />
+            After this transition is complete, all NSEC3-unaware
+            clients will treat the zone as insecure.  At this point, the
+            authoritative server still returns negative and wildcard 
+            responses that contain NSEC RRs.</t>
+
+            <t>Add signed NSEC3 RRs to the zone, either
+            incrementally or all at once.  If adding incrementally,
+            then the last RRSet added MUST be the NSEC3PARAM
+            RRSet.</t>
+
+            <t>Upon the addition of the NSEC3PARAM RRSet, the server
+            switches to serving negative and wildcard responses
+            with NSEC3 RRs according to this specification.</t>
+
+            <t>Remove the NSEC RRs either incrementally or all at
+            once.</t>
+
+          </list>
+        </t>
+      </section>
+
+      <section anchor="nsec3tonsec"
+               title="Transitioning a Signed Zone from NSEC3 to NSEC">
+
+        <t>To safely transition back to a DNSSEC <xref target="RFC4035"/>
+        signed zone,
+        simply reverse the procedure above:</t>
+        <t>
+          <list style="numbers">
+
+            <t>Add NSEC RRs incrementally or all at once.</t>
+
+            <t>Remove the NSEC3PARAM RRSet.  This will signal the
+            server to use the NSEC RRs for negative and wildcard
+            responses.</t>
+
+            <t>Remove the NSEC3 RRs either incrementally or all
+            at once.</t>
+
+            <t>Transition all of the DNSKEYs to DNSSEC 
+           algorithm identifiers. After this transition is complete, all 
+           NSEC3-unaware clients will treat the zone as secure.</t>
+
+          </list>
+        </t>
+      </section>
+
+    </section>
+
+    <section title="IANA Considerations" anchor="iana">
+      <t>
+      Although the NSEC3 and NSEC3PARAM RR formats include a hash algorithm 
+      parameter, this document does not define a particular mechanism for 
+      safely transitioning from one NSEC3 hash algorithm to another.  When 
+      specifying a new hash algorithm for use with NSEC3, a transition 
+      mechanism MUST also be defined.
+      </t>
+      <t>This document updates the IANA registry "DOMAIN NAME SYSTEM
+      PARAMETERS" (http://www.iana.org/assignments/dns-parameters) in 
+      sub-registry "TYPES", by defining two new types.  
+      <xref target="nsec3rr"/> defines the NSEC3 RR type 50. <xref target="nsec3param"/> defines the 
+      NSEC3PARAM RR type 51.</t>
+
+      <t>This document updates the IANA registry "DNS SECURITY ALGORITHM
+      NUMBERS -- per <xref target="RFC4035"/>" 
+      (http://www.iana.org/assignments/dns-sec-alg-numbers).
+      <xref target="backward"/> defines the aliases 
+      DSA-NSEC3-SHA1 (6) and RSASHA1-NSEC3-SHA1 (7) for respectively existing 
+      registrations DSA and RSASHA1 in combination with NSEC3 hash algorithm 
+      SHA1.</t>
+      <t>Since these algorithm numbers are aliases for existing DNSKEY 
+	  algorithm numbers, the flags that exist for the original algorithm are
+	  valid for the alias algorithm.
+      </t>
+
+      <t>This document creates a new IANA registry for NSEC3 flags. This
+	  registry is named "DNSSEC NSEC3 Flags". The initial contents 
+	  of this registry are:</t>
+	  <t>
+	        <figure><artwork>
+  0   1   2   3   4   5   6   7 
++---+---+---+---+---+---+---+---+
+|   |   |   |   |   |   |   |Opt|
+|   |   |   |   |   |   |   |Out|
++---+---+---+---+---+---+---+---+
+            </artwork></figure>
+	</t>
+	  <t>
+		<list style="empty">
+			<t>bit 7 is the Opt-Out flag.</t>
+			<t>bits 0 - 6 are available for assignment.</t>
+	    </list>
+	 </t>
+	<t>Assignment of additional NSEC3 Flags in this registry
+       requires IETF Standards Action <xref target="RFC2434"/>.
+    </t>
+	<t>This document creates a new IANA registry for NSEC3PARAM flags. This
+	  registry is named "DNSSEC NSEC3PARAM Flags". The initial contents 
+	  of this registry are:</t>
+	
+<figure><artwork>
+  0   1   2   3   4   5   6   7 
++---+---+---+---+---+---+---+---+
+|   |   |   |   |   |   |   | 0 |
++---+---+---+---+---+---+---+---+
+</artwork></figure>
+	
+	  <t>
+		<list style="empty">
+			<t>bit 7 is reserved and must be 0.</t>
+			<t>bits 0 - 6 are available for assignment.</t>
+	    </list>
+	 </t>
+	<t>Assignment of additional NSEC3PARAM Flags in this registry
+       requires IETF Standards Action <xref target="RFC2434"/>.
+    </t>
+		
+	     <t>Finally, this document creates a new IANA registry for NSEC3
+      hash algorithms. This registry is named "DNSSEC NSEC3 Hash
+      Algorithms". 
+      The initial contents of this registry are:</t>
+
+      <t>
+        <list style="empty">
+          <t>0 is Reserved.</t>
+          <t>1 is SHA-1.</t>
+          <t>2-255 Available for assignment.</t>
+        </list>
+      </t>
+
+      <t>Assignment of additional NSEC3 hash algorithms in this registry
+      requires IETF Standards Action <xref target="RFC2434"/>.</t>
+
+    </section>
+
+    <section title="Security Considerations" anchor="security_considerations">
+
+      <section title="Hashing Considerations">
+
+        <section title="Dictionary Attacks">
+
+          <t>The NSEC3 RRs are still susceptible to dictionary
+          attacks (i.e., the attacker retrieves all the NSEC3 RRs,
+          then calculates the hashes of all likely domain names,
+          comparing against the hashes found in the NSEC3 RRs, and
+          thus enumerating the zone). These are substantially more
+          expensive than enumerating the original NSEC RRs would
+          have been, and in any case, such an attack could also be
+          used directly against the name server itself by performing
+          queries for all likely names, though this would obviously be
+          more detectable. The expense of this off-line attack can be
+          chosen by setting the number of iterations in the NSEC3
+          RR.</t>
+
+          <t>Zones are also susceptible to a pre-calculated
+          dictionary attack -- that is, a list of hashes for all likely
+          names is computed once, then NSEC3 RR is scanned periodically
+          and compared against the precomputed hashes. This attack is
+          prevented by changing the salt on a regular basis.</t>
+
+          <t>
+   The salt SHOULD be at least 64 bits long and unpredictable, so that
+   an attacker cannot anticipate the value of the salt and compute
+   the next set of dictionaries before the zone is published.
+</t>
+
+        </section>
+
+        <section title="Collisions">
+
+          <t>Hash collisions between QNAME and the owner name of an NSEC3 RR may 
+          occur.  When they do, it will be impossible to prove the
+          non-existence of the colliding QNAME.  However, with SHA-1,
+          this is highly unlikely (on the order of 1 in 2^160).
+          Note that DNSSEC already relies on the presumption that a
+          cryptographic hash function is second pre-image resistant,
+          since these hash functions are used for generating and
+          validating signatures and DS RRs.</t>
+
+        </section>
+
+        <section title="Transitioning to a New Hash Algorithm" anchor="sec_cons_unknown_hash">
+           <t>Although the NSEC3 and NSEC3PARAM RR formats include a hash algorithm 
+           parameter, this document does not define a particular mechanism for 
+           safely transitioning from one NSEC3 hash algorithm to another.  When 
+           specifying a new hash algorithm for use with NSEC3, a transition 
+           mechanism MUST also be defined.  It is possible that the only practical 
+           and palatable transition mechanisms may require an intermediate 
+           transition to an insecure state, or to a state that uses NSEC records 
+           instead of NSEC3.</t>
+        </section>
+
+        <section title="Using High Iteration Values"
+                 anchor="sec_cons_high_iter">
+
+          <t>Since validators should treat responses containing NSEC3
+          RRs with high iteration values as insecure, presence of
+          just one signed NSEC3 RR with a high iteration value in
+          a zone provides attackers with a possible downgrade
+          attack.</t>
+
+          <t>The attack is simply to remove any existing NSEC3 RRs
+          from a response, and replace or add a single (or multiple)
+          NSEC3 RR that uses a high iterations value to the
+          response.  Validators will then be forced to treat the
+          response as insecure.  This attack would be effective only
+          when all of following conditions are met:</t>
+
+          <t>
+            <list style="symbols">
+
+              <t>There is at least one signed NSEC3 RR that uses a
+              high iterations value present in the zone.</t>
+
+              <t>The attacker has access to one or more of these NSEC3
+              RRs.  This is trivially true when the NSEC3 RRs with
+              high iteration values are being returned in typical
+              responses, but may also be true if the attacker can
+              access the zone via AXFR or IXFR queries, or any other
+              methodology.</t>
+
+            </list>
+          </t>
+<?rfc needLines="10"?>
+          <t>Using a high number of iterations also introduces an
+          additional denial-of-service opportunity against servers,
+          since servers must calculate several hashes per negative or
+          wildcard response.</t>
+
+        </section>
+
+      </section>
+
+      <section title="Opt-Out Considerations">
+
+        <t>The Opt-Out Flag (O) allows for unsigned names, in the form
+        of delegations to unsigned zones, to exist within an
+        otherwise signed zone.  All unsigned names are, by definition,
+        insecure, and their validity or existence cannot be
+        cryptographically proven.</t>
+
+        <t>In general:</t>
+
+        <t><list style="symbols">
+
+          <t>Resource records with unsigned names (whether existing or not)
+          suffer from the same vulnerabilities as RRs in an
+          unsigned zone.  These vulnerabilities are described in more
+          detail in <xref target="RFC3833"/> (note in particular
+          Section 2.3, "Name Chaining" and Section 2.6, "Authenticated Denial
+          of Domain Names").</t>
+
+          <t>Resource records with signed names have the same security whether
+          or not Opt-Out is used.</t>
+
+        </list></t>
+
+        <t>Note that with or without Opt-Out, an insecure delegation
+        may be undetectably altered by an attacker.  Because of this,
+        the primary difference in security when using Opt-Out is the
+        loss of the ability to prove the existence or nonexistence of
+        an insecure delegation within the span of an Opt-Out NSEC3
+        RR.</t>
+
+        <t>In particular, this means that a malicious entity may be
+        able to insert or delete RRs with unsigned names.  These
+        RRs are normally NS RRs, but this also includes signed
+        wildcard expansions (while the wildcard RR itself is
+        signed, its expanded name is an unsigned name).</t>
+
+        <t>Note that being able to add a delegation is functionally
+        equivalent to being able to add any RR type: an attacker
+        merely has to forge a delegation to name server under his/her
+        control and place whatever RRs needed at the subzone
+        apex.</t>
+
+        <t>While in particular cases, this issue may not present a
+        significant security problem, in general it should not be
+        lightly dismissed.  Therefore, it is strongly RECOMMENDED that
+        Opt-Out be used sparingly.  In particular, zone signing tools
+        SHOULD NOT default to using Opt-Out, and MAY choose to not
+        support Opt-Out at all.</t>
+
+      </section>
+<?rfc needLines="10"?>
+      <section title="Other Considerations">
+
+        <t>Walking the NSEC3 RRs will reveal the total number of
+        RRs in the zone (plus empty non-terminals), and also what
+        types there are. This could be mitigated by adding dummy
+        entries, but certainly an upper limit can always be found.</t>
+
+      </section>
+
+    </section>
+  </middle>
+
+  <back>
+
+    <references title="Normative References">
+      <?rfc include="reference.RFC.1034" ?>
+      <?rfc include="reference.RFC.1035" ?>
+      <?rfc include="reference.RFC.2119" ?>
+      <?rfc include="reference.RFC.2136" ?>
+      <?rfc include="reference.RFC.2181" ?>
+      <?rfc include="reference.RFC.2308" ?>
+      <?rfc include="reference.RFC.2434" ?>
+      <?rfc include="reference.RFC.2929" ?>
+      <?rfc include="reference.RFC.3597" ?>
+      <?rfc include="reference.RFC.4033" ?>
+      <?rfc include="reference.RFC.4034" ?>
+      <?rfc include="reference.RFC.4035" ?>
+      <?rfc include="reference.RFC.4648" ?>
+  </references>
+
+  <references title="Informative References">
+      <?rfc include="reference.RFC.2672" ?>
+      <?rfc include="reference.RFC.2898" ?>
+      <?rfc include="reference.RFC.3833" ?>
+      <?rfc include="reference.RFC.4592" ?>
+      <?rfc include="reference.RFC.4956" ?>
+
+    <reference anchor="DNSEXT-NO">
+        <front>
+            <title>Authenticating Denial of Existence in DNS with
+            Minimum Disclosure</title>
+            <author initials="S" surname="Josefsson">
+                <organization />
+            </author>
+            <date month="July" year="2000" />
+        </front>
+        <seriesInfo name="Work in" value="Progress" />
+    </reference>
+
+    <reference anchor="DNSEXT-NSEC2v2">
+        <front>
+            <title>DNSSEC NSEC2 Owner and RDATA Format</title>
+            <author initials="B" surname="Laurie">
+                <organization />
+            </author>         
+            <date month="December" year="2004" />
+        </front>
+        <seriesInfo name="Work in" value="Progress" />
+
+    </reference>
+
+  </references>
+<?rfc needLines="25"?>
+    <section title="Example Zone">
+
+    <t>This is a zone showing its NSEC3 RRs. They can also be used
+    as test vectors for the hash algorithm. </t>
+
+    <t>The overall TTL and class are specified in the SOA RR, and
+    are subsequently omitted for clarity. </t>
+
+    <t>The zone is preceded by a list that contains the hashes of the
+	original ownernames.
+</t>
+
+    <figure><artwork>
+
+; H(example)       = 0p9mhaveqvm6t7vbl5lop2u3t2rp3tom
+; H(a.example)     = 35mthgpgcu1qg68fab165klnsnk3dpvl
+; H(ai.example)    = gjeqe526plbf1g8mklp59enfd789njgi
+; H(ns1.example)   = 2t7b4g4vsa5smi47k61mv5bv1a22bojr
+; H(ns2.example)   = q04jkcevqvmu85r014c7dkba38o0ji5r
+; H(w.example)     = k8udemvp1j2f7eg6jebps17vp3n8i58h
+; H(*.w.example)   = r53bq7cc2uvmubfu5ocmm6pers9tk9en
+; H(x.w.example)   = b4um86eghhds6nea196smvmlo4ors995
+; H(y.w.example)   = ji6neoaepv8b5o6k4ev33abha8ht9fgc
+; H(x.y.w.example) = 2vptu5timamqttgl4luu9kg21e0aor3s
+; H(xx.example)    = t644ebqk9bibcna874givr6joj62mlhv
+; H(2t7b4g4vsa5smi47k61mv5bv1a22bojr.example)
+;                  = kohar7mbb8dc2ce8a9qvl8hon4k53uhi
+example. 3600  IN SOA  ns1.example. bugs.x.w.example. 1 3600 300 (
+                       3600000 3600 )
+               RRSIG   SOA 7 1 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       Hu25UIyNPmvPIVBrldN+9Mlp9Zql39qaUd8i 
+                       q4ZLlYWfUUbbAS41pG+68z81q1xhkYAcEyHd 
+                       VI2LmKusbZsT0Q== )
+               NS      ns1.example. 
+               NS      ns2.example. 
+               RRSIG   NS 7 1 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       PVOgtMK1HHeSTau+HwDWC8Ts+6C8qtqd4pQJ 
+                       qOtdEVgg+MA+ai4fWDEhu3qHJyLcQ9tbD2vv 
+                       CnMXjtz6SyObxA== )
+               MX      1 xx.example. 
+               RRSIG   MX 7 1 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       GgQ1A9xs47k42VPvpL/a1BWUz/6XsnHkjotw 
+                       9So8MQtZtl2wJBsnOQsaoHrRCrRbyriEl/GZ 
+                       n9Mto/Kx+wBo+w== )
+               DNSKEY  256 3 7 AwEAAaetidLzsKWUt4swWR8yu0wPHPiUi8LU (
+                       sAD0QPWU+wzt89epO6tHzkMBVDkC7qphQO2h 
+                       TY4hHn9npWFRw5BYubE= )
+               DNSKEY  257 3 7 AwEAAcUlFV1vhmqx6NSOUOq2R/dsR7Xm3upJ (
+                       j7IommWSpJABVfW8Q0rOvXdM6kzt+TAu92L9 
+                       AbsUdblMFin8CVF3n4s= )
+               RRSIG   DNSKEY 7 1 3600 20150420235959 (
+                       20051021000000 12708 example. 
+                       AuU4juU9RaxescSmStrQks3Gh9FblGBlVU31 
+                       uzMZ/U/FpsUb8aC6QZS+sTsJXnLnz7flGOsm 
+                       MGQZf3bH+QsCtg== )
+               NSEC3PARAM 1 0 12 aabbccdd 
+               RRSIG   NSEC3PARAM 7 1 3600 20150420235959 (
+                       20051021000000 40430 example. 
+                       C1Gl8tPZNtnjlrYWDeeUV/sGLCyy/IHie2re 
+                       rN05XSA3Pq0U3+4VvGWYWdUMfflOdxqnXHwJ 
+                       TLQsjlkynhG6Cg== )
+0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example. NSEC3 1 1 12 aabbccdd (
+                       2t7b4g4vsa5smi47k61mv5bv1a22bojr MX DNSKEY NS 
+                       SOA NSEC3PARAM RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       OSgWSm26B+cS+dDL8b5QrWr/dEWhtCsKlwKL 
+                       IBHYH6blRxK9rC0bMJPwQ4mLIuw85H2EY762 
+                       BOCXJZMnpuwhpA== )
+2t7b4g4vsa5smi47k61mv5bv1a22bojr.example. A 192.0.2.127 
+               RRSIG   A 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       h6c++bzhRuWWt2bykN6mjaTNBcXNq5UuL5Ed 
+                       K+iDP4eY8I0kSiKaCjg3tC1SQkeloMeub2GW 
+                       k8p6xHMPZumXlw== )
+               NSEC3   1 1 12 aabbccdd (
+                       2vptu5timamqttgl4luu9kg21e0aor3s A RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       OmBvJ1Vgg1hCKMXHFiNeIYHK9XVW0iLDLwJN 
+                       4TFoNxZuP03gAXEI634YwOc4YBNITrj413iq 
+                       NI6mRk/r1dOSUw== )
+2vptu5timamqttgl4luu9kg21e0aor3s.example. NSEC3 1 1 12 aabbccdd (
+                       35mthgpgcu1qg68fab165klnsnk3dpvl MX RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       KL1V2oFYghNV0Hm7Tf2vpJjM6l+0g1JCcVYG 
+                       VfI0lKrhPmTsOA96cLEACgo1x8I7kApJX+ob 
+                       TuktZ+sdsZPY1w== )
+35mthgpgcu1qg68fab165klnsnk3dpvl.example. NSEC3 1 1 12 aabbccdd (
+                       b4um86eghhds6nea196smvmlo4ors995 NS DS RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       g6jPUUpduAJKRljUsN8gB4UagAX0NxY9shwQ 
+                       Aynzo8EUWH+z6hEIBlUTPGj15eZll6VhQqgZ 
+                       XtAIR3chwgW+SA== )
+a.example.     NS      ns1.a.example. 
+               NS      ns2.a.example. 
+               DS      58470 5 1 (
+                       3079F1593EBAD6DC121E202A8B766A6A4837206C )
+               RRSIG   DS 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       XacFcQVHLVzdoc45EJhN616zQ4mEXtE8FzUh 
+                       M2KWjfy1VfRKD9r1MeVGwwoukOKgJxBPFsWo 
+                       o722vZ4UZ2dIdA== )
+ns1.a.example. A       192.0.2.5 
+ns2.a.example. A       192.0.2.6 
+ai.example.    A       192.0.2.9 
+               RRSIG   A 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       hVe+wKYMlObTRPhX0NL67GxeZfdxqr/QeR6F 
+                       tfdAj5+FgYxyzPEjIzvKWy00hWIl6wD3Vws+ 
+                       rznEn8sQ64UdqA== )
+               HINFO   "KLH-10" "ITS" 
+               RRSIG   HINFO 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       Yi42uOq43eyO6qXHNvwwfFnIustWgV5urFcx 
+                       enkLvs6pKRh00VBjODmf3Z4nMO7IOl6nHSQ1 
+                       v0wLHpEZG7Xj2w== )
+               AAAA    2001:db8:0:0:0:0:f00:baa9 
+               RRSIG   AAAA 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       LcdxKaCB5bGZwPDg+3JJ4O02zoMBrjxqlf6W 
+                       uaHQZZfTUpb9Nf2nxFGe2XRPfR5tpJT6GdRG 
+                       cHueLuXkMjBArQ== )
+b4um86eghhds6nea196smvmlo4ors995.example. NSEC3 1 1 12 aabbccdd (
+                       gjeqe526plbf1g8mklp59enfd789njgi MX RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       ZkPG3M32lmoHM6pa3D6gZFGB/rhL//Bs3Omh 
+                       5u4m/CUiwtblEVOaAKKZd7S959OeiX43aLX3 
+                       pOv0TSTyiTxIZg== )
+c.example.     NS      ns1.c.example. 
+               NS      ns2.c.example. 
+ns1.c.example. A       192.0.2.7 
+ns2.c.example. A       192.0.2.8 
+gjeqe526plbf1g8mklp59enfd789njgi.example. NSEC3 1 1 12 aabbccdd (
+                       ji6neoaepv8b5o6k4ev33abha8ht9fgc HINFO A AAAA 
+                       RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       IVnezTJ9iqblFF97vPSmfXZ5Zozngx3KX3by 
+                       LTZC4QBH2dFWhf6scrGFZB980AfCxoD9qbbK 
+                       Dy+rdGIeRSVNyw== )
+ji6neoaepv8b5o6k4ev33abha8ht9fgc.example. NSEC3 1 1 12 aabbccdd (
+                       k8udemvp1j2f7eg6jebps17vp3n8i58h )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       gPkFp1s2QDQ6wQzcg1uSebZ61W33rUBDcTj7 
+                       2F3kQ490fEdp7k1BUIfbcZtPbX3YCpE+sIt0 
+                       MpzVSKfTwx4uYA== )
+k8udemvp1j2f7eg6jebps17vp3n8i58h.example. NSEC3 1 1 12 aabbccdd (
+                       kohar7mbb8dc2ce8a9qvl8hon4k53uhi )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       FtXGbvF0+wf8iWkyo73enAuVx03klN+pILBK 
+                       S6qCcftVtfH4yVzsEZquJ27NHR7ruxJWDNMt 
+                       Otx7w9WfcIg62A== )
+kohar7mbb8dc2ce8a9qvl8hon4k53uhi.example. NSEC3 1 1 12 aabbccdd (
+                       q04jkcevqvmu85r014c7dkba38o0ji5r A RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       VrDXs2uVW21N08SyQIz88zml+y4ZCInTwgDr 
+                       6zz43yAg+LFERjOrj3Ojct51ac7Dp4eZbf9F 
+                       QJazmASFKGxGXg== )
+ns1.example.   A       192.0.2.1 
+               RRSIG   A 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       bu6kx73n6XEunoVGuRfAgY7EF/AJqHy7hj0j 
+                       kiqJjB0dOrx3wuz9SaBeGfqWIdn/uta3SavN 
+                       4FRvZR9SCFHF5Q== )
+ns2.example.   A       192.0.2.2 
+               RRSIG   A 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       ktQ3TqE0CfRfki0Rb/Ip5BM0VnxelbuejCC4 
+                       zpLbFKA/7eD7UNAwxMgxJPtbdST+syjYSJaj 
+                       4IHfeX6n8vfoGA== )
+q04jkcevqvmu85r014c7dkba38o0ji5r.example. NSEC3 1 1 12 aabbccdd (
+                       r53bq7cc2uvmubfu5ocmm6pers9tk9en A RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       hV5I89b+4FHJDATp09g4bbN0R1F845CaXpL3 
+                       ZxlMKimoPAyqletMlEWwLfFia7sdpSzn+ZlN 
+                       NlkxWcLsIlMmUg== )
+r53bq7cc2uvmubfu5ocmm6pers9tk9en.example. NSEC3 1 1 12 aabbccdd (
+                       t644ebqk9bibcna874givr6joj62mlhv MX RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       aupviViruXs4bDg9rCbezzBMf9h1ZlDvbW/C 
+                       ZFKulIGXXLj8B/fsDJarXVDA9bnUoRhEbKp+ 
+                       HF1FWKW7RIJdtQ== )
+t644ebqk9bibcna874givr6joj62mlhv.example. NSEC3 1 1 12 aabbccdd (
+                       0p9mhaveqvm6t7vbl5lop2u3t2rp3tom HINFO A AAAA 
+                       RRSIG )
+               RRSIG   NSEC3 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       RAjGECB8P7O+F4Pa4Dx3tC0M+Z3KmlLKImca 
+                       fb9XWwx+NWUNz7NBEDBQHivIyKPVDkChcePI 
+                       X1xPl1ATNa+8Dw== )
+*.w.example.   MX      1 ai.example. 
+               RRSIG   MX 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       CikebjQwGQPwijVcxgcZcSJKtfynugtlBiKb 
+                       9FcBTrmOoyQ4InoWVudhCWsh/URX3lc4WRUM 
+                       ivEBP6+4KS3ldA== )
+x.w.example.   MX      1 xx.example. 
+               RRSIG   MX 7 3 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       IrK3tq/tHFIBF0scHiE/1IwMAvckS/55hAVv 
+                       QyxTFbkAdDloP3NbZzu+yoSsr3b3OX6qbBpY 
+                       7WCtwwekLKRAwQ== )
+x.y.w.example. MX      1 xx.example. 
+               RRSIG   MX 7 4 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       MqSt5HqJIN8+SLlzTOImrh5h9Xa6gDvAW/Gn 
+                       nbdPc6Z7nXvCpLPJj/5lCwx3VuzVOjkbvXze 
+                       8/8Ccl2Zn2hbug== )
+xx.example.    A       192.0.2.10 
+               RRSIG   A 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       T35hBWEZ017VC5u2c4OriKyVn/pu+fVK4AlX 
+                       YOxJ6iQylfV2HQIKjv6b7DzINB3aF/wjJqgX 
+                       pQvhq+Ac6+ZiFg== )
+               HINFO   "KLH-10" "TOPS-20" 
+               RRSIG   HINFO 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       KimG+rDd+7VA1zRsu0ITNAQUTRlpnsmqWrih 
+                       FRnU+bRa93v2e5oFNFYCs3Rqgv62K93N7AhW 
+                       6Jfqj/8NzWjvKg== )
+               AAAA    2001:db8:0:0:0:0:f00:baaa 
+               RRSIG   AAAA 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       IXBcXORITNwd8h3gNwyxtYFvAupS/CYWufVe 
+                       uBUX0O25ivBCULjZjpDxFSxfohb/KA7YRdxE 
+                       NzYfMItpILl/Xw== )
+    </artwork></figure>
+
+   </section>
+
+   <section title="Example Responses">
+
+     <t>The examples in this section show response messages using the
+     signed zone example in Appendix A.</t>
+
+     <section title="Name Error">
+
+       <t>An authoritative name error.  The NSEC3 RRs prove that the
+       name does not exist and that there is no wildcard RR that
+       should have been expanded.</t>
+
+       <figure><artwork>
+;; Header: QR AA DO RCODE=3
+;;
+;; Question
+a.c.x.w.example.         IN A
+
+;; Answer
+;; (empty)
+
+;; Authority
+
+example.       SOA     ns1.example. bugs.x.w.example. 1 3600 300 (
+                       3600000 3600 )
+example.       RRSIG   SOA 7 1 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       Hu25UIyNPmvPIVBrldN+9Mlp9Zql39qaUd8i 
+                       q4ZLlYWfUUbbAS41pG+68z81q1xhkYAcEyHd 
+                       VI2LmKusbZsT0Q== )
+
+;; NSEC3 RR that covers the "next closer" name (c.x.w.example)
+;; H(c.x.w.example) = 0va5bpr2ou0vk0lbqeeljri88laipsfh
+
+0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example. NSEC3 1 1 12 aabbccdd (
+                       2t7b4g4vsa5smi47k61mv5bv1a22bojr MX DNSKEY NS
+                       SOA NSEC3PARAM RRSIG )
+0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       OSgWSm26B+cS+dDL8b5QrWr/dEWhtCsKlwKL 
+                       IBHYH6blRxK9rC0bMJPwQ4mLIuw85H2EY762 
+                       BOCXJZMnpuwhpA== )
+
+;; NSEC3 RR that matches the closest encloser (x.w.example)
+;; H(x.w.example) = b4um86eghhds6nea196smvmlo4ors995
+
+b4um86eghhds6nea196smvmlo4ors995.example. NSEC3 1 1 12 aabbccdd (
+                       gjeqe526plbf1g8mklp59enfd789njgi MX RRSIG )
+b4um86eghhds6nea196smvmlo4ors995.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       ZkPG3M32lmoHM6pa3D6gZFGB/rhL//Bs3Omh 
+                       5u4m/CUiwtblEVOaAKKZd7S959OeiX43aLX3 
+                       pOv0TSTyiTxIZg== )
+
+;; NSEC3 RR that covers wildcard at the closest encloser (*.x.w.example)
+;; H(*.x.w.example) = 92pqneegtaue7pjatc3l3qnk738c6v5m
+
+35mthgpgcu1qg68fab165klnsnk3dpvl.example. NSEC3 1 1 12 aabbccdd (
+                       b4um86eghhds6nea196smvmlo4ors995 NS DS RRSIG )
+35mthgpgcu1qg68fab165klnsnk3dpvl.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       g6jPUUpduAJKRljUsN8gB4UagAX0NxY9shwQ 
+                       Aynzo8EUWH+z6hEIBlUTPGj15eZll6VhQqgZ 
+                       XtAIR3chwgW+SA== )
+
+;; Additional
+;; (empty)
+       </artwork></figure>
+
+       <t>The query returned three NSEC3 RRs that prove that the
+       requested data does not exist and that no wildcard expansion
+       applies.  The negative response is authenticated by verifying
+       the NSEC3 RRs.  The corresponding RRSIGs indicate that the
+       NSEC3 RRs are signed by an "example" DNSKEY of algorithm 7 and
+       with key tag 40430.  The resolver needs the corresponding
+       DNSKEY RR in order to authenticate this answer.</t>
+
+       <t>One of the owner names of the NSEC3 RRs matches the closest
+       encloser.  One of the NSEC3 RRs prove that there exists no
+       longer name. One of the NSEC3 RRs prove that there exists no
+       wildcard RRSets that should have been expanded. The closest
+       encloser can be found by applying the algorithm in
+       <xref target="cep"/>.</t>
+
+       <t>In the above example, the name 'x.w.example' hashes to
+       'b4um86eghhds6nea196smvmlo4ors995'. This indicates that this
+       might be the closest encloser. To prove that 'c.x.w.example'
+       and '*.x.w.example' do not exist, these names are hashed to,
+       respectively, '0va5bpr2ou0vk0lbqeeljri88laipsfh' and
+       '92pqneegtaue7pjatc3l3qnk738c6v5m'. The first and last NSEC3
+       RRs prove that these hashed owner names do not exist.</t>
+
+     </section>
+
+     <section title="No Data Error">
+
+       <t>A "no data" response.  The NSEC3 RR proves that the name
+       exists and that the requested RR type does not.</t>
+
+       <figure><artwork>
+;; Header: QR AA DO RCODE=0
+;;
+;; Question
+ns1.example.        IN MX
+
+;; Answer
+;; (empty)
+
+;; Authority
+example.       SOA     ns1.example. bugs.x.w.example. 1 3600 300 (
+                       3600000 3600 )
+example.       RRSIG   SOA 7 1 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       Hu25UIyNPmvPIVBrldN+9Mlp9Zql39qaUd8i 
+                       q4ZLlYWfUUbbAS41pG+68z81q1xhkYAcEyHd 
+                       VI2LmKusbZsT0Q== )
+
+;; NSEC3 RR matches the QNAME and shows that the MX type bit is not set.
+
+2t7b4g4vsa5smi47k61mv5bv1a22bojr.example. NSEC3 1 1 12 aabbccdd (
+                       2vptu5timamqttgl4luu9kg21e0aor3s A RRSIG )
+2t7b4g4vsa5smi47k61mv5bv1a22bojr.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       OmBvJ1Vgg1hCKMXHFiNeIYHK9XVW0iLDLwJN 
+                       4TFoNxZuP03gAXEI634YwOc4YBNITrj413iq 
+                       NI6mRk/r1dOSUw== )
+;; Additional
+;; (empty)
+       </artwork></figure>
+
+       <t>The query returned an NSEC3 RR that proves that the
+       requested name exists ("ns1.example." hashes to
+       "2t7b4g4vsa5smi47k61mv5bv1a22bojr"), but the requested RR type
+       does not exist (type MX is absent in the type code list of the
+       NSEC3 RR), and was not a CNAME (type CNAME is also absent in
+       the type code list of the NSEC3 RR).</t>
+
+       <section title="No Data Error, Empty Non-Terminal">
+
+         <t>A "no data" response because of an empty non-terminal. The
+         NSEC3 RR proves that the name exists and that the requested
+         RR type does not.</t>
+
+         <figure><artwork>
+;; Header: QR AA DO RCODE=0
+;;
+;; Question
+y.w.example.        IN A
+
+;; Answer
+;; (empty)
+
+;; Authority
+example.       SOA     ns1.example. bugs.x.w.example. 1 3600 300 (
+                       3600000 3600 )
+example.       RRSIG   SOA 7 1 3600 20150420235959 20051021000000 ( 
+                       40430 example.
+                       Hu25UIyNPmvPIVBrldN+9Mlp9Zql39qaUd8i
+                       q4ZLlYWfUUbbAS41pG+68z81q1xhkYAcEyHd
+                       VI2LmKusbZsT0Q== )
+
+;; NSEC3 RR matches the QNAME and shows that the A type bit is not set.
+
+ji6neoaepv8b5o6k4ev33abha8ht9fgc.example. NSEC3 1 1 12 aabbccdd (
+                       k8udemvp1j2f7eg6jebps17vp3n8i58h )
+ji6neoaepv8b5o6k4ev33abha8ht9fgc.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       gPkFp1s2QDQ6wQzcg1uSebZ61W33rUBDcTj7 
+                       2F3kQ490fEdp7k1BUIfbcZtPbX3YCpE+sIt0 
+                       MpzVSKfTwx4uYA== )
+
+;; Additional
+;; (empty)
+
+         </artwork></figure>
+
+         <t>The query returned an NSEC3 RR that proves that the
+         requested name exists ("y.w.example." hashes to
+         "ji6neoaepv8b5o6k4ev33abha8ht9fgc"), but the requested RR
+         type does not exist (Type A is absent in the Type Bit Maps
+         field of the NSEC3 RR).  Note that, unlike an empty
+         non-terminal proof using NSECs, this is identical to a No
+         Data Error. This example is solely mentioned to be
+         complete.</t>
+
+       </section>
+     </section>
+
+     <section title="Referral to an Opt-Out Unsigned Zone">
+
+       <t>The NSEC3 RRs prove that nothing for this delegation was
+       signed.  There is no proof that the unsigned delegation
+       exists.</t>
+
+       <figure><artwork>
+;; Header: QR DO RCODE=0
+;;
+;; Question
+mc.c.example.       IN MX
+
+;; Answer
+;; (empty)
+
+;; Authority
+c.example.     NS      ns1.c.example.
+               NS      ns2.c.example.
+
+;; NSEC3 RR that covers the "next closer" name (c.example)
+;; H(c.example) = 4g6p9u5gvfshp30pqecj98b3maqbn1ck
+
+35mthgpgcu1qg68fab165klnsnk3dpvl.example. NSEC3 1 1 12 aabbccdd (
+                       b4um86eghhds6nea196smvmlo4ors995 NS DS RRSIG )
+35mthgpgcu1qg68fab165klnsnk3dpvl.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       g6jPUUpduAJKRljUsN8gB4UagAX0NxY9shwQ 
+                       Aynzo8EUWH+z6hEIBlUTPGj15eZll6VhQqgZ 
+                       XtAIR3chwgW+SA== )
+
+;; NSEC3 RR that matches the closest encloser (example)
+;; H(example) = 0p9mhaveqvm6t7vbl5lop2u3t2rp3tom
+
+0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example. NSEC3 1 1 12 aabbccdd (
+                       2t7b4g4vsa5smi47k61mv5bv1a22bojr MX DNSKEY NS
+                       SOA NSEC3PARAM RRSIG )
+0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       OSgWSm26B+cS+dDL8b5QrWr/dEWhtCsKlwKL 
+                       IBHYH6blRxK9rC0bMJPwQ4mLIuw85H2EY762 
+                       BOCXJZMnpuwhpA== )
+
+;; Additional
+ns1.c.example. A       192.0.2.7
+ns2.c.example. A       192.0.2.8
+
+       </artwork></figure>
+
+       <t>The query returned a referral to the unsigned "c.example."
+       zone.  The response contains the closest provable encloser of
+       "c.example" to be "example", since the hash of "c.example"
+       ("4g6p9u5gvfshp30pqecj98b3maqbn1ck") is covered by the first
+       NSEC3 RR and its Opt-Out bit is set.</t>
+
+     </section>
+
+     <section title="Wildcard Expansion">
+
+       <t>A query that was answered with a response containing a
+       wildcard expansion.  The label count in the RRSIG RRSet 
+       in the answer section
+       indicates that a wildcard RRSet was expanded to produce this
+       response, and the NSEC3 RR proves that no "next closer" name
+       exists in the zone.</t>
+
+       <figure><artwork>
+;; Header: QR AA DO RCODE=0
+;;
+;; Question
+a.z.w.example. IN MX
+
+;; Answer
+a.z.w.example. MX      1 ai.example.
+a.z.w.example. RRSIG   MX 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       CikebjQwGQPwijVcxgcZcSJKtfynugtlBiKb 
+                       9FcBTrmOoyQ4InoWVudhCWsh/URX3lc4WRUM 
+                       ivEBP6+4KS3ldA== )
+
+;; Authority
+example.       NS      ns1.example.
+example.       NS      ns2.example.
+example.       RRSIG   NS 7 1 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       PVOgtMK1HHeSTau+HwDWC8Ts+6C8qtqd4pQJ 
+                       qOtdEVgg+MA+ai4fWDEhu3qHJyLcQ9tbD2vv 
+                       CnMXjtz6SyObxA== )
+
+;; NSEC3 RR that covers the "next closer" name (z.w.example)
+;; H(z.w.example) = qlu7gtfaeh0ek0c05ksfhdpbcgglbe03
+
+q04jkcevqvmu85r014c7dkba38o0ji5r.example. NSEC3 1 1 12 aabbccdd (
+                       r53bq7cc2uvmubfu5ocmm6pers9tk9en A RRSIG )
+q04jkcevqvmu85r014c7dkba38o0ji5r.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       hV5I89b+4FHJDATp09g4bbN0R1F845CaXpL3 
+                       ZxlMKimoPAyqletMlEWwLfFia7sdpSzn+ZlN 
+                       NlkxWcLsIlMmUg== )
+
+;; Additional
+ai.example.    A       192.0.2.9
+ai.example.    RRSIG   A 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       hVe+wKYMlObTRPhX0NL67GxeZfdxqr/QeR6F 
+                       tfdAj5+FgYxyzPEjIzvKWy00hWIl6wD3Vws+ 
+                       rznEn8sQ64UdqA== )
+ai.example.    AAAA    2001:db8:0:0:0:0:f00:baa9
+ai.example.    RRSIG   AAAA 7 2 3600 20150420235959 20051021000000 (
+                       40430 example. 
+                       LcdxKaCB5bGZwPDg+3JJ4O02zoMBrjxqlf6W 
+                       uaHQZZfTUpb9Nf2nxFGe2XRPfR5tpJT6GdRG 
+                       cHueLuXkMjBArQ== )
+
+       </artwork></figure>
+
+       <t>The query returned an answer that was produced as a result
+       of a wildcard expansion.  The answer section contains a wildcard
+       RRSet expanded as it would be in a traditional DNS response.
+       The RRSIG Labels field value of 2 indicates that the answer is
+       the result of a wildcard expansion, as the "a.z.w.example" name
+       contains 4 labels.  This also shows that "w.example" exists, so
+       there is no need for an NSEC3 RR that matches the closest
+       encloser.</t>
+
+       <t>The NSEC3 RR proves that no closer match could have been used
+       to answer this query.</t>
+
+     </section>
+
+     <section title="Wildcard No Data Error">
+
+       <t>A "no data" response for a name covered by a wildcard.  The
+       NSEC3 RRs prove that the matching wildcard name does not have
+       any RRs of the requested type and that no closer match exists
+       in the zone.</t>
+
+       <figure><artwork>
+;; Header: QR AA DO RCODE=0
+;;
+;; Question
+a.z.w.example.      IN AAAA
+
+;; Answer
+;; (empty)
+
+;; Authority
+example.       SOA     ns1.example. bugs.x.w.example. 1 3600 300 (
+                       3600000 3600 )
+example.       RRSIG   SOA 7 1 3600 20150420235959 20051021000000 (
+                       40430 example.
+                       Hu25UIyNPmvPIVBrldN+9Mlp9Zql39qaUd8i
+                       q4ZLlYWfUUbbAS41pG+68z81q1xhkYAcEyHd
+                       VI2LmKusbZsT0Q== )
+
+;; NSEC3 RR that matches the closest encloser (w.example)
+;; H(w.example) = k8udemvp1j2f7eg6jebps17vp3n8i58h
+
+k8udemvp1j2f7eg6jebps17vp3n8i58h.example. NSEC3 1 1 12 aabbccdd (
+                       kohar7mbb8dc2ce8a9qvl8hon4k53uhi )
+k8udemvp1j2f7eg6jebps17vp3n8i58h.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       FtXGbvF0+wf8iWkyo73enAuVx03klN+pILBK 
+                       S6qCcftVtfH4yVzsEZquJ27NHR7ruxJWDNMt 
+                       Otx7w9WfcIg62A== )
+
+;; NSEC3 RR that covers the "next closer" name (z.w.example)
+;; H(z.w.example) = qlu7gtfaeh0ek0c05ksfhdpbcgglbe03
+
+q04jkcevqvmu85r014c7dkba38o0ji5r.example. NSEC3 1 1 12 aabbccdd (
+                       r53bq7cc2uvmubfu5ocmm6pers9tk9en A RRSIG )
+q04jkcevqvmu85r014c7dkba38o0ji5r.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example. 
+                       hV5I89b+4FHJDATp09g4bbN0R1F845CaXpL3 
+                       ZxlMKimoPAyqletMlEWwLfFia7sdpSzn+ZlN 
+                       NlkxWcLsIlMmUg== )
+
+;; NSEC3 RR that matches a wildcard at the closest encloser.
+;; H(*.w.example) = r53bq7cc2uvmubfu5ocmm6pers9tk9en
+
+r53bq7cc2uvmubfu5ocmm6pers9tk9en.example. NSEC3 1 1 12 aabbccdd (
+                       t644ebqk9bibcna874givr6joj62mlhv MX RRSIG )
+r53bq7cc2uvmubfu5ocmm6pers9tk9en.example. RRSIG NSEC3 7 2 3600 (
+                       20150420235959 20051021000000 40430 example.
+                       aupviViruXs4bDg9rCbezzBMf9h1ZlDvbW/C 
+                       ZFKulIGXXLj8B/fsDJarXVDA9bnUoRhEbKp+ 
+                       HF1FWKW7RIJdtQ== )
+
+;; Additional
+;; (empty)
+       </artwork></figure>
+
+       <t>The query returned the NSEC3 RRs that prove that the requested
+       data does not exist and no wildcard RR applies.</t>
+
+     </section>
+
+     <section title="DS Child Zone No Data Error">
+
+       <t>A "no data" response for a QTYPE=DS query that was
+       mistakenly sent to a name server for the child zone.</t>
+
+       <figure><artwork>
+;; Header: QR AA DO RCODE=0
+;;
+;; Question
+example.            IN DS
+
+;; Answer
+;; (empty)
+
+;; Authority
+example.       SOA     ns1.example. bugs.x.w.example. 1 3600 300 (
+                       3600000 3600 )
+example.       RRSIG   SOA 7 1 3600 20150420235959 20051021000000 (
+                       40430 example.
+                       Hu25UIyNPmvPIVBrldN+9Mlp9Zql39qaUd8i
+                       q4ZLlYWfUUbbAS41pG+68z81q1xhkYAcEyHd
+                       VI2LmKusbZsT0Q== )
+
+;; NSEC3 RR matches the QNAME and shows that the DS type bit is not set.
+
+0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example. NSEC3 1 1 12 aabbccdd (
+                       2t7b4g4vsa5smi47k61mv5bv1a22bojr MX DNSKEY NS
+                       SOA NSEC3PARAM RRSIG )
+0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example. RRSIG NSEC3 7 2 3600 
+                       20150420235959 20051021000000 40430 example. 
+                       OSgWSm26B+cS+dDL8b5QrWr/dEWhtCsKlwKL 
+                       IBHYH6blRxK9rC0bMJPwQ4mLIuw85H2EY762 
+                       BOCXJZMnpuwhpA== )
+
+;; Additional
+;; (empty)
+       </artwork></figure>
+
+       <t>The query returned an NSEC3 RR showing that the requested
+       was answered by the server authoritative for the zone
+       "example".  The NSEC3 RR indicates the presence of an SOA RR,
+       showing that this NSEC3 RR is from the apex of the child, not from
+       the zone cut of the parent.  Queries for the "example" DS RRSet
+       should be sent to the parent servers (which are in this case
+       the root servers).</t>
+
+     </section>
+   </section>
+
+    <section anchor="special" title="Special Considerations">
+
+      <t>The following paragraphs clarify specific behavior and
+      explain special considerations for implementations.</t>
+
+      <section anchor="salt" title="Salting">
+
+        <t>Augmenting original owner names with salt before hashing
+        increases the cost of a dictionary of pre-generated
+        hash-values. For every bit of salt, the cost of a precomputed
+        dictionary doubles (because there must be an entry for each
+        word combined with each possible salt value). The NSEC3 RR can
+        use a maximum of 2040 bits (255 octets) of salt, multiplying
+        the cost by 2^2040. This means that an attacker must, in
+        practice, recompute the dictionary each time the salt is
+        changed.</t>
+   
+        <t>Including a salt, regardless of size, does not affect the cost
+	    of constructing NSEC3 RRs. It does increase the size of the NSEC3 RR.
+    </t>
+
+        <t>There MUST be at least one complete set of NSEC3 RRs for the
+        zone using the same salt value.</t>
+
+        <t>The salt SHOULD be changed periodically to prevent
+        pre-computation using a single salt.  It is RECOMMENDED that
+        the salt be changed for every re-signing.</t>
+
+        <t>Note that this could cause a resolver to see RRs with
+        different salt values for the same zone. This is harmless,
+        since each RR stands alone (that is, it denies the set of
+        owner names whose hashes, using the salt in the NSEC3 RR,
+        fall between the two hashes in the NSEC3 RR) -- it is only
+        the server that needs a complete set of NSEC3 RRs with the
+        same salt in order to be able to answer every possible
+        query.</t>
+
+        <t>There is no prohibition with having NSEC3 RRs with different
+        salts within the same zone.  However, in order for
+        authoritative servers to be able to consistently find covering
+        NSEC3 RRs, the authoritative server MUST choose a single set
+        of parameters (algorithm, salt, and iterations) to use when
+        selecting NSEC3 RRs.</t>
+
+      </section>
+
+   <section title="Hash Collision">
+
+        <t>Hash collisions occur when different messages have the same
+        hash value. The expected number of domain names needed to give
+        a 1 in 2 chance of a single collision is about 2^(n/2) for a
+        hash of length n bits (i.e., 2^80 for SHA-1). Though this
+        probability is extremely low, the following paragraphs deal
+        with avoiding collisions and assessing possible damage in the
+        event of an attack using hash collisions.</t>
+
+        <section title="Avoiding Hash Collisions During Generation">
+
+          <t>During generation of NSEC3 RRs, hash values are
+          supposedly unique. In the (academic) case of a collision
+          occurring, an alternative salt MUST be chosen and all hash
+          values MUST be regenerated.</t>
+
+        </section>
+
+        <section title="Second Preimage Requirement Analysis">
+
+          <t>A cryptographic hash function has a second-preimage
+          resistance property. The second-preimage resistance property
+          means that it is computationally infeasible to find another
+          message with the same hash value as a given message,
+          i.e., given preimage X, to find a second preimage X' != X
+          such that hash(X) = hash(X'). The work factor for finding a
+          second preimage is of the order of 2^160 for SHA-1. To mount
+          an attack using an existing NSEC3 RR, an adversary needs to
+          find a second preimage. </t>
+
+          <t>Assuming an adversary is capable of mounting such an
+          extreme attack, the actual damage is that a response message
+          can be generated that claims that a certain QNAME (i.e., the
+          second pre-image) does exist, while in reality QNAME does
+          not exist (a false positive), which will either cause a
+          security-aware resolver to re-query for the non-existent
+          name, or to fail the initial query. Note that the adversary
+          can't mount this attack on an existing name, but only on a
+          name that the adversary can't choose and that does not yet
+          exist.</t>
+
+        </section>
+<!--
+        <section title="Possible Hash Value Truncation Method">
+
+          <t>The previous sections outlined the low probability and
+          low impact of a second-preimage attack. When impact and
+          probability are low, while space in a DNS message is costly,
+          truncation is tempting. Truncation might be considered to
+          allow for shorter owner names and RDATA for hashed labels. In
+          general, if a cryptographic hash is truncated to n bits,
+          then the expected number of domains required to give a 1 in
+          2 probability of a single collision is approximately 2^(n/2)
+          and the work factor to produce a second preimage is 2^n.</t>
+
+          <t>An extreme hash value truncation would be truncating to
+          the shortest possible unique label value. This would be
+          unwise, since the work factor to produce second preimages
+          would then approximate the size of the zone (sketch of
+          proof: if the zone has k entries, then the length of the
+          names when truncated down to uniqueness should be
+          proportional to log_2(k). Since the work factor to produce a
+          second pre-image is 2^n for an n-bit hash, then in this case
+          it is 2^(C log_2(k)) (where C is some constant), i.e. C'k -
+          a work factor of k).</t>
+
+          <t>Though the mentioned truncation can be maximized to a
+          certain extreme, the probability of collision increases
+          exponentially for every truncated bit. Given the low impact
+          of hash value collisions and limited space in DNS messages,
+          the balance between truncation profit and collision damage
+          may be determined by local policy. Of course, the size of
+          the corresponding RRSIG RR is not reduced, so truncation is
+          of limited benefit.</t>
+
+          <t>Truncation could be signaled simply by reducing the
+          length of the first label in the owner name. Note that there
+          would have to be a corresponding reduction in the length of
+          the Next Hashed Owner Name field.</t>
+
+        </section>
+-->
+      </section>
+
+    </section>
+
+</back>
+</rfc>

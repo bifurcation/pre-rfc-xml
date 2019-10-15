@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="8514" category="std" submissionType="IETF" consensus="yes" ipr="trust200902">
+
+
+<front>
+<title abbrev="IMAP - SAVEDATE Extension">
+Internet Message Access Protocol (IMAP) - SAVEDATE Extension
+</title>
+
+<author fullname="Stephan Bosch" initials="S." surname="Bosch">
+	<organization>Dovecot Oy</organization>
+  <address>
+    <postal>
+      <street>Lars Sonckin Kaari 10</street>
+      <code>02600</code>
+      <city>Espoo</city>
+      <country>Finland</country>
+    </postal>
+    <email>stephan.bosch@dovecot.fi</email>
+  </address>
+</author>
+
+<date month="December" year="2018"/>
+
+<area>ART</area>
+<workgroup>EXTRA</workgroup>
+<keyword>imap, savedate</keyword>
+
+
+
+<abstract>
+<t>This document adds a new capability called "SAVEDATE" to the Internet Message
+Access Protocol (IMAP). It defines a new IMAP message attribute called 
+'save date' that, unlike the existing 'internal date' attribute, always
+indicates the moment at which the message was saved in its current mailbox.
+The SAVEDATE capability extends the FETCH command with the means to retrieve the
+save date attribute and extends the SEARCH command to allow using the save date
+attribute in searching criteria.</t>
+</abstract>
+</front>
+
+<middle>
+
+<section title="Introduction">
+<t>This document extends the Internet Message Access Protocol
+(IMAP) <xref target="IMAP4rev1"/> with a new capability called "SAVEDATE".
+This capability adds a new IMAP message attribute called 'save date'. The save
+date is the date and time at which a message was saved in the mailbox in which
+it currently resides. The save date is similar to the existing internal date
+attribute in that it is set at the time of delivery. However, the internal date
+attribute can be set to an arbitrary value for messages delivered to the mailbox
+using the APPEND command and is usually copied from the source message for
+messages delivered using the COPY command. In contrast, the save date attribute
+is always set to the current date and time at the moment the message is saved in
+the mailbox, irrespective of how the message is delivered and from where it
+originates.
+</t>
+<t>The save date message attribute is useful for implementing automated removal
+of messages from a mailbox after a configured amount of time. For that
+application, it is necessary to know when the message was saved in the mailbox,
+which cannot be reliably determined using the internal date attribute.
+</t>
+<t>For example, a common client usage pattern is to move deleted messages to
+a Trash mailbox. These messages are considered "deleted"
+at the time they are moved to the Trash mailbox. In an effort to limit the size
+of the Trash mailbox, a client may subsequently desire to permanently remove
+(expunge) all messages in that Trash mailbox deleted before a certain time
+(e.g., a configurable expiration interval). In that case, the internal date
+attribute cannot be used since it likely refers to the time at which the
+message was originally received. 
+
+
+<!-- [rfced]  Should "Archiving" here be lowercase? 
+
+Original
+   Similar usage patterns can be observed for Archiving
+   solutions.
+
+Perhaps
+   Similar usage patterns can be observed for archiving
+   solutions.
+-->
+
+The proper time comparison attribute should
+instead be the time at which the message was saved to the Trash mailbox. Similar
+usage patterns can be observed for Archiving solutions.
+</t>
+<t>The SAVEDATE capability extends the FETCH command and response to allow
+retrieving the date and time at which a message was saved. Also, the SAVEDATE
+capability extends the SEARCH command to allow searching messages with criteria
+based on when they were saved in the mailbox.
+</t>
+</section>
+
+<section title="Conventions Used in This Document">
+<t>In examples, "C:" indicates lines sent by a client that is connected
+to a server.  "S:" indicates lines sent by the server to the client.
+</t>
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="KEYWORDS"/> <xref target="KEYWORDS-UPD"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+
+</section>
+
+<section anchor="savedate" title="Save Date Message Attribute">
+<t>The save date message attribute is the date and time at which the message was
+saved in the mailbox it is now located in. Unlike the internal date
+attribute defined by <xref target="IMAP4rev1"/>, this date and time value cannot
+be set arbitrarily when a message is delivered by the IMAP APPEND command.
+Also, when a message is delivered to the mailbox by the
+<xref target="IMAP4rev1">IMAP COPY command</xref> or the
+<xref target="IMAP-MOVE">IMAP MOVE command</xref>, the save date
+attribute is not copied from the source message. Instead, the current date and
+time at which the message is delivered to a mailbox MUST be used to set the
+save date attribute. Once calculated, the save date attribute MUST NOT change
+as long as the message is contained within the same mailbox.</t>
+
+<t>This means that when the message is copied to another mailbox, the save date
+of the message in the source mailbox remains unaffected; only the new copy of the
+message gets a new save date. Consequently, when the message is moved to
+another mailbox, either using the MOVE command or a command sequence involving
+the COPY command <xref target="IMAP-MOVE"/>, the message always gets a new
+save date in the destination mailbox.
+</t>
+<t>For some specific mailboxes, the underlying storage may not support the save
+date message attribute. The handling of this situation is described in detail in
+the next section for each involved IMAP command.
+</t>
+</section>
+
+<section anchor="changes" title="IMAP Protocol Changes">
+
+<section anchor="changes-capability" title="CAPABILITY Identification">
+<t>IMAP servers that support this extension MUST include "SAVEDATE" in the
+response list to the CAPABILITY command.</t>
+</section>
+
+<section anchor="changes-fetch" title="FETCH Command and Response Extensions">
+<t>This extension defines one new data item for the FETCH command:
+<list style="hanging">
+  <t hangText="SAVEDATE"><vspace blankLines="0"/>
+  The save date of the message.
+  </t>
+</list>
+</t>
+<t>This extension defines one new data item for the FETCH response:
+<list style="hanging">
+  <t hangText="SAVEDATE"><vspace blankLines="0"/>
+  A string representing the save date of the message. However, if the underlying
+  mailbox storage does not support the save date message attribute, the value
+  returned for the SAVEDATE item is always NIL, rather than a string.
+  </t>
+</list>
+</t>
+<t>Example:</t>
+<?rfc needLines="4" ?>
+<figure><artwork><![CDATA[
+      C: A101 FETCH 998 (SAVEDATE)
+      S: * 998 FETCH (SAVEDATE "01-Jan-2015 18:50:53 +0100")
+      S: A101 OK Fetch completed.
+]]></artwork></figure>
+</section>
+
+<section anchor="changes-search" title="SEARCH Command Extension">
+<t> This extension defines four new search keys for the SEARCH command:
+<list style="hanging">
+  <t hangText="SAVEDBEFORE &lt;date&gt;"><vspace blankLines="0"/>
+	Messages whose save date (disregarding time and timezone) is earlier than
+	the specified date.
+	</t>
+  <t hangText="SAVEDON &lt;date&gt;"><vspace blankLines="0"/>
+	Messages whose save date (disregarding time and timezone) is within the
+	specified date.
+	</t>
+  <t hangText="SAVEDSINCE &lt;date&gt;"><vspace blankLines="0"/>
+	Messages whose save date (disregarding time and timezone) is within or
+	later than the specified date.
+	</t>
+  <t hangText="SAVEDATESUPPORTED"><vspace blankLines="0"/>
+	Matches all messages in the mailbox when the underlying storage of that
+	mailbox supports the save date attribute. Conversely, it matches no
+	messages in the mailbox when the save date attribute is not supported.
+	</t>
+</list>
+</t>
+<t>When the underlying storage of a mailbox does not support the save date
+attribute, the SAVEDBEFORE, SAVEDON, and SAVEDSINCE search keys MUST use the
+internal date attribute instead. In the context of the
+<xref target="MULTISEARCH">IMAP Multimailbox SEARCH Extension</xref>,
+this fallback behavior MUST apply to each mailbox individually, meaning that
+only the mailboxes that lack support for the save date attribute use the
+internal date attribute instead.</t>
+<t>Example:</t>
+<?rfc needLines="7" ?>
+<figure><artwork><![CDATA[
+      C: A102 SEARCH SAVEDON 28-Dec-2014
+      S: * SEARCH 993 994
+      S: A102 OK Search completed.
+      C: A103 SEARCH SAVEDSINCE 28-Dec-2014
+      S: * SEARCH 993 994 995 996 997 998 999 1000 1001
+      S: A103 OK Search completed.
+]]></artwork></figure>
+</section>
+
+</section>
+
+<section anchor="Syntax" title="Formal Syntax">
+<t>The following syntax specification augments the grammar specified in
+<xref target="IMAP4rev1"/>. It uses the Augmented Backus-Naur Form (ABNF)
+notation as specified in <xref target="ABNF"/>. Elements not defined here are
+taken from <xref target="IMAP4rev1"/>.</t>
+
+<?rfc needLines="6" ?>
+<figure><artwork type="ABNF"><![CDATA[
+capability     =/ "SAVEDATE"
+
+fetch-att      =/ "SAVEDATE"
+
+msg-att-static =/ "SAVEDATE" SP (date-time / nil)
+
+search-key     =/ "SAVEDBEFORE" SP date /
+                  "SAVEDON" SP date /
+                  "SAVEDSINCE" SP date /
+                  "SAVEDATESUPPORTED"
+]]></artwork></figure>
+
+</section>
+
+<section anchor="Security" title="Security Considerations">
+<t>There are no known additional security issues with this extension
+beyond those described in the base protocol described in
+<xref target="IMAP4rev1"/>.</t>
+</section>
+
+<section anchor="IANA" title="IANA Considerations">
+<t>IANA has added "SAVEDATE" to the "IMAP Capabilities"
+registry located at
+&lt;https://www.iana.org/assignments/imap-capabilities&gt;.</t>
+</section>
+
+
+</middle>
+
+<back>
+
+<references title="Normative References">
+
+ <reference anchor='KEYWORDS' target='https://www.rfc-editor.org/rfc/rfc2119'>
+    <front>
+    <title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+    <author initials='S.' surname='Bradner' fullname='Scott Bradner'>
+    <organization>Harvard University</organization>
+    <address>
+      <postal>
+        <street>1350 Mass. Ave.</street>
+        <street>Cambridge</street>
+        <street>MA 02138</street>
+      </postal>
+      <phone>- +1 617 495 3864</phone>
+      <email>sob@harvard.edu</email>
+    </address>
+    </author>
+    <date year='1997' month='March' />
+		</front>
+    <seriesInfo name='BCP' value='14' />
+    <seriesInfo name='RFC' value='2119' />
+    <seriesInfo name="DOI" value="10.17487/RFC2119"/>
+    <format type='TXT' octets='4723' target='https://www.rfc-editor.org/rfc/rfc2119.txt' />
+    <format type='HTML' octets='17491' target='https://xml.resource.org/public/rfc/html/rfc2119.html' />
+    <format type='XML' octets='5777' target='https://xml.resource.org/public/rfc/xml/rfc2119.xml' />
+  </reference>
+
+
+<reference anchor="KEYWORDS-UPD" target="https://www.rfc-editor.org/info/rfc8174">
+    <front>
+         <title>Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words</title>
+        <author initials='B' surname='Leiba' fullname='Barry Leiba'>
+            <organization>Huawei Technologies</organization>
+        </author>
+        <date month='May' year='2017'/>
+    </front>
+    <seriesInfo name='BCP' value='14' />
+    <seriesInfo name="RFC" value="8174"/>
+    <seriesInfo name="DOI" value="10.17487/RFC8174"/>
+</reference>
+
+
+	<reference anchor='ABNF' target='https://www.rfc-editor.org/rfc/rfc5234' >
+		<front>
+		<title>Augmented BNF for Syntax Specifications: ABNF</title>
+		<author initials='D.' surname='Crocker' fullname='D. Crocker'>
+			<organization />
+		</author>
+		<author initials='P.' surname='Overell' fullname='P. Overell'>
+			<organization />
+		</author>
+		<date year='2008' month='January' />
+		</front>
+		<seriesInfo name='STD' value='68' />
+		<seriesInfo name='RFC' value='5234' />
+                <seriesInfo name='DOI' value='10.17487/RFC5234' />
+		<format type='TXT' octets='26359' />
+	</reference>
+
+	<reference anchor='IMAP4rev1' target='https://www.rfc-editor.org/rfc/rfc3501' >
+		<front>
+		<title>INTERNET MESSAGE ACCESS PROTOCOL - VERSION 4rev1</title>
+		<author initials='M.' surname='Crispin' fullname='Mark Crispin'>
+		<organization /></author>
+		<date year='2003' month='March' />
+		</front>
+		<seriesInfo name='RFC' value='3501' />
+                <seriesInfo name='DOI' value='10.17487/RFC3501' />
+		<format type='TXT' octets='227640'  />
+	</reference>
+
+	<reference anchor='IMAP-MOVE' target='https://www.rfc-editor.org/rfc/rfc6851' >
+		<front>
+		<title>Internet Message Access Protocol (IMAP) - MOVE Extension</title>
+		<author initials='A.' surname='Gulbrandsen' fullname='A. Gulbrandsen'>
+		<organization /></author>
+		<author initials='N.' surname='Freed' fullname='N. Freed'>
+		<organization /></author>
+		<date year='2013' month='January' />
+		</front>
+		<seriesInfo name='RFC' value='6851' />
+                <seriesInfo name='DOI' value='10.17487/RFC6851' />
+		<format type='TXT' octets='15689'/>
+	</reference>
+
+	<reference  anchor='MULTISEARCH' target='https://www.rfc-editor.org/info/rfc7377'>
+		<front>
+		<title>IMAP4 Multimailbox SEARCH Extension</title>
+		<author initials='B.' surname='Leiba' fullname='B. Leiba'><organization /></author>
+		<author initials='A.' surname='Melnikov' fullname='A. Melnikov'><organization /></author>
+		<date year='2014' month='October' />
+		</front>
+		<seriesInfo name='RFC' value='7377'/>
+		<seriesInfo name='DOI' value='10.17487/RFC7377'/>
+	</reference>
+
+
+</references>
+
+<section title="Acknowledgements" numbered="no">
+<t>Thanks to Bron Gondwana, Alexey Melnikov, Timo Sirainen, and Michael Slusarz
+for reviews and suggestions.</t>
+</section>
+
+
+<!--[rfced] Terminology
+
+a) We see both double and single quotes used in the Abstract and
+Introduction. Is this intentional or may we update to use one or the other?
+
+Original
+   This document adds a new capability called "SAVEDATE" to the Internet
+   Message Access Protocol (IMAP).  It defines a new IMAP message
+   attribute called 'save date' that, unlike the existing 'internal
+   date' attribute, always indicates the moment at which the message was
+   saved in its current mailbox. 
+...
+   This document extends Internet Message Access Protocol (IMAP)
+   [IMAP4rev1] with a new capability called "SAVEDATE".  This capability
+   adds a new IMAP message attribute called 'save date'. 
+
+
+b) We see instances of both "save date message attribute" and "save   
+date attribute" in this document. Should these be consistent? If so, please
+let us know which form is preferred. Note that "internal date attribute" may
+also require the same attention. 
+-->
+
+
+</back>
+
+</rfc>

@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc tocindent="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc rfcedstyle="yes"?>
+
+<rfc number="7466"
+     category="std" 
+     submissionType="IETF"
+     consensus="yes"
+     ipr="trust200902" 
+     updates="6130, 7181">
+
+<front>
+
+<title abbrev="NHDP Optimization">
+An Optimization for the Mobile Ad Hoc Network (MANET) Neighborhood Discovery Protocol (NHDP)
+</title>
+
+<author initials="C.M." surname="Dearlove" fullname="Christopher Dearlove">
+<organization abbrev="BAE Systems ATC">BAE Systems Advanced Technology Centre</organization>
+<address>
+<postal>
+<street>
+West Hanningfield Road
+</street>
+<city>
+Great Baddow, Chelmsford
+</city>
+<country>
+United Kingdom
+</country>
+</postal>
+<phone>+44 1245 242194</phone>
+<email>chris.dearlove@baesystems.com</email>
+<uri>http://www.baesystems.com/</uri>
+</address>
+</author>
+
+<author initials="T.H." surname="Clausen" fullname="Thomas Heide Clausen">
+<organization>LIX, Ecole Polytechnique</organization>
+<address>
+<phone>+33 6 6058 9349</phone>
+<email>T.Clausen@computer.org</email>
+<uri>http://www.ThomasClausen.org/</uri>
+</address>
+</author>
+
+<date month="March" year="2015"/>
+<area/>
+<workgroup>Mobile Ad Hoc Networking (MANET)</workgroup>
+<keyword>MANET</keyword>
+<keyword>NHDP</keyword>
+<keyword>OLSRv2</keyword>
+<keyword>link quality</keyword>
+
+<abstract>
+
+  <t>
+    The link quality mechanism of the Mobile Ad Hoc Network (MANET) Neighborhood Discovery Protocol
+    (NHDP) enables "ignoring" some 1-hop neighbors if the measured link
+    quality from that 1-hop neighbor is below an acceptable threshold while
+    still retaining the corresponding link information as acquired from the
+    HELLO message exchange. This allows immediate reinstatement of the 1-hop
+    neighbor if the link quality later improves sufficiently.
+  </t>
+  <t>
+    NHDP also collects information about symmetric 2-hop neighbors. However, it specifies that if a link from a symmetric 1-hop neighbor ceases being symmetric, including while "ignored" (as described above), then corresponding symmetric 2-hop neighbors are removed. This may lead to symmetric 2-hop neighborhood information being permanently removed (until further HELLO messages are received) if the link quality of a symmetric 1-hop neighbor drops below the acceptable threshold, even if only for a moment.
+  </t>
+  <t>
+    This specification updates RFC 6130 "Mobile Ad Hoc Network (MANET)
+    Neighborhood Discovery Protocol (NHDP)" and RFC 7181 "The Optimized Link
+    State Routing Protocol Version 2 (OLSRv2)" to permit, as an option,
+    retaining, but ignoring, symmetric 2-hop information when the link quality
+    from the corresponding 1-hop neighbor drops below the acceptable
+    threshold. This allows immediate reinstatement of the symmetric 2-hop
+    neighbor if the link quality later improves sufficiently, thus making the
+    symmetric 2-hop neighborhood more "robust".
+  </t>
+</abstract>
+
+</front>
+
+<middle>
+<section title="Introduction">
+
+  <t>
+    Section 14 of the MANET Neighborhood Discovery
+    Protocol (NHDP) <xref target="RFC6130"/> contains a link admission mechanism known as "link
+    quality" that allows a router using that protocol to "take considerations
+    other than message exchange into account for determining when a link is
+    and is not a candidate for being considered as HEARD or
+    SYMMETRIC." Specifically, <xref target="RFC6130"/> permits a router to
+    disallow consideration of some of its 1-hop neighbors for as long as the
+    quality of the link from that 1-hop neighbor is below an acceptable link quality threshold.
+  </t>
+  
+  <t>
+    A feature of this mechanism is that while the link quality remains too low, the link information, established by the exchange of HELLO messages, is retained. Thus, if the link quality later goes above the required threshold (note that a hysteresis mechanism means that two thresholds are used), then the link is immediately established and will be immediately available for use.
+  </t>
+
+  <t>
+    <xref target="RFC6130"/> collects not only 1-hop neighbor information, but also information about symmetric 2-hop neighbors. However, <xref target="RFC6130"/> specifies that if a 1-hop neighbor was, but no longer is, considered symmetric, then the corresponding 2-Hop Tuples that may have been recorded for that 2-hop neighbor are to be removed without a retention mechanism for a (possibly temporary) loss due to link quality.
+  </t>
+
+  <t>
+    This means that if there is a short period in which link quality is too low, then when the link quality is re-established all 1-hop neighbor information is immediately available for use again. However, the corresponding symmetric 2-hop neighbor information has  been removed and is not available for use until restored by receipt of the next corresponding HELLO message.
+  </t>
+
+  <t>
+    This specification describes how <xref target="RFC6130"/> can be modified
+    to avoid this situation by retaining (but not using) 2-hop information,
+    similar to what is done with 1-hop information. This modification is
+    strictly optional, and routers that do and do not implement it can
+    interwork entirely successfully (as they also can with different link
+    quality specifications). In addition, by a suitable interpretation (that
+    ignored 2-Hop Tuples are not externally advertised), this change can be
+    invisible to any other protocols using <xref target="RFC6130"/>, in
+    particular <xref target="RFC7181"/>. 
+
+However, the impact on <xref target="RFC7181"/> when 2-Hop Tuples are not so handled is also described (owing to the existence of implementations of that protocol that are not modularly separated from <xref target="RFC6130"/>).
+  </t>
+
+  <t>
+    This specification therefore updates <xref target="RFC6130"/> and <xref target="RFC7181"/>.
+  </t>
+  <t>
+  	This update to <xref target="RFC6130"/> does not change the definition of a symmetric 2-hop neighbor but adds new state information to each 2-Hop Tuple of <xref target="RFC6130"/>. This is to retain some 2-hop neighbor information while recording it as currently not to be used. The new state information and retained 2-Hop Tuples are reflected in the corresponding tables of the updated NHDP-MIB module <xref target="NHDP-MIB"/>.
+  </t>
+</section>
+<section title="Terminology" anchor="terminology">
+
+  <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+    "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+    "OPTIONAL" in this document are to be interpreted as described in
+    <xref target="RFC2119"/>.
+  </t>
+
+  <t>
+    Additionally, this document uses the terminology of
+    <xref target="RFC6130"/> and <xref target="RFC7181"/>.
+  </t>
+
+</section>
+<section title="Applicability Statement">
+
+  <t>
+  This specification updates <xref target="RFC6130"/>. The optimization presented in this specification is simply permissive, as it allows retaining information that otherwise would have been removed but does not use that information except when it could have been used by <xref target="RFC6130"/>.
+  </t>
+
+  <t>
+    This can, in some cases, ensure that the symmetric 2-hop neighborhood is more robust against temporary link quality changes and consequently yields a more stable network. The only other consequence of this optimization is that state for some otherwise expired 2-Hop Tuples may be maintained for longer.
+  </t>
+
+  <t>
+    This specification also updates <xref target="RFC7181"/>. This could have been avoided had instead <xref target="RFC6130"/> been updated so as to make the changes to it invisible to any other protocol using it. However, as it is known that some implementations of <xref target="RFC7181"/> are not independent of the implementation of <xref target="RFC6130"/> that they use, it is useful to indicate the direct impact on <xref target="RFC7181"/>.
+  </t>
+
+  <t>
+    A router that implements the optimization described in this specification will interoperate successfully with routers that implement <xref target="RFC6130"/> but do not implement this optimization.
+  </t>
+
+</section>
+<section title="Changes to NHDP">
+
+  <t>
+    The following changes are made to <xref target="RFC6130"/> if using this specification. Note that while this specification is OPTIONAL, if any of these changes are made, then all of these changes MUST be made.
+  </t>
+
+  <section title="Interface Information Bases">
+
+    <t>
+      The 2-Hop Set is modified by adding this additional element to each 2-Hop Tuple:
+      <list>
+        <t>
+	    N2_lost is a boolean flag, which indicates the state of the corresponding Link Tuple. If L_status = SYMMETRIC (and thus L_lost = false), then N2_lost = false. If L_SYM_time has not expired, and L_lost = true (and hence L_status = LOST), then N2_lost = true.
+        </t>
+      </list>
+    </t>
+    <t>
+      In all other cases, including other cases with L_status = LOST, there will be no such 2-Hop Tuples.
+    </t>
+
+  </section>
+
+  <section title="HELLO Message Processing">
+
+    <t>
+      In Section 12.6 of <xref target="RFC6130"/>, make the following changes:
+      <list style="symbols">
+        <t>
+          In point 2, change "L_status = SYMMETRIC" to "L_SYM_time not expired".
+        </t>
+        <t>
+          In point 2, point 1, point 1, under "then create a 2-Hop Tuple with:", add a second bullet point "N2_lost: = L_lost".  (Note that "2-Hop Neighbor Tuple" has been corrected here to "2-Hop Tuple"
+     per <xref target="Err4276"/>.)
+        </t>
+      </list>
+    </t>
+
+  </section>
+
+  <section title="Information Base Changes">
+
+    <t>
+      In Section 13, replace the second bullet point with:
+      <list style="symbols">
+        <t>
+          A Link Tuple's L_status changes from SYMMETRIC, L_SYM_time expires,
+	  or the Link Tuple is removed. In this case, the actions specified in Section 13.2 are performed.
+        </t>
+      </list>
+    </t>
+    <t>
+      Replace the paragraph after the bullet points with:
+    </t>
+    <t>
+      If a Link Tuple is removed, or if L_HEARD_time expires and either L_status changes from SYMMETRIC or L_SYM_time expires, then the actions specified in Section 13.2 MUST be performed before the actions specified in Section 13.3 are performed for that Link Tuple.
+    </t>
+
+    <t>
+      In Section 13.2 of <xref target="RFC6130"/>, add the following before all other text:
+    </t>
+
+    <t>
+      For each Link Tuple that has L_SYM_time not expired:
+      <list style="numbers">
+        <t>
+          If L_SYM_time then expires, or if the Link Tuple is removed:
+          <list style="numbers">
+            <t>
+              Remove each 2-Hop Tuple for the same MANET interface with:
+              <list style="symbols">
+                <t>
+                  N2_neighbor_iface_addr_list contains one or more network addresses in L_neighbor_iface_addr_list.
+                </t>
+              </list>
+            </t>
+          </list>
+        </t>
+        <t>
+          If L_status then changes from SYMMETRIC to LOST because L_lost is set to true:
+          <list style="numbers">
+            <t>
+              For each 2-Hop Tuple for the same MANET interface with:
+              <list style="symbols">
+                <t>
+                  N2_neighbor_iface_addr_list contains one or more network addresses in L_neighbor_iface_addr_list;
+                </t>
+              </list>
+              set N2_lost := true.
+            </t>
+          </list>
+        </t>
+      </list>
+    </t>
+ 
+    <t>
+      Also, in Section 13.2 of <xref target="RFC6130"/>, remove point 1 and 
+      renumber point 2 as point 1.
+    </t>
+
+  </section>
+
+  <section title="Constraints">
+
+    <t>
+ 
+      In Appendix B of <xref target="RFC6130"/>, under "In each 2-Hop Tuple:", change the first bullet
+      point to:
+      <list style="symbols">
+        <t>
+          There MUST be a Link Tuple associated with the same MANET interface with:
+          <list style="symbols">
+            <t>
+              L_neighbor_iface_addr_list = N2_neighbor_iface_addr_list; AND
+            </t>
+            <t>
+              L_SYM_time not expired; AND
+            </t>
+            <t>
+              L_lost = N2_lost.
+            </t>
+          </list>
+        </t>
+      </list>
+    </t>
+
+  </section>
+
+</section>
+
+<section title="Changes to OLSRv2">
+
+  <t>
+    If the implementation of <xref target="RFC6130"/> conceals from any protocol using it the existence of all 2-Hop Tuples with N2_lost = true, then no changes are required to any protocol using <xref target="RFC6130"/>; in particular, no changes are required to <xref target="RFC7181"/>.
+  </t>
+
+  <t>
+    However, if instead the implementation of <xref target="RFC6130"/> makes all 2-Hop Tuples visible, including those with N2_lost = true, then protocols using <xref target="RFC6130"/> MUST ignore such 2-Hop Tuples.
+  </t>
+  <t>
+  	For <xref target="RFC7181"/>, given that this protocol uses 2-hop
+	information for Multipoint Relay (MPR) Set and Routing Set calculation
+	but does not include that information in control traffic, this means
+	that an implementation must be behaving (i) as if a 2-Hop Tuple only exists if N2_lost=false and (ii) as if a change of N2_lost (from false to true, or true to false) corresponds to a 2-Hop Tuple appearing or being removed. Specifically, this means behaving as if all of the following changes were to be made to <xref target="RFC7181"/>:
+    <list style="symbols">
+      <t>
+        In Section 17.6 of <xref target="RFC7181"/>, point 1, replace the
+	final two bullet points with:
+        <list style="symbols">
+          <t>
+            A 2-Hop Tuple with N2_out_metric != UNKNOWN_METRIC and N2_lost =
+	    false is added or removed; OR
+          </t>
+          <t>
+            A 2-Hop Tuple with N2_out_metric != UNKNOWN_METRIC has N2_lost
+	    changed; OR
+          </t>
+          <t>
+            The N2_out_metric of any 2-Hop Tuple with N2_lost = false changes, and either the flooding MPR selection process uses metric values (see Section 18.4), or the change is to or from UNKNOWN_METRIC.
+          </t>
+        </list>
+      </t>
+      <t>
+        In Section 17.6 of <xref target="RFC7181"/>, point 3, replace the
+	final two bullet points with:
+        <list style="symbols">
+          <t>
+            A 2-Hop Tuple with N2_in_metric != UNKNOWN_METRIC and N2_lost = false is added or removed; OR
+          </t>
+          <t>
+            A 2-Hop Tuple with N2_in_metric != UNKNOWN_METRIC has N2_lost
+	    changed; OR
+          </t>
+          <t>
+            The N2_in_metric of any 2-Hop Tuple with N2_lost = false changes.
+         </t>
+        </list>
+      </t>
+      <t>
+        In Section 17.7 of <xref target="RFC7181"/>, in the fifth bullet point, add "and N2_lost = false" after "N2_out_metric != UNKNOWN_METRIC".
+      </t>
+      <t>
+        In Section 18.4 of <xref target="RFC7181"/>, in the third bullet point, add ", N2_lost = false" after "N2_out_metric != UNKNOWN_METRIC".
+      </t>
+      <t>
+        In Section 18.5 of <xref target="RFC7181"/>, in the third bullet point, add ", N2_lost = false" after "N2_in_metric != UNKNOWN_METRIC".
+      </t>
+      <t>
+        In Section 19.1 of <xref target="RFC7181"/>, in the final main bullet point (marked as "(OPTIONAL)"), add "and N2_lost = false" after "N2_out_metric != UNKNOWN_METRIC".
+      </t>
+      <t>
+        In Appendix C.7 of <xref target="RFC7181"/>, in point 1, add "and N2_lost = false" after "N2_out_metric != UNKNOWN_METRIC".
+      </t>
+    </list>
+  </t>
+</section>
+
+<section title="Security Considerations" anchor="security">
+  <t>
+    The update to <xref target="RFC6130"/> enables the retention and reuse of some information collected by that protocol, for only the duration that it could have been used in any case. As such, this protocol introduces no new security considerations to an implementation of <xref target="RFC6130"/>  or of any other protocol that uses it, such as <xref target="RFC7181"/>.
+  </t>
+</section>
+
+</middle>
+
+<back>
+
+<references title="Normative References">
+  <reference anchor="RFC2119" target="http://www.rfc-editor.org/info/rfc2119">
+	<front>
+	  <title abbrev="RFC Key Words">Key words for use in RFCs to Indicate Requirement Levels</title>
+	  <author initials="S." surname="Bradner" fullname="Scott Bradner">
+	    <organization>Harvard University</organization>
+	  </author>
+	  <date year="1997" month="March"/>
+	</front>
+	<seriesInfo name="BCP" value="14"/>
+	<seriesInfo name="RFC" value="2119"/>
+  </reference>
+
+  <reference anchor="RFC6130" target="http://www.rfc-editor.org/info/rfc6130">
+	<front>
+	  <title>Mobile Ad Hoc Network (MANET) Neighborhood Discovery Protocol (NHDP)</title>
+	  <author initials="T.H." surname="Clausen" fullname="Thomas Heide Clausen">
+		<organization abbrev="X">Ecole Polytechnique, France</organization>
+	  </author>
+	  <author initials="J.W." surname="Dean" fullname="Justin W. Dean">
+	    <organization abbrev="NRL">Naval Research Laboratory, USA</organization>
+	  </author>
+	  <author initials="C.M." surname="Dearlove" fullname="Christopher Dearlove">
+		<organization>BAE Systems Advanced Technology Centre, UK</organization>
+	  </author>
+	  <date month="April" year="2011"/>
+	</front>
+	<seriesInfo name="RFC" value="6130" />
+  </reference>
+
+
+    <reference  anchor='RFC7181' target='http://www.rfc-editor.org/info/rfc7181'>
+    <front>
+    <title>The Optimized Link State Routing Protocol Version 2</title>
+    <author initials='T.' surname='Clausen' fullname='T. Clausen'><organization /></author>
+    <author initials='C.' surname='Dearlove' fullname='C. Dearlove'><organization /></author>
+    <author initials='P.' surname='Jacquet' fullname='P. Jacquet'><organization /></author>
+    <author initials='U.' surname='Herberg' fullname='U. Herberg'><organization /></author>
+    <date year='2014' month='April' />
+    </front>
+    <seriesInfo name='RFC' value='7181'/>
+    <format type='ASCII' octets='253538'/>
+    </reference>
+</references>
+
+<references title="Informative References">
+
+<!--draft-ietf-manet-rfc6779bis: I-D Exists -->
+  <reference anchor="NHDP-MIB" >
+	<front>
+	  <title>Definition of Managed Objects for the Neighborhood Discovery Protocol</title>
+	  <author initials="U." surname="Herberg"/>
+	  <author initials="R." surname="Cole"/>
+	  <author initials="I." surname="Chakeres"/>
+	  <author initials="T.H." surname="Clausen" fullname="Thomas Heide Clausen">
+		<organization abbrev="X">Ecole Polytechnique, France</organization>
+	  </author>
+	  <date month="August" year="2014" />
+	</front>
+	<seriesInfo name='Work in Progress,' value='draft-ietf-manet-rfc6779bis' />
+	<format type='TXT' target="http://tools.ietf.org/html/draft-ietf-manet-rfc6779bis"/>
+  </reference>
+
+
+<reference anchor="Err4276" target=""> 
+<front> 
+<title>Errata ID 4276</title>
+<author><organization>RFC Errata</organization></author> 
+<date></date>
+</front> 
+<seriesInfo name="RFC" value="6130"/>
+</reference>
+
+</references>
+
+
+<section title="Acknowledgements" numbered="no">
+<t>The authors would like to thank Liz Cullen (BAE Systems) for first
+   illustrating the issue addressed in this specification.
+</t>
+</section>
+</back>
+
+</rfc>
+

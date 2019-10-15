@@ -1,0 +1,714 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc3761 PUBLIC '' 'reference.RFC.3761.xml'>
+<!ENTITY rfc2119 PUBLIC '' 'reference.RFC.2119.xml'>
+<!ENTITY rfc2915 PUBLIC '' 'reference.RFC.2915.xml'>
+<!ENTITY rfc3958 PUBLIC '' 'reference.RFC.3958.xml'>
+<!ENTITY rfc3401 PUBLIC '' 'reference.RFC.3401.xml'>
+<!ENTITY rfc3403 PUBLIC '' 'reference.RFC.3403.xml'>
+<!ENTITY rfc3404 PUBLIC '' 'reference.RFC.3404.xml'>
+<!ENTITY rfc1035 PUBLIC '' 'reference.RFC.1035.xml'>
+<!ENTITY rfc4592 PUBLIC '' 'reference.RFC.4592.xml'>
+<!ENTITY rfc4848 PUBLIC '' 'reference.RFC.4848.xml'>
+<!ENTITY rfc2929 PUBLIC '' 'reference.RFC.2929.xml'>
+<!ENTITY rfc3986 PUBLIC '' 'reference.RFC.3986.xml'>
+<!ENTITY rfc2782 PUBLIC '' 'reference.RFC.2782.xml'>
+<!ENTITY rfc5507 PUBLIC '' 'reference.RFC.5507.xml'>
+<!ENTITY rfc6335 PUBLIC '' 'reference.RFC.6335.xml'>
+<!ENTITY rfc6117 PUBLIC '' 'reference.RFC.6117.xml'>
+<!ENTITY rfc6195 PUBLIC '' 'reference.RFC.6195.xml'>
+<!ENTITY rfc3597 PUBLIC '' 'reference.RFC.3597.xml'>
+
+]>
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+
+
+<?rfc compact="yes"?>
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc subcompact="no" ?>
+<?rfc rfcedstyle="yes" ?>
+
+<!-- Expand crefs and put them inline -->
+<?rfc comments='yes' ?>
+<?rfc inline='yes' ?>  
+
+<rfc number="7553" category="info" submissionType="IETF" consensus="yes" ipr="trust200902">
+
+	<front>
+		<title abbrev="URI Resource Record">
+			The Uniform Resource Identifier (URI) DNS Resource Record
+		</title>
+		<author fullname="Patrik Faltstrom" initials="P." surname="Faltstrom">
+			<organization abbrev="Netnod">Netnod</organization>
+			<address>
+				<email>paf@netnod.se</email>
+			</address>
+		</author>
+		<author fullname="Olaf Kolkman" initials="O." surname="Kolkman">
+			<organization abbrev="ISOC">Internet Society</organization>
+			<address>
+				<email>kolkman@isoc.org</email>
+			</address>
+		</author>
+		<date month="June" year="2015" />
+		<area>Operations</area>
+		<keyword>DNS</keyword>
+		<keyword>Applications</keyword>
+		<abstract>
+
+			<t>
+				This document describes the already
+				registered DNS resource record (RR) type,
+				called the Uniform Resource Identifier (URI)
+				RR, that is used for publishing mappings from
+				hostnames to URIs.
+			</t>
+		</abstract>
+	</front>
+	<middle>
+		<section anchor="intro" title="Introduction">
+			<t>
+				This document explains the use of the
+				Domain Name System (DNS) for the
+				storage
+				of <xref target="RFC3986">URIs</xref>
+				and how to resolve hostnames to such
+				URIs that can be used by various
+				applications using the URI resource record type.  For resolution, the
+				application needs to know both the
+				hostname and the protocol that the URI
+				is to be used for. The protocol is
+				registered by IANA.
+			</t>
+			<t>
+<!-- Changes per RFC Editor note -->
+			  Historically, uses of the DNS to map a domain name
+			  to a URL have
+   relied on the Naming Authority Pointer (NAPTR) RRTYPEs 
+<xref target="RFC2915" /> and
+   then on the Dynamic Delegation Discovery System (DDDS) 
+<xref target="RFC3401" />
+   application framework with the DNS as a database as specified in RFC
+   3404 <xref target="RFC3404" />.
+			  This
+			  has a number of implications such as the
+			  fact the RRSet returned will contain all URIs
+			  "connected" with the owner, and not only the ones
+			  related to a specific service.
+			</t>
+			<t>
+				The URI resource record specified in this document enables
+        the querying party to do the equivalent of selecting which of the NAPTR records one
+        is interested in and have only those returned. This is possible because data in the service field of the NAPTR
+        record is included in the owner part of the URI resource record type. It is also the case
+        that as the URI resource record type includes the target URI directly as part of the RDATA, it is very
+        easy to extract the correct target URI, instead of applying rewrite rules as in NAPTR.
+			</t>
+			<t>
+				Querying for URI resource records is not replacing querying for NAPTR
+        resource records (or use of <xref target="RFC3958">S-NAPTR</xref>). Instead,
+        the URI resource record type provides a complementary mechanism to be used
+        when one already knows what service field is interesting. With it, one
+        can directly query for the specific subset of the otherwise possibly
+        large RRSet returned when querying for NAPTR resource records.
+			</t>
+			<t>
+				The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+        "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+        document are to be interpreted as described in BCP 14, <xref
+        target="RFC2119">RFC 2119</xref>.
+	   	</t>
+		</section>
+		<section title="Applicability Statement">
+			<t>
+				In general, it is expected that URI records will be used by clients
+				for applications where the relevant protocol to be used is known,
+				but, for example, an extra abstraction is needed in order to separate
+				a domain name from a point of service (as addressed by the URI).  One
+				example of such a situation is when an organization has many domain
+				names but only one official web page.
+			</t>
+			<t>
+<!-- Changes per the RFC Editor notes; MUST and MUST NOT changed as part of this -->
+   Applications need to know the specific service to prepend the
+   hostname with.  Using repetitive queries for URI records is not a
+   replacement for querying for NAPTR records according to the NAPTR
+   (DDDS) or S-NAPTR algorithms.  NAPTR records serve the purpose of
+   discovering the various services or the URIs (for looking up access
+   points for a given service). These are two very different kinds of needs.
+			</t>
+		</section>
+		<section title="DNS Considerations">
+			<t>
+			  Using prefix labels, such as underscored service tags, for a
+			  specific owner name may cause a counter-intuitive effect when the
+			  owner name is a wildcard name.  For example, _s2._s1.*.example.net
+			  is not a wildcard name and cannot be used to return a synthesized
+			  answer for a query name of _s2._s1.a.example.net.  See Section
+			  4.5 of <xref target="RFC4592">RFC 4592</xref> for more details.
+			  Besides, underscored
+			  service tags used for the URI RR (based on the "Service Name and Transport
+			  Protocol Port Number Registry") may have slightly different semantics than
+			  service tags
+			  used for underscored prefix labels that are used in combination with
+			  other (yet unspecified) RR types. This may cause subtle management
+			  problems when delegation structure that has developed within the
+			  context of URI RRs is also to be used for other RR types. Because the
+			  service labels might be overloaded, applications should carefully check
+			  that the application-level protocol is indeed the protocol they
+			  expect.
+			</t>
+			<t>
+				Subtle management issues may also arise when the delegations from
+        service to sub-service labels involve several parties and different
+        stakeholders.
+			</t>
+		</section>
+		<section anchor="format" title="The Format of the URI RR">
+			<t>
+				This is the presentation format of the URI RR:
+			</t>
+
+<t><list style="empty">
+<t>Owner name TTL Class URI Priority Weight Target</t>
+</list>
+</t>
+<t>
+			  The URI RR does not cause any kind of Additional Section processing.
+			</t>
+			<section title="Owner Name, Class, and Type">
+		    <t>
+		      The URI owner name is subject to special conventions.
+		    </t>
+		    <t>
+		      Just like the <xref target="RFC2782">SRV RR</xref>, the URI RR has
+					service information
+          encoded in its owner name. In order to encode the service for a
+          specific owner name, one uses service parameters. Valid service
+          parameters are those registered by IANA in the
+          <xref target="RFC6335">"Service Name and Transport Protocol Port Number Registry"</xref> or
+          as <xref target="RFC6117">"Enumservice Registrations</xref>. The Enumservice Registration parameters
+          are reversed (i.e., subtype(s) before type), prepended with an underscore
+          (_), and prepended to the owner name in separate labels. The
+          underscore is prepended to the service parameters to avoid
+          collisions with DNS labels that occur in nature, and the order is
+          reversed to make it possible to do delegations, if needed, to
+          different zones (and therefore providers of DNS).
+				</t>
+		    <t> 
+		      For example, suppose we are looking for the URI for a service
+		      with ENUM Service Parameter "A:B:C" for host example.com. Then we
+		      would query for (QNAME,QTYPE)=("_C._B._A.example.com","URI").
+		    </t>   
+		    <t> 
+		      As another example, suppose we are looking for the URI for a service
+		      with Service Name "A" and Transport Protocol "B" for host example.com. Then we
+		      would query for (QNAME,QTYPE)=("_A._B.example.com","URI").
+		    </t>   
+		    <t>
+		      The type number for the URI record is 256.
+		   	</t>
+		   	<t>
+		     	The URI resource record is class independent.
+		   	</t>
+		   	<t>
+		     	The URI RR has no special Time-to-Live (TTL) requirements.
+		   	</t>
+			</section>
+			<section title="Priority">
+				<t>
+					This field holds the priority of the target URI
+					in this RR.  Its range is
+					0-65535.  A client MUST
+					attempt to contact the URI
+					with the lowest-numbered
+					priority it can reach; URIs
+					with the same priority SHOULD
+					be selected according to
+					propabilities defined by the
+					weight field.
+				</t>
+			</section>
+			<section title="Weight">
+				<t>
+					This field holds the server selection mechanism.  The weight field specifies a relative
+					weight for entries with the same priority.  Larger weights SHOULD be
+					given a proportionately higher probability of being selected.  The
+					range of this number is 0-65535.
+				</t>
+			</section>
+			<section title="Target">
+				<t>
+					This field holds the URI of the target,
+					enclosed in double-quote
+					characters ('"'), where the
+					URI is as specified
+					in <xref target="RFC3986">RFC
+					3986</xref>.  Resolution of
+					the URI is according to the
+					definitions for the Scheme of
+					the URI.
+				</t>
+				<t>
+				  Since the URI will not be encoded as a
+				  &lt;character-string&gt; (see Section 3.3 of
+				  <xref
+				  target="RFC1035">RFC 1035</xref>), there is no 255-character size limitation.
+				</t>
+				<t>
+				  The Target MUST NOT be an empty URI ("").
+				</t>
+
+			</section>
+		  <section anchor="wireformat" title="URI RDATA Wire Format">
+				<t>
+	      	The RDATA for a URI RR consists of a 2-octet Priority field,
+	      	a 2-octet Weight field, and a variable-length Target field.
+				</t>
+				<t>
+					Priority and Weight are unsigned integers in network byte order.
+				</t>
+				<t>
+					The remaining data in the
+					RDATA contains the Target
+					field. The Target field
+					contains the URI as a sequence
+					of octets (without the
+					enclosing double-quote
+					characters used in the
+					presentation format).
+				</t>
+				<t>
+				  The length of the Target field MUST be greater than zero.
+				</t>
+<figure>
+  <artwork>
+    <![CDATA[
+                     1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|          Priority             |          Weight               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/                                                               /
+/                             Target                            /
+/                                                               /
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    ]]>
+  </artwork>
+</figure>
+			</section>
+		</section>
+		<section title="Usages">
+			<section title="Example: FTP Server in the example.com Domain">
+				<t>
+					An organization has the domain names example.com and example.net,
+          and their FTP archive is at ftp://ftp1.example.com/public. Given the service name
+          "ftp" and transport protocol "tcp" (from the IANA "Service Name and Transport Protocol Port
+          Number Registry"), the following
+          URI resource records could be made available in the respective
+          zones (example.com and example.net):
+				</t>
+<figure>
+  <artwork>
+    <![CDATA[
+$ORIGIN example.com.
+_ftp._tcp    IN URI 10 1 "ftp://ftp1.example.com/public"
+
+$ORIGIN example.net.
+_ftp._tcp    IN URI 10 1 "ftp://ftp1.example.com/public"
+    ]]>
+  </artwork>
+</figure>
+			</section>
+			<section title="Relation to S-NAPTR">
+			<t>
+			The URI resource record type is not a replacement for the S-NAPTR.
+			It is instead an extension and the second step of the S-NAPTR resolution
+			can resolve a URI resource record instead of using SRV records and
+  			yet another algorithm for how to use SRV records for the specific protocol.
+			</t>
+<figure>
+  <artwork>
+    <![CDATA[
+$ORIGIN example.com.
+;;                        order pref flags
+           IN NAPTR 100   10   "D"   "EM:ProtA"  ( ; service
+                    ""                             ; regexp
+                    _http._tcp.example.com. )      ; replacement
+
+_http._tcp IN URI   10 1 "http://www.example.com/path"
+    ]]>
+  </artwork>
+</figure>
+			</section>
+			<section title="Relation to U-NAPTR">
+			<t>
+			The URI resource record type, together with S-NAPTR, can be viewed as a replacement for <xref target="RFC4848">U-NAPTR</xref>.
+        The URI resource record type is only interesting when one know a base domain name,
+        a protocol, and a service so that one can compose the record to look up. NAPTR records of any kind are used to
+        look up what services exist for a certain domain, which is one step before the URI resource record is used.
+	     	     	</t>
+			</section>
+			<section title="Relation to SRV">
+			<t>
+			The URI resource record type can be viewed as a
+			replacement for the SRV record. This is because
+                        it, like the SRV record, can only be looked up if one knows the base domain, the protocol,
+			and the service.
+                        It has a similar functionality and uses the same registry for service names,
+			but instead of returning a hostname and port number, the URI record
+                        returns a full URI. As such, it can be viewed as a more powerful resource record than SRV.
+	     	     	</t>
+			</section>
+		</section>
+		<section title="IANA Considerations">
+			<section title="Registration of the URI Resource Record Type">
+				<t>
+				  After an expert review in February
+				  2011 (see <xref
+				  target="alloc-request"/>), IANA
+				  allocated RRTYPE 256 for the URI
+				  resource record type in the registry
+				  named "Resource Record (RR) TYPEs"
+				  (as defined in <xref target="BCP42" />, which
+				  was RFC 6195 at the time but has since been
+				  replaced by RFC 6895) located at
+				  &lt;http://www.iana.org/assignments/dns-parameters&gt;.
+
+				  </t><t>IANA has updated
+				  the reference for this registration
+				  to refer to this RFC.
+				</t>
+		
+			</section>
+			<section title="Registration of Services">
+				<t>
+					No new registry is needed for the registration of services as
+					the Service Name, Transport Protocol Port Numbers, Enumservices
+					and the DNS SRV Service Type
+					registries are also used for the URI
+					resource record type.
+				</t>
+			</section>
+		</section>
+		<section title="Security Considerations">
+			<t>
+   Using the URI resource record together with security mechanisms that
+   rely on verification of authentication of hostnames, like TLS,
+   makes it important to choose the correct domain name when doing the
+   comparison and ensure that the change in the hostname to be used is 
+   secured by DNSSEC so that it can be trusted in a similar way as a redirect 
+   in HTTP using TLS.  
+			</t>
+			<t>
+			  If, for example, the URI resource record is not signed with the help of
+			  DNSSEC and then validated successfully, trusting the non-signed URI
+			  will effectively lead to a downgrade attack.
+			</t>
+			<t>
+			  The basic mechanism for successful use of URI works as follows:
+			</t>
+			<t>
+			<list style='hanging' hangIndent='5'>
+			<t hangText="1.">
+			Announce that example.com is hosted at example.org (with some URL) in DNS.
+			</t>
+			<t hangText="2.">
+			Secure the URI resource record with DNSSEC. This is
+			best done by doing validation in the application doing
+			the lookup, but it could also be done in the local recursive
+			resolver or in the
+			trusted recursive resolver also doing validation. All
+			are according to the local
+			trust policy.
+			</t>
+			<t hangText="3.">
+			Verify the TLS (for example) certificate for the connection to example.org matches, i.e.,
+			use the hostname in the URI and not the hostname used originally when looking up the URI
+			resource record.
+			</t>
+			<t hangText="4.">
+			If needed, do application-layer authentication, etc., over the then encrypted connection.
+			</t>			
+			</list>
+			</t>
+			<t>
+				It is also possible that the URI in the resource record type has errors in it. Applications
+				using the URI resource record type for resolution should behave similarly as if the
+				user typed (or copied and pasted) the URI. At least it must be clear to the user that
+				the error is not due to any error from his side.
+			</t>
+			<t>
+				One SHOULD NOT include userinfo (see "User
+				Information", Section 3.2.1 of
+				<xref target="RFC3986">RFC 3986</xref>)
+				in a URI that is used in a URI resource
+				record as DNS data must be viewed as publicly available information.
+			</t>
+<!--			<t>
+			  DNS is a protocol both running over UDP and TCP, it also
+			  include intermediaries, and this for clients in many cases
+			  configured using DHCP. 
+			  An extension to DNS has been developed called DNSSEC that give
+			  the ability for the receiver of a response to a DNS query to
+			  validate an electronic signature. With a proper validation
+			  the content can be trusted to a much higher degree. One description of
+			  a threat model to DNS, including description of what threats
+			  DNSSEC is intended to defend against can be found in
+			  <xref target="RFC3833">RFC 3833</xref>.
+			</t>
+			<t>
+			  If for example the URI resource record is
+			  not signed with the help of DNSSEC and
+			  validated successfully, trusting the
+			  non-signed URI might lead to a man in the
+			  middle host diversion, a downgrade attack,
+			  or both.
+			</t>
+			<t>
+			  What also can happen is that the URI in the
+			  resource record type has errors in
+			  it. Applications using the URI resource
+			  record type for resolution should behave
+			  similarly as if the user typed (or copy and
+			  pasted) the URI. At least it must be clear
+			  to the user that the error is not due to any
+			  error from his side.
+			</t>
+			<t>
+			  One SHOULD NOT include userinfo (see User
+			  Information, Section 3.2.1, in
+			  <xref target="RFC3986">RFC 3986</xref>) in a
+			  URI that is used in a URI resource record as
+			  DNS data must be viewed as publicly
+			  available information.
+			</t>
+-->
+		</section>
+
+	      </middle>
+	      <back>
+			<references title='Normative References'>
+				&rfc2119;
+				&rfc1035;
+
+
+
+    <reference  anchor='BCP42' target='http://www.rfc-editor.org/info/bcp42'>
+    <front>
+    <title>Domain Name System (DNS) IANA Considerations</title>
+    <author initials='D.' surname='Eastlake 3rd' fullname='D. Eastlake 3rd'><organization /></author>
+    <date year='2013' month='April' />
+    </front>
+    <seriesInfo name='BCP' value='42'/>
+    <seriesInfo name='RFC' value='6895'/>
+    <format type='ASCII' octets='38979'/>
+    </reference>
+
+				&rfc3986;
+				&rfc6117;
+				&rfc6335;
+
+<!--				<reference anchor="E164">
+ -					<front>
+ -						<title>The International Public Telecommunication Number Plan</title>
+ -						<author>
+ -							<organization>ITU-T</organization>
+ -						</author>
+ -						<date month="May" year="1997"/>
+ -					</front>
+ -					<seriesInfo name="Recommendation" value="E.164"/>
+ -				</reference>
+-->
+
+			</references>
+			<references title='Informative References'>
+				&rfc3958;
+				&rfc3401;
+				&rfc3404;
+				&rfc3403;
+				&rfc3597;
+				&rfc4592;
+				&rfc4848;
+				&rfc2782;
+				&rfc5507;
+                                &rfc2915;
+			</references>
+		<section anchor="alloc-request" title="The Original RRTYPE Allocation Request" >
+		  <t>
+		    On February 22, 2011 IANA assigned RRTYPE 256 for
+		    the URI resource record based on a request that
+		    followed the procedure documented in <xref
+		    target="BCP42"></xref> (which
+                    was RFC 6195 at the time but has since been  
+                    replaced by RFC 6895). The DNS RRTYPE
+		    PARAMETER ALLOCATION form as submitted to IANA at
+		    that time is replicated below for reference.
+		  </t>
+		  <t>Note: Although "ownername" should be "owner name",
+		  "ownername" has been preserved below because it was part of
+		  the original request form submitted to IANA.</t>
+
+		  <t>
+			  <list style='hanging' hangIndent='5'>
+				  <t hangText="A.">
+					  Submission Date:
+					  <vspace blankLines='1' />
+					  May 23, 2009
+						<vspace blankLines='1' />
+				  </t>
+				  <t hangText = "B.">
+			      Submission Type:
+						<vspace blankLines='1' />
+			      [X] New RRTYPE
+					  <vspace blankLines='0' />
+				    [ ] Modification to existing RRTYPE
+						<vspace blankLines='1' />
+          </t>
+			    <t hangText="C.">
+				    Contact Information for submitter:
+					  <vspace blankLines='1' />
+			      Name: Patrik Faltstrom
+					  <vspace blankLines='0' />
+			      Email Address: paf@cisco.com
+					  <vspace blankLines='0' />
+			      International telephone number: +46-8-6859131
+					  <vspace blankLines='0' />
+			      Other contact handles:
+						<vspace blankLines='0' />
+			      (Note: This information will be publicly posted.)
+						<vspace blankLines='1' />
+          </t>
+			    <t hangText="D.">
+				    Motivation for the new RRTYPE application?
+					  <vspace blankLines='1' />
+					  There is no easy way to get from a
+					  domain name to a URI. Some
+						mechanisms exists via use of the <xref target="RFC3403">NAPTR</xref>
+						resource record. That implies quite complicated rules that are
+						simplified via the <xref target="RFC3958">S-NAPTR</xref> specification.
+						But, the ability to directly look up a URI still exists. This specification
+						uses a prefix based naming mechanism originated in the definition of
+						the <xref target="RFC2782">SRV</xref> resource record, and the RDATA is
+						a URI, encoded as one text field.
+					  <vspace blankLines='1' />
+						See also <xref target="intro">above</xref>.
+						<vspace blankLines='1' />
+					</t>
+					<t hangText="E.">
+						Description of the proposed RR type.
+					  <vspace blankLines='1' />
+						The format of the URI resource record is as follows:
+<figure>
+  <artwork>
+    <![CDATA[
+     Ownername TTL Class URI Priority Weight Target
+    ]]>
+  </artwork>
+</figure>
+						The URI RR has service information
+						encoded in its ownername.  In order to encode the service for a
+						specific ownername one uses service parameters.  Valid service
+						parameters used are either Enumservice Registrations registered by IANA,
+						or prefixes used for the SRV resource record.
+					  <vspace blankLines='1' />
+						The wire format of the RDATA is as follows:
+<figure>
+  <artwork>
+    <![CDATA[
+                        1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |          Priority             |          Weight               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   /                                                               /
+   /                             Target                            /
+   /                                                               /
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    ]]>
+  </artwork>
+</figure>
+					    <vspace blankLines='1' />
+					  </t>
+					<t hangText="F.">
+            What existing RRTYPE or RRTYPEs come closest to filling that
+						need and why are they unsatisfactory?
+					  <vspace blankLines='1' />
+						The RRTYPE that come closest is the NAPTR resource record. It is
+						for example used in the DDDS and S-NAPTR algorithms. The main problem
+						with the NAPTR is that selection of what record (or records) one is
+						interested in is based on data stored in the RDATA portion of the NAPTR
+						resource record. This, as explained in <xref target="RFC5507">RFC 5507</xref>,
+						is not optimal for DNS lookups. Further, most applications using NAPTR
+						resource records uses regular expression based rewrite rules for creation
+						of the URI, and that has shown be complicated to implement.
+					  <vspace blankLines='1' />
+						The second closest RRTYPE is the SRV record that given a prefixed based
+						naming just like is suggested for the URI resource record, one get back
+						a port number and domain name. This can also be used for creation of a
+						URI, but, only URIs without path components.
+					  <vspace blankLines='1' />
+					</t>
+					<t hangText="G.">
+            What mnemonic is requested for the new RRTYPE (optional)?
+					  <vspace blankLines='1' />
+						URI
+					  <vspace blankLines='1' />
+					</t>
+					<t hangText="H.">
+            Does the requested RRTYPE make use of any existing IANA
+			      Registry or require the creation of a new IANA sub-registry in
+			      DNS Parameters?
+					  <vspace blankLines='1' />
+						Yes, partially.
+					  <vspace blankLines='1' />
+						One of the mechanisms to select a service is to use the Enumservice
+						Registry managed by IANA. Another is to use services and protocols used
+						for SRV records.
+					  <vspace blankLines='1' />
+					</t>
+					<t hangText="I.">
+			      Does the proposal require/expect any changes in DNS
+			      servers/resolvers that prevent the new type from being
+			      processed as an unknown RRTYPE (see <xref target="RFC3597" />)?
+					  <vspace blankLines='1' />
+					  No
+					  <vspace blankLines='1' />
+					</t>
+					<t hangText="J.">
+						Comments:
+					  <vspace blankLines='1' />
+					  None
+					  <vspace blankLines='1' />
+					</t>
+				</list>
+			</t>
+		</section>
+
+		<section title="Acknowledgements">
+			<t>
+			  Ideas on how to split the two different kinds of queries, "What services
+        exists for this domain name" and "What is the URI for this service",
+        came from Scott Bradner and Lawrence Conroy. Other people that have
+        contributed to this document include Richard Barnes, Leslie Daigle, Victor Dukhovni, Olafur Gudmundsson, Philip Hallam-Baker,
+        Ted Hardie, Sam Hartman, Evan Hunt, John Klensin, Peter Koch, Eliot
+	Lear, Andy Newton, Mark Nottingham, Penn Pfautz, Jinmei Tatuya, Willem
+	Toorop, and Nico Williams.
+			</t>
+			<t>
+			  Cisco is acknowledged as Mr. Faltstrom's employer at the time this document was developed.
+			</t>
+			<t>
+			  The NLnet Labs is acknowledged as Mr. Kolkman's employer at the time this
+			  document was developed.
+			</t>
+		</section>
+
+		</back>
+
+
+	</rfc>

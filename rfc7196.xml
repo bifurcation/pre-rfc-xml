@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc compact="yes"?>
+<?rfc rfcedstyle="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc subcompact="no"?>
+<?rfc symrefs="yes"?>
+<?rfc toc="yes"?>
+<?rfc tocdepth="3"?>
+
+<rfc number="7196" category="std" submissionType="IETF" ipr="trust200902">
+
+<front>
+
+  <title>Making Route Flap Damping Usable</title> 
+
+  <author fullname="Cristel Pelsser" initials="C.P." surname="Pelsser">
+    <organization>Internet Initiative Japan</organization>
+    <address>
+      <postal>
+        <street>Jinbocho Mitsui Buiding, 1-105</street>
+        <city>Kanda-Jinbocho, Chiyoda-ku</city>
+        <region>Tokyo</region>
+        <code>101-0051</code>
+        <country>JP</country>
+        </postal>
+      <phone>+81 3 5205 6464</phone>
+      <email>cristel@iij.ad.jp</email>
+      </address>
+    </author>
+
+  <author fullname="Randy Bush" initials="R.B." surname="Bush">
+    <organization>Internet Initiative Japan</organization>
+    <address>
+      <postal>
+        <street>5147 Crystal Springs</street>
+        <city>Bainbridge Island</city>
+        <region>Washington</region>
+        <code>98110</code>
+        <country>US</country>
+        </postal>
+      <email>randy@psg.com</email>
+      </address>
+    </author>
+
+  <author fullname="Keyur Patel" initials="K.P." surname="Patel">
+    <organization>Cisco Systems</organization>
+    <address>
+      <postal>
+	<street>170 W. Tasman Drive</street>
+	<city>San Jose</city>
+	<region>CA</region>
+	<code>95134</code>
+	<country>US</country>
+	</postal>
+      <email>keyupate@cisco.com</email>
+      </address>
+    </author>
+
+  <author fullname="Pradosh Mohapatra" initials="P.M." surname="Mohapatra">
+    <organization>Sproute Networks</organization>
+    <address>
+      <postal>
+	<street>41529 Higgins Way</street>
+	<city>Fremont</city>
+	<region>CA</region>
+	<code>94539</code>
+	<country>US</country>
+	</postal>
+      <email>mpradosh@yahoo.com</email>
+      </address>
+    </author>
+
+  <author fullname="Olaf Maennel" initials="O.M." surname="Maennel">
+    <organization>Loughborough University</organization>
+    <address>
+      <postal>
+	<street>Department of Computer Science - N.2.03</street>
+	<city>Loughborough </city>
+	<country>UK</country>
+	</postal>
+      <phone>+44 115 714 0042</phone>
+      <email>o@maennel.net</email>
+      </address>
+    </author>
+
+  <date month="May" year="2014"/>
+
+  <abstract>
+    <t>Route Flap Damping (RFD) was first proposed to reduce BGP churn
+      in routers.  Unfortunately, RFD was found to severely penalize
+      sites for being well connected because topological richness
+      amplifies the number of update messages exchanged.  Many operators
+      have turned RFD off.  Based on experimental measurement, this
+      document recommends adjusting a few RFD algorithmic constants and
+      limits in order to reduce the high risks with RFD. The result is
+      damping a non-trivial amount of long-term churn without penalizing
+      well-behaved prefixes' normal convergence process. </t>
+    </abstract>
+
+  </front>
+
+
+<middle>
+
+  <section anchor="intro" title="Introduction">
+    <t>Route Flap Damping (RFD) was first proposed (see
+      <xref target="RIPE178"/> and <xref target="RFC2439"/>) and
+      subsequently implemented to reduce BGP churn in routers.
+      Unfortunately, RFD was found to severely penalize sites for being
+      well connected because topological richness amplifies the number
+      of update messages exchanged, see <xref target="MAO2002"/>.
+      Subsequently, many operators turned RFD off; see
+      <xref target="RIPE378"/>.  Based on the measurements of
+      <xref target="PELSSER2011"/>, <xref target="RIPE580"/> now recommends
+      that RFD is usable with some changes to the parameters.  Based on
+      the same measurements, this document recommends adjusting a few
+      RFD algorithmic constants and limits. The result is
+      damping of a non-trivial amount of long-term churn without
+      penalizing well-behaved prefixes' normal convergence process.</t>
+
+    <t>Very few prefixes are responsible for a large amount of the BGP
+      messages received by a router; see <xref target="HUSTON2006"/> and
+      <xref target="PELSSER2011"/>.  
+
+
+For example, the measurements in
+      <xref target="PELSSER2011"/> showed that only 3% of the prefixes
+      were responsible for 36% percent of the BGP messages at a router
+      with real feeds from a Tier-1 provider and an Internet Exchange Point
+      during a one-week experiment.  Only these very frequently flapping
+      prefixes should be damped.  The values recommended in
+      <xref target="recommendations"/> achieve this.  Thus, RFD can be
+      enabled, and some churn reduced.</t>
+
+    <t>The goal is to, with absolutely minimal change, ameliorate the
+      danger of current RFD implementations and use.  It is not a
+      panacea, nor is it a deep and thorough approach to flap
+      reduction.</t>
+
+  <section anchor="prereqs" title="Suggested Reading">
+    <t>It is assumed that the reader understands BGP
+     <xref target="RFC4271"/> and Route Flap Damping
+     <xref target="RFC2439"/>.  This work is based on the measurements
+     in the paper <xref target="PELSSER2011"/>.  A survey of Japanese
+     operators' use of RFD and their desires is reported in
+     <xref target="RFD-SURVEY"/>.</t>
+    </section>
+
+   </section>
+
+  <section title="Requirements Language">
+    <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+      NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL"
+      are to be interpreted as described in <xref target="RFC2119">RFC
+      2119</xref> only when they appear in all upper case.  They may
+      also appear in lower or mixed case as English words, without 
+      normative meaning.</t>
+    </section>
+
+  <section anchor="params" title="RFD Parameters">
+    <t>The following RFD parameters are common to all implementations.
+      Some may be tuned by the operator, some not.  There is currently
+      no consensus on a single set of default values.</t>
+
+
+    <texttable anchor='tunable_table' title="Default RFD Parameters of Juniper and Cisco">
+        <ttcol align='left'>Parameter</ttcol>
+        <ttcol align='left'>Tunable?</ttcol>
+        <ttcol align='right'>Cisco</ttcol>
+        <ttcol align='right'>Juniper</ttcol>
+          <c>Withdrawal</c>              <c>No</c>   <c>1,000</c> <c>1,000</c>
+          <c>Re-Advertisement</c>        <c>No</c>   <c>0</c>    <c>1,000</c>
+          <c>Attribute Change</c>        <c>No</c>   <c>500</c>  <c>500</c>
+          <c>Suppress Threshold</c>      <c>Yes</c>  <c>2,000</c> <c>3,000</c>
+          <c>Half-Life (min.)</c>         <c>Yes</c>  <c>15</c>   <c>15</c>
+          <c>Reuse Threshold</c>         <c>Yes</c>  <c>750</c>  <c>750</c>
+          <c>Max Suppress Time (min.)</c> <c>Yes</c>  <c>60</c>   <c>60</c>
+<postamble>
+Note: Values without units specified are dimensionless constants.
+</postamble>
+      </texttable>
+    </section>
+
+  <section anchor="churn" title="Suppress Threshold versus Churn">
+     
+    <t>By turning RFD back on with the values recommended in
+      <xref target="recommendations"/>, churn is reduced.  Moreover, with
+      these values, prefixes going through normal convergence are
+      generally not damped.</t>
+
+    <t><xref target="PELSSER2011"/> estimates that, with a suppress
+      threshold of 6,000, the BGP update rate is reduced by 19%
+      compared to a situation without RFD enabled.  
+      <xref target="PELSSER2011"/> studies the number of prefixes damped 
+      over a week between September 29, 2010 and October 6, 2010. With this
+      6,000
+      suppress threshold, 90% fewer prefixes are damped compared to use
+      of a 2,000 threshold.  That is, far fewer well-behaved prefixes are
+      damped.</t>
+
+
+    <t>Setting the suppress threshold to 12,000 leads to very few damped
+      prefixes (0.22% of the prefixes were damped with a threshold of 12,000
+      in the experiments in <xref target="PELSSER2011"/>, yielding an
+      average hourly update reduction of 11% compared to not using
+      RFD).</t>
+
+
+    <texttable anchor="table_damped_churn" title="Damped Prefixes vs. Churn,
+      from [PELSSER2011]">
+      <preamble></preamble>
+        <ttcol align='right'  width='10%'>Suppress Threshold</ttcol>
+        <ttcol align='right' width='10%'>Damped Prefixes</ttcol>
+        <ttcol align='right' width='10%'>% of Table Damped</ttcol>
+        <ttcol align='right' width='15em'>Update Rate (one-hour bins)</ttcol>
+	  <c>2,000</c>  <c>43,342</c> <c>13.16%</c> <c>53.11%</c>
+	    <c>4,000</c>  <c>11,253</c> <c>3.42%</c>  <c>74.16%</c>
+	      <c>6,000</c>  <c>4,352</c>  <c>1.32%</c>  <c>81.03%</c>
+	        <c>8,000</c>  <c>2,104</c>  <c>0.64%</c>  <c>84.85%</c>
+		  <c>10,000</c> <c>1,286</c>  <c>0.39%</c>  <c>87.12%</c> 
+		    <c>12,000</c> <c>720</c>   <c>0.22%</c>  <c>88.74%</c> 
+		      <c>14,000</c> <c>504</c>   <c>0.15%</c>  <c>89.97%</c> 
+		        <c>16,000</c> <c>353</c>   <c>0.11%</c>  <c>91.01%</c> 
+			  <c>18,000</c> <c>311</c>   <c>0.09%</c>
+			  <c>91.88%</c> 
+			    <c>20,000</c> <c>261</c>   <c>0.08%</c>
+			    <c>92.69%</c>
+        <postamble>
+ Note: the current default Suppress Threshold (2,000) is overly agressive.
+	</postamble>
+    </texttable>
+  </section>
+
+
+  <section anchor="max" title="Maximum Penalty">
+    <t>It is important to understand that the parameters shown in
+      <xref target="tunable_table"/> and the implementation's sampling
+      rate impose an upper bound on the penalty value, which we can
+      call the 'computed maximum penalty'.</t>
+    <t>In addition, BGP implementations have an internal constant, which
+      we will call the 'maximum penalty', and the current computed
+      penalty may not exceed it.</t>
+
+    </section>
+
+  <section anchor="recommendations" title="Recommendations">
+    <t>Use of the following values is recommended:
+    <list style="hanging">
+      <t hangText="Router Maximum Penalty:">
+        The internal constant for the maximum penalty value MUST be
+        raised to at least 50,000.</t>
+      <t hangText="Default Configurable Parameters:">
+        In order not to break existing operational configurations,
+        existing BGP implementations, including the examples in
+        <xref target="tunable_table"/>, SHOULD NOT change their default
+        values.</t>
+      <t hangText="Minimum Suppress Threshold:">
+        Operators that want damping that is much less destructive than
+        the current damping, but still somewhat aggressive, SHOULD configure the
+        Suppress Threshold to no less than 6,000.</t>
+      <t hangText="Conservative Suppress Threshold:">
+        Conservative operators SHOULD configure the Suppress Threshold
+        to no less than 12,000.</t>
+      <t hangText="Calculate But Do Not Damp:">
+        Implementations MAY have a test mode where the operator can
+        see the results of a particular configuration without actually
+        damping any prefixes.  This will allow for fine-tuning of
+        parameters without losing reachability.</t>
+        </list>
+      </t>
+    </section>
+
+  <section anchor="security" title="Security Considerations">
+    <t>It is well known that an attacker can generate false flapping to
+      cause a victim's prefix(es) to be damped.</t>
+    <t>As the recommendations merely change parameters to more
+      conservative values, there should be no increase in risk. In fact, the parameter change to more conservative values should
+      slightly mitigate the false-flap attack.</t>
+    </section>
+
+
+  <section anchor="acknowledgments" title="Acknowledgments">
+    <t>Nate Kushman initiated this work some years ago.  Ron Bonica,
+    Seiichi Kawamura, and Erik Muller contributed useful
+    suggestions.</t>
+    </section>
+
+  </middle>
+
+<back>
+  <references title="Normative References">
+    <?rfc include="reference.RFC.2119"?>
+    <?rfc include="reference.RFC.4271"?>
+    <?rfc include="reference.RFC.2439"?>
+
+    <reference anchor='PELSSER2011'
+      target='http://pam2011.gatech.edu/papers/pam2011--Pelsser.pdf'> 
+      <front>
+	<title>Route Flap Damping Made Usable</title>
+	<author surname="Pelsser" initials="C"><organization/></author>
+	<author surname="Maennel" initials="O"><organization/></author>
+	<author surname="Mohapatra" initials="P"><organization/></author>
+	<author surname="Bush" initials="R"><organization/></author>
+	<author surname="Patel" initials="K"><organization/></author>
+	<date month='March' year='2011' />
+	</front>
+      <seriesInfo name="PAM 2011: Passive and Active Measurement" value="Conference"/>
+      <format type='PDF' target='http://archive.psg.com/110103.pam-rfd.pdf'/>
+      </reference>
+
+    <reference anchor='MAO2002'
+    target='http://conferences.sigcomm.org/sigcomm/2002/papers/routedampening.pdf'> 
+      <front>
+	 <title>Route Flap Damping Exacerbates Internet Routing Convergence</title>
+	 <author surname="Mao" initials="Z"><organization/></author>
+	 <author surname="Govidan" initials="R"><organization/></author>
+	 <author surname="Varghese" initials="G"><organization/></author>
+	 <author surname="Katz" initials="R"><organization/></author>
+	 <date month='August' year='2002' />
+	 </front>
+      <seriesInfo name='In Proceedings of' value='SIGCOMM'/>
+      <format type='PDF'
+        target='http://conferences.sigcomm.org/sigcomm/2002/papers/routedampening.pdf'/> 
+      </reference>
+
+    <reference anchor='RIPE378' target='http://www.ripe.net/ripe/docs/ripe-378'>
+      <front>
+	 <title>RIPE Routing Working Group Recommendations On Route-flap
+	   Damping</title>
+	 <author surname="Smith" initials="P"><organization/></author>
+	 <author surname="Panigl" initials="P"><organization/></author>
+	 <date month="May" year="2006" />
+	 </front>
+<seriesInfo name="RIPE" value="378"/>
+      <format type='PDF' target='http://www.ripe.net/ripe/docs/ripe-378'/>
+      </reference>
+    </references>
+
+  <references title="Informative References">
+
+
+    <reference anchor='HUSTON2006'
+      target='http://meetings.ripe.net/ripe-52/presentations/ripe52-plenary-bgp-review.pdf'> 
+      <front>
+	 <title>2005 - A BGP Year in Review</title>
+	 <author surname="Huston" initials="G"><organization/></author>
+	 <date year='2006' />
+	</front>
+      <seriesInfo name='RIPE' value='52'/>
+      <format type='PDF'
+        target='http://meetings.ripe.net/ripe-52/presentations/ripe52-plenary-bgp-review.pdf'/> 
+      </reference>
+
+    <reference anchor='RIPE178' target='http://www.ripe.net/ripe/docs/ripe-178'>
+      <front>
+	 <title>RIPE Routing-WG Recommendation for Coordinated
+	   Route-flap Damping Parameters</title> 
+	 <author surname="Barber" initials="T"><organization/></author>
+	 <author surname="Doran" initials="S"><organization/></author>
+	 <author surname="Karrenberg" initials="D"><organization/></author>
+	 <author surname="Panigl" initials="C"><organization/></author>
+	 <author surname="Schmitz" initials="J"><organization/></author>
+	 <date month="February" year='1998'/>
+	 </front>
+      <seriesInfo name='RIPE' value='178'/>
+      <format type='PDF' target='http://www.ripe.net/ripe/docs/ripe-178'/>
+      </reference>
+
+    <reference anchor='RIPE580' target='http://www.ripe.net/ripe/docs/ripe-580'>
+      <front>
+	 <title>RIPE Routing Working Group Recommendation for Route Flap Damping</title> 
+	 <author surname="Bush" initials="R."><organization/></author>
+	 <author surname="Pelsser" initials="C."><organization/></author>
+	 <author surname="Kuhne" initials="M."><organization/></author>
+	 <author surname="Maennel" initials="O."><organization/></author>
+	 <author surname="Mohapatra" initials="P."><organization/></author>
+	 <author surname="Patel" initials="K."><organization/></author>
+	 <author surname="Evans" initials="R."><organization/></author>
+	 <date month='January' year='2013'/>
+	 </front>
+      <seriesInfo name='RIPE' value='580'/>
+      <format type='PDF' target='http://www.ripe.net/ripe/docs/ripe-580'/>
+      </reference>
+
+
+<!-- draft-shishio-grow-isp-rfd-implement-survey: I-D Exists -->
+<reference anchor='RFD-SURVEY'>
+<front>
+<title>Route Flap Damping Deployment Status Survey</title>
+
+<author initials='S' surname='Tsuchiya' fullname='Shishio Tsuchiya'>
+    <organization />
+</author>
+
+<author initials='S' surname='Kawamura' fullname='Seiichi Kawamura'>
+    <organization />
+</author>
+
+<author initials='R' surname='Bush' fullname='Randy Bush'>
+    <organization />
+</author>
+
+<author initials='C' surname='Pelsser' fullname='Cristel Pelsser'>
+    <organization />
+</author>
+
+<date month='June' day='21' year='2012' />
+
+</front>
+<seriesInfo name="Work" value="in Progress"/>
+
+
+</reference>
+
+
+    </references>
+
+  </back>
+
+</rfc>

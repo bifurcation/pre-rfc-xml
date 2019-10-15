@@ -1,0 +1,3004 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY RFC2046 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2046.xml">
+<!ENTITY RFC2119 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY RFC2818 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2818.xml">
+<!ENTITY RFC2964 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2964.xml">
+<!ENTITY RFC3629 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3629.xml">
+<!ENTITY RFC3986 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3986.xml">
+<!ENTITY RFC5646 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5646.xml">
+<!ENTITY RFC5652 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5652.xml">
+<!ENTITY RFC6265 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6265.xml">
+<!ENTITY RFC6381 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6381.xml">
+<!ENTITY RFC7159 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7159.xml">
+<!ENTITY RFC7230 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7230.xml">
+
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes"?>
+<?rfc tocdepth="5"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<rfc category="info" submissionType="independent" number="8216" ipr="noModificationTrust200902">
+
+
+  <!-- ***** FRONT MATTER ***** -->
+
+  <front>
+
+
+    <title>HTTP Live Streaming</title>
+
+
+    <author fullname="Roger Pantos" initials="R." role="editor"
+            surname="Pantos">
+      <organization>Apple, Inc.</organization>
+
+      <address>
+        <postal>
+          <street></street>
+
+      
+
+          <city>Cupertino</city>
+
+          <region>California</region>
+
+          <code></code>
+
+          <country>United States of America</country>
+        </postal>
+
+        <email>http-live-streaming-review@group.apple.com</email>
+
+    
+      </address>
+    </author>
+
+    <author fullname="William May, Jr." initials="W." surname="May">
+      <organization abbrev="MLB Advanced Media">Major League Baseball Advanced Media</organization>
+
+      <address>
+        <postal>
+          <street></street>
+
+         
+
+          <city>New York</city>
+
+          <region>New York</region>
+
+          <code></code>
+
+          <country>United States of America</country>
+        </postal>
+        <email>bill.may@mlb.com</email>
+
+        
+      </address>
+    </author>
+
+    <date month="August" year="2017" />
+
+
+    <area>General</area>
+
+    <workgroup>Informational</workgroup>
+
+
+    <keyword>HTML</keyword> <keyword>Streaming</keyword> <keyword>Media</keyword>
+
+
+    <abstract>
+		<t>This document describes a protocol for transferring unbounded streams of
+		multimedia data. It specifies the data format of the files
+		and the actions to be taken by the server (sender) and the clients
+		(receivers) of the streams. It describes version 7 of this protocol.</t>
+    </abstract>
+    
+  </front>
+
+  <middle>
+    <section title="Introduction to HTTP Live Streaming">
+      <t>HTTP Live Streaming provides a reliable, cost-effective means of delivering
+      continuous and long-form video over the Internet. It allows a receiver to adapt
+	  the bit rate of the media to the current network conditions in order to maintain
+      uninterrupted playback at the best possible quality.  It supports interstitial
+      content boundaries. It provides a flexible framework for media encryption.
+      It can efficiently offer multiple renditions of the same content, such as audio
+      translations. It offers compatibility with large-scale HTTP caching infrastructure
+      to support delivery to large audiences.</t>
+
+
+		<t>Since the Internet-Draft was first posted in 2009, HTTP
+		Live Streaming has been
+		implemented and deployed by a wide array of content producers, tools vendors,
+		distributors, and device manufacturers. In the subsequent eight years, the
+		protocol has been refined by extensive review and discussion with a variety
+		of media streaming implementors.</t>
+
+		<t>The purpose of this document is to facilitate interoperability between
+		HTTP Live Streaming implementations by describing the media transmission
+		protocol. Using this protocol, a client can receive a continuous stream of
+		media from a server for concurrent presentation.</t>
+
+		<t>This document describes version 7 of the protocol.</t>
+    </section>
+
+    <section title="Overview">
+		<t>A multimedia presentation is specified by a Uniform Resource Identifier 
+		<xref target="RFC3986">(URI)</xref> to a Playlist.</t>
+
+		<t>A Playlist is either a Media Playlist or a Master Playlist. Both are
+		UTF-8 text files containing URIs and descriptive tags.</t>
+
+		<t>A Media Playlist contains a list of Media Segments, which, when played 
+		sequentially, will play the multimedia presentation.</t>
+
+		<figure>
+			<preamble>Here is an example of a Media Playlist:</preamble>
+
+			<artwork><![CDATA[
+#EXTM3U
+#EXT-X-TARGETDURATION:10
+
+#EXTINF:9.009,
+http://media.example.com/first.ts
+#EXTINF:9.009,
+http://media.example.com/second.ts
+#EXTINF:3.003,
+http://media.example.com/third.ts
+]]></artwork>
+			<postamble>The first line is the format identifier tag #EXTM3U. The line 
+			containing #EXT-X-TARGETDURATION says that all Media Segments will be 10 seconds long or less.
+			Then, three Media Segments are declared. The first and second are 9.009 seconds
+			long; the third is 3.003 seconds.</postamble>
+		</figure>
+
+		<t>To play this Playlist, the client first downloads it and then downloads
+		and plays each Media Segment declared within it. The client reloads the Playlist
+		as described in this document to discover any added segments. Data SHOULD be
+		carried over <xref target="RFC7230">HTTP</xref>, but, in general, a URI can specify
+		any protocol that can reliably transfer the specified resource on demand.</t>
+
+		<t>A more complex presentation can be described by a Master Playlist. A
+		Master Playlist provides a set of Variant Streams, each of which describes a different
+		version of the same content.</t>
+
+		<t>A Variant Stream includes a Media Playlist that specifies media encoded at a
+		particular bit rate, in a particular format, and at a particular resolution for
+		media containing video.</t>
+
+		<t>A Variant Stream can also specify a set of Renditions. Renditions are alternate versions of the
+		content, such as audio produced in different languages or video recorded
+		from different camera angles.</t>
+
+		<t>Clients should switch between different Variant Streams to adapt to network conditions.  
+		Clients should choose Renditions based on user preferences.</t>
+
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+
+   </section>
+
+    <section title="Media Segments" anchor="media_segments">
+		<t>A Media Playlist contains a series of Media
+		Segments that make up the overall presentation. A
+		Media Segment is specified by a URI and optionally a
+		byte range.</t>
+
+		<t>The duration of each Media Segment is indicated in
+		the Media Playlist by its <xref target="extinf">EXTINF
+		tag</xref>.</t>
+
+		<t>Each segment in a Media Playlist has a unique
+		integer Media Sequence Number.  The Media Sequence
+		Number of the first segment in the Media Playlist is
+		either 0 or declared in the Playlist (<xref
+		target="media-seq"/>). The Media Sequence Number of
+		every other segment is equal to the Media Sequence
+		Number of the segment that precedes it plus one.
+		</t>
+
+		<t>Each Media Segment MUST carry the continuation of
+		the encoded bitstream from the end of the segment with
+		the previous Media Sequence Number, where values in a
+		series such as timestamps and Continuity Counters MUST
+		continue uninterrupted. The only exceptions are the
+		first Media Segment ever to appear in a Media Playlist
+		and Media Segments that are explicitly signaled as
+		<xref
+		target="ext_x_discontinuity">discontinuities</xref>.
+		Unmarked media discontinuities can trigger playback
+		errors.</t>
+
+		<t>Any Media Segment that contains video SHOULD
+		include enough information to initialize a video
+		decoder and decode a continuous set of frames that
+		includes the final frame in the Segment; network
+		efficiency is optimized if there is enough information
+		in the Segment to decode all frames in the Segment.
+		For example, any Media Segment containing H.264 video
+		SHOULD contain an Instantaneous Decoding Refresh
+		(IDR); frames prior to the first IDR will be downloaded
+		but possibly discarded.</t>
+
+		<section title="Supported Media Segment Formats" anchor="supported_formats">
+		
+		<t>All Media Segments MUST be in a format described in this section. Transport
+		of other media file formats is not defined.</t>
+
+		<t>Some media formats require a common sequence of bytes to initialize a
+		parser before a Media Segment can be parsed. This format-specific sequence
+		is called the Media Initialization Section. The Media Initialization Section
+		can be specified by an <xref target="ext_x_map">EXT-X-MAP tag</xref>. The
+		Media Initialization Section MUST NOT contain sample data.</t>
+
+		</section> <!-- supported_formats -->
+
+		<section title="MPEG-2 Transport Streams" anchor="mpeg2_format">
+		
+		<t>MPEG-2 Transport Streams are specified by <xref target="ISO_13818" />.</t>
+
+		<t>The Media Initialization Section of an MPEG-2 Transport Stream Segment
+		is a Program Association Table (PAT) followed by a Program Map Table (PMT).</t>
+
+		<t>Transport Stream Segments MUST contain a single MPEG-2 Program; playback
+		of Multi-Program Transport Streams is not defined.  Each Transport Stream
+		Segment MUST contain a PAT and a PMT, or have an <xref target="ext_x_map">EXT-X-MAP tag</xref>
+		applied to it. The first two Transport Stream packets in a Segment without
+		an EXT-X-MAP tag SHOULD be a PAT and a PMT.</t>
+
+		</section> <!-- mpeg2_format -->
+
+		<section title="Fragmented MPEG-4" anchor="fmp4_format">
+
+		<t>MPEG-4 Fragments are specified by the <xref target="ISOBMFF">ISO Base Media File Format</xref>. 
+		Unlike regular MPEG-4 files that have a Movie Box ('moov') that contains
+		sample tables and a Media Data Box ('mdat') containing the corresponding
+		samples, an MPEG-4 Fragment consists of a Movie Fragment Box ('moof') containing
+		a subset of the sample table and a Media Data Box containing those samples.
+		Use of MPEG-4 Fragments does require a Movie Box for initialization, but
+		that Movie Box contains only non-sample-specific information such as track
+		and sample descriptions.</t>
+
+		<t>A Fragmented MPEG-4 (fMP4) Segment is a "segment" as defined by Section 3
+		of <xref target="ISOBMFF" />, including the constraints on Media Data Boxes
+		in <xref target="ISOBMFF">Section 8.16 of</xref>.</t>
+
+		<t>The Media Initialization Section for an fMP4 Segment is an ISO Base Media
+		File that can initialize a parser for that Segment.</t>
+
+		<t>Broadly speaking, fMP4 Segments and Media Initialization Sections are
+		<xref target="ISOBMFF" /> files that also satisfy the constraints described
+		in this section.</t>
+
+		<t>The Media Initialization Section for an fMP4 Segment MUST contain a
+		File Type Box ('ftyp') containing a brand that is compatible with 'iso6'
+		or higher. The File Type Box MUST be followed by a Movie Box. The
+		Movie Box MUST contain a Track Box ('trak') for every Track Fragment Box ('traf')
+		in the fMP4 Segment, with matching track_ID. Each Track Box SHOULD contain
+		a sample table, but its sample count MUST be zero. Movie Header Boxes ('mvhd')
+		and Track Header Boxes ('tkhd') MUST have durations of zero. A Movie Extends
+		Box ('mvex') MUST follow the last Track Box.&nbsp; Note that a
+		<xref target="CMAF">Common Media Application Format (CMAF) Header</xref> meets all these requirements.</t>
+
+		<t>In an fMP4 Segment, every Track Fragment Box MUST contain a
+		Track Fragment Decode Time Box ('tfdt'). fMP4 Segments MUST use movie-fragment-relative addressing. fMP4 Segments MUST NOT use external data references.
+		Note that a CMAF Segment meets these requirements.</t>
+
+		<t>An fMP4 Segment in a Playlist containing the <xref target="i_frame_playlist">EXT-X-I-FRAMES-ONLY tag</xref> 
+		MAY omit the portion of the Media Data Box following the
+		intra-coded frame (I-frame) sample data.</t>
+
+		<t>Each fMP4 Segment in a Media Playlist MUST have an EXT-X-MAP tag applied to it.</t>
+
+		</section> <!-- fmp4_format -->
+
+		<section title="Packed Audio" anchor="audio_format">
+
+
+
+
+		<t>A Packed Audio Segment contains encoded audio samples and ID3 tags that
+		are simply packed together with minimal framing and no per-sample timestamps.
+		Supported Packed Audio formats are <xref target="ISO_13818_7">Advanced Audio Coding (AAC) with Audio Data Transport Stream (ADTS) framing</xref>,
+		<xref target="ISO_13818_3">MP3</xref>, <xref target="AC_3">AC-3</xref>,
+		and <xref target="AC_3">Enhanced AC-3</xref>.</t>
+
+		<t>A Packed Audio Segment has no Media Initialization Section.</t>
+
+		<t>Each Packed Audio Segment MUST signal the timestamp of its first sample
+		with an <xref target="ID3">ID3 Private frame (PRIV) tag</xref> at the beginning of the segment. The ID3 PRIV
+		owner identifier MUST be "com.apple.streaming.transportStreamTimestamp".
+		The ID3 payload MUST be a 33-bit MPEG-2 Program Elementary Stream timestamp
+		expressed as a big-endian eight-octet number, with the upper 31 bits set
+		to zero. Clients SHOULD NOT play Packed Audio Segments without this ID3 tag.</t>
+
+		</section> <!-- audio_format -->
+
+		<section title="WebVTT" anchor="vtt_format">
+
+		<t>A WebVTT Segment is a section of a <xref target="WebVTT">WebVTT</xref>
+		file. WebVTT Segments carry subtitles.</t>
+
+		<t>The Media Initialization Section of a WebVTT Segment is the WebVTT header.</t>
+
+		<t>Each WebVTT Segment MUST contain all subtitle cues that are intended
+		to be displayed during the period indicated by the segment EXTINF duration.
+		The start time offset and end time offset of each cue MUST indicate the
+		total display time for that cue, even if part of the cue time range is
+		outside the Segment period.  A WebVTT Segment MAY contain no cues; this
+		indicates that no subtitles are to be displayed during that period.</t>
+
+		<t>Each WebVTT Segment MUST either start with a WebVTT header or have an
+		EXT-X-MAP tag applied to it.</t>
+
+		<t>In order to synchronize timestamps between audio/video and subtitles, an 
+		X-TIMESTAMP-MAP metadata header SHOULD be added to each WebVTT header.
+		This header maps WebVTT cue timestamps to MPEG-2 (PES) timestamps in other Renditions 
+		of the Variant Stream. Its format is:</t>
+		<figure>
+			<artwork><![CDATA[
+X-TIMESTAMP-MAP=LOCAL:<cue time>,MPEGTS:<MPEG-2 time>
+e.g., X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:900000]]></artwork>
+		</figure>
+
+		<t>The cue timestamp in the LOCAL attribute MAY fall outside the range of
+		time covered by the segment.</t>
+
+		<t>If a WebVTT segment does not have the X-TIMESTAMP-MAP, the client MUST assume
+		that the WebVTT cue time of 0 maps to an MPEG-2 timestamp of 0.</t>
+
+<t>When synchronizing WebVTT with PES timestamps, clients SHOULD account for cases where the 33-bit PES timestamps have wrapped and the WebVTT cue times have not.</t>
+		</section> <!-- vtt_format -->
+
+    </section> <!-- Media files -->
+
+    <section title="Playlists" anchor="playlist_file">
+    	<t>This section describes the Playlist files used by HTTP Live Streaming.
+    	In this section, "MUST" and "MUST NOT" specify the rules for the syntax and
+    	structure of legal Playlist files. Playlists that violate these rules are
+    	invalid; clients MUST fail to parse them. See <xref target="load_file"/>.</t>
+ 
+ 		<t>The format of the Playlist files is derived from the <xref target="M3U">M3U</xref>
+ 		playlist file format and inherits two tags from that earlier file format: 
+ 		<xref target="extm3u">EXTM3U</xref> and <xref target="extinf">EXTINF</xref>.</t>
+
+		
+		<t>In the specification of tag syntax, a string enclosed by &lt;&gt; identifies a tag parameter; its specific format is described in its tag definition. If a parameter is further surrounded by [], it is optional; otherwise, it is required.</t>
+
+		<t>Each Playlist file MUST be identifiable either by the path component of
+		its URI or by HTTP Content-Type. In the first case, the path MUST end with
+		either .m3u8 or .m3u. In the second, the HTTP Content-Type
+		MUST be "application/vnd.apple.mpegurl" or "audio/mpegurl".
+		Clients SHOULD refuse to parse Playlists that are not so identified.</t>
+
+		<section title="Definition of a Playlist">
+		<t>Playlist files MUST be encoded in <xref target="RFC3629">UTF-8</xref>.
+		They MUST NOT contain any Byte Order Mark (BOM); clients SHOULD fail to parse
+		Playlists that contain a BOM or do not parse as UTF-8. 
+		Playlist files MUST NOT contain UTF-8 control characters (U+0000 to U+001F and U+007F to U+009F),
+		with the exceptions of CR (U+000D) and LF (U+000A).  All character sequences
+		MUST be normalized according to Unicode normalization form "NFC" <xref target="UNICODE"/>.
+		Note that
+		<xref target="US_ASCII">US-ASCII</xref> conforms to these rules.</t>
+
+		<t>Lines in a Playlist file are terminated by either a single line feed
+		character or a carriage return character followed by a line feed character. 
+		Each line is a URI, is blank, or starts with
+		the character '#'. Blank lines are ignored. Whitespace MUST NOT 
+		be present, except for elements in which it is explicitly specified.</t>
+
+		<t>Lines that start with the character '#' are either comments or tags.
+		Tags begin with #EXT. They are case sensitive. All other lines that begin with '#' are
+		comments and SHOULD be ignored.</t>
+
+		<t>A URI line identifies a Media Segment or a Playlist file (see
+		<xref target="stream_inf" />). Each Media Segment is specified by a
+		URI and the tags that apply to it.</t>
+
+		<t>A Playlist is a Media Playlist if all URI lines in the Playlist
+		identify Media Segments.  A Playlist is a Master Playlist if all
+		URI lines in the Playlist identify Media Playlists.  A Playlist MUST be either a 
+		Media Playlist or a Master Playlist; all other Playlists are invalid.</t>
+
+		<t>A URI in a Playlist, whether it is a URI line or part of a tag,
+		MAY be relative. Any relative URI is considered to be relative to the URI
+		of the Playlist that contains it.</t>
+
+		<t>The duration of a Media Playlist is the sum of the durations of the Media 
+		Segments within it.</t>
+
+		<t>The segment bit rate of a Media Segment is the size of the Media Segment 
+		divided by its <xref target="extinf">EXTINF duration</xref>.
+		Note that this includes container overhead but does not include overhead
+		imposed by the delivery system, such as HTTP, TCP, or IP headers.</t>
+
+		<t>The peak segment bit rate of a Media Playlist is the largest bit rate
+		of any contiguous set of segments whose total duration is between 0.5 and
+		1.5 times the target duration. The bit rate of a set is calculated by dividing
+		the sum of the segment sizes by the sum of the segment durations.</t>
+
+		<t>The average segment bit rate of a Media Playlist is the sum of the 
+		sizes (in bits) of every Media Segment in the Media Playlist, divided by the
+		Media Playlist duration.  Note that this includes container overhead, but not HTTP
+		or other overhead imposed by the delivery system.</t>
+
+		</section>
+	    <section title="Attribute Lists" anchor="attr_list">
+
+		<t>Certain tags have values that are attribute-lists. An attribute-list
+		is a comma-separated list of attribute/value pairs with no whitespace.</t>
+
+		<figure>
+			<preamble>An attribute/value pair has the following syntax:</preamble>
+
+			<artwork><![CDATA[
+AttributeName=AttributeValue          
+]]></artwork>
+		</figure>
+
+		<t>An AttributeName is an unquoted string containing characters from the set [A..Z], 
+		[0..9] and '-'. Therefore, AttributeNames contain only uppercase letters, not lowercase.
+		There MUST NOT be any whitespace between the AttributeName and the '=' character, 
+		nor between the '=' character and the AttributeValue.</t>
+
+		<t>An AttributeValue is one of the following:</t>
+
+		<t><list hangIndent="2" style="symbols">
+			<t>decimal-integer: an unquoted string of characters from the set [0..9]
+			expressing an integer in base-10 arithmetic in the range from 0 to 2^64-1
+			(18446744073709551615).  A decimal-integer may be from 1 to 20 characters long.</t> 
+
+			<t>hexadecimal-sequence: an unquoted string of characters from the set
+			[0..9] and [A..F] that is prefixed with 0x or 0X.  The maximum length
+			of a hexadecimal-sequence depends on its AttributeNames.</t>
+
+			<t>decimal-floating-point: an unquoted string of characters from the
+			set [0..9] and '.' that expresses a non-negative floating-point number in decimal
+			positional notation.</t>
+
+			<t>signed-decimal-floating-point: an unquoted string of characters from the
+			set [0..9], '-', and '.' that expresses a signed floating-point number in decimal
+			positional notation.</t>
+
+			<t>quoted-string: a string of characters within a pair of double quotes
+			(0x22).  The following characters MUST NOT appear in a quoted-string:
+			line feed (0xA), carriage return (0xD), or double quote (0x22).
+			Quoted-string AttributeValues SHOULD be constructed so that byte-wise comparison
+			is sufficient to test two quoted-string AttributeValues for equality.
+			Note that this implies case-sensitive comparison.
+			</t>
+
+			<t>enumerated-string: an unquoted character string from a set that is
+			explicitly defined by the AttributeName. An enumerated-string will never
+			contain double quotes ("), commas (,), or whitespace.</t>
+
+			<t>decimal-resolution: two decimal-integers separated by the "x" character.
+			The first integer is a horizontal pixel dimension (width); the second is a
+			vertical pixel dimension (height).</t>
+		</list></t>
+
+		<t>The type of the AttributeValue for a given AttributeName is specified
+		by the attribute definition.</t>
+
+		<t>A given AttributeName MUST NOT appear more than once in a given attribute-list.
+		Clients SHOULD refuse to parse such Playlists.</t>
+
+		</section>
+
+	    <section title="Playlist Tags">
+			<t>Playlist tags specify either global parameters of the Playlist or information 
+			about the Media Segments or Media Playlists that appear after them.</t>
+
+	    <section title="Basic Tags">
+	    	<t>These tags are allowed in both Media Playlists and Master Playlists.</t>
+		    <section title="EXTM3U" anchor="extm3u">
+				<figure>
+					<preamble>The EXTM3U tag indicates that the file is an <xref target="M3U">Extended
+					M3U</xref> Playlist file. It MUST be the first line of every Media Playlist
+					and every Master Playlist. Its format is:</preamble>
+					<artwork><![CDATA[
+#EXTM3U           
+]]></artwork>
+				</figure>
+		    </section>
+		    <section title="EXT-X-VERSION" anchor="ext-x-version" >
+				<t>The EXT-X-VERSION tag indicates the compatibility version of the
+				Playlist file, its associated media, and its server.</t>
+
+				<figure>
+					<preamble>The EXT-X-VERSION tag applies to the entire Playlist
+					file. Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-VERSION:<n>
+]]></artwork>
+					<postamble>where n is an integer indicating the protocol compatibility version number.</postamble>
+				</figure>
+
+				<t>It MUST appear in all Playlists containing tags or attributes
+				that are not compatible with protocol version 1 to support interoperability
+				with older clients. <xref target="protocol_versions" /> specifies the minimum value of the 
+				compatibility version number for any given Playlist file.</t>
+
+				<t>A Playlist file MUST NOT contain more than one EXT-X-VERSION
+				tag. If a client encounters a Playlist with multiple EXT-X-VERSION tags, it
+				MUST fail to parse it.</t>
+		    </section>
+		    
+		</section> <!-- Basic tags -->
+
+		<section title="Media Segment Tags">
+			<t>Each Media Segment is specified by a series of Media Segment tags followed by a URI.
+			Some Media Segment tags apply to just the next segment; others apply to all subsequent segments 
+			until another instance of the same tag.</t>
+
+			<t>A Media Segment tag MUST NOT appear in a Master Playlist. Clients
+			MUST fail to parse Playlists that contain both Media Segment tags
+			and <xref target="master_tags">Master Playlist tags</xref>.</t>
+
+		    <section title="EXTINF" anchor="extinf">
+				<figure>
+					<preamble>The EXTINF tag specifies the duration of a Media Segment. It
+					applies only to the next Media Segment. This tag is REQUIRED
+					for each Media Segment. Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXTINF:<duration>,[<title>]
+]]></artwork>
+
+					<postamble>where duration is a
+					decimal-floating-point or
+					decimal-integer number (as
+					described in <xref
+					target="attr_list"/>) that
+					specifies the duration of the
+					Media Segment in
+					seconds.  Durations
+					SHOULD be
+					decimal-floating-point, with
+					enough accuracy to avoid
+					perceptible error when segment
+					durations are
+					accumulated. However, if the
+					compatibility version number
+					is less than 3, durations MUST
+					be integers. Durations that
+					are reported as integers
+					SHOULD be rounded to the
+					nearest integer. The remainder
+					of the line following the
+					comma is an optional
+					human-readable informative
+					title of the Media Segment
+					expressed as UTF-8 text.
+					</postamble>
+				</figure>
+		    </section>
+		    
+		    <section title="EXT-X-BYTERANGE" anchor="byterange">
+				<figure>
+					<preamble>The EXT-X-BYTERANGE tag indicates that a Media Segment
+					is a sub-range of the resource identified by its URI. It
+					applies only to the next URI line that follows it in the Playlist.
+					Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-BYTERANGE:<n>[@<o>]
+]]></artwork>
+					<postamble>where n is a decimal-integer indicating the length
+					of the sub-range in bytes. If present, o is a decimal-integer
+					indicating the start of the sub-range, as a byte offset from
+					the beginning of the resource. If o is not present, the sub-range
+					begins at the next byte following the sub-range of the previous
+					Media Segment.</postamble>
+				</figure>
+
+				<t>If o is not present, a previous
+				Media Segment MUST appear in the
+				Playlist file and MUST be a sub-range
+				of the same media resource, or the
+				Media Segment is undefined and the
+				client MUST fail to parse the
+				Playlist.</t>
+
+				<t>A Media Segment without an
+				EXT-X-BYTERANGE tag consists of the
+				entire resource identified by its
+				URI.</t>
+
+				<t>Use of the EXT-X-BYTERANGE tag
+				REQUIRES a compatibility version
+				number of 4 or greater.</t>
+		    </section>
+
+		    <section title="EXT-X-DISCONTINUITY" anchor="ext_x_discontinuity">
+				<t>The EXT-X-DISCONTINUITY tag indicates a discontinuity
+				between the Media Segment that follows it and the one that preceded
+				it.</t>
+
+				<figure>
+					<preamble>Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-DISCONTINUITY
+]]></artwork>
+				</figure>
+
+				<t>The EXT-X-DISCONTINUITY tag MUST be present if there is a 
+				change in any of the following characteristics:</t>
+
+				<t><list hangIndent="2" style="symbols">
+					<t>file format</t>
+					<t>number, type, and identifiers of tracks</t>
+					<t>timestamp sequence</t>
+				</list></t>
+
+				<t>The EXT-X-DISCONTINUITY tag SHOULD be present if there is a 
+				change in any of the following characteristics:</t>
+
+				<t><list hangIndent="2" style="symbols">
+					<t>encoding parameters</t>
+					<t>encoding sequence</t>
+				</list></t>
+
+				<t>See Sections <xref target="media_segments" format="counter"/>, <xref target="server_intro" format="counter"/>,
+				and <xref target="play_file"
+				format="counter"/> for more information about
+				the EXT-X-DISCONTINUITY tag.</t>
+
+		    </section>
+
+		    <section title="EXT-X-KEY" anchor="ext-x-key">
+				<figure>
+					<preamble>Media Segments MAY be encrypted. The EXT-X-KEY tag
+					specifies how to decrypt them. It applies to every Media Segment and to every Media Initialization Section declared by an EXT-X-MAP tag
+					that appears between it and the next EXT-X-KEY tag in the Playlist
+					file with the same KEYFORMAT attribute (or the end of the Playlist file). 
+					Two or more EXT-X-KEY tags with different KEYFORMAT attributes
+					MAY apply to the same Media Segment if they ultimately
+					produce the same decryption key. The format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-KEY:<attribute-list>
+]]></artwork>
+				</figure>
+
+				<t>The following attributes are defined:				
+
+				<list style="hanging">
+				<t>METHOD</t>
+
+				<t>The value is an enumerated-string that specifies the encryption
+				method. This attribute is REQUIRED.</t>
+
+				<t>The methods defined are: NONE, AES-128, and SAMPLE-AES.</t>			
+
+				<t>An encryption method of NONE means that Media Segments are not
+				encrypted. If the encryption method is NONE, other attributes MUST NOT
+				be present.</t>
+
+				<t>An encryption method of AES-128 signals that Media Segments are
+				completely encrypted using the <xref target="AES_128">Advanced Encryption
+				Standard (AES)</xref> with a 128-bit key, Cipher Block Chaining (CBC), and
+				<xref target="RFC5652">Public-Key Cryptography Standards #7 (PKCS7) padding</xref>. CBC is restarted on
+				each segment boundary, using either the Initialization Vector (IV) attribute value or the Media
+				Sequence Number as the IV; see <xref target="aes_iv" />.</t>
+
+				<t>An encryption method of SAMPLE-AES means that the Media Segments 
+				contain media samples, such as audio or video, that 
+				are encrypted using the <xref target="AES_128">Advanced Encryption
+				Standard</xref>. How these media streams are encrypted and encapsulated in 
+				a segment depends on the media encoding and the media format of the segment.
+				fMP4 Media Segments are encrypted using the 'cbcs' scheme of <xref target="COMMON_ENC">Common Encryption</xref>.
+				Encryption of other Media Segment formats containing <xref target="H_264">H.264</xref>, 
+				<xref target="ISO_14496">AAC</xref>, <xref target="AC_3">AC-3</xref>, and
+				<xref target="AC_3">Enhanced AC-3</xref>
+				media streams is described in the <xref target="SampleEnc">HTTP Live Streaming (HLS) Sample 
+				Encryption specification</xref>.
+				The IV attribute MAY be present; see <xref target="aes_iv" />.</t>
+
+				<t>URI</t>
+
+				<t>The value is a quoted-string containing a URI
+				that specifies how to obtain the key. This attribute is REQUIRED unless the
+				METHOD is NONE.</t>
+
+				<t>IV</t>
+
+				<t>The value is a hexadecimal-sequence that specifies a 128-bit unsigned integer
+				Initialization Vector to be used with the key. Use of the IV attribute
+				REQUIRES a compatibility version number of 2 or greater.  See <xref target="aes_iv" /> for
+				when the IV attribute is used.</t>
+
+				<t>KEYFORMAT</t>
+
+				<t>The value is a quoted-string that specifies how the key
+				is represented in the resource identified by the URI; see <xref target="key_files" />
+				for more detail. This attribute is OPTIONAL; its absence indicates
+				an implicit value of "identity". Use of the KEYFORMAT attribute
+				REQUIRES a compatibility version number of 5 or greater.</t>
+
+				<t>KEYFORMATVERSIONS</t>
+
+				<t>The value is a quoted-string containing one or more positive
+				integers separated by the "/" character (for example, "1", "1/2", or "1/2/5"). If
+				more than one version of a particular KEYFORMAT is defined, this attribute can
+				be used to indicate which version(s) this instance complies with.
+				This attribute is OPTIONAL; if it is not present,
+				its value is considered to be "1".  Use of the KEYFORMATVERSIONS attribute
+				REQUIRES a compatibility version number of 5 or greater.</t>
+
+				</list>
+				</t>
+
+				<t>If the Media Playlist file does not contain an EXT-X-KEY tag, then Media
+				Segments are not encrypted.</t>
+
+				<t>See <xref target="key_files" /> for the format of the Key file
+				and Sections <xref target="aes_iv"
+				format="counter"/>, <xref target="encrypting"
+				format="counter"/>, and 
+				<xref target="decrypting" format="counter"/> for additional information on Media 
+				Segment encryption.</t>
+		    </section>
+
+	    	<section title="EXT-X-MAP" anchor="ext_x_map">
+				<t>The EXT-X-MAP tag specifies how to obtain the Media Initialization Section
+				(<xref target="media_segments"/>) required to
+				parse the applicable Media Segments.  It applies to every Media Segment that 
+				appears after it in the Playlist until the next EXT-X-MAP tag 
+				or until the end of the Playlist.</t>
+
+				<figure>
+					<preamble>Its format is:</preamble>				
+						<artwork><![CDATA[
+#EXT-X-MAP:<attribute-list>
+]]></artwork>
+				</figure>			
+
+				<t>The following attributes are defined:				
+
+				<list style="hanging">
+				<t>URI</t>
+
+				<t>The value is a quoted-string containing a URI that identifies
+				a resource that contains the Media Initialization Section. This attribute is 
+				REQUIRED.</t>
+
+				<t>BYTERANGE</t>
+
+				<t>The value is a quoted-string specifying a byte range into the 
+				resource identified by the URI attribute. This range SHOULD contain only the
+				Media Initialization Section. The format of the byte range 
+				is described in <xref target ="byterange"/>. This attribute is 
+				OPTIONAL; if it is not present, the byte range is the entire resource 
+				indicated by the URI.</t>
+
+				</list>	
+				</t>
+
+				<t>An EXT-X-MAP tag SHOULD be supplied for Media Segments in Playlists with
+				the EXT-X-I-FRAMES-ONLY tag when the first Media Segment (i.e., I-frame) in 
+				the Playlist (or the first segment following an EXT-X-DISCONTINUITY tag) 
+				does not immediately follow the Media Initialization Section at the beginning 
+				of its resource.</t>
+
+				<t>Use of the EXT-X-MAP tag in a Media
+				Playlist that contains the EXT-X-I-FRAMES-ONLY tag REQUIRES a
+				compatibility version number of 5 or greater.
+				Use of the EXT-X-MAP tag in a Media
+				Playlist that DOES NOT contain the EXT-X-I-FRAMES-ONLY tag REQUIRES a
+				compatibility version number of 6 or greater.
+				</t>
+ <t>If the Media Initialization Section declared by an EXT-X-MAP tag is encrypted with a METHOD of AES-128, the IV attribute of the EXT-X-KEY tag that applies to the EXT-X-MAP is REQUIRED.</t>
+
+		    </section>
+
+		    <section title="EXT-X-PROGRAM-DATE-TIME" anchor="EXT-X-PROGRAM-DATE-TIME">
+				<t>The EXT-X-PROGRAM-DATE-TIME tag associates the first sample of a Media Segment with an absolute date and/or time.  It applies only to the next Media Segment. Its format is:</t>
+
+				<figure>
+
+<artwork><![CDATA[
+#EXT-X-PROGRAM-DATE-TIME:<date-time-msec>
+]]></artwork>
+				</figure>
+					<t>where date-time-msec is an <xref target="ISO_8601">
+					ISO/IEC 8601:2004</xref> date/time representation, such as YYYY-MM-DDThh:mm:ss.SSSZ. It SHOULD indicate a time zone and fractional parts of seconds, to millisecond accuracy.</t>
+
+
+				<figure>
+					<preamble>For example:</preamble>
+					<artwork><![CDATA[
+#EXT-X-PROGRAM-DATE-TIME:2010-02-19T14:54:23.031+08:00
+]]></artwork>
+				</figure>
+
+			
+
+				<t>See Sections <xref target="server_intro" format="counter"/> and <xref target="play_file" format="counter"/>
+				for more information on the EXT-X-PROGRAM-DATE-TIME tag.</t>
+		    </section>
+
+		    <section title="EXT-X-DATERANGE" anchor="daterange">
+				<t>The EXT-X-DATERANGE tag associates a Date Range (i.e., a range
+				of time defined by a starting and ending date) with a set of
+				attribute/value pairs. Its format is:</t>
+
+				<figure>
+					<artwork><![CDATA[
+#EXT-X-DATERANGE:<attribute-list>
+]]></artwork>
+				</figure>
+
+				<t>where the defined attributes are:	
+
+				<list style="hanging">
+				<t>ID</t>
+
+				<t>A quoted-string that uniquely identifies a Date
+				Range in the Playlist. This attribute is REQUIRED.</t>
+
+				<t>CLASS</t>
+
+				<t>A client-defined quoted-string that specifies some set of 
+				attributes and their associated value semantics. All Date Ranges
+				with the same CLASS attribute value MUST adhere to these 
+				semantics. This attribute is OPTIONAL.</t>
+
+				<t>START-DATE</t>
+
+				<t>A quoted-string containing the ISO-8601 date at
+				which the Date Range begins. This attribute is REQUIRED.</t>
+
+				<t>END-DATE</t>
+
+				<t>A quoted-string containing the ISO-8601 date at
+				which the Date Range ends. It MUST be equal to or later than
+				the value of the START-DATE attribute. This attribute is OPTIONAL.</t>
+
+				<t>DURATION</t>
+
+				<t>The duration of the Date Range expressed as a decimal-floating-point 
+				number of seconds. It MUST NOT be negative. A single instant in 
+				time (e.g., crossing a finish line) SHOULD be represented with a
+				duration of 0. This attribute is OPTIONAL.</t>
+
+				<t>PLANNED-DURATION</t>
+
+				<t>The expected duration of the Date Range expressed
+				as a decimal-floating-point number of seconds. It MUST NOT be negative.
+				This attribute SHOULD be used to indicate the expected duration
+				of a Date Range whose actual duration is not yet known. It is OPTIONAL.</t>
+
+				<t>X-&lt;client-attribute&gt;</t>
+
+				<t>The "X-" prefix defines a namespace reserved for client-defined
+				attributes. The client-attribute MUST be a legal AttributeName.
+				Clients SHOULD use a reverse-DNS syntax when defining
+				their own attribute names to avoid collisions. The attribute
+				value MUST be a quoted-string, a hexadecimal-sequence, or a decimal-floating-point. 
+				An example of a client-defined attribute is X-COM-EXAMPLE-AD-ID="XYZ123". 
+				These attributes are OPTIONAL.</t>
+
+				<t>SCTE35-CMD, SCTE35-OUT, SCTE35-IN</t>
+
+				<t>Used to carry SCTE-35 data; see <xref target="MAPSCTE35" />
+				for more information. These attributes are OPTIONAL.</t>
+
+				<t>END-ON-NEXT</t>
+
+				<t>An enumerated-string whose value MUST be YES. This attribute
+				indicates that the end of the range containing it is equal to the START-DATE
+				of its Following Range. The Following Range is the Date Range
+				of the same CLASS that has the earliest START-DATE
+				after the START-DATE of the range in question. This attribute is OPTIONAL.</t>
+
+				</list>	
+				</t>
+
+				<t>An EXT-X-DATERANGE tag with an END-ON-NEXT=YES attribute MUST
+				have a CLASS attribute. Other EXT-X-DATERANGE tags with the same
+				CLASS attribute MUST NOT specify Date Ranges that overlap.</t>
+
+				<t>An EXT-X-DATERANGE tag with an END-ON-NEXT=YES attribute MUST
+				NOT contain DURATION or END-DATE attributes.</t>
+
+				<t>A Date Range with neither a DURATION, an
+				END-DATE, nor an END-ON-NEXT=YES
+				attribute has an unknown duration, even if it
+				has a PLANNED-DURATION.</t>
+
+				<t>If a Playlist contains an EXT-X-DATERANGE tag, it MUST also contain
+				at least one EXT-X-PROGRAM-DATE-TIME tag.</t>
+
+				<t>If a Playlist contains two EXT-X-DATERANGE tags with the same
+				ID attribute value, then any AttributeName that appears in both
+				tags MUST have the same AttributeValue.</t>
+
+				<t>If a Date Range contains both a DURATION attribute and an END-DATE
+				attribute, the value of the END-DATE attribute MUST be equal to the
+				value of the START-DATE attribute plus the value of the DURATION attribute.</t>
+
+				<t>Clients SHOULD ignore EXT-X-DATERANGE tags with illegal syntax.</t>
+
+
+		    <section title="Mapping SCTE-35 into EXT-X-DATERANGE" anchor="MAPSCTE35">
+				<t>Splice information carried in source media according to the
+				<xref target="SCTE35">SCTE-35 specification</xref> MAY be represented
+				in a Media Playlist using EXT-X-DATERANGE tags.</t>
+
+				<t>Each SCTE-35 splice_info_section() containing a splice_null(),
+				splice_schedule(), bandwidth_reservation(), or private_cmd() SHOULD
+				be represented by an EXT-X-DATERANGE tag with an SCTE35-CMD attribute
+				whose value is the big-endian binary representation of the splice_info_section(),
+				expressed as a hexadecimal-sequence.</t>
+
+				<t>An SCTE-35 splice out/in pair signaled by a pair of splice_insert()
+				commands SHOULD be represented by one or more EXT-X-DATERANGE tags
+				carrying the same ID attribute, which MUST be unique to that splice
+				out/in pair. The "out" splice_info_section() (with out_of_network_indicator
+				set to 1) MUST be placed in an SCTE35-OUT attribute, with the same
+				formatting as SCTE35-CMD. The "in" splice_info_section() (with out_of_network_indicator
+				set to 0) MUST be placed in an SCTE35-IN attribute, with the same
+				formatting as SCTE35-CMD.</t>
+
+				<t>An SCTE-35 splice out/in pair signaled by a pair of time_signal()
+				commands, each carrying a single segmentation_descriptor(), SHOULD
+				be represented by one or more EXT-X-DATERANGE tags carrying the same
+				ID attribute, which MUST be unique to that splice out/in pair. The
+				"out" splice_info_section() MUST be placed in an SCTE35-OUT attribute;
+				the "in" splice_info_section() MUST be placed in an SCTE35-IN attribute.</t>
+
+				<t>Different types of segmentation, as
+				indicated by the segmentation_type_id
+				in the segmentation_descriptor(), SHOULD be
+				represented by separate
+				EXT-X-DATERANGE tags, even if two or more
+				segmentation_descriptor()s
+				arrive in the same splice_info_section(). In
+				that case, each EXT-X-DATERANGE
+				tag will have an SCTE35-OUT, SCTE35-IN, or SCTE35-CMD attribute whose value
+				is the entire splice_info_section().</t>
+
+				<t>An SCTE-35 time_signal() command that does not signal a splice
+				out or in point SHOULD be represented by an EXT-X-DATERANGE tag
+				with an SCTE35-CMD attribute.</t>
+
+				<t>The START-DATE of an EXT-X-DATERANGE tag containing an SCTE35-OUT
+				attribute MUST be the date and time that corresponds to the program
+				time of that splice.</t>
+
+
+				<t>The START-DATE of an EXT-X-DATERANGE tag containing an SCTE35-CMD
+				MUST be the date and time specified by the splice_time() in the command
+				or the program time at which the command appeared in the source stream
+				if the command does not specify a splice_time().</t>
+
+				<t>An EXT-X-DATERANGE tag containing an SCTE35-OUT attribute MAY
+				contain a PLANNED-DURATION attribute. Its value MUST be the planned
+				duration of the splice.</t>
+
+				<t>The DURATION of an EXT-X-DATERANGE tag containing an SCTE35-IN
+				attribute MUST be the actual (not planned) program duration between
+				the corresponding out-point and that in-point.</t>
+
+				<t>The END-DATE of an EXT-X-DATERANGE tag containing an SCTE35-IN
+				attribute MUST be the actual (not planned) program date and time
+				of that in-point.</t>
+
+				<t>If the actual end date and time is not known when an SCTE35-OUT
+				attribute is added to the Playlist, the DURATION attribute and the
+				END-TIME attribute MUST NOT be present; the actual end date of the
+				splice SHOULD be signaled by another EXT-X-DATERANGE tag once it
+				has been established.</t>
+
+				<t>A canceled splice SHOULD NOT appear in the Playlist as an EXT-X-DATERANGE
+				tag.</t>
+
+				<t>An EXT-X-DATERANGE tag announcing a splice SHOULD be added to
+				a Playlist at the same time as the last pre-splice Media Segment, or earlier if possible.</t>
+
+				<t>The ID attribute of an EXT-X-DATERANGE tag MAY contain a splice_event_id
+				and/or a segmentation_event_id, but it MUST be unique in the Playlist.
+				If there is a possibility that an SCTE-35 id will be reused, the ID attribute
+				value MUST include disambiguation, such as a date or sequence number.</t>
+		    </section>
+		    </section>
+
+		</section> <!-- Media Segment tags -->
+
+	    <section title="Media Playlist Tags">
+			<t>Media Playlist tags describe global parameters of the Media Playlist.
+			There MUST NOT be more than one Media Playlist tag of each type in any Media Playlist.</t>
+
+			<t>A Media Playlist tag MUST NOT appear in a Master Playlist.</t>
+
+		    <section title="EXT-X-TARGETDURATION">
+				<figure>
+					<preamble>The EXT-X-TARGETDURATION tag specifies the maximum
+					Media Segment duration. The EXTINF duration of each Media Segment
+					in the Playlist file, when rounded to the nearest integer, MUST
+					be less than or equal to the target duration; longer segments
+					can trigger playback stalls or other errors. 
+					It applies to the entire Playlist file. Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-TARGETDURATION:<s>
+]]></artwork>
+
+				<postamble>where s is a decimal-integer indicating the target duration in
+				seconds. The EXT-X-TARGETDURATION tag is REQUIRED.</postamble>
+				</figure>
+		    </section>
+
+		    <section title="EXT-X-MEDIA-SEQUENCE" anchor="media-seq">
+				<figure>
+					<preamble>The EXT-X-MEDIA-SEQUENCE tag indicates the Media Sequence Number of the
+					first Media Segment that appears in a Playlist file. Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-MEDIA-SEQUENCE:<number>
+]]></artwork>
+
+				<postamble>where number is a decimal-integer.
+				</postamble>
+				</figure>
+
+				<t>If the Media Playlist file does not contain an
+				EXT-X-MEDIA-SEQUENCE tag, then the Media Sequence Number of the first
+				Media Segment in the Media Playlist SHALL be considered to be 0.  A client MUST NOT 
+				assume that segments with the same Media Sequence Number in different Media Playlists
+				contain matching content (see <xref target="load_file" />).</t>
+
+				<t>A URI for a Media Segment is not required to contain its Media Sequence Number.</t>
+
+				<t>See Sections <xref target="server_intro" format="counter"/> and <xref target="next_file" format="counter"/>
+				for more information on setting the EXT-X-MEDIA-SEQUENCE tag.</t>
+
+				<t>The EXT-X-MEDIA-SEQUENCE tag MUST appear before the first Media Segment 
+				in the Playlist.</t>
+		    </section>
+
+		    <section title="EXT-X-DISCONTINUITY-SEQUENCE" anchor="disc-seq">
+				<t>The EXT-X-DISCONTINUITY-SEQUENCE tag allows synchronization between 
+				different Renditions of the same Variant Stream or different Variant Streams 
+				that have EXT-X-DISCONTINUITY tags in their Media Playlists.</t>
+
+				<figure>
+					<preamble>Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-DISCONTINUITY-SEQUENCE:<number>
+]]></artwork>
+				<postamble>where number is a decimal-integer.
+				</postamble>
+				</figure>
+
+				<t>If the Media Playlist does not contain an EXT-X-DISCONTINUITY-SEQUENCE 
+				tag, then the Discontinuity Sequence Number of the first Media Segment in the Playlist SHALL 
+				be considered to be 0.</t>
+
+				<t>The EXT-X-DISCONTINUITY-SEQUENCE tag MUST appear before the first Media Segment 
+				in the Playlist.</t>
+
+				<t>The EXT-X-DISCONTINUITY-SEQUENCE tag MUST appear before any EXT-X-DISCONTINUITY tag.</t>
+
+				<t>See Sections <xref target="server_intro" format="counter"/> and <xref target="live_playlists" format="counter"/>
+				for more information about setting the value of the 
+				EXT-X-DISCONTINUITY-SEQUENCE tag.</t>
+		    </section>
+
+		    <section title="EXT-X-ENDLIST">
+				<figure>
+					<preamble>The EXT-X-ENDLIST tag indicates that no more Media
+					Segments will be added to the Media Playlist file. It MAY occur
+					anywhere in the Media Playlist file.
+					Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-ENDLIST
+]]></artwork>
+				</figure>
+		    </section>
+
+
+		    <section title="EXT-X-PLAYLIST-TYPE">
+				<figure>
+					<preamble>The EXT-X-PLAYLIST-TYPE tag provides mutability
+					information about the Media Playlist file. It applies to the entire
+					Media Playlist file. It is OPTIONAL. Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-PLAYLIST-TYPE:<type-enum>
+]]></artwork>
+				</figure><t>where type-enum is either EVENT or VOD.</t>
+
+				<t><xref target="server_intro" /> defines the implications of the
+				EXT-X-PLAYLIST-TYPE tag.</t>
+
+				<t>If the EXT-X-PLAYLIST-TYPE value is EVENT, Media Segments can only be
+				added to the end of the Media Playlist.  If the EXT-X-PLAYLIST-TYPE value is
+				Video On Demand (VOD), the Media Playlist cannot change.</t>
+
+				<t>If the EXT-X-PLAYLIST-TYPE tag is omitted from a Media Playlist, the Playlist 
+				can be updated according to the rules in <xref target="server_intro" />  
+				with no additional restrictions. For example, a <xref target="live_playlists">live Playlist</xref>
+				MAY be updated to remove Media Segments in the order that they appeared.</t>
+		    </section>
+
+		    <section title="EXT-X-I-FRAMES-ONLY" anchor="i_frame_playlist">
+				<t>The EXT-X-I-FRAMES-ONLY tag indicates that each Media Segment
+				in the Playlist describes a single
+				I-frame. I-frames
+				are encoded video frames whose encoding does not depend on any other
+				frame. I-frame Playlists can be used for trick play, such as fast
+				forward, rapid reverse, and scrubbing.</t>
+
+				<figure>
+					<preamble>The EXT-X-I-FRAMES-ONLY tag applies to the entire
+					Playlist. Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-I-FRAMES-ONLY
+]]></artwork>
+				</figure>
+
+				<t>In a Playlist with the EXT-X-I-FRAMES-ONLY tag, the Media Segment
+				duration (EXTINF tag value) is the time between the presentation
+				time of the I-frame in the Media Segment and the presentation time
+				of the next I-frame in the Playlist, or the end of the presentation
+				if it is the last I-frame in the Playlist.</t>
+
+				<t>Media resources containing I-frame segments MUST begin with either a
+				Media Initialization Section (<xref target="media_segments"/>) or be
+				accompanied by an EXT-X-MAP tag indicating the Media Initialization Section
+				so that clients can load and decode I-frame segments in any order.
+				The byte range of an I-frame segment with
+				an EXT-X-BYTERANGE tag applied to it (<xref target="byterange"/>)
+				MUST NOT include its Media Initialization
+				Section; clients can assume
+				that the Media Initialization Section is
+				defined by the EXT-X-MAP tag or is located 
+				from the start of the resource to the offset of the first I-frame segment in
+				that resource.</t>
+
+				<t>Use of the EXT-X-I-FRAMES-ONLY REQUIRES a compatibility version number of
+				4 or greater.</t>
+		    </section>
+
+		</section>  <!-- Media Playlist tags -->
+
+		<?rfc needLines="8" ?>
+	    <section title="Master Playlist Tags" anchor="master_tags" >
+	    	<t>Master Playlist tags define the Variant Streams, Renditions, and other global
+	    	parameters of the presentation.</t>
+	    	
+	    	<t>Master Playlist tags MUST NOT appear in a Media Playlist; clients
+	    	MUST fail to parse any Playlist that contains both a Master Playlist
+	    	tag and either a Media Playlist tag or a Media Segment tag.</t>
+	    	
+		    <section title="EXT-X-MEDIA">
+				<t>The EXT-X-MEDIA tag is used to relate Media Playlists that contain
+				<xref target="alt_rend">alternative Renditions</xref> of the same content. For example, three EXT-X-MEDIA
+				tags can be used to identify audio-only Media Playlists that contain English,
+				French, and Spanish Renditions of the same presentation. Or, two EXT-X-MEDIA
+				tags can be used to identify video-only Media Playlists that show two different
+				camera angles.</t>
+
+				<figure>
+					<preamble>Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-MEDIA:<attribute-list>
+]]></artwork>
+				</figure>
+
+				<t>The following attributes are defined:
+
+				<list style="hanging">
+				<t>TYPE</t>
+
+				<t>The value is an enumerated-string; valid strings are AUDIO,
+				VIDEO, SUBTITLES, and CLOSED-CAPTIONS.  This attribute is REQUIRED.</t>
+
+				<t>Typically, <xref target="CEA608">closed-caption</xref> media 
+				is carried in the video stream.  Therefore, an EXT-X-MEDIA tag with TYPE of
+				CLOSED-CAPTIONS does not specify a Rendition; the closed-caption
+				media is present in the Media Segments of every video Rendition.</t>
+
+				<t>URI</t>
+
+				<t>The value is a quoted-string containing a URI that identifies
+				the Media Playlist file. This attribute is OPTIONAL; see <xref target="alt_rend"/>.
+				If the TYPE is CLOSED-CAPTIONS, the URI attribute MUST NOT be present.</t>
+
+				<t>GROUP-ID</t>
+
+				<t>The value is a quoted-string that specifies the group to which 
+				the Rendition belongs. See <xref target="rend_groups"/>. This attribute is 
+				REQUIRED.</t>
+
+				<t>LANGUAGE</t>
+
+				<t>The value is a quoted-string containing one of the standard
+				<xref target="RFC5646">Tags for Identifying Languages</xref>, which
+				identifies the primary language used in
+				the Rendition. This attribute is OPTIONAL.</t>
+
+				<t>ASSOC-LANGUAGE</t>
+
+				<t>The value is a quoted-string containing a <xref target="RFC5646"> 
+				language tag</xref> that identifies a language that is associated 
+				with the Rendition. An associated language is often used in a different 
+				role than the language specified by the LANGUAGE attribute (e.g., written 
+				versus spoken or a fallback dialect). This attribute is OPTIONAL.</t>
+
+				<t>The LANGUAGE and ASSOC-LANGUAGE attributes can be used, for example, to link
+				Norwegian Renditions that use different spoken and written languages.</t>
+
+				<t>NAME</t>
+
+				<t>The value is a quoted-string containing a human-readable
+				description of the Rendition. If the LANGUAGE attribute is present,
+				then this description SHOULD be in that language.  This attribute is REQUIRED.</t>
+
+				<t>DEFAULT</t>
+
+				<t>The value is an enumerated-string; valid strings are YES
+				and NO. If the value is YES, then the client SHOULD play this Rendition
+				of the content in the absence of information from the user indicating
+				a different choice. This attribute is OPTIONAL. Its absence indicates
+				an implicit value of NO.</t>
+
+				<t>AUTOSELECT</t>
+
+				<t>The value is an enumerated-string; valid strings are YES
+				and NO. This attribute is OPTIONAL. Its absence indicates
+				an implicit value of NO. 
+				If the value is YES, then the client MAY choose to
+				play this Rendition in the absence of explicit user preference because
+				it matches the current playback environment, such as chosen system
+				language.</t>
+
+				<t>If the AUTOSELECT attribute is present, its value MUST be 
+				YES if the value of the DEFAULT attribute is YES.</t>
+
+				<t>FORCED</t>
+
+				<t>The value is an enumerated-string; valid strings are YES
+				and NO. This attribute is OPTIONAL. Its absence indicates an implicit
+				value of NO. The FORCED attribute MUST NOT be present unless the
+				TYPE is SUBTITLES.</t>
+
+				<t>A value of YES indicates that the Rendition contains content that
+				is considered essential to play. When selecting a FORCED Rendition,
+				a client SHOULD choose the one that best matches the current playback
+				environment (e.g., language).</t>
+
+				<t>A value of NO indicates that the Rendition contains content that
+				is intended to be played in response to explicit user request.</t>
+
+				<t>INSTREAM-ID</t>
+
+				<t>The value is a quoted-string that specifies a Rendition within
+				the segments in the Media Playlist.  This attribute is REQUIRED 
+				if the TYPE attribute is CLOSED-CAPTIONS, in which case it MUST have 
+				one of the values: "CC1", "CC2", "CC3", "CC4", or "SERVICEn" where n MUST be 
+				an integer between 1 and 63 (e.g., "SERVICE3" or "SERVICE42").</t>
+
+  				<t>The values "CC1", "CC2", "CC3", and "CC4" identify a 
+  				<xref target="CEA608">Line 21 Data Services channel</xref>. The "SERVICE" 
+  				values identify a <xref target="CEA708">Digital Television Closed Captioning
+  				</xref> service block number.</t>
+
+				<t>For all other TYPE values, the INSTREAM-ID MUST NOT be specified.</t>
+
+				<t>CHARACTERISTICS</t>
+
+				<t>The value is a quoted-string containing one or more
+				<xref target="UTI">Uniform Type Identifiers</xref> separated
+				by comma (,) characters. This attribute is OPTIONAL. Each UTI indicates
+				an individual characteristic of the Rendition.</t>
+
+				<t>A SUBTITLES Rendition MAY include the following characteristics:
+				"public.accessibility.transcribes-spoken-dialog",
+				"public.accessibility.describes-music-and-sound", and
+				"public.easy-to-read"
+				 (which indicates that the subtitles have been edited for ease of
+				 reading).</t>
+
+				<t>An AUDIO Rendition MAY include the following characteristic:
+				"public.accessibility.describes-video".</t>
+
+				<t>The CHARACTERISTICS attribute MAY include private UTIs.</t>
+
+				<t>CHANNELS</t>
+
+				<t> The value is a quoted-string that specifies an ordered, backslash-separated ("/")
+				list of parameters. If the TYPE attribute is AUDIO, then the first parameter
+				is a count of audio channels expressed as a decimal-integer,
+				indicating the maximum number of independent, simultaneous audio
+				channels present in any Media Segment in the Rendition.
+				For example, an AC-3 5.1 Rendition would have a CHANNELS="6" attribute. No
+				other CHANNELS parameters are currently defined.</t>
+
+				<t>All audio EXT-X-MEDIA tags SHOULD have a CHANNELS attribute. If a Master
+				Playlist contains two Renditions encoded with the same codec but a different
+				number of channels, then the CHANNELS attribute is REQUIRED; otherwise, it is
+				OPTIONAL.</t>
+
+				</list>
+				</t>
+
+			    <section title="Rendition Groups" anchor="rend_groups">
+					<t>A set of one or more EXT-X-MEDIA tags with the same GROUP-ID value and
+					the same TYPE value defines a Group of Renditions. Each member
+					of the Group MUST be an alternative
+					Rendition of the same content; otherwise, playback errors can occur.</t>
+
+					<t>All EXT-X-MEDIA tags in a Playlist MUST meet the following
+					constraints:</t>
+
+					<t><list hangIndent="2" style="symbols">
+						<t>All EXT-X-MEDIA tags in the same Group MUST have different
+						NAME attributes.</t>
+						<t>A Group MUST NOT have more than one member with a DEFAULT
+						attribute of YES.</t>
+						<t>Each EXT-X-MEDIA tag with an AUTOSELECT=YES attribute SHOULD
+						have a combination of <xref target="RFC5646">LANGUAGE</xref>, ASSOC-LANGUAGE, FORCED,
+						and CHARACTERISTICS attributes that is distinct from those
+						of other AUTOSELECT=YES members of its Group.</t>
+					</list></t>
+
+					<t>A Playlist MAY contain multiple Groups of the same TYPE in
+					order to provide multiple encodings of that media type.
+					If it does so, each Group of the same TYPE MUST have the same
+					set of members, and each corresponding member MUST have identical
+					attributes with the exception of the URI and CHANNELS attributes.</t>
+
+					<t>Each member in a Group of Renditions MAY have a different sample 
+					format. For example, an English Rendition can be encoded with AC-3 5.1
+					while a Spanish Rendition is encoded with AAC stereo. However,
+					any <xref
+					target="stream_inf">EXT-X-STREAM-INF
+					tag</xref> or
+					<xref
+					    target="ext_x_i_frame_stream_inf">EXT-X-I-FRAME-STREAM-INF
+					tag</xref>
+					that references such a Group MUST have a CODECS attribute
+					that lists every sample format present in any Rendition in the
+					Group, or client playback failures can occur. In the example above,
+					the CODECS attribute would include "ac-3,mp4a.40.2".</t>
+
+			    </section>
+		    </section>
+
+		    <section title="EXT-X-STREAM-INF" anchor="stream_inf">
+				<t>The EXT-X-STREAM-INF tag specifies a Variant Stream, which is a set of
+				Renditions that can be combined to play the presentation. The attributes
+				of the tag provide information about the Variant Stream.
+				</t>
+
+				<t>The URI line that follows the EXT-X-STREAM-INF tag specifies a
+				Media Playlist that carries a Rendition of the Variant Stream.
+				The URI line is REQUIRED. Clients that do not support multiple video 
+				Renditions SHOULD play this Rendition.</t>
+
+				<t> Its format is:</t>
+
+				<figure>
+					<artwork><![CDATA[
+#EXT-X-STREAM-INF:<attribute-list>
+<URI>
+]]></artwork>
+				</figure>
+
+				<t>The following attributes are defined:
+
+				<list style="hanging">
+				<t>BANDWIDTH</t>
+
+				<t>The value is a decimal-integer of bits per second.  It represents
+				the peak segment bit rate of the Variant Stream. </t>
+
+				<t>If all the Media Segments in a Variant Stream have already been created,
+				the BANDWIDTH value MUST be the largest sum of peak segment bit rates
+				that is produced by any playable combination of Renditions.
+				(For a Variant Stream with a single Media Playlist,
+				this is just the peak segment bit rate of that Media Playlist.)
+				An inaccurate value can cause playback stalls or prevent clients
+				from playing the variant.</t>
+
+				<t>If the Master Playlist is to be made available before all Media Segments 
+				in the presentation have been encoded, the BANDWIDTH value SHOULD 
+				be the BANDWIDTH value of a representative period of similar content, 
+				encoded using the same settings.</t>
+
+				<t>Every EXT-X-STREAM-INF tag MUST include the BANDWIDTH attribute.</t>
+
+				<t>AVERAGE-BANDWIDTH</t>
+
+				<t>The value is a decimal-integer of bits per second.  It represents
+				the average segment bit rate of the Variant Stream. </t>
+
+				<t>If all the Media Segments in a Variant Stream have already been created,
+				the AVERAGE-BANDWIDTH value MUST be
+				the largest sum of average segment bit rates that is produced by any playable 
+				combination of Renditions. (For a Variant Stream with a single Media Playlist,
+				this is just the average segment bit rate of that Media Playlist.)
+				An inaccurate value can cause playback stalls or prevent clients
+				from playing the variant.</t>
+
+				<t>If the Master Playlist is to be made available before all Media Segments 
+				in the presentation have been encoded, the AVERAGE-BANDWIDTH value SHOULD 
+				be the AVERAGE-BANDWIDTH value of a representative period of similar content, 
+				encoded using the same settings.</t>
+
+				<t>The AVERAGE-BANDWIDTH attribute is OPTIONAL.</t>
+
+				<t>CODECS</t>
+
+				<t>The value is a quoted-string containing a comma-separated
+				list of formats, where each format specifies a media sample type that is
+				present in one or more Renditions specified by the Variant Stream. Valid
+				format identifiers are those in the ISO Base Media File Format Name Space defined
+				by <xref target="RFC6381">"The 'Codecs' and 'Profiles' Parameters for "Bucket" Media Types"</xref>.</t>
+
+				<t>For example, a stream containing AAC low complexity (AAC-LC) audio and H.264 Main Profile Level 3.0 video
+				would have a CODECS value of "mp4a.40.2,avc1.4d401e".</t>
+
+				<t>Every EXT-X-STREAM-INF tag SHOULD include a CODECS attribute.</t>
+
+				<t>RESOLUTION</t>
+
+				<t>The value is a decimal-resolution describing the optimal
+				pixel resolution at which to display all the video in the Variant
+				Stream.</t>
+
+				<t>The RESOLUTION attribute is OPTIONAL but is recommended if the Variant Stream includes video.</t>
+
+				<t>FRAME-RATE</t>
+
+				<t>The value is a decimal-floating-point describing the maximum
+				frame rate for all the video in the Variant Stream, rounded to three decimal places.</t>
+
+				<t>The FRAME-RATE attribute is OPTIONAL but is recommended if the Variant Stream 
+				includes video.  The FRAME-RATE attribute SHOULD be included if any video in a
+				Variant Stream exceeds 30 frames per second.</t>
+
+				<t>HDCP-LEVEL</t>
+
+				<t>The value is an enumerated-string; valid strings are TYPE-0 and NONE.
+				This attribute is advisory; a value of TYPE-0 indicates that the Variant Stream
+				could fail to play unless the output is protected by <xref target="HDCP">High-bandwidth Digital Content Protection (HDCP) Type 0</xref>
+				or equivalent. A value of NONE indicates that the content does not
+				require output copy protection.</t>
+
+				<t>Encrypted Variant Streams with different HDCP levels SHOULD use
+				different media encryption keys.</t>
+
+				<t>The HDCP-LEVEL attribute is OPTIONAL. It SHOULD be present if any content
+				in the Variant Stream will fail to play without HDCP. Clients without
+				output copy protection SHOULD NOT load a Variant Stream with an HDCP-LEVEL
+				attribute unless its value is NONE.</t>
+
+				<t>AUDIO</t>
+
+				<t>The value is a quoted-string. It MUST match the value
+				of the GROUP-ID attribute of an EXT-X-MEDIA tag elsewhere in the
+				Master Playlist whose TYPE attribute is AUDIO. It indicates the set of
+				audio Renditions that SHOULD be used when playing the presentation.
+				See <xref target="alt_rend"/>.</t>
+				<t>The AUDIO attribute is OPTIONAL.</t>
+
+				<t>VIDEO</t>
+
+				<t>The value is a quoted-string. It MUST match the value
+				of the GROUP-ID attribute of an EXT-X-MEDIA tag elsewhere in the
+				Master Playlist whose TYPE attribute is VIDEO. It indicates the set of
+				video Renditions that SHOULD be used when playing the presentation.
+				See <xref target="alt_rend"/>.</t>
+
+				<t>The VIDEO attribute is OPTIONAL.</t>
+
+				<t>SUBTITLES</t>
+
+				<t>The value is a quoted-string. It MUST match the value
+				of the GROUP-ID attribute of an EXT-X-MEDIA tag elsewhere in the
+				Master Playlist whose TYPE attribute is SUBTITLES. It indicates the set of
+				subtitle Renditions that can be used when playing the presentation.
+				See <xref target="alt_rend"/>.</t>
+
+				<t>The SUBTITLES attribute is OPTIONAL.</t>
+
+				<t>CLOSED-CAPTIONS</t>
+
+				<t>The value can be either a quoted-string or an enumerated-string
+				with the value NONE. If the value is a quoted-string, it MUST match the value of the 
+				GROUP-ID attribute of an EXT-X-MEDIA tag elsewhere in the Playlist whose 
+				TYPE attribute is CLOSED-CAPTIONS, and it indicates the set of closed-caption
+   				Renditions that can be used when playing the presentation. See 
+   				<xref target="alt_rend"/>.</t>
+   				
+   				<t>If the value is the enumerated-string value
+				NONE, all EXT-X-STREAM-INF
+   				tags MUST have this attribute with a value of NONE, indicating that there
+   				are no closed captions in any Variant Stream in the Master Playlist.
+   				Having closed captions in one Variant Stream but not another can
+   				trigger playback inconsistencies.</t>
+
+				<t>The CLOSED-CAPTIONS attribute is OPTIONAL.</t>
+
+				</list>
+				</t>
+
+			    <section title="Alternative Renditions" anchor="alt_rend">
+			    	<t>When an EXT-X-STREAM-INF tag contains an AUDIO, VIDEO, 
+			    	SUBTITLES, or CLOSED-CAPTIONS attribute, it indicates that alternative Renditions
+			    	of the content are available for playback of that Variant Stream.</t>
+
+			    	<t>When defining alternative Renditions, the following constraints
+			    	MUST be met to prevent client playback errors:</t>
+
+					<t><list hangIndent="2" style="symbols">
+						<t>All playable combinations of Renditions associated with
+						an EXT-X-STREAM-INF tag MUST have an aggregate bandwidth
+						less than or equal to the BANDWIDTH attribute of the EXT-X-STREAM-INF
+						tag.</t>
+
+						<t>If an EXT-X-STREAM-INF tag contains a RESOLUTION attribute
+						and a VIDEO attribute, then every alternative video Rendition
+						MUST have an optimal display resolution matching the value
+						of the RESOLUTION attribute.</t>
+
+						<t>Every alternative Rendition associated with an EXT-X-STREAM-INF
+						tag MUST meet the constraints for a Variant Stream described
+						in <xref target="variant_streams"/>.</t>
+					</list></t>
+
+			    	<t>The URI attribute of the EXT-X-MEDIA tag is REQUIRED if the media 
+			    	type is SUBTITLES, but 
+			    	OPTIONAL if the media type is VIDEO or AUDIO. If the media type is 
+					VIDEO or AUDIO, a missing URI attribute indicates that the media data 
+			    	for this Rendition is included in the Media Playlist of any 
+					EXT-X-STREAM-INF tag referencing this EXT-X-MEDIA tag. If the media TYPE is 
+			    	AUDIO and the URI attribute is missing, clients MUST assume
+			    	that the audio data for this Rendition is  present in every 
+			    	video Rendition specified by the EXT-X-STREAM-INF tag.</t>
+
+			    	<t>The URI attribute of the EXT-X-MEDIA tag MUST NOT be included if 
+			    	the media type is CLOSED-CAPTIONS.</t>
+			    </section>
+		    </section>
+
+		    <section title="EXT-X-I-FRAME-STREAM-INF" anchor="ext_x_i_frame_stream_inf">
+				<t></t>
+
+				<figure>
+					<preamble>The EXT-X-I-FRAME-STREAM-INF tag identifies a Media Playlist
+					file containing the I-frames of a multimedia presentation. It
+					stands alone, in that it does not apply to a particular URI in
+					the Master Playlist. Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-I-FRAME-STREAM-INF:<attribute-list>
+]]></artwork>
+				</figure>
+
+				<t>All attributes defined for the EXT-X-STREAM-INF tag (<xref target="stream_inf"/>)
+				are also defined for the EXT-X-I-FRAME-STREAM-INF tag, except for
+				the FRAME-RATE, AUDIO, SUBTITLES, and CLOSED-CAPTIONS attributes. In addition,
+				the following attribute is defined:
+
+				<list style="hanging">
+				<t>URI</t>
+
+				<t>The value is a quoted-string containing a URI that identifies
+				the I-frame Media Playlist file. That Playlist file MUST contain
+				an EXT-X-I-FRAMES-ONLY tag.</t>
+
+				</list>
+				</t>
+
+				<t>Every EXT-X-I-FRAME-STREAM-INF tag MUST include a BANDWIDTH attribute
+				and a URI attribute.</t>
+
+			   	<t>The provisions in <xref target="alt_rend"/>
+				also apply to EXT-X-I-FRAME-STREAM-INF
+			   	tags with a VIDEO attribute.</t>
+
+			   	<t>A Master Playlist that specifies alternative VIDEO Renditions and I-frame
+			   	Playlists SHOULD include an alternative I-frame VIDEO Rendition
+			   	for each regular VIDEO Rendition, with the same NAME and LANGUAGE
+			   	attributes.</t>
+		    </section>
+
+			<section title="EXT-X-SESSION-DATA">
+				<t>The EXT-X-SESSION-DATA tag allows arbitrary session data to be carried in a Master Playlist.</t>
+				<figure>
+					<preamble>Its format is:</preamble>
+					<artwork><![CDATA[
+#EXT-X-SESSION-DATA:<attribute-list>
+]]></artwork>
+				</figure>
+
+				<t>The following attributes are defined:
+
+				<list style="hanging">
+				<t>DATA-ID</t>
+
+				<t>The value of DATA-ID is a quoted-string that identifies a particular
+				data value.  The DATA-ID SHOULD conform to a reverse DNS naming convention, 
+				such as "com.example.movie.title"; however, there is no central
+				registration authority, so Playlist authors SHOULD take care to
+				choose a value that is unlikely to collide with others. This attribute 
+				is REQUIRED. </t>
+
+				<t>VALUE</t>
+
+				<t>VALUE is a quoted-string.  It contains the data identified by DATA-ID.
+				If the LANGUAGE is specified, VALUE SHOULD contain a human-readable string 
+				written in the specified language.</t>
+
+				<t>URI</t>
+
+				<t>The value is a quoted-string containing a URI. The resource
+				identified by the URI MUST be formatted as <xref target="RFC7159">JSON</xref>;
+				otherwise, clients may fail to interpret the resource.</t>
+
+				<t>LANGUAGE</t>
+
+				<t>The value is a quoted-string containing a <xref target="RFC5646">language tag</xref>
+				that identifies the language of the VALUE.  This attribute is OPTIONAL.</t>
+
+				</list>
+				</t>
+
+				<t>Each EXT-X-SESSION-DATA tag MUST contain either a VALUE or URI attribute, but not both.</t>
+
+				<t>A Playlist MAY contain multiple 
+				EXT-X-SESSION-DATA tags with the same DATA-ID attribute. A Playlist MUST NOT 
+				contain more than one EXT-X-SESSION-DATA tag with the same DATA-ID attribute 
+				and the same LANGUAGE attribute.</t>
+			</section>
+
+			<section title="EXT-X-SESSION-KEY">
+				<t>The EXT-X-SESSION-KEY tag allows encryption keys from Media Playlists to 
+				be specified in a Master Playlist. This allows the client to preload these keys
+				without having to read the Media Playlist(s) first.</t>
+				<figure>
+					<preamble>Its format is:</preamble>
+					<artwork><![CDATA[
+#EXT-X-SESSION-KEY:<attribute-list>
+]]></artwork>
+				</figure>
+
+				<t>All attributes defined for the <xref target="ext-x-key">EXT-X-KEY tag</xref> are also
+				defined for the EXT-X-SESSION-KEY, except that the value of the METHOD attribute MUST
+				NOT be NONE.  If an EXT-X-SESSION-KEY is used, the values of the METHOD, KEYFORMAT, 
+				and KEYFORMATVERSIONS attributes MUST match any EXT-X-KEY with the same URI value.</t>
+
+				<t>EXT-X-SESSION-KEY tags SHOULD be added if multiple Variant Streams or Renditions 
+				use the same encryption keys and formats. An EXT-X-SESSION-KEY tag is not associated
+				with any particular Media Playlist.</t>
+
+				<t>A Master Playlist MUST NOT contain more than one EXT-X-SESSION-KEY
+				tag with the same METHOD, URI, IV, KEYFORMAT, and KEYFORMATVERSIONS
+				attribute values.</t>
+
+				<t>The EXT-X-SESSION-KEY tag is optional.</t>
+			</section>
+
+			</section> <!-- Master Playlist Tags -->
+
+			<section title="Media or Master Playlist Tags">
+
+			<t>The tags in this section can appear in either Master Playlists or Media Playlists.
+			If one of these tags appears in a Master Playlist, it SHOULD NOT appear in any Media Playlist
+			referenced by that Master Playlist.  A tag that appears in both MUST have the same value;
+			otherwise, clients SHOULD ignore the value in the Media Playlist(s).</t>
+
+			<t>These tags MUST NOT appear more than once in a Playlist.  If a tag appears more
+			than once, clients MUST fail to parse the Playlist.</t>
+
+			<section title="EXT-X-INDEPENDENT-SEGMENTS">
+				<t>The EXT-X-INDEPENDENT-SEGMENTS tag indicates that all media samples in 
+				a Media Segment can be decoded without information from other segments. It applies 
+				to every Media Segment in the Playlist.</t>
+
+				<figure>
+					<preamble>Its format is:</preamble>
+
+					<artwork><![CDATA[
+#EXT-X-INDEPENDENT-SEGMENTS
+]]></artwork>
+				</figure>
+
+				<t>If the EXT-X-INDEPENDENT-SEGMENTS tag appears in a Master Playlist, it 
+				applies to every Media Segment in every Media Playlist in the Master Playlist.</t>
+			</section>
+
+			<section title="EXT-X-START">
+				<t>The EXT-X-START tag indicates a preferred point at which to start playing
+				a Playlist. By default, clients SHOULD start playback at this point when 
+				beginning a playback session. This tag is OPTIONAL.</t>
+
+				<figure>
+					<preamble>Its format is:</preamble>
+					<artwork><![CDATA[
+#EXT-X-START:<attribute-list>
+]]></artwork>
+				</figure>
+
+				<t>The following attributes are defined:
+
+				<list style="hanging">
+
+				<t>TIME-OFFSET</t>
+
+				<t>The value of TIME-OFFSET is a signed-decimal-floating-point number of seconds.  
+				A positive number indicates a time offset from the beginning of the Playlist.  
+				A negative number indicates a negative time offset from the end of the last 
+				Media Segment in the Playlist. This attribute is REQUIRED.</t>
+
+				<t>The absolute value of TIME-OFFSET SHOULD NOT be larger than the Playlist duration.
+				If the absolute value of TIME-OFFSET exceeds the duration of the Playlist, 
+				it indicates either the end of the Playlist (if positive) or the beginning 
+				of the Playlist (if negative).</t>
+
+				<t>If the Playlist does not contain the EXT-X-ENDLIST tag, the TIME-OFFSET 
+				SHOULD NOT be within three target durations of the end of the Playlist file.</t>
+
+				<t>PRECISE</t>
+
+				<t>The value is an enumerated-string; valid strings are YES and NO.  
+				If the value is YES, clients SHOULD start playback at the Media Segment containing 
+				the TIME-OFFSET, but SHOULD NOT render media samples in that segment whose 
+				presentation times are prior to the TIME-OFFSET. If the value is NO, 
+				clients SHOULD attempt to render every media sample in that segment. 
+				This attribute is OPTIONAL. If it is missing, its value should be treated as NO.</t>
+
+				</list>
+				</t>
+			</section>
+
+	    </section> <!-- Master Playlist Tags -->
+		</section> <!-- Playlist tags -->
+    </section> <!-- The Playlist file -->
+
+<?rfc needLines="48" ?>
+    <section title="Key Files" anchor="key_files">
+		<section title="Structure of Key Files">
+		<t>An EXT-X-KEY tag with a URI attribute identifies a Key file. A Key
+		file contains a cipher key that can decrypt Media Segments in the Playlist.</t>
+
+		<t><xref target="AES_128" /> encryption uses 16-octet keys. If the KEYFORMAT
+		of an EXT-X-KEY tag is "identity", the Key file is a single packed array
+		of 16 octets in binary format.</t>
+		</section>
+
+	    <section title="IV for AES-128" anchor="aes_iv">
+			<t><xref target="AES_128" /> REQUIRES the same 16-octet IV
+			to be supplied when encrypting and decrypting. Varying this IV
+			increases the strength of the cipher.</t>
+
+			<t>An IV attribute on an EXT-X-KEY tag with a KEYFORMAT of "identity"
+			specifies an IV that can be used when decrypting
+			Media Segments encrypted with that Key file. IV values for AES-128 are
+			128-bit numbers.</t>
+
+			<t>An EXT-X-KEY tag with a KEYFORMAT of "identity" that does not have
+			an IV attribute indicates that the Media Sequence Number is to be used
+			as the IV when decrypting a Media Segment, by putting its big-endian
+			binary representation into a 16-octet (128-bit) buffer and padding (on
+			the left) with zeros.</t>
+	    </section> <!-- IV for AES-128 -->
+    </section> <!-- Key files -->
+
+<?rfc needLines="48" ?>
+    <section title="Client/Server Responsibilities">
+		<section title="Introduction">
+		<t>This section describes how the server generates the Playlist and Media
+		Segments and how the client should download them for playback.</t>
+		</section>
+
+	    <section title="Server Responsibilities">
+	    	<section title="General Server Responsibilities" anchor="server_intro">
+			<t>The production of the source media is outside the scope of this
+			document, which simply presumes a source of continuous encoded media
+			containing the presentation.</t>
+
+			<t>The server MUST divide the source media into individual Media Segments
+			whose duration is less than or equal to a constant target duration.
+			Segments that are longer than the planned target duration can trigger playback 
+			stalls and other errors.</t>
+
+			<t>The server SHOULD attempt to divide the source media at points that support
+			effective decode of individual Media Segments, e.g., on packet and key
+			frame boundaries.</t>
+
+			<t>The server MUST create a URI for every Media Segment that enables its
+			clients to obtain the segment data. If a server supports partial loading
+			of resources (e.g., via HTTP Range requests), it MAY specify segments
+			as sub-ranges of larger resources using the EXT-X-BYTERANGE tag.</t>
+
+			<t>Any Media Segment that is specified in a Playlist loaded by a client
+			MUST be available for immediate download, or playback errors can occur.
+			Once download starts, its transfer rate SHOULD NOT be constrained
+			by the segment production process.</t>
+
+			<t>HTTP servers SHOULD transfer text files -- such as Playlists and WebVTT
+			segments -- using the "gzip" Content-Encoding if the client indicates
+			that it is prepared to accept it.</t>
+
+			<t>The server must create a <xref target="playlist_file">Media Playlist
+			file</xref> that contains a URI for each Media Segment that the server
+			wishes to make available, in the order in which they are to be played.</t>
+
+			<t>The value of the <xref target="ext-x-version">EXT-X-VERSION tag</xref>
+			SHOULD NOT be greater than what is required for the tags and attributes
+			in the Playlist (see <xref target="protocol_versions" />).</t>
+
+			<t>Changes to the Playlist file MUST be made atomically from the
+			point of view of the clients, or playback errors MAY occur.</t>
+
+			<t>The server MUST NOT change the Media Playlist file, except to:
+			<list style="symbols">
+				<t>Append lines to it (<xref target="server_intro" />).</t>
+
+				<t>Remove Media Segment URIs from the Playlist in the order that they
+				appear, along with any tags that apply only to those segments
+				(<xref target="live_playlists" />).</t>
+
+				<t>Increment the value of the
+				EXT-X-MEDIA-SEQUENCE or
+				EXT-X-DISCONTINUITY-SEQUENCE
+				tags (<xref target="live_playlists" />).</t>
+
+				<t>Add an EXT-X-ENDLIST tag to the Playlist (<xref target="server_intro" />).</t>
+			</list></t>
+
+			<t>A Media Playlist has further constraints on its updates if it contains
+			an EXT-X-PLAYLIST-TYPE tag. An EXT-X-PLAYLIST-TYPE tag with a value
+			of VOD indicates that the Playlist file MUST NOT change. An EXT-X-PLAYLIST-TYPE	
+			tag with a value of EVENT indicates that the server MUST NOT change or
+			delete any part of the Playlist file; it MAY append lines to it. </t>
+
+			<t>The value of the EXT-X-TARGETDURATION tag in the Media Playlist MUST
+			NOT change. A typical target duration is 10 seconds.</t>
+
+			<t>Playlist changes other than those allowed here can trigger playback errors 
+			and inconsistent client behavior.</t>
+
+			<t>Each Media Segment in a Media Playlist has an integer Discontinuity Sequence Number.
+			The Discontinuity Sequence Number can be used in addition to the timestamps 
+			within the media to synchronize Media Segments across different Renditions.</t>
+
+			<t>A segment's Discontinuity Sequence Number is the value of the 
+			EXT-X-DISCONTINUITY-SEQUENCE tag (or zero if none) plus the number of 
+			EXT-X-DISCONTINUITY tags in the Playlist preceding the URI line of the segment.</t>
+
+			<t>The server MAY associate an absolute date and time with a Media
+			Segment by applying an EXT-X-PROGRAM-DATE-TIME tag to it. This defines
+			an informative mapping of the (wall-clock) date and time specified by
+			the tag to the first media timestamp in the segment,
+			which may be used as a basis for seeking, for display, or for other purposes.
+			If a server provides this mapping, it SHOULD apply an
+			EXT-X-PROGRAM-DATE-TIME
+			tag to every segment that has an EXT-X-DISCONTINUITY tag applied to it. </t>
+
+			<t>The Server MUST NOT add any EXT-X-PROGRAM-DATE-TIME tag to a Playlist
+			that would cause the mapping between program date and Media Segment
+			to become ambiguous.</t>
+
+			<t>The server MUST NOT remove an EXT-X-DATERANGE tag from a Playlist if
+			any date in the range maps to a Media Segment in the Playlist.</t>
+
+			<t>The server MUST NOT reuse the ID attribute value of an EXT-X-DATERANGE
+			tag for any new Date Range in the same Playlist.</t>
+
+			<t>Once the Following Range of a Date Range with an END-ON-NEXT=YES
+			attribute is added to a Playlist, the Server MUST NOT subsequently add
+			a Date Range with the same CLASS attribute whose START-DATE is between
+			that of the END-ON-NEXT=YES range and its Following Range.</t>
+
+			<t>For Date Ranges with a PLANNED-DURATION attribute, the Server SHOULD
+			signal the actual end of the range once it has been established.
+			It can do so by adding another EXT-X-DATERANGE tag with the same ID attribute
+			value and either a DURATION or an END-DATE attribute or, if the Date
+			Range has an END-ON-NEXT=YES attribute, by adding a Following Range.</t>
+
+			<t>If the Media Playlist contains the final Media Segment of the presentation,
+			then the Playlist file MUST contain the EXT-X-ENDLIST tag; this allows
+			clients to minimize unproductive Playlist reloads.</t>
+
+			<t>If a Media Playlist does not contain the EXT-X-ENDLIST tag, the server
+			MUST make a new version of the Playlist file available that contains
+			at least one new Media Segment. It MUST be made available relative to the
+			time that the previous version of the Playlist file was made available:
+			no earlier than one-half the target duration after that time, and no
+			later than 1.5 times the target duration after that time. This allows
+			clients to utilize the network efficiently.</t>
+
+			<t>If the server wishes to remove an entire presentation, it SHOULD provide
+			a clear indication to clients that the Playlist file is no longer
+			available (e.g., with an HTTP 404 or 410 response). It MUST ensure that all 
+			Media Segments in the Playlist file remain available to clients for at
+			least the duration of the Playlist file at the time of removal to prevent
+			interruption of in-progress playback.</t>
+			</section>
+
+			<section title="Live Playlists" anchor="live_playlists">
+				<t>The server MAY limit the availability of Media Segments by removing
+				Media Segments from the Playlist file (<xref target="server_intro" />). 
+				If Media Segments are to be removed, the Playlist file MUST contain 
+				an EXT-X-MEDIA-SEQUENCE tag. Its value MUST be incremented by 1 for every 
+				Media Segment that is removed from the Playlist file; it MUST NOT
+				decrease or wrap. Clients can malfunction if each Media Segment does
+				not have a consistent, unique Media Sequence Number.</t>
+
+				<t>Media Segments MUST be removed from the Playlist file in the order
+				that they appear in the Playlist; otherwise, client playback can 
+				malfunction.</t>
+
+				<t>The server MUST NOT remove a Media Segment from a Playlist file
+				without an EXT-X-ENDLIST tag if that would produce a Playlist whose
+				duration is less than three times the target duration. Doing so
+				can trigger playback stalls.</t>
+
+				<t>When the server removes a Media Segment URI from the Playlist,
+				the corresponding Media Segment MUST remain available to clients for a period of time
+				equal to the duration of the segment plus the duration of the longest
+				Playlist file distributed by the server containing that segment.
+				Removing a Media Segment earlier than that can interrupt in-progress
+				playback.</t>
+
+				<t>If the server wishes to remove segments from a Media Playlist containing 
+				an EXT-X-DISCONTINUITY tag, the Media Playlist MUST contain an EXT-X-DISCONTINUITY-SEQUENCE 
+				tag. Without the EXT-X-DISCONTINUITY-SEQUENCE tag, it can be impossible for
+				a client to locate corresponding segments between Renditions.</t>
+
+				<t>If the server removes an EXT-X-DISCONTINUITY tag from the Media Playlist, 
+				it MUST increment the value of the EXT-X-DISCONTINUITY-SEQUENCE tag so that 
+				the Discontinuity Sequence Numbers of the segments still in the Media Playlist 
+				remain unchanged. The value of the EXT-X-DISCONTINUITY-SEQUENCE tag MUST NOT
+				decrease or wrap. Clients can malfunction if each Media Segment does
+				not have a consistent Discontinuity Sequence Number.</t>
+
+				<t>If a server plans to remove a Media Segment after it is delivered
+				to clients over HTTP, it SHOULD ensure that the HTTP response contains
+				an Expires header that reflects the planned time-to-live.</t>
+
+				<t>A Live Playlist MUST NOT contain the EXT-X-PLAYLIST-TYPE tag,
+				as no value of that tag allows Media Segments to be removed.</t>
+
+			</section> <!-- Live Playlists -->
+
+			<section title="Encrypting Media Segments" anchor="encrypting">
+				<t>Media Segments MAY be encrypted. Every encrypted Media Segment
+				MUST have an <xref target="ext-x-key">EXT-X-KEY tag</xref>
+				applied to it with a URI that the client can use to obtain a
+				<xref target="key_files">Key file</xref> containing the decryption
+				key. </t>
+
+				<t>A Media Segment can only be encrypted with one encryption METHOD,
+				using one encryption key and IV.  However, a server MAY offer multiple
+				ways to retrieve that key by providing multiple EXT-X-KEY tags,
+				each with a different KEYFORMAT attribute value.</t>
+
+				<t>The server MAY set the HTTP Expires header in the key response
+				to indicate the duration for which the key can be cached.</t>
+
+				<t>Any unencrypted Media Segment in a
+				Playlist that is preceded by an
+				encrypted Media Segment MUST have an
+				EXT-X-KEY tag applied to it with a
+				METHOD attribute of NONE.&nbsp; Otherwise,
+				the client will misinterpret those
+				segments as encrypted.</t>
+
+				<t>If the encryption METHOD is AES-128 and the Playlist does not
+				contain the EXT-X-I-FRAMES-ONLY tag, AES encryption as described
+				in <xref target="ext-x-key" /> SHALL be applied to individual Media
+				Segments.</t>
+
+				<t>If the encryption METHOD is AES-128 and the Playlist contains
+				an EXT-X-I-FRAMES-ONLY tag, the entire resource MUST be encrypted using 
+				AES-128 CBC with <xref target="RFC5652">PKCS7 padding</xref>.
+				Encryption MAY be restarted on 16-byte block boundaries, unless the first
+				block contains an I-frame. The IV used for encryption MUST be either the
+				Media Sequence Number of the Media Segment or the value of the IV attribute
+				of the EXT-X-KEY tag, as described in <xref target="aes_iv" />.
+				These constraints allow a client to load and decrypt individual
+				I-frames specified as sub-ranges of regular encrypted Media Segments,
+				and their Media Initialization Sections.</t>
+
+				<t>If the encryption METHOD is SAMPLE-AES, media samples
+				MAY be encrypted prior to encapsulation in a Media Segment.</t>
+
+				<t>The server MUST NOT remove an EXT-X-KEY tag from the Playlist
+				file if it applies to any Media Segment in the Playlist file, or
+				clients who subsequently load that Playlist will be unable to decrypt
+				those Media Segments.</t>
+			</section> <!-- Encrypting media files -->
+
+			<section title="Providing Variant Streams" anchor="variant_streams">
+				<t>A server MAY offer multiple Media Playlist files to provide different
+				encodings of the same presentation. If it does so, it SHOULD provide
+				a Master Playlist file that lists each Variant Stream to allow
+				clients to switch between encodings dynamically.</t>
+
+				<t>Master Playlists describe regular Variant Streams with EXT-X-STREAM-INF
+				tags and I-frame Variant Streams with EXT-X-I-FRAME-STREAM-INF tags.</t>
+
+				<t>If an EXT-X-STREAM-INF tag or EXT-X-I-FRAME-STREAM-INF tag contains
+				the CODECS attribute, the attribute value MUST include every <xref target="RFC6381">
+				media format</xref>	present in any Media Segment in any of the Renditions 
+				specified by the Variant Stream.</t>
+
+				<t>The server MUST meet the following constraints when producing
+				Variant Streams in order to allow clients to switch between them
+				seamlessly:<list style="symbols">
+
+					<t>Each Variant Stream MUST present the same content.</t>
+
+					<t>Matching content in Variant Streams MUST have matching
+					timestamps. This allows clients to synchronize the media.</t>
+
+					<t>Matching content in Variant Streams MUST have matching
+					Discontinuity Sequence Numbers (see <xref target="disc-seq" />).</t>
+
+					<t>Each Media Playlist in each Variant Stream MUST have the same target duration.
+					The only exceptions are SUBTITLES Renditions and Media Playlists
+					containing an EXT-X-I-FRAMES-ONLY tag, which MAY have different
+					target durations if they have an EXT-X-PLAYLIST-TYPE of VOD.</t>
+
+					<t>Content that appears in a Media Playlist of one Variant Stream but not
+					in another MUST appear either at the beginning or at the end
+					of the Media Playlist file and MUST NOT be longer than the target duration.</t>
+
+					<t>If any Media Playlists have an EXT-X-PLAYLIST-TYPE tag, all Media Playlists
+					MUST have an EXT-X-PLAYLIST-TYPE tag with the same value. </t>
+
+					<t>If the Playlist contains an EXT-X-PLAYLIST-TYPE tag with the value of VOD, the 
+					first segment of every Media Playlist in every Variant Stream MUST start at 
+					the same media timestamp. </t>
+
+					<t>If any Media Playlist in a Master Playlist contains an EXT-X-PROGRAM-DATE-TIME 
+					tag, then all Media Playlists in that Master Playlist MUST contain 
+					EXT-X-PROGRAM-DATE-TIME tags with consistent mappings of date and time 
+					to media timestamps.</t>
+
+					<t>Each Variant Stream MUST contain the same set of Date Ranges,
+					each one identified by an EXT-X-DATERANGE tag(s) with the same ID attribute
+					value and containing the same set of attribute/value pairs.</t>
+
+				</list></t>
+
+				<t>In addition, for broadest compatibility, Variant Streams SHOULD contain the same encoded
+				audio bitstream. This allows clients to switch between Variant Streams
+				without audible glitching.</t>
+
+				<t>The rules for Variant Streams also apply to alternative Renditions (see <xref target="alt_rend" />). </t>
+			</section> <!-- Providing Variant Streams -->
+	    </section> <!-- Server Process -->
+
+	    <section title="Client Responsibilities">
+	    	<section title="General Client Responsibilities">
+			<t>How the client obtains the URI to the Playlist file is outside
+			the scope of this document; it is presumed to have done so.</t>
+
+			<t>The client obtains the Playlist file from the URI. If the Playlist
+			file so obtained is a Master Playlist, the client can select a Variant
+			Stream to load from the Master Playlist.</t>
+
+			<t>Clients MUST ensure that loaded Playlists comply with <xref target="playlist_file"/>
+			and that the EXT-X-VERSION tag, if present, specifies a protocol version
+			supported by the client; if either check fails, the client MUST NOT
+			attempt to use the Playlist, or unintended behavior could occur.</t>
+
+			<t>If any URI element in a Playlist contains an URI scheme that the client
+			cannot handle, the client MUST stop playback.  All clients MUST support
+			HTTP schemes.</t>
+
+			<t>To support forward compatibility, when parsing Playlists, clients MUST:
+			<list hangIndent="2" style="symbols">
+				<t>ignore any unrecognized tags.</t> 
+
+				<t>ignore any attribute/value pair with an unrecognized AttributeName.</t> 
+
+				<t>ignore any tag containing an attribute/value pair of type
+				enumerated-string whose AttributeName is recognized but whose AttributeValue
+				is not recognized, unless the definition of the attribute says otherwise. </t>
+			</list></t>
+
+			<t>Algorithms used by the client to switch between Variant Streams are beyond 
+			the scope of this document.</t>
+			</section>
+
+			<section title="Loading the Media Playlist File" anchor="load_file">
+				<t>Every time a Media Playlist is loaded or reloaded from a Playlist
+				URI, the client MUST determine the next Media Segment to load, as
+				described in <xref target="next_file" />, if it intends to play
+				the presentation normally (i.e., in Playlist order at the nominal
+				playback rate).</t>
+
+				<t>If the Media Playlist contains the EXT-X-MEDIA-SEQUENCE tag, the
+				client SHOULD assume that each Media Segment in it will
+				become unavailable at the time that the Playlist file was loaded
+				plus the duration of the Playlist file.</t>
+
+				<t>A client MAY use the segment Media Sequence Number to track the
+				location of a Media Segment within a Playlist when the Playlist
+				is reloaded.</t>
+
+				<t>A client MUST NOT assume that segments with the same Media Sequence
+				Number in different Variant Streams or Renditions have the same
+				position in the presentation; Playlists MAY have independent Media
+				Sequence Numbers. Instead, a client MUST use the relative
+				position of each segment on the Playlist timeline and its Discontinuity
+				Sequence Number to locate corresponding segments.</t>
+
+				<t>A client MUST load the Media Playlist file of every Rendition
+				selected for playback in order to locate the media specific to
+				that Rendition. But, to prevent unnecessary load on the server,
+				it SHOULD NOT load the Playlist file of any other Rendition.</t>
+
+				<t>For some Variant Streams, it is possible to select Renditions
+				that do not include the Rendition specified by the EXT-X-STREAM-INF
+				tag.  As noted above, the client SHOULD NOT load that Rendition
+				in those cases.</t>
+
+			</section> <!-- Loading the Playlist file -->
+
+			<section title="Playing the Media Playlist File" anchor="play_file">
+				<t>The client SHALL choose which Media Segment to play first from
+				the Media Playlist when playback starts. If the EXT-X-ENDLIST tag is not
+				present and the client intends to play the media normally, the client SHOULD
+				NOT choose a segment that starts less than three target durations from
+				the end of the Playlist file. Doing so can trigger playback stalls.</t>
+
+				<t>Normal playback can be achieved by playing the Media Segments
+				in the order that they appear in the Playlist. The client MAY present
+				the available media in any way it wishes, including normal playback,
+				random access, and trick modes. </t>
+
+				<t>The encoding parameters for samples in a Media
+				Segment and across multiple Media Segments in a Media Playlist
+				SHOULD remain consistent. However, clients SHOULD deal with encoding changes
+				as they are encountered, for example, by scaling video content to accommodate
+				a resolution change. If the Variant Stream includes a RESOLUTION attribute,
+				clients SHOULD display all video within a rectangle with the same proportions
+				as that resolution.</t>
+
+				<t>Clients SHOULD be prepared to handle multiple tracks of a particular type
+				(e.g., audio or video). A client with no other preference SHOULD choose the
+				track with the lowest numerical track identifier that it can play.</t>
+
+				<t>Clients SHOULD ignore private streams inside Transport Streams
+				that they do not recognize.  Private streams can be used to support 
+				different devices with the same stream, although stream authors
+				SHOULD be sensitive to the additional network load that this imposes.</t>
+
+				<t>The client MUST be prepared to reset its parser(s) and decoder(s)
+				before playing a Media Segment that has an EXT-X-DISCONTINUITY tag
+				applied to it; otherwise, playback errors can occur.</t>
+
+				<t>The client SHOULD attempt to load Media Segments in advance of
+				when they will be required for uninterrupted playback to
+				compensate for temporary variations in latency and throughput.</t>
+
+				<t>The client MAY use the value of the EXT-X-PROGRAM-DATE-TIME
+				tag to display the program origination time to the user. If the
+				value includes time zone information, the client SHALL take it
+				into account; if it does not, the client MAY assume the time to be
+				local.</t>
+
+				<t>Note that dates in Playlists can refer to when the content was
+				produced (or to other times), which have no relation to the time of playback.</t>
+
+				<t>If the first EXT-X-PROGRAM-DATE-TIME tag in a Playlist appears
+				after one or more Media Segment URIs, the client SHOULD extrapolate
+				backward from that tag (using EXTINF durations and/or media timestamps)
+				to associate dates with those segments. To associate a date with
+				any other Media Segment that does not have an EXT-X-PROGRAM-DATE-TIME
+				tag applied to it directly, the client SHOULD extrapolate forward
+				from the last EXT-X-PROGRAM-DATE-TIME tag appearing before that
+				segment in the Playlist.</t>
+			</section> <!-- Playing the Playlist file -->
+
+			<section title="Reloading the Media Playlist File">
+				<t>The client MUST periodically reload a Media Playlist file to learn what 
+				media is currently available, unless it contains an EXT-X-PLAYLIST-TYPE tag 
+				with a value of VOD, or a value of EVENT and the EXT-X-ENDLIST tag is 
+				also present.</t>
+
+				<t>However, the client MUST NOT attempt to reload the Playlist
+				file more frequently than specified by this section, in order to
+				limit the collective load on the server.</t>
+
+				<t>When a client loads a Playlist file for the first time or
+				reloads a Playlist file and finds that it has changed since the
+				last time it was loaded, the client MUST wait for at least the target 
+				duration before attempting to reload the Playlist file again, measured 
+				from the last time the client began loading the Playlist file.</t>
+
+				<t>If the client reloads a Playlist file and finds that it has
+				not changed, then it MUST wait for a period of one-half the target
+				duration before retrying.</t>
+
+				<t>After reloading a Media Playlist, the client SHOULD verify that each Media
+				Segment in it has the same URI (and byte range, if specified) as the Media
+				Segment with the same Media Sequence Number in the previous Media Playlist.
+				It SHOULD halt playback if it does not, as this normally indicates a server error.</t>
+
+				<t>In order to reduce server load, the client SHOULD NOT reload the
+				Playlist files of Variant Streams or alternate Renditions that are not currently being played.
+				If it decides to switch playback to a different Variant Stream, it SHOULD
+				stop reloading the Playlist of the old Variant Stream and begin loading
+				the Playlist of the new Variant Stream. It can use the EXTINF durations
+				and the constraints in <xref target="variant_streams" /> to determine
+				the approximate location of corresponding media. Once media from
+				the new Variant Stream has been loaded, the timestamps in the Media Segments
+				can be used to synchronize the old and new timelines precisely.</t>
+
+				<t>A client MUST NOT attempt to use the Media Sequence Number to
+				synchronize between streams (see <xref target="load_file" />).</t>
+			</section> <!-- Reloading the Playlist file -->
+
+			<section title="Determining the Next Segment to Load" anchor="next_file">
+				<t>The client MUST examine the Media Playlist file every time it is
+				loaded or reloaded to determine the next Media Segment to load, as
+				the set of available media MAY have changed.</t>
+
+				<t>The first segment to load is generally the segment that the client
+				has chosen to play first (see <xref target="play_file" />).</t>
+
+				<t>In order to play the presentation normally, the next Media Segment 
+				to load is the one with the lowest Media Sequence Number that is greater
+				than the Media Sequence Number of the last Media Segment loaded.</t>
+			</section> <!-- Determining the next file to load -->
+
+			<section title="Decrypting Encrypted Media Segments" anchor="decrypting">
+				<t>If a Media Playlist file contains an EXT-X-KEY tag that specifies a
+				Key file URI, the client can obtain that Key file and use the
+				key inside it to decrypt all Media Segments to which that EXT-X-KEY
+				tag applies.</t>
+
+				<t>A client MUST ignore any EXT-X-KEY tag with an unsupported or
+				unrecognized KEYFORMAT attribute, to allow for cross-device addressibility. 
+				If the Playlist contains a Media Segment to which only EXT-X-KEY tags
+				with unrecognized or unsupported KEYFORMAT attributes are applied, 
+				playback SHOULD fail.</t>
+
+				<t>A client MUST NOT attempt to decrypt any segments whose EXT-X-KEY tag
+				has a METHOD attribute that it does not recognize.</t> 
+
+				<t>If the encryption METHOD is AES-128, AES-128 CBC decryption
+				SHALL be applied to individual Media Segments, whose encryption
+				format is described in <xref target="ext-x-key" />.</t>
+
+				<t>If the encryption METHOD is AES-128 and the Media Segment is
+				part of an I-frame Playlist (<xref target="i_frame_playlist"/>) and it
+				has an EXT-X-BYTERANGE tag applied to it, 
+				special care needs to be taken in loading and decrypting the segment,
+				because the resource identified by the URI is encrypted in 16-byte
+				blocks from the start of the resource.</t>
+
+				<t>The decrypted I-frame can be recovered by first widening its byte range, 
+				as specified by the EXT-X-BYTERANGE tag, so that it starts and ends on 
+				16-byte boundaries from the start of the resource.</t>
+
+				<t>Next, the byte range is widened further to include a 16-byte block at 
+				the beginning of the range.  This 16-byte block allows the correct 
+				IV for the following block to be calculated.</t>
+
+				<t>The widened byte range can then be loaded and decrypted with AES-128 CBC
+				using an arbitrary IV. The number of bytes added to the beginning and
+				the end of the original byte range are discarded from the decrypted bytes; 
+				what remains is the decrypted I-frame.
+				</t>
+
+				<t>If the encryption METHOD is SAMPLE-AES, AES-128 decryption
+				SHALL be applied to encrypted media samples within the Media
+				Segment.</t>
+
+				<t>An EXT-X-KEY tag with a METHOD of NONE indicates that the Media
+				Segments it applies to are not encrypted.</t>
+			</section> <!-- Decrypting encrypted media files -->
+	    </section> <!-- Client Process -->
+    </section> <!-- Client/Server Actions -->
+
+    <section title="Protocol Version Compatibility" anchor="protocol_versions">
+    	<t>Protocol compatibility is specified by the EXT-X-VERSION tag.  A Playlist 
+    	that contains tags or attributes that are not compatible with protocol version 1 
+    	MUST include an EXT-X-VERSION tag.</t>
+    
+    	<t>A client MUST NOT attempt playback if it does not support the protocol version 
+    	specified by the EXT-X-VERSION tag, or unintended behavior could occur.</t>
+
+    	<t>A Media Playlist MUST indicate an EXT-X-VERSION of 2 or higher if it contains:
+    	<list hangIndent="2" style="symbols">
+
+			<t>The IV attribute of the EXT-X-KEY tag.</t>
+		</list></t>
+    	<t>A Media Playlist MUST indicate an EXT-X-VERSION of 3 or higher if it contains:
+    	<list hangIndent="2" style="symbols">
+
+			<t>Floating-point EXTINF duration values.</t>
+		</list></t>
+    	<t>A Media Playlist MUST indicate an EXT-X-VERSION of 4 or higher if it contains:
+    	<list hangIndent="2" style="symbols">
+
+			<t>The EXT-X-BYTERANGE tag.</t>
+			<t>The EXT-X-I-FRAMES-ONLY tag.</t>
+		</list></t>
+    	<t>A Media Playlist MUST indicate an EXT-X-VERSION of 5 or higher if it contains:
+    	<list hangIndent="2" style="symbols">
+
+			<t>The KEYFORMAT and KEYFORMATVERSIONS attributes of the EXT-X-KEY tag.</t>
+			<t>The EXT-X-MAP tag.</t>
+		</list></t>
+		<t>A Media Playlist MUST indicate an EXT-X-VERSION of 6 or higher if it contains:
+		<list hangIndent="2" style="symbols">
+			<t>The EXT-X-MAP tag in a Media Playlist that does not contain EXT-X-I-FRAMES-ONLY.</t>
+		</list></t>
+		<t>A Master Playlist MUST indicate an EXT-X-VERSION of 7 or higher if it contains:
+		<list hangIndent="2" style="symbols">
+			<t>"SERVICE" values for the INSTREAM-ID attribute of the EXT-X-MEDIA tag.</t>
+		</list></t>
+
+		<t>The EXT-X-MEDIA tag and the AUDIO, VIDEO, and SUBTITLES attributes of the EXT-X-STREAM-INF 
+		tag are backward compatible to protocol version 1, but playback on older clients 
+		may not be desirable.  A server MAY consider indicating an EXT-X-VERSION of 4 or higher in the 
+		Master Playlist but is not required to do so.</t>
+
+ 		<t>The PROGRAM-ID attribute of the EXT-X-STREAM-INF and the EXT-X-I-FRAME-STREAM-INF
+		   tags was removed in protocol version 6.</t>
+
+ 		<t>The EXT-X-ALLOW-CACHE tag was removed in protocol version 7.</t>
+   </section> <!-- Protocol versions -->
+
+    <section title="Playlist Examples">
+		<section title="Simple Media Playlist">
+			<figure>
+				<artwork><![CDATA[
+#EXTM3U
+#EXT-X-TARGETDURATION:10
+#EXT-X-VERSION:3
+#EXTINF:9.009,
+http://media.example.com/first.ts
+#EXTINF:9.009,
+http://media.example.com/second.ts
+#EXTINF:3.003,
+http://media.example.com/third.ts
+#EXT-X-ENDLIST
+]]></artwork>
+			</figure>
+	    </section>
+
+		<section title="Live Media Playlist Using HTTPS">
+			<figure>
+				<artwork><![CDATA[
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:8
+#EXT-X-MEDIA-SEQUENCE:2680
+
+#EXTINF:7.975,
+https://priv.example.com/fileSequence2680.ts
+#EXTINF:7.941,
+https://priv.example.com/fileSequence2681.ts
+#EXTINF:7.975,
+https://priv.example.com/fileSequence2682.ts
+]]></artwork>
+			</figure>
+	    </section>
+
+		<section title="Playlist with Encrypted Media Segments">
+			<figure>
+				<artwork><![CDATA[
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-MEDIA-SEQUENCE:7794
+#EXT-X-TARGETDURATION:15
+
+#EXT-X-KEY:METHOD=AES-128,URI="https://priv.example.com/key.php?r=52"
+
+#EXTINF:2.833,
+http://media.example.com/fileSequence52-A.ts
+#EXTINF:15.0,
+http://media.example.com/fileSequence52-B.ts
+#EXTINF:13.333,
+http://media.example.com/fileSequence52-C.ts
+
+#EXT-X-KEY:METHOD=AES-128,URI="https://priv.example.com/key.php?r=53"
+
+#EXTINF:15.0,
+http://media.example.com/fileSequence53-A.ts
+]]></artwork>
+			</figure>
+	    </section>
+		<section title="Master Playlist">
+			<figure>
+				<artwork><![CDATA[
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=1280000,AVERAGE-BANDWIDTH=1000000
+http://example.com/low.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2560000,AVERAGE-BANDWIDTH=2000000
+http://example.com/mid.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=7680000,AVERAGE-BANDWIDTH=6000000
+http://example.com/hi.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=65000,CODECS="mp4a.40.5"
+http://example.com/audio-only.m3u8
+]]></artwork>
+			</figure>
+	   </section>
+		<section title="Master Playlist with I-Frames">
+			<figure>
+				<artwork><![CDATA[
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=1280000
+low/audio-video.m3u8
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=86000,URI="low/iframe.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=2560000
+mid/audio-video.m3u8
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=150000,URI="mid/iframe.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=7680000
+hi/audio-video.m3u8
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=550000,URI="hi/iframe.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=65000,CODECS="mp4a.40.5"
+audio-only.m3u8
+]]></artwork>
+			</figure>
+	   </section>
+		<section title="Master Playlist with Alternative Audio">
+			<t> In this example, the
+			CODECS attributes have been condensed for space. A '\' is used to indicate
+			that the tag continues on the following line with whitespace removed:</t>
+			<figure>
+				<artwork><![CDATA[
+#EXTM3U
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",NAME="English", \
+   DEFAULT=YES,AUTOSELECT=YES,LANGUAGE="en", \
+   URI="main/english-audio.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",NAME="Deutsch", \
+   DEFAULT=NO,AUTOSELECT=YES,LANGUAGE="de", \
+   URI="main/german-audio.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",NAME="Commentary", \
+   DEFAULT=NO,AUTOSELECT=NO,LANGUAGE="en", \
+   URI="commentary/audio-only.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=1280000,CODECS="...",AUDIO="aac"
+low/video-only.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2560000,CODECS="...",AUDIO="aac"
+mid/video-only.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=7680000,CODECS="...",AUDIO="aac"
+hi/video-only.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=65000,CODECS="mp4a.40.5",AUDIO="aac"
+main/english-audio.m3u8
+]]></artwork>
+			</figure>
+	   </section>
+		<section title="Master Playlist with Alternative Video">
+			<t>This example shows three different video Renditions (Main, Centerfield, and Dugout)
+			and three different Variant Streams (low, mid, and high).  In this example, clients
+			that did not support the EXT-X-MEDIA tag and the VIDEO attribute of the EXT-X-STREAM-INF
+			tag would only be able to play the video Rendition "Main". </t>
+
+			<t>Since the EXT-X-STREAM-INF tag has no AUDIO attribute, all video
+			Renditions would be required to contain the audio.</t>
+
+			<t>In this example, the
+			CODECS attributes have been condensed for space. A '\' is used to indicate
+			that the tag continues on the following line with whitespace removed:</t>
+			<figure>
+				<artwork><![CDATA[
+#EXTM3U
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="low",NAME="Main", \
+   DEFAULT=YES,URI="low/main/audio-video.m3u8"
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="low",NAME="Centerfield", \
+   DEFAULT=NO,URI="low/centerfield/audio-video.m3u8"
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="low",NAME="Dugout", \
+   DEFAULT=NO,URI="low/dugout/audio-video.m3u8"
+
+#EXT-X-STREAM-INF:BANDWIDTH=1280000,CODECS="...",VIDEO="low"
+low/main/audio-video.m3u8
+
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="mid",NAME="Main", \
+   DEFAULT=YES,URI="mid/main/audio-video.m3u8"
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="mid",NAME="Centerfield", \
+   DEFAULT=NO,URI="mid/centerfield/audio-video.m3u8"
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="mid",NAME="Dugout", \
+   DEFAULT=NO,URI="mid/dugout/audio-video.m3u8"
+
+#EXT-X-STREAM-INF:BANDWIDTH=2560000,CODECS="...",VIDEO="mid"
+mid/main/audio-video.m3u8
+
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="hi",NAME="Main", \
+   DEFAULT=YES,URI="hi/main/audio-video.m3u8"
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="hi",NAME="Centerfield", \
+   DEFAULT=NO,URI="hi/centerfield/audio-video.m3u8"
+#EXT-X-MEDIA:TYPE=VIDEO,GROUP-ID="hi",NAME="Dugout", \
+   DEFAULT=NO,URI="hi/dugout/audio-video.m3u8"
+
+#EXT-X-STREAM-INF:BANDWIDTH=7680000,CODECS="...",VIDEO="hi"
+hi/main/audio-video.m3u8
+]]></artwork>
+			</figure>
+	   </section>
+		<section title="Session Data in a Master Playlist">
+			<t>In this example, only the EXT-X-SESSION-DATA is shown:</t>
+			<figure>
+				<artwork><![CDATA[
+#EXT-X-SESSION-DATA:DATA-ID="com.example.lyrics",URI="lyrics.json"
+
+#EXT-X-SESSION-DATA:DATA-ID="com.example.title",LANGUAGE="en", \
+        VALUE="This is an example"
+#EXT-X-SESSION-DATA:DATA-ID="com.example.title",LANGUAGE="es", \
+        VALUE="Este es un ejemplo"
+]]></artwork>
+			</figure>
+	   </section>
+		<section title="CHARACTERISTICS Attribute Containing Multiple Characteristics">
+			<t>Certain characteristics are valid in combination, as in:</t>
+			<figure>
+				<artwork><![CDATA[
+CHARACTERISTICS=
+"public.accessibility.transcribes-spoken-dialog,public.easy-to-read"
+]]></artwork>
+			</figure>
+	   </section>
+		<section title="EXT-X-DATERANGE Carrying SCTE-35 Tags">
+			<t>This example shows two EXT-X-DATERANGE tags that describe a single
+			Date Range, with an SCTE-35 "out" splice_insert() command that is subsequently 
+			updated with an SCTE-35 "in" splice_insert() command.</t>
+			<figure>
+				<artwork><![CDATA[
+#EXTM3U
+...
+#EXT-X-DATERANGE:ID="splice-6FFFFFF0",START-DATE="2014-03-05T11:
+15:00Z",PLANNED-DURATION=59.993,SCTE35-OUT=0xFC002F0000000000FF0
+00014056FFFFFF000E011622DCAFF000052636200000000000A0008029896F50
+000008700000000
+
+... Media Segment declarations for 60s worth of media
+
+#EXT-X-DATERANGE:ID="splice-6FFFFFF0",DURATION=59.993,SCTE35-IN=
+0xFC002A0000000000FF00000F056FFFFFF000401162802E6100000000000A00
+08029896F50000008700000000
+...
+]]></artwork>
+			</figure>
+	   </section>
+    </section> <!-- Examples -->
+
+
+
+
+
+    <section anchor="IANA" title="IANA Considerations">
+      <t>IANA has registered the following <xref target="RFC2046">media type</xref>:</t>
+
+	  <t>Type name: application</t>
+	  <t>Subtype name: vnd.apple.mpegurl</t>
+	  <t>Required parameters: none</t>
+	  <t>Optional parameters: none</t>
+	  <t>Encoding considerations: encoded as UTF-8, which is 8-bit text. This media
+	  type may require encoding on transports not capable of handling 8-bit text.
+	  See <xref target="playlist_file" /> for more information.</t>
+	  <t>Security considerations: See <xref target="Security" />.</t>
+	  <t>Compression: this media type does not employ compression.</t>
+
+	  <t>Interoperability considerations: There are no byte-ordering issues, since
+	  files are 8-bit text. Applications could encounter unrecognized tags,
+	  which SHOULD be ignored.</t>
+
+	  <t>Published specification: see <xref target="playlist_file" />.</t>
+
+	  <t>Applications that use this media type: Multimedia applications such as
+	  the iPhone media player in iOS 3.0 and later and QuickTime Player in Mac OS
+	  X version 10.6 and later.</t>
+
+	  <t>Fragment identifier considerations: no Fragment Identifiers are
+	  defined for this media type.</t>
+
+	  <t>Additional information:
+	  <list style="hanging"><?rfc subcompact="yes" ?>
+	  	<t>Deprecated alias names for this type: none</t>
+	  	<t>Magic number(s): #EXTM3U</t>
+	  	<t>File extension(s): .m3u8, .m3u (see <xref
+		target="playlist_file" />)</t>
+	  	<t>Macintosh file type code(s): none</t>
+	  </list></t><?rfc subcompact="no" ?>
+
+
+	  <t>Person &amp; email address to contact for further information: David Singer,
+	  singer@apple.com.</t>
+
+	  <t>Intended usage: LIMITED USE</t>
+	  <t>Restrictions on usage: none</t>
+	  <t>Author: Roger Pantos</t>
+	  <t>Change Controller: David Singer</t>
+
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+      <t>Since the protocol generally uses HTTP to transfer data, most of the
+      same security considerations apply. See Section 15 of <xref target="RFC7230">HTTP</xref>.</t>
+
+      <t>Media file parsers are typically subject to "fuzzing" attacks. 
+      Implementors SHOULD pay particular attention to code that will parse data
+      received from a server and ensure that all possible inputs are handled correctly.</t>
+
+	  <t>Playlist files contain URIs, which clients will use to make network
+	  requests of arbitrary entities. Clients SHOULD range-check responses to
+	  prevent buffer overflows. See also the Security Considerations section of
+	  <xref target="RFC3986">"Uniform Resource Identifier (URI): Generic Syntax"</xref>.</t>
+	  
+	  <t>Apart from URL resolution, this format does not employ any form of active content.</t>
+
+	  <t>Clients SHOULD limit each playback session to a reasonable number of concurrent
+	  downloads (e.g., four) to avoid contributing to denial-of-service attacks.</t>
+
+	  <t>HTTP requests often include session state ("cookies"), which may contain
+	  private user data. Implementations MUST follow cookie restriction and expiry
+	  rules specified by <xref target="RFC6265">"HTTP State Management Mechanism"</xref>
+	  to protect themselves from attack.
+	  See also the Security Considerations section of that document, and 
+	  <xref target="RFC2964">"Use of HTTP State Management"</xref>.</t>
+
+	  <t>Encryption keys are specified by URI. The delivery of these keys SHOULD
+	  be secured by a mechanism such as <xref target="RFC2818">HTTP Over TLS</xref>
+	  (formerly SSL) in conjunction with a secure realm or a session token.</t>
+    </section>
+  </middle>
+
+  <!--  *****BACK MATTER ***** -->
+
+  <back>
+
+
+    <references title="Normative References">
+
+      &RFC2046;
+
+      &RFC2119;
+
+      &RFC2818;
+
+      &RFC2964;
+
+      &RFC3629;
+     
+      &RFC3986;
+
+      &RFC5646;
+      
+      &RFC5652;
+
+      &RFC6265;
+
+      &RFC6381;
+      
+      &RFC7159;
+     
+      &RFC7230;
+
+    <?rfc include="reference.RFC.8174"?>
+      
+      <reference anchor="AES_128"
+                 target="http://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf">
+        <front>
+          <title>Advanced Encryption Standard (AES)</title>
+
+          <author>
+            <organization>National Institute of Standards and Technology</organization>
+          </author>
+
+          <date month="November" year="2001" />
+        </front>
+       <seriesInfo name="FIPS PUB" value="197"/>
+       <seriesInfo name="DOI" value="10.6028/NIST.FIPS.197"/>
+      </reference>
+
+      <reference anchor="ISO_8601"
+                 target="http://www.iso.org/iso/catalogue_detail?csnumber=40874">
+        <front>
+          <title>Data elements and
+          interchange formats -- Information interchange -- Representation of
+          dates and times</title>
+
+          <author>
+            <organization>International Organization for Standardization</organization>
+          </author>
+
+          <date month="December" year="2004" />
+        </front>
+        <seriesInfo name="ISO/IEC International Standard" value="8601:2004" />
+      </reference>
+
+      <reference anchor="ISO_13818"
+                 target="http://www.iso.org/iso/catalogue_detail?csnumber=44169">
+        <front>
+          <title>Generic coding of moving pictures and associated audio information</title>
+
+          <author>
+            <organization>International Organization for Standardization</organization>
+          </author>
+
+          <date month="October" year="2007" />
+        </front>
+  <seriesInfo name="ISO/IEC International Standard" value="13818" />
+      </reference>
+
+      <reference anchor="ISO_13818_3"
+                 target="http://www.iso.org/iso/home/store/catalogue_tc/catalogue_detail.htm?csnumber=26797">
+        <front>
+          <title>ISO/IEC International Standard 13818-3:1998; Generic coding of moving
+          pictures and associated audio information - Part 3: Audio</title>
+
+          <author>
+            <organization>International Organization for Standardization</organization>
+          </author>
+
+          <date month="April" year="1998" />
+        </front>
+  <seriesInfo name="" value="" />
+      </reference>
+
+      <reference anchor="ISO_13818_7"
+                 target="http://www.iso.org/iso/home/store/catalogue_tc/catalogue_detail.htm?csnumber=43345">
+        <front>
+          <title>Generic coding of moving pictures and associated audio information - Part 7: Advanced Audio Coding (AAC)</title>
+
+          <author>
+            <organization>International Organization for Standardization</organization>
+          </author>
+
+          <date month="January" year="2006" />
+        </front>
+  <seriesInfo name=">ISO/IEC International Standard" value="13818-3:2006" />
+      </reference>
+
+      <reference anchor="HDCP"
+                 target="http://www.digital-cp.com/sites/default/files/specifications/HDCP%20on%20HDMI%20Specification%20Rev2_2_Final1.pdf">
+        <front>
+          <title>High-bandwidth Digital Content Protection System - Mapping HDCP to HDMI</title>
+
+          <author>
+            <organization>Digital Content Protection LLC</organization>
+          </author>
+
+          <date month="February" year="2013" />
+        </front>
+      </reference>
+
+      <reference anchor="ISOBMFF"
+                 target="http://www.iso.org/iso/catalogue_detail.htm?csnumber=68960">
+        <front>
+          <title>Information technology -- Coding of audio-visual
+          objects -- Part 12: ISO base media file format</title>
+
+          <author>
+            <organization>International Organization for Standardization</organization>
+          </author>
+
+          <date month="December" year="2015" />
+        </front>
+       <seriesInfo name=">ISO/IEC" value="14496-12:2015" />
+      </reference>
+
+      <reference anchor="COMMON_ENC"
+                 target="http://www.iso.org/iso/catalogue_detail.htm?csnumber=68042">
+        <front>
+          <title>Information technology -- MPEG systems
+          technologies -- Part 7: Common encryption in ISO base media file format files</title>
+
+          <author>
+            <organization>International Organization for Standardization</organization>
+          </author>
+
+          <date month="February" year="2016" />
+        </front>
+       <seriesInfo name="ISO/IEC" value="23001-7:2016" />
+      </reference>
+
+      <reference anchor="US_ASCII">
+        <front>
+          <title>Coded Character Sets - 7-Bit American National Standard Code for Information Interchange (7-Bit ASCII)</title>
+
+          <author>
+            <organization>American National Standard for Information Systems</organization>
+          </author>
+
+          <date month="December" day="30" year="1986" />
+        </front>
+       <seriesInfo name="ANSI" value="X3.4" />
+      </reference>
+
+      <reference anchor="H_264"
+      			 target="http://www.itu.int/rec/T-REC-H.264">
+        <front>
+          <title>Advanced video coding for generic audiovisual services</title>
+
+          <author>
+            <organization>International Telecommunications Union</organization>
+          </author>
+
+          <date month="January" year="2012" />
+        </front>
+      </reference>
+
+      <reference anchor="ISO_14496"
+      			 target="http://www.iso.org/iso/catalogue_detail?csnumber=53943">
+        <front>
+          <title>Information technology -- Coding of audio-visual objects -- Part 3: Audio</title>
+
+          <author>
+            <organization>International Organization for Standardization</organization>
+          </author>
+
+          <date year="2009" />
+        </front>
+        <seriesInfo name="ISO/IEC" value="14496-3:2009" />
+      </reference>
+
+      <reference anchor="AC_3"
+			 target="http://atsc.org/wp-content/uploads/2015/03/A52-201212-17.pdf">
+        <front>
+          <title>Digital Audio Compression (AC-3) (E-AC-3) Standard</title>
+
+          <author>
+            <organization>Advanced Television Systems Committee</organization>
+          </author>
+
+          <date month="November" day="22" year="2010" />
+        </front>
+       <seriesInfo name="ATSC Standard" value="A/52:2010" />
+      </reference>
+
+      <reference anchor="WebVTT"
+                 target="http://dev.w3.org/html5/webvtt/">
+		<front>
+          <title>WebVTT: The Web Video Text Tracks Format</title>
+
+          <author>
+			<organization>World Wide Web Consortium (W3C)</organization>
+          </author>
+
+          <date month="June" year="2017" />
+        </front>
+       <seriesInfo name="Draft Community Group" value="Report"/>
+      </reference>
+      
+      <reference anchor="CEA608">
+      	<front>
+      		<title>ANSI/CEA 608-E: Line 21 Data Services</title>
+      		<author>
+      			<organization>Consumer Electronics Association</organization>
+      		</author>
+      		<date month="April" year="2008" />
+      	</front>
+      </reference>
+
+      <reference anchor="CEA708" target="https://standards.cta.tech/kwspub/published_docs/ANSI-CTA-708-E-Preview.pdf">
+      			 
+      	<front>
+      		<title>Digital Television (DTV) Closed Captioning</title>
+      		<author>
+      			<organization>Consumer Technology Association</organization>
+      		</author>
+      		<date month="August" year="2013" />
+      	</front>
+       <seriesInfo name="ANSI/CTA Standard" value="CEA-708-E" />
+      </reference>
+
+      <reference anchor="SCTE35"
+      			 target="http://www.scte.org/documents/pdf/Standards/ANSI_SCTE%2035%202014.pdf">
+      	<front>
+      		<title>Digital Program Insertion Cueing Message for Cable</title>
+      		<author>
+      			<organization>Society of Cable Telecommunications Engineers</organization>
+      		</author>
+      		<date month="August" year="2014" />
+      	</front>
+       <seriesInfo name="ANSI/SCTE" value="35" />
+      </reference>
+   </references>
+
+    <references title="Informative References">
+    
+
+<reference anchor="UNICODE" target="http://www.unicode.org/versions/latest/">
+  <front>
+    <title>The Unicode Standard</title>
+    <author>
+      <organization>The Unicode Consortium</organization>
+    </author>
+  <date/>
+  </front>
+</reference>
+
+      <reference anchor="M3U"
+                 target="https://en.wikipedia.org/w/index.php?title=M3U7amp;oldid=786631666">
+        <front>
+          <title>The M3U Playlist format, originally invented for the Winamp
+          media player</title>
+
+          <author>
+            <organization>Nullsoft, Inc.</organization>
+          </author>
+          <date />
+        </front>
+      </reference>
+
+      <reference anchor="ID3"
+                 target="http://www.id3.org/Developer_Information">
+        <front>
+          <title>The ID3 audio file data tagging format</title>
+          <author>
+            <organization>ID3.org</organization>
+          </author>
+          <date />
+        </front>
+      </reference>
+
+      <reference anchor="SampleEnc"
+                 target="https://developer.apple.com/library/ios/documentation/AudioVideo/Conceptual/HLS_Sample_Encryption/">
+        <front>
+          <title>MPEG-2 Stream Encryption Format for HTTP Live Streaming</title>
+          <author>
+            <organization>Apple Inc.</organization>
+          </author>
+          <date />
+        </front>
+      </reference>
+
+      <reference anchor="CMAF"
+                 target="https://www.iso.org/standard/71975.html">
+        <front>
+          <title>Information technology -- Multimedia application format (MPEG-A) -- Part 19: Common media application format (CMAF) for segmented media</title>
+
+          <author>
+            <organization>International Organization for Standardization</organization>
+          </author>
+
+          <date />
+        </front>
+       <seriesInfo name="ISO/IEC FDIS" value="23000-19" />
+      </reference>
+
+      <reference anchor="UTI"
+                 target="http://developer.apple.com/library/ios/#documentation/general/conceptual/DevPedia-CocoaCore/UniformTypeIdentifier.html">
+        <front>
+          <title>Uniform Type Identifier</title>
+          <author>
+            <organization>Apple Inc.</organization>
+          </author>
+          <date />
+        </front>
+      </reference>
+    </references>
+    <section anchor="contributors" title="Contributors" numbered="no">
+      <t>Significant contributions to the design of this protocol were made by
+      Jim Batson, David Biderman, Bill May, Roger Pantos, Alan Tseng, and Eryk Vershen.
+      Stuart Cheshire helped edit the specification.</t>
+    </section>
+
+
+  </back>
+</rfc>

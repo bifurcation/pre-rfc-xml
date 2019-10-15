@@ -1,0 +1,613 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+  ]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc rfcedstyle="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+
+<rfc number="7503" category="std" consensus="yes" ipr="trust200902" updates="5340" submissionType="IETF">
+
+<front>
+<title abbrev="OSPFv3 Autoconfiguration">OSPFv3 Autoconfiguration</title>
+
+
+  <author initials='A.' surname="Lindem" fullname='Acee Lindem'>
+    <organization>Cisco Systems</organization>
+    <address>
+      <postal>
+        <street>301 Midenhall Way</street>
+        <city>Cary</city> <region>NC</region> 
+        <country>United States</country>
+        <code>27513</code> 
+       </postal>
+       <email>acee@cisco.com</email>
+    </address>
+    </author>
+
+  <author initials='J.' surname="Arkko" fullname='Jari Arkko'>
+    <organization>Ericsson</organization>
+    <address>
+      <postal>
+        <street></street>
+        <city>Jorvas</city> <region>02420</region> 
+        <country>Finland</country>
+       </postal>
+       <email>jari.arkko@piuha.net</email>
+    </address>
+    </author>
+
+<date month="April" year="2015"/>
+  <abstract><t>OSPFv3 is a candidate for deployments in environments where autoconfiguration
+   is a requirement. One such environment is the IPv6 home network where users expect to 
+   simply plug in a router and have it automatically use OSPFv3 for intra-domain routing. 
+   This document describes the necessary mechanisms for OSPFv3 to be self-configuring.
+   This document updates RFC 5340 by relaxing the HelloInterval/RouterDeadInterval checking during OSPFv3
+   adjacency formation and adding hysteresis to the update of self-originated Link State 
+   Advertisements (LSAs).</t>
+  </abstract>
+</front>
+
+<middle>
+<section title="Introduction">
+  <t>OSPFv3 <xref target="OSPFV3"/> is a candidate for deployments in environments where 
+   autoconfiguration is a requirement. This document describes 
+   extensions to OSPFv3 to enable it to operate in these environments.
+   In this mode of operation, the protocol is largely unchanged from the
+   base OSPFv3 protocol specification <xref target="OSPFV3"/>.
+   Since the goals of autoconfiguration and security can be conflicting,
+   operators and network administrators should carefully consider their
+   security requirements before deploying the solution described in this
+   document. Refer to <xref target="SECURITY"/> for more information.
+</t>
+   <t>The following aspects of OSPFv3 autoconfiguration are described in this
+   document:
+
+   <list style="numbers"> 
+      <t>Default OSPFv3 Configuration</t> 
+      <t>HelloInterval/RouterDeadInterval Flexibility</t>
+      <t>OSPFv3 Minimal Authentication Configuration</t>
+      <t>Unique OSPFv3 Router ID Generation</t>
+      <t>OSPFv3 Adjacency Formation</t>
+      <t>Duplicate OSPFv3 Router ID Resolution</t>
+      <t>Self-Originated LSA Processing</t>
+   </list></t>
+  <t>OSPFv3 <xref target="OSPFV3" /> is updated by allowing OSPFv3 adjacencies to be formed
+     between OSPFv3 routers with differing HelloIntervals or RouterDeadIntervals
+     (refer to <xref target="FLEX-INTERVAL"/>). Additionally, hysteresis has been added to the processing of
+     stale self-originated LSAs to mitigate the flooding overhead created by an OSPFv3 Router with
+     a duplicate OSPFv3 Router ID in the OSPFv3 routing domain (refer to 
+     <xref target="UPDATE-BACKOFF"/>). Both updates are fully backward compatible.</t>
+  <section title="Requirements Notation">
+   <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+      "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY",
+       and "OPTIONAL" in this document are to be interpreted as
+       described in <xref target="RFC-KEYWORDS"/>.</t>
+   </section>
+</section>
+
+<section anchor="DEFAULT" title="OSPFv3 Default Configuration">
+<t>For complete autoconfiguration, OSPFv3 will need to choose suitable configuration defaults. These include:
+   <list style="numbers"> 
+      <t>Area 0 Only - All autoconfigured OSPFv3 interfaces MUST be in area 0.</t> 
+      <t>OSPFv3 SHOULD be autoconfigured on all IPv6-capable interfaces on the router. 
+         An interface MAY be excluded if it is clear that running OSPFv3 on the interface is not required. 
+         For example, if manual configuration or another condition indicates that an interface is connected to an
+         Internet Service Provider (ISP), there is typically no need to employ OSPFv3. In fact, <xref target="IPv6-CPE"/> 
+         specifically requires that 
+         IPv6 Customer Premise Equipment (CPE) routers not initiate any dynamic routing protocol by default on the 
+         router's WAN, i.e., ISP-facing, interface. In home networking environments, an interface where no
+         OSPFv3 neighbors are found, but a DHCP IPv6 prefix can be acquired, may be considered an ISP-facing interface,
+         and running OSPFv3 is unnecessary.</t>
+      <t>OSPFv3 interfaces will be autoconfigured to an interface type
+      corresponding to their Layer 2 capability. 
+         For example, Ethernet interfaces and Wi-Fi interfaces will be autoconfigured as OSPFv3 
+         broadcast networks 
+         and Point-to-Point Protocol (PPP) interfaces will be autoconfigured as OSPFv3 Point-to-Point interfaces. 
+         Most extant OSPFv3 implementations do this already. autoconfigured operation over wireless networks 
+         requiring a point-to-multipoint (P2MP) topology and dynamic metrics based on wireless feedback is 
+         not within the scope of this document. However, autoconfiguration is not precluded in these environments.</t>
+      <t>OSPFv3 interfaces MAY use an arbitrary HelloInterval and RouterDeadInterval as specified in 
+         <xref target="FLEX-INTERVAL"/>. Of course, an identical HelloInterval and RouterDeadInterval will still 
+         be required to form an adjacency with an OSPFv3 router not supporting autoconfiguration
+         <xref target="OSPFV3"/>.</t>
+      <t>All OSPFv3 interfaces SHOULD be autoconfigured to use an Interface Instance ID of 0 that corresponds to the 
+         base IPv6 unicast address family instance ID as defined in <xref target="OSPFV3-AF"/>. Similarly, if IPv4 
+         unicast addresses are advertised in a separate autoconfigured OSPFv3 instance, the base IPv4 unicast address family 
+         instance ID value, i.e., 64, SHOULD be autoconfigured as the Interface Instance ID for all interfaces corresponding
+         to the IPv4 unicast OSPFv3 instance <xref target="OSPFV3-AF"/>.</t> 
+   </list></t>
+</section> 
+   <section anchor="FLEX-INTERVAL" title="OSPFv3 HelloInterval/RouterDeadInterval Flexibility">
+     <t>autoconfigured OSPFv3 routers will not require an identical HelloInterval and RouterDeadInterval to form
+        adjacencies. Rather, the received HelloInterval will be ignored and the received RouterDeadInterval will be used
+        to determine OSPFv3 liveliness with the sending router. In other words, the Neighbor Inactivity Timer 
+        (Section 10 of <xref target="OSPFV2"/>) for each neighbor
+        will reflect that neighbor's advertised RouterDeadInterval and MAY be different from other OSPFv3 routers on 
+        the link without impacting adjacency formation. A similar mechanism requiring additional 
+        signaling is proposed for all OSPFv2 and OSPFv3 routers <xref target="ASYNC-HELLO"/>.</t> 
+   <section title="Wait Timer Reduction">
+     <t>In many situations, autoconfigured OSPFv3 routers will be deployed in environments where back-to-back ethernet
+        connections are utilized. When this is the case, an OSPFv3 broadcast interface will not come up until the 
+        other OSPFv3 router is connected, and the routers will wait RouterDeadInterval seconds before forming an
+        adjacency <xref target="OSPFV2"/>. In order to reduce this delay, an autoconfigured OSPFv3 router MAY reduce the
+        wait interval to a value no less than (HelloInterval + 1). Reducing the setting will slightly 
+        increase the likelihood of the Designated Router (DR) flapping but is preferable to the long adjacency formation
+        delay. Note that this value is not included in OSPFv3 Hello packets and does not impact interoperability.</t>
+   </section>
+ </section>
+<section anchor="AUTH-CONFIG" title="OSPFv3 Minimal Authentication Configuration">
+<t>In many deployments, the requirement for OSPFv3 authentication overrides the goal 
+  of complete OSPFv3 autoconfiguration. Therefore, it is RECOMMENDED that OSPFv3 routers 
+  supporting this specification minimally offer an option to explicitly configure a 
+  single password for HMAC-SHA authentication as described in <xref
+  target="OSPFV3-AUTH-TRAILER"/>.
+
+
+  It is RECOMMENDED that the password be entered as ASCII hexadecimal 
+  digits and that 32 or more digits be accepted to facilitate a password 
+  with a high degree of entropy. 
+
+  When configured, the password will be used on all autoconfigured interfaces with
+  the Security Association Identifier (SA ID) set to 1 and HMAC-SHA-256 used
+  as the authentication algorithm.</t>                        
+</section>
+<section title="OSPFv3 Router ID Selection">
+ <t>An OSPFv3 router requires a unique Router ID within the OSPFv3 routing domain
+    for correct protocol operation. Existing Router ID selection algorithms (Appendix C.1 in
+    <xref target="OSPFV2"/> and <xref target="OSPFV3"/>) are not viable since they are
+    dependent on a unique IPv4 interface address that is not likely to be available in
+    autoconfigured deployments.
+    An OSPFv3 router implementing 
+    this specification will select a Router ID that has a high probability of uniqueness. 
+    A pseudorandom number SHOULD be used for the OSPFv3 Router ID. The generation SHOULD be seeded
+    with a variable that is likely to be unique in 
+    the applicable OSPFv3 router deployment. A good choice of seed would be some portion or hash of the
+    Router-Hardware-Fingerprint as described in <xref target="FINGER"/>.</t>
+  <t>Since there is a possibility of a Router ID collision, duplicate Router ID detection and resolution
+     are required as described in Sections <xref target="DUPLICATE"
+     format="counter"/> and <xref target="RESOLUTION" format="counter"/>. OSPFv3 routers 
+     SHOULD maintain the last successfully chosen Router ID in nonvolatile storage to avoid collisions 
+     subsequent to when an autoconfigured OSPFv3 router is first added to the OSPFv3 routing domain.</t>
+</section> 
+<section anchor="ADJACENCY" title="OSPFv3 Adjacency Formation">
+ <t>Since OSPFv3 uses IPv6 link-local addresses for all protocol messages other than messages sent on virtual
+    links (which are  not applicable to autoconfiguration), OSPFv3 adjacency formation can proceed as soon as
+    a Router ID has been selected and the IPv6 link-local address has completed Duplicate Address Detection (DAD)
+    as specified in IPv6 Stateless Address Autoconfiguration <xref target="SLAAC"/>. Otherwise, the only changes
+    to the OSPFv3 base specification are supporting HelloInterval/RouterDeadInterval flexibility as described in 
+    <xref target="FLEX-INTERVAL"/> and duplicate Router ID detection and resolution as described in Sections
+   <xref target="DUPLICATE" format="counter"/> and <xref target="RESOLUTION" format="counter"/>.</t> 
+</section> 
+<section anchor="DUPLICATE" title="OSPFv3 Duplicate Router ID Detection and Resolution">
+  <t>There are two cases of duplicate OSPFv3 Router ID detection. One where the OSPFv3 router with the
+     duplicate Router ID is directly connected and one where it is not. In both cases, the duplicate resolution is
+     for one of the routers to select a new OSPFv3 Router ID.</t>
+  <section anchor="CONNNETED-DETECT" title="Duplicate Router ID Detection for Neighbors">
+  <t>In this case, a duplicate Router ID is detected if any valid OSPFv3 packet is received with the same OSPFv3 Router ID 
+     but a different IPv6 link-local source address. Once this occurs, the OSPFv3 router with the numerically smaller
+     IPv6 link-local address will need to select a new Router ID as described in <xref target="RESOLUTION"/>.
+     Note that the fact that the OSPFv3 router is a neighbor on a non-virtual interface implies that the 
+     router is directly connected. An OSPFv3 router implementing this specification should ensure that the inadvertent
+     connection of multiple router interfaces to the same physical link is not misconstrued as 
+     detection of an OSPFv3 neighbor with a duplicate Router ID.</t> 
+  </section> 
+  <section anchor="INDIRECT-DETECT" title="Duplicate Router ID Detection for Non-neighbors"> 
+  <t>OSPFv3 routers implementing autoconfiguration, as specified herein, MUST originate an Autoconfiguration (AC)
+  Link State Advertisement (LSA) including the Router-Hardware-Fingerprint Type-Length-Value (TLV). 
+  The Router-Hardware-Fingerprint TLV contains a variable-length value that has a very high probability of 
+  uniquely identifying the advertising OSPFv3 router. An OSPFv3 router implementing this specification MUST detect
+  received Autoconfiguration LSAs with its Router ID specified in the LSA header. LSAs received with the local 
+  OSPFv3 Router's Router ID in the LSA header are perceived as self-originated (see 
+  Section 4.6 of <xref target="OSPFV3"/>).
+  In these received Autoconfiguration LSAs, the Router-Hardware-Fingerprint TLV is compared against the OSPFv3 Router's
+  own router hardware fingerprint. If the fingerprints are not equal, there is a duplicate Router ID conflict
+  and the OSPFv3 router with the numerically smaller router hardware fingerprint MUST select a new Router ID 
+  as described in <xref target="RESOLUTION"/>.</t> 
+  <t>This new LSA is designated for information related to OSPFv3 autoconfiguration and, in the future, could 
+     be used for other autoconfiguration information, e.g., global IPv6 prefixes. However, this is beyond the
+     scope of this document.</t>  
+  <section anchor="AC-LSA" title="OSPFv3 Router Autoconfiguration LSA">
+   <t>The OSPFv3 Autoconfiguration (AC) LSA has a function code of 15 and the
+   S2/S1 bits set to 01 indicating Area Flooding Scope. 
+   The U bit will be set indicating that the OSPFv3 AC LSA should be
+   flooded even if it is not understood.  The Link State ID (LSID) value
+   will be an integer index used to discriminate between multiple AC LSAs 
+   originated by the same OSPFv3 router. This specification only describes the
+   contents of an AC LSA with an LSID of 0.</t>
+   <t><figure title="OSPFv3 Autoconfiguration (AC) LSA">
+     <artwork>
+     0                   1                   2                   3
+     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |            LS age             |1|0|1|           15            |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                       Link State ID                           |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                       Advertising Router                      |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                       LS sequence number                      |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |        LS checksum            |            Length             |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                                                               |
+    +-                            TLVs                             -+
+    |                             ...                               |
+      </artwork>
+   </figure></t>
+
+   <t>The format of the TLVs within the body of an AC LSA is the same as
+       the format used by the Traffic Engineering Extensions to OSPFv2 <xref target="TE"/>.
+       The LSA payload consists of one or more nested TLV triplets.  The format of each TLV is:</t>
+
+
+   <t><figure title="TLV Format">
+     <artwork>
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |              Type             |             Length            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                            Value...                           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      </artwork>
+   </figure></t>
+
+   <t>The Length field defines the length of the value portion in octets
+   (thus a TLV with no value portion would have a length of 0).  The TLV
+   is padded to 4-octet alignment; padding is not included in the length
+   field (so a 3-octet value would have a length of 3, but the total
+   size of the TLV would be 8 octets).  Nested TLVs are also 32-bit
+   aligned.  For example, a 1-byte value would have the length field set
+   to 1, and 3 octets of padding would be added to the end of the value
+   portion of the TLV.  Unrecognized types are ignored.</t>
+  <t>The new LSA is designated for information related to OSPFv3 
+     autoconfiguration and, in the future, can be used other 
+     autoconfiguration information.</t>  
+  </section>
+  <section anchor="FINGER" title="Router-Hardware-Fingerprint TLV">
+   <t>The Router-Hardware-Fingerprint TLV is the first TLV defined
+      for the OSPFv3 Autoconfiguration (AC) LSA. It will have type 1
+      and MUST be advertised in the LSID OSPFv3 AC LSA with an LSID of 0. 
+      It SHOULD occur, at most, once and the first instance of the
+      TLV will take precedence over subsequent TLV instances. The 
+      length of the Router-Hardware-Fingerprint is variable but must
+      be 32 octets or greater. If the Router-Hardware-Fingerprint TLV is 
+      not present as the first TLV, the AC LSA is considered malformed and
+      is ignored for the purposes of duplicate Router ID detection. 
+      Additionally, the event SHOULD be logged.</t>
+   <t>The contents of the hardware fingerprint MUST have an extremely high
+      probability of uniqueness.  It SHOULD be constructed from the 
+      concatenation of a number of local values that themselves have a high
+      likelihood of uniqueness, such as Media Access Control (MAC) addresses, CPU ID, or serial 
+      numbers.  It is RECOMMENDED that one or more available universal 
+      tokens (e.g., IEEE 802 48-bit MAC addresses or IEEE EUI-64 
+      Identifiers <xref target="EUI64"/>) associated with the OSPFv3 router
+      be included in the hardware fingerprint.  It MUST be based on
+      hardware attributes that will not change across hard and soft
+      restarts.</t>
+
+
+   <t><figure title="Router-Hardware-Fingerprint TLV Format">
+     <artwork>
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |              1                |             >32               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                    Router Hardware Fingerprint                |
+                                   o
+                                   o
+                                   o
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      </artwork>
+   </figure></t>
+  </section>
+  </section> 
+
+
+  <section anchor="RESOLUTION" title="Duplicate Router ID Resolution"> 
+   <t>The OSPFv3 router selected to resolve the duplicate OSPFv3 Router ID condition must select a new OSPFv3
+      Router ID. The OSPFv3 router SHOULD reduce the possibility of a subsequent Router ID collision by 
+      checking the Link State Database (LSDB) for an OSPFv3 Autoconfiguration LSA with the newly selected Router ID
+      and a different Router-Hardware-Fingerprint. If one is detected, a new Router ID should be selected without
+      going through the resolution process (<xref target="DUPLICATE"/>). 
+      After selecting a new Router ID, all self-originated LSAs MUST be reoriginated, and any OSPFv3
+      neighbor adjacencies MUST be reestablished. The OSPFv3 router retaining the Router ID causing the conflict
+      will reoriginate or flush any stale self-originated LSAs as described in Section 13.4 of
+   <xref target="OSPFV2"/>.</t>
+
+
+  </section> 
+  <section anchor="UPDATE-BACKOFF" title="Change to RFC 2328, Section 13.4 (&quot;Receiving Self-Originated LSAs&quot;)">
+   <t>RFC 2328 <xref target="OSPFV2"/>, Section 13.4, describes the processing of received 
+      self-originated LSAs. If the received LSA doesn't exist, the receiving router will flush
+      it from the OSPF routing domain.  If the LSA is newer than the version in the LSDB, the receiving router will originate a newer version by advancing the 
+      LSA sequence number and reoriginating.  Since it is possible for an autoconfigured OSPFv3 router
+      to choose a duplicate OSPFv3 Router ID, OSPFv3 routers implementing this specification should
+      detect when multiple instances of the same self-originated LSA are flushed or reoriginated since this
+      is indicative of an OSPFv3 router with a duplicate Router ID in the OSPFv3 routing domain. When this
+      condition is detected, the OSPFv3 router SHOULD delay self-originated LSA processing for LSAs 
+      that have recently been flushed or reoriginated. This specification recommends 10 seconds as the interval
+      defining recent self-originated LSA processing and an exponential back-off of 1 to 8 seconds for the
+      processing delay. This additional delay should allow for the mechanisms described in 
+      <xref target="DUPLICATE"/> to resolve the duplicate OSPFv3 Router ID conflict.</t>
+    <t>Since this mechanism is useful in mitigating the flooding overhead associated with the
+       inadvertent or malicious introduction of an OSPFv3 router with a duplicate Router ID into
+       an OSPFv3 routing domain, it MAY be deployed outside of autoconfigured deployments. 
+       The detection of a self-originated LSA that is being repeatedly
+       reoriginated or flushed
+       SHOULD be logged.</t> 
+  </section> 
+</section> 
+<section anchor="SECURITY" title="Security Considerations">                        
+
+<t> The goals of security and complete OSPFv3 autoconfiguration are
+  somewhat contradictory. When no explicit security configuration takes
+  place, autoconfiguration implies that additional devices placed in the network
+  are automatically adopted as a part of the network. However,
+  autoconfiguration can also be combined with password configuration (see <xref target="AUTH-CONFIG"/>) or
+  future extensions for automatic pairing between devices. These mechanisms can
+  help provide an automatically configured, securely routed network.</t>
+
+<t>In deployments where a different authentication algorithm or encryption is
+   required (or different per-interface keys are required), OSPFv3 IPsec <xref target="OSPFV3-IPSEC"/> or alternate OSPFv3 Authentication Trailer
+   <xref target="OSPFV3-AUTH-TRAILER"/> algorithms MAY be used at the expense of additional 
+   configuration. The configuration and operational description of such deployments 
+   are beyond the scope of this document. However, a deployment could always revert to 
+   explicit configuration as described in <xref target="MANAGEMENT"/> for features 
+   such as IPsec, per-interface keys, or alternate authentication algorithms.</t>
+
+<t>The introduction, either malicious or accidental, of an OSPFv3 router with a duplicate Router ID 
+   is an attack point for OSPFv3 routing domains. This is due to the fact that OSPFv3 routers will
+   interpret LSAs advertised by the router with the same Router ID as self-originated LSAs and attempt
+   to flush them from the routing domain. The mechanisms in <xref target="UPDATE-BACKOFF"/> 
+   will mitigate the effects of duplication.</t>
+
+</section>
+
+
+<section anchor="MANAGEMENT" title="Management Considerations">
+<t>It is RECOMMENDED that OSPFv3 routers supporting this specification
+  also support explicit configuration of OSPFv3 parameters as specified
+  in Appendix C of <xref target="OSPFV3"/>. 
+  This would allow explicit override of autoconfigured parameters in situations 
+  where it is required (e.g., if the deployment requires multiple OSPFv3 areas).    
+  This is in addition to the authentication key configuration recommended in 
+  <xref target="AUTH-CONFIG"/>. Additionally, it is RECOMMENDED that OSPFv3
+  routers supporting this specification allow autoconfiguration to be 
+  completely disabled.</t>
+<t>Since there is a small possibility of OSPFv3 Router ID collisions, manual
+   configuration of OSPFv3 Router IDs is RECOMMENDED in OSPFv3 routing domains
+   where route convergence due to a Router ID change is intolerable.</t>
+<t>OSPFv3 routers supporting this specification MUST augment mechanisms for displaying 
+   or otherwise conveying OSPFv3 operational state to indicate whether or not 
+   the OSPFv3 router was autoconfigured and whether or not its OSPFv3 interfaces
+   have been autoconfigured.</t>
+</section>
+<section anchor="IANA" title="IANA Considerations">
+<t>This specification defines an OSPFv3 LSA Type for the 
+   OSPFv3 Autoconfiguration (AC) LSA, as described in <xref target="AC-LSA"/>. The value 15
+   has been allocated from the existing "OSPFv3 LSA Function Codes" registry for the OSPFv3
+   Autoconfiguration (AC) LSA.</t>
+<t>This specification also creates a registry for OSPFv3 Autoconfiguration (AC) LSA TLVs. 
+This registry has been placed in the existing OSPFv3 IANA registry, and new
+values will be
+allocated via IETF Review or, under exceptional circumstances, IESG Approval. 
+<xref target="IANA-GUIDELINES"/></t>
+<t>Three initial values are allocated:
+   <list style="symbols"> 
+     <t>0 is marked as Reserved.</t> 
+     <t>1 is Router-Hardware-Fingerprint TLV (<xref target="FINGER"/>).</t>
+    <t>65535 is an Autoconfiguration-Experiment-TLV, a common value that can be 
+       used for experimental purposes.</t>
+   </list></t>
+ </section>
+</middle>
+<back>
+<references title="Normative References">
+
+    <reference  anchor='RFC-KEYWORDS' target='http://www.rfc-editor.org/info/rfc2119'>
+    <front>
+    <title>Key words for use in RFCs to Indicate Requirement Levels</title>
+    <author initials='S.' surname='Bradner' fullname='S. Bradner'><organization /></author>
+    <date year='1997' month='March' />
+    </front>
+    <seriesInfo name='BCP' value='14'/>
+    <seriesInfo name='RFC' value='2119'/>
+    <format type='ASCII' octets='4723'/>
+    </reference>
+
+
+    <reference  anchor='OSPFV3' target='http://www.rfc-editor.org/info/rfc5340'>
+    <front>
+    <title>OSPF for IPv6</title>
+    <author initials='R.' surname='Coltun' fullname='R. Coltun'><organization /></author>
+    <author initials='D.' surname='Ferguson' fullname='D. Ferguson'><organization /></author>
+    <author initials='J.' surname='Moy' fullname='J. Moy'><organization /></author>
+    <author initials='A.' surname='Lindem' fullname='A. Lindem'><organization /></author>
+    <date year='2008' month='July' />
+    </front>
+    <seriesInfo name='RFC' value='5340'/>
+    <format type='ASCII' octets='225664'/>
+    </reference>
+
+
+    <reference  anchor='OSPFV2' target='http://www.rfc-editor.org/info/rfc2328'>
+    <front>
+    <title>OSPF Version 2</title>
+    <author initials='J.' surname='Moy' fullname='J. Moy'><organization /></author>
+    <date year='1998' month='April' />
+    </front>
+    <seriesInfo name='STD' value='54'/>
+    <seriesInfo name='RFC' value='2328'/>
+    <format type='ASCII' octets='447367'/>
+    </reference>
+
+
+    <reference  anchor='SLAAC' target='http://www.rfc-editor.org/info/rfc4862'>
+    <front>
+    <title>IPv6 Stateless Address Autoconfiguration</title>
+    <author initials='S.' surname='Thomson' fullname='S. Thomson'><organization /></author>
+    <author initials='T.' surname='Narten' fullname='T. Narten'><organization /></author>
+    <author initials='T.' surname='Jinmei' fullname='T. Jinmei'><organization /></author>
+    <date year='2007' month='September' />
+    </front>
+    <seriesInfo name='RFC' value='4862'/>
+    <format type='ASCII' octets='72482'/>
+    </reference>
+
+
+    <reference  anchor='TE' target='http://www.rfc-editor.org/info/rfc3630'>
+    <front>
+    <title>Traffic Engineering (TE) Extensions to OSPF Version 2</title>
+    <author initials='D.' surname='Katz' fullname='D. Katz'><organization /></author>
+    <author initials='K.' surname='Kompella' fullname='K. Kompella'><organization /></author>
+    <author initials='D.' surname='Yeung' fullname='D. Yeung'><organization /></author>
+    <date year='2003' month='September' />
+    </front>
+    <seriesInfo name='RFC' value='3630'/>
+    <format type='ASCII' octets='27717'/>
+    </reference>
+
+
+    <reference  anchor='OSPFV3-AF' target='http://www.rfc-editor.org/info/rfc5838'>
+    <front>
+    <title>Support of Address Families in OSPFv3</title>
+    <author initials='A.' surname='Lindem' fullname='A. Lindem' role='editor'><organization /></author>
+    <author initials='S.' surname='Mirtorabi' fullname='S. Mirtorabi'><organization /></author>
+    <author initials='A.' surname='Roy' fullname='A. Roy'><organization /></author>
+    <author initials='M.' surname='Barnes' fullname='M. Barnes'><organization /></author>
+    <author initials='R.' surname='Aggarwal' fullname='R. Aggarwal'><organization /></author>
+    <date year='2010' month='April' />
+    </front>
+    <seriesInfo name='RFC' value='5838'/>
+    <format type='ASCII' octets='26193'/>
+    </reference>
+
+
+
+    <reference  anchor='OSPFV3-AUTH-TRAILER' target='http://www.rfc-editor.org/info/rfc7166'>
+    <front>
+    <title>Supporting Authentication Trailer for OSPFv3</title>
+    <author initials='M.' surname='Bhatia' fullname='M. Bhatia'><organization /></author>
+    <author initials='V.' surname='Manral' fullname='V. Manral'><organization /></author>
+    <author initials='A.' surname='Lindem' fullname='A. Lindem'><organization /></author>
+    <date year='2014' month='March' />
+    </front>
+    <seriesInfo name='RFC' value='7166'/>
+    <format type='ASCII' octets='49533'/>
+    </reference>
+</references>
+
+<references title="Informative References">
+
+
+    <reference  anchor='IPv6-CPE' target='http://www.rfc-editor.org/info/rfc7084'>
+    <front>
+    <title>Basic Requirements for IPv6 Customer Edge Routers</title>
+    <author initials='H.' surname='Singh' fullname='H. Singh'><organization /></author>
+    <author initials='W.' surname='Beebee' fullname='W. Beebee'><organization /></author>
+    <author initials='C.' surname='Donley' fullname='C. Donley'><organization /></author>
+    <author initials='B.' surname='Stark' fullname='B. Stark'><organization /></author>
+    <date year='2013' month='November' />
+    </front>
+    <seriesInfo name='RFC' value='7084'/>
+    <format type='ASCII' octets='46569'/>
+    </reference>
+
+
+    <reference  anchor='OSPFV3-IPSEC' target='http://www.rfc-editor.org/info/rfc4552'>
+    <front>
+    <title>Authentication/Confidentiality for OSPFv3</title>
+    <author initials='M.' surname='Gupta' fullname='M. Gupta'><organization /></author>
+    <author initials='N.' surname='Melam' fullname='N. Melam'><organization /></author>
+    <date year='2006' month='June' />
+    </front>
+    <seriesInfo name='RFC' value='4552'/>
+    <format type='ASCII' octets='31540'/>
+    </reference>
+
+<!-- draft-madhukar-ospf-agr-asymmetric: Expired -->
+<reference anchor="ASYNC-HELLO">
+
+<front>
+<title>Asymmetric OSPF Hold Timer</title>
+<author initials="M" surname="Anand" fullname="Madhukar Anand">
+<organization>Cisco Systems</organization>
+</author>
+<author initials="H." surname="Grover" fullname="Hasmit Grover">
+<organization>Cisco Systems</organization>
+</author>
+<author initials="A." surname="Roy" fullname="Abhay Roy">
+<organization>Cisco Systems</organization>
+</author>
+<date year='2013' month='June'/>
+</front>
+<seriesInfo name="Work in Progress," value="draft-madhukar-ospf-agr-asymmetric-01"/>
+</reference>
+
+
+    <reference  anchor='IANA-GUIDELINES' target='http://www.rfc-editor.org/info/rfc5226'>
+    <front>
+    <title>Guidelines for Writing an IANA Considerations Section in RFCs</title>
+    <author initials='T.' surname='Narten' fullname='T. Narten'><organization /></author>
+    <author initials='H.' surname='Alvestrand' fullname='H. Alvestrand'><organization /></author>
+    <date year='2008' month='May' />
+    </front>
+    <seriesInfo name='BCP' value='26'/>
+    <seriesInfo name='RFC' value='5226'/>
+    <format type='ASCII' octets='66160'/>
+    </reference>
+
+<reference anchor="EUI64" target="http://standards.ieee.org/regauth/oui/tutorials/EUI64.html">
+<front>
+<title>Guidelines for 64-bit Global Identifier (EUI-64)</title>
+<author>
+<organization>IEEE</organization>
+</author>
+<date year='1997' month='March'/>
+</front>
+<seriesInfo name="Registration Authority" value="Tutorial"/>
+</reference>
+</references>
+
+  <section title="Acknowledgments" numbered="no">
+   <t>This specification was inspired by the work presented in the HOMENET working group 
+     meeting in October 2011 in Philadelphia, Pennsylvania. In particular, we would like
+     to thank Fred Baker, Lorenzo Colitti, Ole Troan, Mark Townsley, and Michael Richardson.</t> 
+    <t>Arthur Dimitrelis and Aidan Williams did prior work in OSPFv3 autoconfiguration in the 
+       expired Internet-Draft titled "Autoconfiguration of routers using a link state routing protocol". 
+       There are many similarities between the concepts and techniques in this document.</t>
+    <t>Thanks for Abhay Roy and Manav Bhatia for comments regarding duplicate
+    Router ID 
+       processing.</t>
+   <t>Thanks for Alvaro Retana and Michael Barnes for comments regarding OSPFv3 Instance
+      ID autoconfiguration.</t>
+   <t>Thanks to Faraz Shamim for review and comments.</t>
+   <t>Thanks to Mark Smith for the requirement to reduce the adjacency formation delay in 
+      the back-to-back ethernet topologies that are prevalent in home networks.</t>
+   <t>Thanks to Les Ginsberg for document review and recommendations on OSPFv3 hardware
+      fingerprint content.</t>
+   <t>Thanks to Curtis Villamizar for document review and analysis of duplicate
+      Router ID resolution nuances.</t> 
+   <t>Thanks to Uma Chunduri for comments during OSPF WG last call.</t> 
+   <t>Thanks to Martin Vigoureux for Routing Area Directorate review and comments.</t> 
+   <t>Thanks to Adam Montville for Security Area Directorate review and comments.</t> 
+   <t>Thanks to Qin Wu for Operations &amp; Management Area Directorate review and comments.</t> 
+   <t>Thanks to Robert Sparks for General Area (GEN-ART) review and comments.</t>
+   <t>Thanks to Rama Darbha for review and comments.</t>
+   <t>Special thanks to Adrian Farrel for his in-depth review, copious comments, and suggested text.</t>
+   <t>Special thanks go to Markus Stenberg for his implementation of this specification in Bird.</t> 
+   <t>Special thanks also go to David Lamparter for his implementation of this specification in Quagga.</t> 
+   <t>This document was initially produced using the xml2rfc tool.</t>
+  </section>
+
+</back>
+
+</rfc>

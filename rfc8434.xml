@@ -1,0 +1,1042 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc
+    number="8434"
+    submissionType="IETF" consensus="yes"
+    category="std"
+    ipr="trust200902"
+    updates="5661"
+>
+
+
+<front>
+    <title abbrev="pNFS Layout Types">
+      Requirements for Parallel NFS (pNFS) Layout Types
+    </title>
+
+    <author fullname="Thomas Haynes"
+            initials="T."
+            surname="Haynes">
+      <organization abbrev="Hammerspace">Hammerspace</organization>
+      <address>
+        <postal>
+          <street>4300 El Camino Real Ste 105</street>
+          <city> Los Altos</city>
+          <region>CA</region>
+          <code>94022</code>
+          <country>United States of America</country>
+        </postal>
+        <email>loghyr@gmail.com</email>
+      </address>
+    </author>
+
+    <date year="2018" month="August" />
+
+    <area>Transport</area>
+    <workgroup>NFSv4</workgroup>
+    <keyword>NFSv4</keyword>
+
+    <abstract>
+      <t>
+        This document defines the requirements that individual Parallel NFS (pNFS)
+        layout types need to meet in order to work within the
+        pNFS framework as defined in RFC 5661.  In so doing, this document aims to
+        clearly distinguish between requirements for pNFS as a whole
+        and those specifically directed to the pNFS file layout.
+        The lack of a clear separation between the two sets of
+        requirements has been troublesome for those specifying and
+        evaluating new layout types.  In this regard, this
+        document updates RFC 5661.
+      </t>
+    </abstract>
+</front>
+
+<middle>
+
+
+<section anchor="sec:intro" title="Introduction">
+
+  <t>
+    The concept of "layout type" has a central role in the definition
+    and implementation of Parallel NFS (pNFS)
+    (see <xref target='RFC5661' />).
+    Clients and servers implementing different layout types behave
+    differently in many ways while conforming to the overall pNFS
+    framework defined in <xref target='RFC5661' /> and this document.
+    Layout types may differ as to:
+
+    <list style='symbols'>
+      <t>
+        The method used to do I/O operations directed to data storage devices.
+      </t>
+
+      <t>
+        The requirements for communication between the metadata server
+        (MDS) and the storage devices.
+      </t>
+
+      <t>
+        The means used to ensure that I/O requests
+        are only processed when the client holds an appropriate layout.
+      </t>
+
+      <t>
+        The format and interpretation of nominally opaque data fields in
+        pNFS-related NFSv4.x data structures.
+      </t>
+    </list>
+  </t>
+
+  <t>
+    Each layout type will define the needed details for its usage in
+    the specification for that layout type; layout type specifications
+    are always Standards Track RFCs.  Except for the file layout type
+    defined in Section 13 of <xref target='RFC5661' />, existing
+    layout types are defined in their own Standards Track documents, and
+    it is anticipated that new layout types will be defined in similar
+    documents.
+  </t>
+
+  <t>
+    The file layout type
+    was defined in the Network File System (NFS) version 4.1
+    protocol specification <xref target='RFC5661' />. The block
+    layout type was defined in <xref target='RFC5663' />, and the object
+    layout type was defined in <xref target='RFC5664' />. Subsequently,
+    the Small Computer System Interface (SCSI) layout type was defined in
+    <xref target='RFC8154' />.
+
+  </t>
+
+  <t>
+    Some implementers have interpreted the text in Sections 12
+    ("Parallel NFS (pNFS)") and 13 ("NFSv4.1 as a Storage Protocol
+    in pNFS: the File Layout Type") of <xref target='RFC5661' />
+    as applying only to the file layout type. Because Section
+    13 was not covered in a separate Standards Track document such as
+    those for both the block and object layout types, there was
+    some confusion as to the responsibilities of both the
+    metadata server and the data servers (DSs) that were laid out
+    in Section 12.
+  </t>
+
+  <t>
+    As a consequence, authors of new specifications (see <xref target='RFC8435' />
+    and <xref target='Lustre' />) may struggle to meet the requirements
+    to be a pNFS layout type. 
+
+   This document gathers the requirements from all of the
+   original Standards Track documents regarding layout type
+   and then specifies the requirements placed on all layout types independent
+   of the particular type chosen.
+  </t>
+</section>
+
+<section anchor='sec:defs' title='Definitions'>
+
+  <t>
+    <list style='hanging'>
+      <t hangText='control communication requirement:'>
+        the specification for information on layouts, stateids,
+        file metadata, and file data that must be communicated between
+        the metadata server and the storage devices. There is
+        a separate set of requirements for each layout type.
+      </t>
+
+      <t hangText='control protocol:'>
+        the particular mechanism that an implementation of a
+        layout type would use to meet the control communication
+        requirement for that layout type.  This need not be a
+        protocol as normally understood.  In some cases, the same
+        protocol may be used as both a control protocol and storage
+        protocol.
+      </t>
+
+      <t hangText='storage protocol:'>
+        the protocol used by clients to do I/O operations to the
+        storage device.  Each layout type specifies the set of storage
+        protocols.
+      </t>
+
+      <t hangText='loose coupling:'>
+        when the control protocol is a storage protocol.
+      </t>
+
+      <t hangText='tight coupling:'>
+an arrangement in which the control protocol is one designed specifically for
+control communication.
+It may be either a
+        proprietary protocol adapted specifically to a particular
+        metadata server or a protocol based on a Standards Track document.
+      </t>
+
+      <t hangText='(file) data:'>
+        that part of the file system object that contains
+        the data to be read or written. It is the contents of the object
+        rather than the attributes of the object.
+      </t>
+
+      <t hangText='data server (DS):'>
+        a pNFS server that provides the file's data when the file
+        system object is accessed over a file-based protocol.  Note
+        that this usage differs from that in
+        <xref target='RFC5661' />, which applies
+        the term in some cases even when other sorts of protocols
+        are being used. Depending on the layout, there might be one
+        or more data servers over which the data is striped.
+        While the metadata server is strictly accessed over
+        the NFSv4.1 protocol, the
+        data server could be accessed via any file access protocol
+        that meets the pNFS requirements.
+        <vspace blankLines='1' />
+        See <xref target='sec:intro:diff' /> for a comparison of this
+        term and "storage device".
+      </t>
+
+      <t hangText='storage device:'>
+        the target to which clients may direct I/O requests when they
+        hold an appropriate layout.  Note that each data server is a
+        storage device but that some storage device are not data servers.
+        See <xref target='sec:intro:diff' /> for further discussion.
+      </t>
+
+      <t hangText='fencing:'>
+        the process by which the metadata server prevents the storage
+        devices from processing I/O from a specific client to a specific
+        file.
+      </t>
+
+      <t hangText='layout:'>
+        the information a client uses to access file data on a
+        storage device. This information includes specification
+        of the protocol (layout type) and the identity of the storage
+        devices to be used.
+        <vspace blankLines='1' />
+        The bulk of the contents of the layout are defined in <xref
+        target='RFC5661' />  as nominally opaque, but individual layout
+        types are responsible for specifying the format of the layout data.
+      </t>
+
+      <t hangText='layout iomode:'>
+        a grant of either read-only or read/write I/O to the client.
+      </t>
+
+      <t hangText='layout stateid:'>
+        a 128-bit quantity returned by a server that
+        uniquely defines the layout state provided by the server
+        for a specific layout that describes a layout type and
+        file (see Section 12.5.2 of <xref target='RFC5661' />).
+        Further, Section 12.5.3 of <xref target='RFC5661' /> describes differences in handling
+        between layout stateids and other stateid types.
+      </t>
+
+      <t hangText='layout type:'>
+        a specification of both the storage protocol used to
+        access the data and the aggregation scheme used to lay out
+        the file data on the underlying storage devices.
+      </t>
+
+      <t hangText='recalling a layout:'>
+        a graceful recall, via a callback, of a specific layout by
+        the metadata server to the client.  Graceful here means that
+        the client would have the opportunity to flush any WRITEs, etc.,
+        before returning the layout to the metadata server.
+      </t>
+
+      <t hangText='revoking a layout:'>
+        an invalidation of a specific layout by the metadata server.
+        Once revocation occurs, the metadata server will not accept as
+        valid any reference to the revoked layout, and a storage
+        device will not accept any client access based on the layout.
+      </t>
+
+      <t hangText='(file) metadata:'>
+        the part of the file system object that contains various
+        descriptive data relevant to the file object, as opposed to
+        the file data itself.  This could include the time of last
+        modification, access time, EOF position, etc.
+      </t>
+
+      <t hangText='metadata server (MDS):'>
+        the pNFS server that provides metadata information for a file
+        system object. It is also responsible for generating, recalling,
+        and revoking layouts for file system objects, for performing
+        directory operations, and for performing I/O operations to
+        regular files when the clients direct these to the metadata
+        server itself.
+      </t>
+
+      <t hangText='stateid:'>
+        a 128-bit quantity returned by a server that uniquely defines
+        the set of locking-related state provided by the server.
+        Stateids may designate state related to open files, byte-range
+        locks, delegations, or layouts.
+      </t>
+    </list>
+  </t>
+
+  <section anchor='sec:intro:diff' title='Use of the Terms "Data Server" and "Storage Device"'>
+    <t>
+      In <xref target='RFC5661' />, the terms "data server"
+      and "storage device" are used somewhat inconsistently:
+    </t>
+
+    <t>
+      <list style='symbols'>
+        <t>
+          In Section 12, where pNFS in general is discussed, the term
+          "storage device" is used.
+        </t>
+
+        <t>
+          In Section 13, where the file layout type is discussed, the term
+          "data server" is used.
+        </t>
+
+        <t>
+          In other sections, the term "data server" is used, even in
+          contexts where the storage access type is not NFSv4.1 or any
+          other file access protocol.
+        </t>
+      </list>
+    </t>
+
+    <t>
+      As this document deals with pNFS in general, it uses the more
+      generic term "storage device" in preference to "data server".
+      The term "data server" is used only in contexts in which a file
+      server is used as a storage device.  Note that every data
+      server is a storage device, but storage devices that use protocols
+      that are not file access protocols (such as NFS) are not data
+      servers.
+    </t>
+
+    <t>
+      Since a given storage device may support multiple layout types, a
+      given device can potentially act as a data server for some set of
+      storage protocols while simultaneously acting as a storage device
+      for others.
+    </t>
+  </section>
+
+  <section title="Requirements Language">
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+
+    <t>
+      This document differs from most Standards Track documents in that it
+      specifies requirements for those defining future layout types rather
+      than defining the requirements for implementations directly. This
+      document makes clear whether:
+
+      <list style='format (%d)'>
+        <t>
+          any particular requirement applies to implementations.
+        </t>
+
+        <t>
+          any particular requirement applies to those defining layout
+          types.
+        </t>
+
+        <t>
+          the requirement is a general requirement that implementations
+          need to conform to, with the specific means left to layout
+          type definitions type to specify.
+        </t>
+      </list>
+    </t>
+  </section>
+</section>
+
+
+<section anchor="sec:control" title="The Control Protocol">
+  <t>
+    A layout type has to meet the requirements that apply to the
+    interaction between the metadata server and the storage device
+    such that they present to the client a consistent view of stored
+    data and locking state (Section 12.2.6 of <xref target='RFC5661' />).
+    Particular implementations may satisfy these requirements in any
+    manner they choose, and the mechanism chosen need not be described
+    as a protocol.  Specifications defining layout types need to clearly
+    show how implementations can meet the requirements discussed below,
+    especially with respect to those that have security implications.
+    In addition, such specifications may find it necessary to impose
+    requirements on implementations of the layout type to ensure
+    appropriate interoperability.
+  </t>
+
+  <t>
+    In some cases, there may be no control protocol other than the
+    storage protocol.  This is often described as using a "loosely coupled"
+    model.  In such cases, the assumption is that the metadata server,
+    storage devices, and client may be changed independently and that
+    the implementation requirements in the layout type specification
+    need to ensure this degree of interoperability.  This model is used
+    in the block and object layout type specification.
+  </t>
+
+  <t>
+    In other cases, it is assumed that there will be a purpose-built
+    control protocol that may be different for different implementations
+    of the metadata server and data server.  The assumption here is that
+    the metadata server and data servers are designed and implemented
+    as a unit and interoperability needs to be assured between clients
+    and metadata-data server pairs, developed independently. This is
+    the model used for the file layout.
+  </t>
+
+  <t>
+    Another possibility is for the definition of
+    a control protocol to be specified in a Standards Track document.
+    There are two subcases to consider:
+
+    <list style='symbols'>
+      <t>
+        A new layout type includes a definition of a particular
+        control protocol whose use is obligatory for metadata servers
+        and storage devices implementing the layout type.  In this case,
+        the interoperability model is similar to the first case above,
+        and the defining document should assure interoperability among
+        metadata servers, storage devices, and clients developed
+        independently.
+      </t>
+
+      <t>
+        A control protocol is defined in a Standards Track document
+        that meets the control protocol requirements for one of the
+        existing layout types.  In this case, the new document's job
+        is to assure interoperability between metadata servers and
+        storage devices developed separately.  The existing  definition
+        document for the selected layout type retains the function of
+        assuring interoperability between clients and a given collection
+        of metadata servers and storage devices.  In this context,
+        implementations that implement the new protocol are treated in
+        the same way as those that use an internal control protocol or
+        a functional equivalent.
+      </t>
+    </list>
+  </t>
+
+  <t>
+    An example of this last case is the SCSI layout type
+    <xref target='RFC8154' />, which extends the block
+    layout type. The block layout type had a requirement
+    for fencing of clients but did not present a way for
+    the control protocol (in this case, the SCSI storage
+    protocol) to fence the client. The SCSI layout type
+    remedies that in <xref target='RFC8154' /> and, in
+    effect, has a tightly coupled model.
+  </t>
+
+  <section anchor="sec:control:req" title="Control Protocol Requirements">
+    <t>
+      The requirements of interactions between the metadata
+      server and the storage devices are:
+
+      <list style='format (%d)'>
+        <t>
+          The metadata server MUST be able to service the client's
+          I/O requests if the client decides to make such requests
+          to the metadata server instead of to the storage device.
+          The metadata server must be able to retrieve the data
+          from the constituent storage devices and present it back
+          to the client.  A corollary to this is that even though
+          the metadata server has successfully given the client
+          a layout, the client MAY still send I/O requests to the
+          metadata server.
+        </t>
+
+        <t>
+          The metadata server MUST be able to restrict access to a file
+          on the storage devices when it revokes a layout. The metadata
+          server typically would revoke a layout whenever a client fails
+          to respond to a recall or a client's lease is expired due to
+          non-renewal. It might also revoke the layout as a means of
+          enforcing a change in locking state or access permissions that
+          the storage device cannot directly enforce.
+          <vspace blankLines="1" />
+          Effective revocation may require client cooperation in using a
+          particular stateid (file layout) or principal (e.g., flexible
+          file layout) when performing I/O.
+          <vspace blankLines="1" />
+          In contrast, there is no requirement to restrict access to a file
+          on the storage devices when a layout is recalled.  It is only
+          after the metadata server determines that the client is
+          not gracefully returning the layout and starts the revocation
+          that this requirement is enforced.
+        </t>
+
+        <t>
+          A pNFS implementation MUST NOT allow the violation of NFSv4.1's
+          access controls: Access Control Lists (ACLs) and file open modes.  Section 12.9 of
+          <xref target='RFC5661' /> specifically lays this burden on
+          the combination of clients, storage devices, and the metadata
+          server.  However, the specification of the individual layout type
+          might create requirements as to how this is to be done. This
+          may include a possible requirement for the metadata server to
+          update the storage device so that it can enforce security.
+          <vspace blankLines="1" />
+          The file layout requires the storage device to enforce
+          access whereas the flexible file layout requires both the
+          storage device and the client to enforce security.
+        </t>
+
+        <t>
+          Interactions between locking and I/O operations MUST obey
+          existing semantic restrictions.  In particular, if an I/O
+          operation would be invalid when directed at the metadata server,
+          it is not to be allowed when performed on the storage device.
+          <vspace blankLines="1" />
+          For the block and SCSI layouts, as the storage device is not
+          able to reject the I/O operation, the client is responsible
+          for enforcing this requirement.
+        </t>
+
+        <t>
+          Any disagreement between the metadata server and the data
+          server as to the value of attributes such as modify time,
+          the change attribute, and the EOF position MUST
+          be of limited duration with clear means of resolution of any
+          discrepancies being provided.  Note the following:
+
+          <list style='format (%c)'>
+            <t>
+              Discrepancies need not be resolved unless any client has
+              accessed the file in question via the metadata server,
+              typically by performing a GETATTR.
+            </t>
+
+
+            <t>
+            A particular storage device might be striped, and as such, its
+            local view of the EOF position does not match the global EOF position.
+            </t>
+
+            <t>
+              Both clock skew and network delay can lead to the metadata
+              server and the storage device having different values of
+              the time attributes.  As long as those differences can be
+              accounted for in what is presented to the client in a GETATTR,
+              then no violation results.
+            </t>
+
+            <t>
+              A LAYOUTCOMMIT requires that changes in attributes resulting
+              from operations on the storage device need to be reflected
+              in the metadata server by the completion of the operation.
+            </t>
+          </list>
+        </t>
+      </list>
+    </t>
+
+    <t>
+      These requirements may be satisfied in different ways by different
+      layout types. As an example, while the file layout type uses
+      the stateid to fence off the client, there is no requirement that
+      other layout types use this stateid approach.
+    </t>
+
+    <t>
+      Each new Standards Track document for a layout type MUST
+      address how the client, metadata server, and storage devices
+      are to interact to meet these requirements.
+    </t>
+  </section>
+
+  <section anchor="sec:control:nonreq" title="Previously Undocumented Protocol Requirements">
+    <t>
+      While not explicitly stated as requirements in 
+      Section 12 of <xref target='RFC5661' />, the existing
+      layout types do have more requirements that they need
+      to enforce.
+    </t>
+
+    <t>
+      The client has these obligations when making I/O requests to
+      the storage devices:
+
+      <list style='format (%d)'>
+        <t>
+          Clients MUST NOT perform I/O to the storage device if they
+          do not have layouts for the files in question.
+        </t>
+
+        <t>
+          Clients MUST NOT perform I/O operations outside of the
+          specified ranges in the layout segment.
+        </t>
+
+        <t>
+          Clients MUST NOT perform I/O operations that would be
+          inconsistent with the iomode specified in the layout segments
+          it holds.
+        </t>
+      </list>
+    </t>
+
+    <t>
+      Under the file layout type, the storage devices are able to
+      reject any request made not conforming to these requirements.
+      This may not be possible for other known layout types, which
+      puts the burden of enforcing such violations solely on the client.
+      For these layout types:
+
+      <list style='format (%d)'>
+        <t>
+          The metadata server MAY use fencing operations to the
+          storage devices to enforce layout revocation against the client.
+        </t>
+
+        <t>
+          The metadata server MUST allow the clients to perform data
+          I/O against it, even if it has already granted the client
+          a layout.  A layout type might discourage such I/O, but it
+          cannot forbid it.
+        </t>
+
+        <t>
+          The metadata server MUST be able to do storage allocation,
+          whether that is to create, delete, extend, or truncate files.
+        </t>
+      </list>
+    </t>
+
+    <t>
+      The means to address these requirements will vary with the layout
+      type.  A control protocol will be used to effect these; the control
+      protocol could be
+      a purpose-built one, one identical to the storage protocol,
+      or a new Standards Track control protocol.
+    </t>
+  </section>
+
+  <section anchor="sec:control:edits" title="Editorial Requirements">
+    <t>
+      This section discusses how the protocol requirements discussed above
+      need to be addressed in documents specifying a new layout type.
+      Depending on the interoperability model for the layout type in
+      question, this may involve the imposition of layout-type-specific
+      requirements that ensure appropriate interoperability of pNFS
+      components that are developed separately.
+    </t>
+
+    <t>
+      The specification of the layout type needs to make clear how the
+      client, metadata server, and storage device act together to meet
+      the protocol requirements discussed previously.  
+If the document
+      does not impose implementation requirements sufficient to ensure
+      that these semantic requirements are met, it is not appropriate
+      for publication as an RFC from the IETF stream.
+    </t>
+
+    <t>
+      Some examples include:
+
+      <list style='symbols'>
+        <t>
+          If the metadata server does not have a means to invalidate
+          a stateid issued to the storage device to keep a particular
+          client from accessing a specific file, then the layout type
+          specification has to document how the metadata server is going to
+          fence the client from access to the file on that storage device.
+        </t>
+
+        <t>
+          If the metadata server implements mandatory byte-range locking
+          when accessed directly by the client, then the layout type
+          specification must require that this also be done when data
+          is read or written using the designated storage protocol.
+        </t>
+      </list>
+    </t>
+  </section>
+</section>
+
+
+<section anchor="sec:fencing" title="Specifications of Original Layout Types">
+  <t>
+    This section discusses how the original layout types interact
+    with Section 12 of <xref target='RFC5661' />, which enumerates the
+    requirements of pNFS layout type specifications. It is not normative
+    with regards to the file layout type presented in Section 13 of
+    <xref target='RFC5661' />, the block layout type <xref target='RFC5663' />,
+    and the object layout type <xref target='RFC5664' />. These
+    are discussed here only to illuminate the updates
+    <xref target="sec:control" /> of this document makes to Section 12
+    of <xref target='RFC5661' />.
+  </t>
+
+  <section anchor="sec:fencing:files" title="File Layout Type">
+    <t>
+      Because the storage protocol is a subset of NFSv4.1, the semantics
+      of the file layout type comes closest to the semantics of NFSv4.1
+      in the absence of pNFS.  In particular, the stateid and principal
+      used for I/O MUST have the same effect and be subject to the
+      same validation on a data server as it would have if the I/O were
+      being performed on the metadata server itself.  The same set of
+      validations are applied whether or not pNFS is in effect.
+    </t>
+
+    <t>
+      While for most implementations, the storage devices
+      can do the following validations that are each presented as a "SHOULD"
+      and not a "MUST" in <xref target='RFC5661' />:
+
+
+      <list style='format (%d)'>
+        <t>
+          client holds a valid layout,
+        </t>
+        <t>
+          client I/O matches the layout iomode, and
+        </t>
+        <t>
+          client does not go out of the byte ranges,
+        </t>
+      </list>
+
+      Actually,
+      the first point is presented in <xref target='RFC5661' /> as both:
+
+      <list style='hanging'>
+        <t hangText='"MUST":'>
+          in Section 13.6
+          <vspace blankLines='1' />
+          As described in Section 12.5.1, a client MUST NOT send an I/O
+          to a data server for which it does not hold a valid layout;
+          the data server MUST reject such an I/O.
+        </t>
+
+        <t hangText='"SHOULD":'>
+          in Section 13.8
+          <vspace blankLines='1' />
+
+          The iomode need not be checked by the data servers when clients
+          perform I/O.  However, the data servers SHOULD still validate
+          that the client holds a valid layout and return an error if
+          the client does not.
+        </t>
+      </list>
+
+      It should be noted that it is just these layout-specific checks
+      that are optional, not the normal file access semantics. The
+      storage devices MUST make all of the required access checks on
+      each READ or WRITE I/O as determined by the NFSv4.1 protocol.
+      If the metadata server would deny a READ or WRITE operation on a
+      file due to its ACL, mode attribute, open access mode, open deny
+      mode, mandatory byte-range locking state, or any other attributes
+      and state, the storage device MUST also deny the READ or WRITE
+      operation. Also, while the NFSv4.1 protocol does not
+      mandate export access checks based on the client's IP address,
+      if the metadata server implements such a policy, then that counts
+      as such state as outlined above.
+    </t>
+
+    <t>
+      The data filehandle provided by the PUTFH operation to the data
+      server provides sufficient context to enable the data server to
+      ensure that the client has a valid layout for the I/O being
+      performed for the subsequent READ or WRITE operation in the
+      compound.
+    </t>
+
+    <t>
+Finally, the data server can check the stateid presented in the READ
+or WRITE operation to see if that stateid has been rejected by the
+metadata server; if so, the data server will cause the I/O to be fenced.
+Whilst it might
+      just be the open owner or lock owner on that client being fenced,
+      the client should take the NFS4ERR_BAD_STATEID error code to mean
+      it has been fenced from the file and contact the metadata server.
+    </t>
+  </section>
+
+  <section anchor="sec:fencing:blocks" title="Block Layout Type">
+    <t>
+      With the block layout type, the storage devices are generally
+      not able to enforce file-based security.  Typically, storage area
+      network (SAN) disk arrays and SAN protocols provide coarse-grained
+      access control mechanisms (e.g., Logical Unit Number (LUN) mapping
+      and/or masking), with a target granularity of disks rather than
+      individual blocks and a source granularity of individual hosts
+      rather than of users or owners.  Access to block storage is
+      logically at a lower layer of the I/O stack than NFSv4. Since
+      NFSv4 security is not directly applicable to protocols that access
+      such storage directly, Section 2.1 of
+      <xref target='RFC5663' /> specifies that:
+
+      <list style='hanging'>
+        <t hangText=''>
+          in environments where pNFS clients cannot be trusted to enforce
+          such policies, pNFS block layout types SHOULD NOT be used.
+        </t>
+      </list>
+    </t>
+
+    <t>
+      Due to these granularity issues, the security burden
+      has been shifted from the storage devices to the client.  Those
+      deploying implementations of this layout type need to be sure that
+      the client implementation can be trusted. This is not a new sort of
+      requirement in the context of SAN protocols.  In such environments,
+      the client is expected to provide block-based protection.
+    </t>
+
+    <t>
+      This shift of the burden also extends to locks and
+      layouts. The storage devices are not able to enforce any of these,
+      and the burden is pushed to the client to make the appropriate
+      checks before sending I/O to the storage devices.  For example,
+      the server may use a layout iomode only allowing reading to enforce
+      a mandatory read-only lock.  In such cases, the client has to
+      support that use by not sending WRITEs to the storage devices.
+      The fundamental issue here is that the storage device is treated
+      by this layout type in the same fashion as a local disk device.
+      Once the client has access to the storage device, it is able to
+      perform both READ and WRITE I/O to the entire storage device.
+      The byte ranges in the layout, any locks, the layout iomode, etc.,
+      can only be enforced by the client.  Therefore, the client is
+      required to provide that enforcement.
+    </t>
+
+    <t>
+      In the context of fencing off of the client upon revocation
+      of a layout, these limitations come into play again, i.e., the
+      granularity of the fencing can only be at the level of the host and
+      logical unit.  Thus, if one of a client's layouts is revoked by the
+      server, it will effectively revoke all of the client's layouts for
+      files located on the storage units comprising the logical volume.
+      This may extend to the client's layouts for files in other file
+      systems.  Clients need to be prepared for such revocations and
+      reacquire layouts as needed.
+    </t>
+  </section>
+
+  <section anchor="sec:fencing:objects" title="Object Layout Type">
+    <t>
+      With the object layout type, security checks occur during the
+      allocation of the layout.  The client will typically ask for
+      layouts covering all of the file and may do so for either READ
+      or READ/WRITE.  This enables it to do subsequent I/O operations
+      without the need to obtain layouts for specific byte ranges.
+      At that time, the metadata server should verify permissions against
+      the layout iomode, the file mode bits or ACLs, etc. As the client
+      may be acting for multiple local users, it MUST authenticate and
+      authorize the user by issuing respective OPEN and ACCESS calls to
+      the metadata server, similar to having NFSv4 data delegations.
+    </t>
+
+    <t>
+      Upon successful authorization, the client receives within the layout
+      a set of object capabilities allowing it I/O access to the specified
+      objects corresponding to the requested iomode. These capabilities
+      are used to enforce access control and locking semantics at the
+      storage devices.  Whenever one of the following occurs on the
+      metadata server, then the metadata server MUST change the capability version
+      attribute on all objects comprising the file in order to
+      invalidate any outstanding capabilities before committing to one
+      of these changes:
+
+      <list style='symbols'>
+        <t>
+          the permissions on the object change,
+        </t>
+        <t>
+          a conflicting mandatory byte-range lock is granted, or
+        </t>
+        <t>
+          a layout is revoked and reassigned to another client.
+        </t>
+      </list>
+    </t>
+
+    <t>
+      When the metadata server wishes to fence off a client to a
+      particular object, then it can use the above approach to invalidate
+      the capability attribute on the given object. The client can
+      be informed via the storage device that the capability has been
+      rejected and is allowed to fetch a refreshed set of capabilities,
+      i.e., reacquire the layout.
+    </t>
+  </section>
+</section>
+
+
+<section anchor="sec:wrapup" title="Summary">
+  <t>
+    In the three original layout types, the burden of enforcing
+    the security of NFSv4.1 can fall to either the storage devices
+    (files), the client (blocks), or the metadata server (objects).
+    Such choices are conditioned by the native capabilities of
+    the storage devices -- if a control protocol can be implemented,
+    then the burden can be shifted primarily to the storage devices.
+  </t>
+
+  <t>
+
+    In the context of this document, we treat the control protocol as
+    a set of requirements.  As new layout types are published,
+    the defining documents MUST address:
+
+    <list style='format (%d)'>
+      <t>
+        The fencing of clients after a layout is revoked.
+      </t>
+
+      <t>
+        The security implications of the native capabilities of the
+        storage devices with respect to the requirements of the
+        NFSv4.1 security model.
+      </t>
+    </list>
+  </t>
+
+  <t>
+    In addition, these defining  documents need to make clear how other
+    semantic requirements of NFSv4.1 (e.g., locking) are met in the
+    context of the proposed layout type.
+  </t>
+</section>
+
+
+<section anchor="sec:security" title="Security Considerations">
+
+  <t>
+    This section does not deal directly with security considerations
+    for existing or new layout types.  Instead, it provides a general
+    framework for understating security-related issues within the pNFS
+    framework.  
+
+Specific security considerations will be addressed in the
+    Security Considerations sections of documents specifying layout types.
+    For example, in Section 3 of <xref target="RFC5663" />, the lack
+    of finer-than-physical disk access control necessitates that the
+    client is delegated the responsibility to enforce the access
+    provided to them in the layout extent that they were granted by
+    the metadata server.
+  </t>
+
+  <t>
+    The layout type specification must ensure that only data access
+    consistent with the NFSV4.1 security model is allowed.  It may do
+    this directly, by providing that appropriate checks be performed
+    at the time each access is performed. It may do it indirectly by
+    allowing the client or the storage device to be responsible for
+    making the appropriate checks.  In the latter case, I/O access rights
+    are reflected in layouts, and the layout type must provide a way to
+    prevent inappropriate access due to permissions changes between the
+    time a layout is granted and the time the access is performed.
+  </t>
+
+  <t>
+    The metadata server MUST be able to fence off a client's access
+    to the data file on a storage device. When it revokes the layout,
+    the client's access MUST be terminated at the storage devices.
+    The client has a subsequent opportunity to reacquire the layout and
+    perform the security check in the context of the newly current
+    access permissions.
+  </t>
+</section>
+
+<section anchor="sec:iana" title="IANA Considerations">
+
+<t>
+This document has no IANA actions.
+</t>
+</section>
+
+
+</middle>
+
+
+<back>
+
+
+  <references title="Normative References">
+
+
+<?rfc include="reference.RFC.2119"?>
+<?rfc include="reference.RFC.5661"?>
+<?rfc include="reference.RFC.5663"?>
+<?rfc include="reference.RFC.5664"?>
+<?rfc include="reference.RFC.8154"?>
+<?rfc include="reference.RFC.8174"?>
+
+
+</references>
+
+<references title="Informative References">
+
+<!-- draft-faibish-nfsv4-pnfs-lustre-layout Expired -->
+    <reference anchor='Lustre'>
+      <front>
+        <title>Parallel NFS (pNFS) Lustre Layout Operations</title>
+        <author initials="S." surname="Faibish" fullname="S. Faibish">
+          <organization>EMC</organization>
+        </author>
+        <author initials="D." surname="Cote" fullname="D. Cote">
+          <organization>EMC</organization>
+        </author>
+        <author initials="P." surname="Tao" fullname="P. Tao">
+          <organization>EMC</organization>
+        </author>
+        <date year="2014" month="May" />
+      </front>
+<seriesInfo name='Work in Progress,' value='draft-faibish-nfsv4-pnfs-lustre-layout-07'/>
+    </reference>
+
+<!-- draft-ietf-nfsv4-flex-files RFC 8435 in cluster 351 -->
+
+<reference anchor="RFC8435" target="https://www.rfc-editor.org/info/rfc8435">
+<front>
+<title>Parallel NFS (pNFS) Flexible File Layout</title>
+        <author initials="B." surname="Halevy" fullname="B. Halevy">
+        </author>
+        <author initials="T." surname="Haynes" fullname="T. Haynes">
+          <organization>Primary Data</organization>
+        </author>
+<date month='August' year='2018'/>
+</front>
+<seriesInfo name="RFC" value="8435"/>
+<seriesInfo name="DOI" value="10.17487/RFC8435"/>
+</reference>
+
+</references>
+
+
+<section title="Acknowledgments" numbered="no">
+  <t>
+    Dave Noveck provided an early review that sharpened
+    the clarity of the definitions. He also provided
+    a more comprehensive review of the document.
+  </t>
+
+  <t>
+    Both Chuck Lever and Christoph Helwig provided
+    insightful comments during the working group last call.
+  </t>
+</section>
+
+
+</back>
+
+
+</rfc>

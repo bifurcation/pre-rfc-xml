@@ -1,0 +1,528 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc tocindent="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="8355" 
+     category="info" 
+     submissionType="IETF"
+     consensus="yes"
+     ipr="trust200902">
+  <front>
+    <title abbrev="SPRING Resiliency Use Cases">Resiliency Use Cases in Source
+    Packet Routing in Networking (SPRING) Networks</title>
+
+    <author fullname="Clarence Filsfils" initials="C." role="editor"
+            surname="Filsfils">
+      <organization>Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street/>
+
+          <city>Brussels</city>
+
+          <region/>
+
+          <code/>
+
+          <country>Belgium</country>
+        </postal>
+
+        <email>cfilsfil@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Stefano Previdi" initials="S." role="editor"
+            surname="Previdi">
+      <organization>Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street>Via Del Serafico, 200</street>
+
+          <city>Rome</city>
+
+          <code>00142</code>
+
+          <country>Italy</country>
+        </postal>
+
+        <email>stefano@previdi.net</email>
+      </address>
+    </author>
+
+    <author fullname="Bruno Decraene" initials="B." surname="Decraene">
+      <organization>Orange</organization>
+
+      <address>
+        <postal>
+          <street/>
+
+          <city/>
+
+          <code/>
+
+          <country>France</country>
+        </postal>
+
+        <email>bruno.decraene@orange.com</email>
+      </address>
+    </author>
+
+  <author fullname="Rob Shakir" initials="R." surname="Shakir">
+     <organization abbrev="Google">Google, Inc.</organization>
+
+     <address>
+       <postal>
+         <street>1600 Amphitheatre Parkway</street>
+         <city>Mountain View</city>
+
+         <region>CA</region>
+
+         <code>94043</code>
+
+         <country>United States of America</country>
+       </postal>
+
+       <phone></phone>
+
+       <email>robjs@google.com</email>
+
+     </address>
+   </author>
+
+
+    <date month="March" year="2018"/>
+
+    <abstract>
+
+<t> This document identifies and describes the requirements for a set of 
+use cases related to Segment Routing network resiliency on Source Packet Routing in Networking (SPRING) networks.</t>
+    </abstract>
+
+  </front>
+
+  <middle>
+    <section anchor="INTRO" title="Introduction">
+      <t>This document reviews various use cases for the protection of
+      services in a SPRING network. The terminology used hereafter is in line
+      with <xref target="RFC5286"/> and <xref target="RFC5714"/>.</t>
+
+     <t>The resiliency use cases described in this document can be applied
+      not only to traffic that is forwarded according to the SPRING
+      architecture, but also to traffic that originally is forwarded using
+      other paradigms such as LDP signaling or pure IP traffic (IP-routed
+      traffic).</t>
+
+      <t>Three key alternatives are described: path protection, local
+      protection without operator management, and local protection with
+      operator management.</t>
+
+      <t>Path protection lets the ingress node be in charge of the failure
+      recovery, as discussed in <xref target="PATHPROT"/>.</t>
+
+      <t>The rest of the document focuses on approaches where protection is
+      performed by the node adjacent to the failed component, commonly
+      referred to as local protection techniques or fast-reroute techniques
+      <xref target="RFC5286"/> <xref target="RFC5714"/>.</t>
+
+      <t>In <xref target="FREEPROT"/>, we discuss two different approaches
+      providing unmanaged local protection, namely link/node bypass protection
+      and shortest-path-based protection.</t>
+
+      <t><xref target="LOCALPROT"/> illustrates a case allowing the operator
+      to manage the local protection behavior in order to accommodate specific
+      policies.</t>
+
+      <t>In <xref target="LOOPAVOIDANCE"/>, we discuss the opportunity for the
+      SPRING architecture to provide loop-avoidance mechanisms such that
+      transient forwarding state inconsistencies during routing convergence do
+      not lead into traffic loss.</t>
+
+      <t>The purpose of this document is to illustrate the different use cases
+      and explain how an operator could combine them in the same network (see
+      <xref target="COEXIST"/>). Solutions are not defined in this
+      document.</t>
+
+      <figure align="center" anchor="REFTOPO" title="Reference Topology">
+        <artwork align="center">   B------C------D------E
+  /|      | \  / | \  / |\
+ / |      |  \/  |  \/  | \
+A  |      |  /\  |  /\  |  Z
+ \ |      | /  \ | /  \ | /
+  \|      |/    \|/    \|/
+   F------G------H------I</artwork>
+      </figure>
+
+      <t>We use <xref target="REFTOPO"/> as a reference topology throughout
+      the document. The following link metrics are applied: <list style="symbols">
+          <t>Links from/to A and Z are configured with a metric of 100.</t>
+
+          <t>CH, GD, DI, and HE links are configured with a metric of 6.</t>
+
+          <t>All other links are configured with a metric of 5.</t>
+	</list></t>
+          <t>Note: Link metrics are bidirectional; in other words, the same metric
+          value is configured at both sides of each link.</t>
+        
+<section anchor="requirements_language" title="Requirements Language">
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+</section>
+</section>
+
+    <section anchor="PATHPROT" title="Path Protection">
+      <t>As a reminder, one of the major network operator requirements is
+      path disjointness capability. Network operators have deployed
+      infrastructures with topologies that allow paths to be computed in a
+      complete disjoint fashion where two paths wouldn't share any component
+      (link or router), hence allowing an optimal protection strategy.</t>
+
+      <t>A first protection strategy consists of excluding any local repair
+      and instead uses end-to-end path protection where each SPRING path is
+      protected by a second disjoint SPRING path. In this case, local
+      protection is not used along the path.</t>
+
+      <t>For example, a pseudowire (PW) from A to Z can be "path protected"
+      in the direction A to Z in the following manner: the operator configures
+      two SPRING paths, T1 (primary) and T2 (backup), from A to Z.</t>
+
+      <t>The two paths may be used:<list style="symbols">
+          <t>concurrently, where the ingress router sends the same traffic
+          over the primary and secondary path (this is usually known as 1+1
+          protection);</t>
+
+          <t>concurrently, where the ingress router splits the traffic over
+          the primary and secondary path (this is usually known as Equal-Cost
+          Multipath (ECMP) or Unequal-Cost Multipath (UCMP)); or</t>
+
+          <t>as a primary and backup path, where the secondary path is used
+          only when the primary failed (this is usually known as 1:1
+          protection).</t>
+        </list></t>
+
+      <t>T1 is established over path {AB, BC, CD, DE, EZ} as the primary path,
+      and T2 is established over path {AF, FG, GH, HI, IZ} as the backup path.
+      The two paths MUST be disjoint in their links, nodes, and Shared Risk Link Groups
+      (SRLGs) to satisfy the requirement of disjointness.</t>
+      
+     <t>In the case of primary/backup paths, when the primary path T1 is up,
+      the packets of the PW are sent on T1. When T1 fails, the packets of the
+      PW are sent on the backup path T2. When T1 comes back up, the operator
+      either allows for an automated reversion of the traffic onto T1 or
+      selects an operator-driven reversion. Typically, the switchover from
+      path T1 to path T2 is done in a fast-reroute fashion (e.g., sub-50
+      milliseconds) but, depending on the service that needs to be
+      delivered, other restoration times may be used.</t>
+
+      <t>It is essential that any path, primary or backup, benefit from an
+      end-to-end liveness monitoring/verification. The method and mechanisms
+      that provide such a liveness check are outside the scope of this document.
+      An example is given by <xref target="RFC5880"/>.</t>
+
+      <t>There are multiple options for a liveness check, e.g., path liveness,
+      where the path is monitored at the network level (either by the head-end
+      node or by a network controller/monitoring system). Another possible
+      approach consists of a service-based path monitored by the service
+      instance (verifying reachability of the endpoint). All these options are
+      given here as examples. While this document does express the requirement
+      for a liveness mechanism, it does not mandate, nor define, any specific
+      one.</t>
+
+      <t>From a SPRING viewpoint, we would like to highlight the following
+      requirements:<list style="symbols">
+          <t>SPRING architecture MUST provide a way to compute paths that are not
+          protected by local repair techniques (as illustrated in the
+          example of paths T1 and T2).</t>
+
+          <t>SPRING architecture MUST provide a way to instantiate pairs of
+          disjoint paths on a topology based on a protection strategy (link,
+          node, or SRLG protection) and allow the validation or recomputation
+          of these paths upon network events.</t>
+
+          <t>The SPRING architecture MUST provide an end-to-end liveness check of
+          SPRING-based paths.</t>
+        </list></t>
+    </section>
+
+    <section anchor="FREEPROT" title="Management-Free Local Protection">
+      <t>This section describes two alternatives that provide local protection
+      without requiring operator management, namely bypass protection and
+      shortest-path-based protection.</t>
+
+      <t>For example, traffic from A to Z, transported over the shortest
+      paths provided by the SPRING architecture, benefits from management-free
+      local protection by having each node along the path automatically
+      precompute and preinstall a backup path for the destination Z. Upon
+      local detection of the failure, the traffic is repaired over the backup
+      path in sub-50 milliseconds. When the primary path comes back up, the
+      operator either allows for an automated reversion of the traffic onto it
+      or selects an operator-driven reversion.</t>
+
+      <t>The backup path computation SHOULD support the following
+      requirements: <list style="symbols">
+          <t>100% link, node, and SRLG protection in any topology;</t>
+
+          <t>automated computation by the IGP; and</t>
+
+          <t>selection of the backup path such as to minimize the chance for
+          transient congestion and/or delay during the protection period, as
+          reflected by the IGP metric configuration in the network.</t>
+        </list></t>
+
+      <section anchor="FREEBYPASS" title="Management-Free Bypass Protection">
+        <t>One way to provide local repair is to enforce a failover along the
+        shortest path around the failed component.</t>
+
+        <t>In case of link protection, the point of local repair will create a
+        repair path avoiding the protected link and merging back to the primary
+        path at the next hop.</t>
+
+        <t>In case of node protection, the repair path will avoid the
+        protected node and merge back to the primary path at the next-next hop.</t>
+
+        <t>In case of SRLG protection, the repair path will avoid members of
+        the same group and merge back to the primary path just after.</t>
+
+        <t>In our example, C protects destination Z against a failure of the CD
+        link by enforcing the traffic over the bypass {CH, HD}. The resulting
+        end-to-end path between A and Z, upon recovery from the failure of
+        CD, is depicted in <xref target="FIGBYPASS"/>.</t>
+
+        <figure align="center" anchor="FIGBYPASS"
+                title="Bypass Protection around Link CD">
+          <artwork align="center">   B * * *C------D * * *E
+  *|      | *  / * \  / |*
+ * |      |  */  *  \/  | *
+A  |      |  /*  *  /\  |  Z
+ \ |      | /  * * /  \ | /
+  \|      |/    **/    \|/
+   F------G------H------I</artwork>
+        </figure>
+
+        <t>When the primary path comes back up, the operator either allows for
+        an automated reversion of the traffic onto the primary path or selects
+        an operator-driven reversion.</t>
+      </section>
+
+      <section anchor="FREESPT"
+               title="Management-Free Shortest-Path-Based Protection">
+        <t>An alternative protection strategy consists in management-free
+        local protection that is aimed at providing a repair for the destination
+        based on the shortest path to the destination.</t>
+
+<t>In our example, C protects Z (which the traffic initially reaches via CD) 
+by enforcing the traffic over its shortest path to Z and considering the
+failure of the protected component. The resulting end-to-end path between A 
+and Z, upon recovery from the failure of CD, is depicted in <xref target="FIGSPT"/>.</t>
+
+        <figure align="center" anchor="FIGSPT"
+                title="Shortest Path Protection around Link CD">
+          <artwork align="center">   B * * *C------D------E
+  *|      | *  / | \  / |\
+ * |      |  */  |  \/  | \
+A  |      |  /*  |  /\  |  Z
+ \ |      | /  * | /  \ | *
+  \|      |/    *|/    \|*
+   F------G------H * * *I</artwork>
+        </figure>
+
+        <t>When the primary path comes back up, the operator either allows for
+        an automated reversion of the traffic onto the primary path or selects
+        an operator-driven reversion.</t>
+      </section>
+    </section>
+
+    <section anchor="LOCALPROT" title="Managed Local Protection">
+<t>There may be cases where a management-free repair does not fit the
+policy of the operator.  For example, in our illustration, the
+operator may not want to have CD and CH used to protect each other
+due to the bandwidth (BW) availability in each link that could
+not suffice to absorb the other link traffic.</t>
+
+      <t>In this context, the protection mechanism MUST support the explicit
+      configuration of the backup path either under the form of high-level
+      constraints (end at the next hop, end at the next-next hop, minimize
+      this metric, avoid this SRLG, etc.) or under the form of an explicit path.
+      Upon local detection of the failure, the traffic is repaired over the
+      backup path in sub-50 milliseconds. When the primary path comes back up, the
+      operator either allows for an automated reversion of the traffic onto it
+      or selects an operator-driven reversion.</t>
+
+      <t>We discuss such aspects for both bypass and shortest-path-based
+      protection schemes.</t>
+
+      <section anchor="MANAGEDBYPASSPROT" title="Managed Bypass Protection">
+
+        <t>Let us illustrate the case using our reference example. For the
+        demand from A to Z, the operator does not want to use the shortest
+        failover path to the next hop, {CH, HD}, but rather the path {CG, GH,
+        HD}, as illustrated in <xref target="FIGMANAGEDBYPASS"/>.</t>
+
+        <figure align="center" anchor="FIGMANAGEDBYPASS"
+                title="Managed Bypass Protection">
+          <artwork align="center">   B * * *C------D * * *E
+  *|      * \  / * \  / |*
+ * |      *  \/  *  \/  | *
+A  |      *  /\  *  /\  |  Z
+ \ |      * /  \ * /  \ | /
+  \|      */    \*/    \|/
+   F------G * * *H------I</artwork>
+        </figure>
+
+        <t>The computation of the repair path SHOULD be possible in an
+        automated fashion as well as statically expressed in the point of
+        local repair.</t>
+      </section>
+
+      <section anchor="MANAGEDSPTPROT"
+               title="Managed Shortest Path Protection">
+
+<t>In the case of shortest path protection, the operator does not want
+to use the shortest failover via link CH, but rather the traffic 
+should reach H via {CG, GH} due to constraints such as delay, BW,  
+or SRLG.</t>
+
+        <t>The resulting end-to-end path upon activation of the protection is
+        illustrated in <xref target="FIGMANAGEDSPT"/>.</t>
+
+        <figure align="center" anchor="FIGMANAGEDSPT"
+                title="Managed Shortest Path Protection">
+          <artwork align="center">   B * * *C------D------E
+  *|      * \  / | \  / |\
+ * |      *  \/  |  \/  | \
+A  |      *  /\  |  /\  |  Z
+ \ |      * /  \ | /  \ | *
+  \|      */    \|/    \|*
+   F------G * * *H * * *I</artwork>
+        </figure>
+
+        <t>The computation of the repair path SHOULD be possible in an
+        automated fashion as well as statically expressed in the point of
+        local repair.</t>
+
+        <t>The computation of the repair path based on a specific constraint
+        SHOULD be possible on a per-destination prefix base.</t>
+      </section>
+    </section>
+
+    <section anchor="LOOPAVOIDANCE" title="Loop Avoidance">
+      <t>It is part of routing protocols' behavior to have what are called
+      "transient routing inconsistencies". This is due to the routing
+      convergence that happens in each node at different times and during a
+      different lapse of time.</t>
+
+      <t>These inconsistencies may cause routing loops that last the time that
+      it takes for the node impacted by a network event to converge. These
+      loops are called "micro-loops".</t>
+
+      <t>Usually, in normal routing protocol operations, micro-loops do not last long
+      and are only noticed during the time it takes the network
+      to converge. However, with the emergence of fast-convergence and fast-reroute 
+      technologies, micro-loops can be an issue in networks where sub-50 millisecond 
+      convergence/reroute is required. Therefore, the micro-loop problem needs to be 
+      addressed.</t>
+
+      <t>Networks may be affected by micro-loops during convergence depending
+      of their topologies. Detecting micro-loops can be done during topology
+      computation (e.g., Shortest Path First (SPF) computation), and therefore
+      techniques to avoid micro-loops may be applied. An example of such
+      technique is to compute a path free of 
+      micro-loops that would be used during network convergence.</t>
+
+      <t>The SPRING architecture SHOULD provide solutions to prevent the
+      occurrence of micro-loops during convergence following a change in the
+      network state. Traditionally, the lack of packet steering capability
+      made it difficult to apply efficient solutions to micro-loops. A
+      SPRING-enabled router could take advantage of the increased packet steering
+      capabilities offered by SPRING in order to steer packets in a way that
+      packets do not enter such loops.</t>
+    </section>
+
+    <section anchor="COEXIST"
+             title="Coexistence of Multiple Resilience Techniques in the Same Infrastructure">
+      <t>The operator may want to support several very different services on
+      the same packet-switching infrastructure. As a result, the SPRING
+      architecture SHOULD allow for the coexistence of the different use
+      cases listed in this document, in the same network.</t>
+
+      <t>Let us illustrate this with the following example:<list
+          style="symbols">
+          <t>Flow F1 is supported over path {C, CD, E}</t>
+
+          <t>Flow F2 is supported over path {C, CD, I}</t>
+
+          <t>Flow F3 is supported over path {C, CD, Z}</t>
+
+          <t>Flow F4 is supported over path {C, CD, Z}</t>
+        </list></t>
+
+      <t>It should be possible for the operator to configure the network to
+      achieve path protection for F1, management-free shortest path local
+      protection for F2, managed protection over path {CG, GH, Z} for F3, and
+      management-free bypass protection for F4.</t>
+    </section>
+
+    <section anchor="SECURITY" title="Security Considerations">
+      <t>This document describes requirements for the SPRING architecture to
+      provide resiliency in SPRING networks. As such, it does not introduce any
+      new security considerations beyond those discussed in <xref
+      target="RFC7855"/>.</t>
+    </section>
+
+    <section anchor="IANA" title="IANA Considerations">
+      <t>This document has no IANA actions.</t>
+    </section>
+
+    <section anchor="Manageability" title="Manageability Considerations">
+      <t>This document provides use cases. Solutions aimed at supporting these
+      use cases should provide the necessary mechanisms in order to allow for
+      manageability as described in <xref target="RFC7855"/>.</t>
+
+      <t>Manageability concerns the computation, installation, and
+      troubleshooting of the repair path. Also, necessary mechanisms SHOULD be
+      provided in order for the operator to control when a repair path is
+      computed, how it has been computed, and if it's installed and used.</t>
+    </section>
+
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2119.xml"?>
+      <?rfc include="reference.RFC.7855.xml"?>
+      <?rfc include="reference.RFC.8174.xml"?>
+    </references>
+
+    <references title="Informative References">
+      <?rfc include="reference.RFC.5286.xml"?>
+
+      <?rfc include="reference.RFC.5714.xml"?>
+
+      <?rfc include="reference.RFC.5880.xml"?>
+    </references>
+
+<section title="Acknowledgements" anchor="acknowledgements" numbered="no">
+<t>The authors would like to thank Stephane Litkowski and Alexander Vainshtein
+for the comments and review of this document.</t>
+</section>
+
+<section title="Contributors" anchor="contributors" numbered="no">
+<t>Pierre Francois contributed to the writing of the first draft version of this
+document.</t>
+</section>
+  </back>
+</rfc>

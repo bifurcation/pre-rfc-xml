@@ -1,0 +1,607 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes" ?>
+<?rfc tocompact="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc iprnotified="no" ?>
+<?rfc strict="no" ?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc rfcedstyle="yes"?>
+
+<rfc category="std" number="5490" ipr="pre5378Trust200902">
+
+    <front>
+        <title abbrev="Sieve METADATA">The Sieve Mail-Filtering
+        Language -- Extensions for Checking&nbsp;Mailbox&nbsp;Status&nbsp;and&nbsp;Accessing&nbsp;Mailbox&nbsp;Metadata</title>
+
+        <author initials='A.' surname="Melnikov" fullname="Alexey Melnikov">
+            <organization>Isode Limited</organization>
+            <address>
+              <postal>
+                <street>5 Castle Business Village</street>
+                <street>36 Station Road</street>
+                <city>Hampton</city>
+                <region>Middlesex</region>
+                <code>TW12 2BX</code>
+                <country>UK</country>
+              </postal>
+              <email>Alexey.Melnikov@isode.com</email>
+            </address>
+        </author>
+        <date month="March" year="2009"/>
+        <area>Applications</area>
+        <workgroup>Sieve Working Group</workgroup>
+        <keyword>Sieve</keyword>
+        <keyword>METADATA</keyword>
+        <keyword>IMAP</keyword>
+
+<note title="">
+<t>
+This document may contain material from IETF Documents or IETF
+Contributions published or made publicly available before November 10,
+2008.  The person(s) controlling the copyright in some of this material
+may not have granted the IETF Trust the right to allow modifications
+of such material outside the IETF Standards Process.  Without
+obtaining an adequate license from the person(s) controlling the
+copyright in such materials, this document may not be modified outside
+the IETF Standards Process, and derivative works of it may not be
+created outside the IETF Standards Process, except to format it for
+publication as an RFC or to translate it into languages other than
+English.</t>
+</note>
+
+        <abstract>
+          <t>
+			This memo defines an extension to the Sieve mail filtering language
+			(RFC 5228) for accessing mailbox and server
+			annotations, checking for mailbox existence,
+			and controlling mailbox creation on "fileinto"
+			action.
+<!--[rfced] Please note that we have added quotations to terms like fileinto. This was done to
+match the majority of the document's usage of such terms. Please let
+us know if any of these changes are incorrect.-->
+          </t>
+        </abstract>
+	</front>
+
+    <middle>
+        <section anchor="intro" title="Introduction">
+						
+          <t>
+			This memo defines an extension to the Sieve mail filtering language
+			<xref target="SIEVE"/> for accessing mailbox and server annotations.
+			This allows for customization of the Sieve
+			engine behaviour based on variables
+			set using <xref target="METADATA"/>.
+          </t>
+			
+          <t>
+			This document also defines an extension for
+			checking for mailbox existence and for controlling
+			mailbox creation on "fileinto" action.
+
+          </t>
+
+        </section>
+          
+        <section title="Conventions Used in This Document">
+            <t>
+              The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+              "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+              document are to be interpreted as described in <xref target="KEYWORDS"/>.
+            </t>
+            <t>
+              Conventions for notations are as in <xref target="SIEVE"/> Section 1.1, including
+              the use of <xref target="ABNF"/>.
+            </t>
+            <t>
+			  This document is written with an assumption that readers are familiar
+			  with the data model and terms defined in Section 3 of <xref target="METADATA"/>.
+            </t>
+        </section>
+
+		<section title="&quot;mailbox&quot; and &quot;mboxmetadata&quot; Extensions">
+
+          <section title="Test &quot;mailboxexists&quot;">
+            <t>
+              <list style="hanging" hangIndent="8">
+                <t hangText="Usage:">
+                  mailboxexists &lt;mailbox-names: string-list&gt;
+                </t>
+              </list>
+            </t>
+
+            <t>
+   The "mailboxexists" test is true if all mailboxes listed in the
+   "mailbox-names" argument exist in the mailstore, and each allows the user
+   in whose context the Sieve script runs to "deliver" messages into it.
+   When the mailstore is an IMAP server, "delivery" of messages is possible
+   if:
+<list style="letters">
+
+ <t> the READ-WRITE response code
+   is present for the mailbox (see Section 7.1 of <xref target="IMAP"/>),
+   if IMAP Access Control List (ACL) <xref target="IMAPACL"/> is not supported by the
+   server, or</t>
+
+<t> the user has 'p' or 'i' rights for the mailbox
+   (see Section 5.2 of <xref target="IMAPACL"/>).</t>
+</list>
+            </t>
+			  
+            <t>
+   Note that a successful "mailboxexists" test for a mailbox doesn't necessarily
+   mean that a "fileinto" action on this mailbox would succeed.
+   For example, the "fileinto" action might put user over quota.
+   The "mailboxexists" only verifies existence of the mailbox and whether
+   the user in whose context the Sieve script runs has permissions to execute
+   "fileinto" on it.
+            </t>
+			  
+            <t>
+   The capability string for use with the require command is "mailbox".
+            </t>
+			  
+            <t>Example: The following example assumes that the Sieve engine
+    also supports "reject" <xref target="REJECT"/> and "fileinto"
+    <xref target="SIEVE"/>. However, these extensions are not required in order to implement the
+    "mailbox" extension.
+
+              <figure>
+               <artwork><![CDATA[
+     require ["fileinto", "reject", "mailbox"];
+     if mailboxexists "Partners" {
+        fileinto "Partners";
+     } else {
+        reject "This message was not accepted by the Mailstore";
+     }
+]]></artwork>
+              </figure>
+            </t>
+			  
+          </section>
+			
+          <section title="&quot;:create&quot; Argument to &quot;fileinto&quot; Command">
+            <t>
+              <list style="hanging" hangIndent="8">
+                <t hangText="Usage:">
+				  fileinto [:create] &lt;mailbox: string&gt;
+				</t>
+              </list>
+            </t>
+
+			<t>
+   If the optional ":create" argument is specified with "fileinto",
+   it instructs the Sieve interpreter to create the specified mailbox, if needed,
+   before attempting to deliver the message into the specified
+   mailbox. If the mailbox already exists, this argument is ignored.
+   Failure to create the specified mailbox is considered to be
+   an error.
+            </t>
+
+            <t>
+   The capability string for use with the ":create" parameter is
+   "mailbox".
+            </t>
+          </section>
+
+		  <section title='Test &quot;metadata&quot;'>
+            <t>
+              <list style="hanging" hangIndent="8">
+                <t hangText="Usage:">
+				  metadata [MATCH-TYPE] [COMPARATOR]<vspace/>
+               &lt;mailbox: string&gt;<vspace/>
+               &lt;annotation-name: string> &lt;key-list: string-list&gt;
+				</t>
+              </list>
+            </t>
+			  
+		    <t>
+   This test retrieves the value of the mailbox
+   annotation "annotation-name" for the mailbox "mailbox"
+   <xref target="METADATA"/>. The retrieved value is compared to the
+   "key-list". The test returns true if the annotation
+   exists and its value matches any of the keys.
+			</t>
+
+		    <t>
+   The default match type is ":is" <xref target="SIEVE"/>. The default comparator is
+   "i;ascii-casemap" <xref target="SIEVE"/>.
+			</t>
+
+		    <t>
+   The capability string for use with the require command is
+   "mboxmetadata".
+			</t>
+
+		    <t>
+   Annotations MUST be accessed with the permissions of the user in
+   whose context the Sieve script runs, and annotations starting with
+   the "/private" prefix MUST be those of the user in whose context
+   the Sieve script runs.   
+			</t>
+			
+            <t>
+   Example: The following example assumes that the Sieve engine
+    also supports the "vacation" <xref target="VACATION"/> extension. However,
+    this extension is not required in order to implement
+    the "mboxmetadata" extension.
+              <figure>
+               <artwork><![CDATA[
+    require ["mboxmetadata", "vacation"];
+
+    if metadata :is "INBOX"
+       "/private/vendor/vendor.isode/auto-replies" "on" {
+
+        vacation text:
+    I'm away on holidays till March 2009.
+    Expect a delay.
+    .
+    }
+]]></artwork>
+              </figure>
+            </t>
+
+          </section>
+
+          <section title="Test &quot;metadataexists&quot;">
+            <t>
+              <list style="hanging" hangIndent="8">
+                <t hangText="Usage:">
+                  metadataexists
+               &lt;mailbox: string&gt;
+               &lt;annotation-names: string-list&gt;
+                </t>
+              </list>
+            </t>
+            <t>
+   The "metadataexists" test is true if all of the annotations listed
+   in the &quot;annotation-names&quot; argument exist (i.e., have non-NIL values) for the
+   specified mailbox.
+            </t>
+			  
+            <t>
+   The capability string for use with the require command is
+   "mboxmetadata".
+            </t>
+			  
+          </section>
+   
+        </section>
+   
+        <section title="&quot;servermetadata&quot; Extension">
+
+		  <section title='Test &quot;servermetadata&quot;'>
+            <t>
+              <list style="hanging" hangIndent="8">
+                <t hangText="Usage:">
+				  servermetadata [MATCH-TYPE] [COMPARATOR]<vspace/>
+               &lt;annotation-name: string&gt; &lt;key-list: string-list&gt;
+				</t>
+              </list>
+            </t>
+			  
+		    <t>
+   This test retrieves the value of the server
+   annotation "annotation-name" <xref target="METADATA"/>. The retrieved value
+   is compared to the "key-list". The test returns true if the
+   annotation exists and its value matches any
+   of the keys.
+			</t>
+
+		    <t>
+   The default match type is ":is". The default comparator is
+   "i;ascii-casemap".
+			</t>
+
+		    <t>
+   The capability string for use with the require command is
+   "servermetadata".
+			</t>
+
+		    <t>
+   Annotations MUST be accessed with the permissions of the user in
+   whose context the Sieve script runs, and annotations starting with
+   the "/private" prefix MUST be those of the user in whose context
+   the Sieve script runs.   
+			</t>
+			  
+            <t>
+   Example: The following example assumes that the Sieve engine
+    also supports "variables" <xref target="VARIABLES"/>, "enotify" <xref target="NOTIFY"/>, and
+    "envelope" <xref target="SIEVE"/> extensions. However, these extensions are not
+    required in order to implement the "servermetadata" extension.
+              <figure>
+               <artwork><![CDATA[
+    require ["enotify", "servermetadata", "variables", "envelope"];
+
+    if servermetadata :matches
+       "/private/vendor/vendor.isode/notification-uri" "*" {
+        set "notif_uri" "${0}";
+    }
+
+    if not string :is "${notif_uri}" "none" {
+        # :matches is used to get the MAIL FROM address
+        if envelope :all :matches "from" "*" {
+            set "env_from" " [really: ${1}]";
+        }
+
+        # :matches is used to get the value of the Subject header
+        if header :matches "Subject" "*" {
+            set "subject" "${1}";
+        }
+
+        # :matches is used to get the address from the From header
+        if address :matches :all "from" "*" {
+            set "from_addr" "${1}";
+        }
+
+        notify :message "${from_addr}${env_from}: ${subject}"
+               "${notif_uri}";
+    }
+]]></artwork>
+              </figure>
+            </t>
+
+          </section>
+			
+		  <section title='Test &quot;servermetadataexists&quot;'>
+            <t>
+              <list style="hanging" hangIndent="8">
+                <t hangText="Usage:">
+				  servermetadataexists<vspace/>
+               &lt;annotation-names: string-list&gt;
+				</t>
+              </list>
+            </t>
+			  
+		    <t>
+   The "servermetadataexists" test is true if all of the server annotations
+   listed in the &quot;annotation-names&quot; argument exist (i.e., have non-NIL values).
+			</t>
+
+		    <t>
+   The capability string for use with the require command is
+   "servermetadata".
+			</t>
+
+          </section>
+			
+        </section>
+
+		<section anchor="security" title="Security Considerations">
+          <t>
+   Extensions defined in this document deliberately don't provide a way
+   to modify annotations.
+          </t>
+          <t>
+   A failure to retrieve data due to the server storing the annotations being
+   down or otherwise inaccessible may alter the result of Sieve
+   processing.
+   So implementations SHOULD treat a temporary failure to retrieve annotations
+   in the same manner as a temporary failure to retrieve a Sieve script.
+   
+   For example, if the Sieve script is stored in the Lightweight
+   Directory Access Protocol (LDAP) and the script can't be
+   retrieved when a message is processed, then the agent performing Sieve processing can,
+   for example, assume that the script doesn't exist or delay message delivery
+   until the script can be retrieved successfully.
+   Annotations should be treated as if they are a part of the script itself,
+   so a temporary failure to retrieve them should be handled in the same way
+   as a temporary failure to retrieve the Sieve script itself.
+          </t>
+			
+		  <t>
+   Protocols/APIs used to retrieve annotations MUST provide at least the same
+   level of confidentiality as protocols/APIs used to retrieve Sieve
+   scripts. For example, if Sieve scripts are retrieved using LDAP
+   secured with Transport Layer Security (TLS)
+   encryption, then the protocol used to retrieve annotations
+   must use a comparable mechanism for providing connection confidentiality.
+   In particular, the protocol used to retrieve annotations must not be lacking encryption.
+		  </t>
+        </section>
+
+        <section anchor="iana" title="IANA Considerations">
+          <t>
+   IANA has added the following registrations to the list of
+   Sieve extensions:
+          </t>
+<figure>
+<artwork><![CDATA[
+   To: iana@iana.org
+   Subject: Registration of new Sieve extension
+   Capability name: mailbox
+   Description: adds test for checking for mailbox existence and a new
+                optional argument to fileinto for creating a mailbox
+                before attempting mail delivery.
+   RFC number: this RFC
+   Contact address:
+       The Sieve discussion list <ietf-mta-filters@imc.org>
+
+   Capability name: mboxmetadata
+   Description: adds tests for checking for mailbox metadata item
+                existence and for retrieving of a mailbox metadata
+                value. 
+   RFC number: this RFC
+   Contact address:
+       The Sieve discussion list <ietf-mta-filters@imc.org>
+
+   Capability name: servermetadata
+   Description: adds tests for checking for server metadata item
+                existence and for retrieving of a server metadata
+                value. 
+   RFC number: this RFC
+   Contact address:
+       The Sieve discussion list <ietf-mta-filters@imc.org>
+]]></artwork></figure>
+			
+        </section>
+
+        <section anchor="acknowledgements" title="Acknowledgements">
+            <t>
+   Thanks to Cyrus Daboo for initial motivation for this document.
+            </t>
+			
+            <t>
+    Thanks to Barry Leiba, Randall Gellens, and Aaron Stone for
+    helpful comments on this document.
+            </t>
+
+            <t>
+   The author also thanks the Open Mobile Alliance's Mobile Email working
+   group for providing a set of requirements for mobile devices, guiding
+   some of the extensions in this document.
+            </t>
+        </section>
+    </middle>
+
+    <back>
+        <references title="Normative References">
+        
+          <reference anchor="KEYWORDS">
+            <front>
+              <title>Key words for use in RFCs to Indicate Requirement Levels</title>
+              <author initials="S." surname="Bradner" fullname="Scott Bradner">
+                <organization>Harvard University</organization>
+              </author>
+              <date month="March" year="1997" />
+            </front>
+            <seriesInfo name="BCP" value="14" />
+            <seriesInfo name="RFC" value="2119" />
+          </reference>
+          
+          <reference anchor="SIEVE">
+            <front>
+              <title>Sieve: An Email Filtering Language</title>
+              <author initials="P." surname="Guenther" fullname="Philip Guenther">
+                <organization>Sendmail, Inc.</organization>
+              </author>
+              <author initials="T." surname="Showalter" fullname="Tim Showalter">
+                <organization />
+              </author>
+              <date month="January" year="2008" />
+            </front>
+            <seriesInfo name="RFC" value="5228" />
+          </reference>
+			
+		  <reference anchor="ABNF">
+			<front>
+				<title>Augmented BNF for Syntax Specifications: ABNF</title>
+				<author initials="D." surname="Crocker" fullname="D. Crocker">
+					<organization/>
+				</author>
+				<author initials="P." surname="Overell" fullname="P. Overell">
+					<organization/>
+				</author>
+				<date year="2008" month="January"/>
+			</front>
+                        <seriesInfo name="STD" value="68"/>
+			<seriesInfo name="RFC" value="5234"/>
+			<format type="TXT" target="ftp://ftp.isi.edu/in-notes/rfc5234.txt"/>
+		  </reference>
+			
+		  <reference anchor="METADATA">
+				<front>
+					<title>The IMAP METADATA Extension</title>
+					<author initials="C" surname="Daboo">
+						<organization/>
+					</author>
+					<date year="2009" month="February"/>
+				</front>
+				<seriesInfo name="RFC" value="5464"/>
+				<format type="TXT" target="http://www.ietf.org/internet-drafts/draft-daboo-imap-annotatemore-16.txt"/>
+		  </reference>
+           
+          <reference anchor="IMAP">
+            <front>
+              <title>Internet Message Access Protocol - Version 4rev1</title>
+              <author initials="M." surname="Crispin">
+                <organization/>
+              </author>
+              <date month="March" year="2003" />
+            </front>
+            <seriesInfo name="RFC" value="3501" />
+          </reference>
+
+          <reference anchor="IMAPACL">
+            <front>
+              <title>IMAP4 Access Control List (ACL) Extension</title>
+              <author initials="A." surname="Melnikov" fullname="Alexey Melnikov">
+                <organization>Isode Ltd.</organization>
+              </author>
+              <date month="December" year="2005" />
+            </front>
+            <seriesInfo name="RFC" value="4314" />
+          </reference>
+
+        </references>
+        
+        <references title="Informative References">
+			
+		  <reference anchor="VARIABLES">
+            <front>
+              <title>Sieve Email Filtering: Variables Extension</title>
+              <author initials="K." surname="Homme">
+                <organization/>
+              </author>
+              <date month="January" year="2008" />
+            </front>
+            <seriesInfo name="RFC" value="5229" />
+          </reference>
+
+		  <reference anchor="NOTIFY">
+				<front>
+					<title>Sieve Extension: Notifications</title>
+					<author initials="A" surname="Melnikov">
+						<organization/>
+					</author>
+					
+					<author initials="B" surname="Leiba">
+						<organization/>
+					</author>
+					<author initials="W" surname="Segmuller">
+						<organization/>
+					</author>
+					<author initials="T" surname="Martin">
+						<organization/>
+					</author>
+					<date year="2008" month="January"/>
+				</front>
+				<seriesInfo name="Work in" value="Progress"/>
+
+		  </reference>
+
+		  <reference anchor="REJECT">
+				<front>
+					<title>The SIEVE mail filtering language - reject extension</title>
+					<author initials="A" surname="Stone">
+						<organization/>
+					</author>
+					<date year="2008" month="November"/>
+				</front>
+				<seriesInfo name="Work in" value="Progress"/>
+		  </reference>
+
+          <reference anchor="VACATION">
+            <front>
+              <title>Sieve Email Filtering: Vacation Extension</title>
+              <author initials="T." surname="Showalter" fullname="Tim Showalter">
+                <organization />
+              </author>
+              <author initials="N." surname="Freed" fullname="Ned Freed">
+                <organization>Sun</organization>
+              </author>
+              <date month="January" year="2008" />
+            </front>
+            <seriesInfo name="RFC" value="5230" />
+          </reference>
+			
+        </references>
+    </back>
+</rfc>

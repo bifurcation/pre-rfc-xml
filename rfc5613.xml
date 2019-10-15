@@ -1,0 +1,772 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY RFC4813 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4813.xml">
+]>
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc toc="yes" ?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc iprnotified="no" ?>
+<?rfc strict="no" ?>
+<?rfc rfcedstyle="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="5613" obsoletes="4813" category="std" >
+
+
+   <front>
+	<title>OSPF Link-Local Signaling</title> 
+
+	<author initials='A' surname="Zinin" fullname='Alex Zinin'>
+	    <organization>Alcatel-Lucent</organization>
+	    <address>
+		<postal> 
+		    <street></street>
+		    <city></city> <country>Singapore</country>
+		</postal>
+		<email>alex.zinin@alcatel-lucent.com</email>
+	    </address>
+	</author>
+
+	<author initials='A' surname="Roy" fullname='Abhay Roy'>
+	    <organization>Cisco Systems</organization>
+	    <address>
+		<postal> 
+		    <street>170 West Tasman Drive</street>
+		    <city>San Jose</city> <region>CA</region> 
+		    <country>USA</country>
+		    <code>95134</code> 
+		</postal> 
+		<email>akr@cisco.com</email>
+	    </address>
+	</author>
+
+	<author initials='L' surname="Nguyen" fullname='Liem Nguyen'>
+	    <organization>Cisco Systems</organization>
+	    <address>
+		<postal>
+		    <street>170 West Tasman Drive</street>
+		    <city>San Jose</city> <region>CA</region> 
+		    <country>USA</country>
+		    <code>95134</code> 
+		</postal>
+		<email>lhnguyen@cisco.com</email>
+	    </address>
+	</author>
+
+	<author initials='B' surname="Friedman" fullname='Barry Friedman'>
+	    <organization>Google, Inc.</organization>
+	    <address>
+		<postal> 
+           <street>1600 Amphitheatre Parkway</street>
+		    <city>Mountain View</city> <region>CA</region> 
+		    <country>USA</country>
+		    <code>94043</code> 
+		</postal> 
+		<email>barryf@google.com</email>
+	    </address>
+	</author>
+
+	<author initials='D' surname="Yeung" fullname='Derek Yeung'>
+	    <organization>Cisco Systems</organization>
+	    <address>
+		<postal> 
+		    <street>170 West Tasman Drive</street>
+		    <city>San Jose</city> <region>CA</region> 
+		    <country>USA</country>
+		    <code>95134</code> 
+		</postal> 
+		<email>myeung@cisco.com</email>
+	    </address>
+	</author>
+
+	<date month="July" year="2009"/>
+
+	<abstract>
+       <t>OSPF is a link-state intra-domain routing protocol. OSPF
+           routers exchange information on a link using packets that
+           follow a well-defined fixed format. The format is not
+           flexible enough to enable new features that need to
+           exchange arbitrary data.  This document describes a
+           backward-compatible technique to perform link-local
+           signaling, i.e., exchange arbitrary data on a link. This
+           document replaces the experimental specification published
+           in RFC 4813 to bring it on the Standards Track.</t>
+   </abstract>
+
+   </front>
+
+   <middle>
+
+	<section title="Introduction">
+	    <t>This document describes an extension to OSPFv2 <xref
+		    target="OSPFV2"/> and OSPFv3 <xref target="OSPFV3"/>
+		allowing additional information to be exchanged between
+		routers on the same link. OSPFv2 and OSPFv3 packet formats are fixed
+		and do not allow for extension. This document proposes appending an
+		optional data block composed of Type/Length/Value (TLV) triplets to
+		existing OSPFv2 and OSPFv3 packets to carry this additional
+		information. Throughout this document, OSPF will be used when the
+		specification is applicable to both OSPFv2 and OSPFv3. Similarly,
+		OSPFv2 or OSPFv3 will be used when the text is protocol specific.</t>
+
+	    <t>One potential way of solving this task could be introducing a new
+		packet type. However, that would mean introducing extra packets on
+		the network that may not be desirable and may cause backward
+		compatibility issues. This document describes how to exchange data
+		using standard OSPF packet types.</t>
+
+	    <section title="Requirements Notation">
+           <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+               "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY",
+               and "OPTIONAL" in this document are to be interpreted as
+               described in <xref target="KEY"/>.</t>
+       </section>
+	</section>
+
+	<section title="Proposed Solution">
+	    <t>To perform link-local signaling (LLS), OSPF routers add a special
+		data block to the end of OSPF packets or right after the
+		authentication data block when cryptographic authentication is used.
+		The length of the LLS block is not included into the length of the  OSPF
+		packet, but is included in the IPv4/IPv6 packet length. Figure 1
+		illustrates how the LLS data block is attached.</t>
+
+	    <figure>
+		<artwork>
++---------------------+ --              --  +---------------------+ 
+| IP Header           | ^               ^   | IPv6 Header         | 
+| Length = HL+X+Y+Z   | | Header Length |   | Length = HL+X+Y     | 
+|                     | v               v   |                     | 
++---------------------+ --              --  +---------------------+ 
+| OSPF Header         | ^               ^   | OSPFv3 Header       | 
+| Length = X          | |               |   | Length = X          | 
+|.....................| | X             | X |.....................| 
+|                     | |               |   |                     | 
+| OSPFv2 Data         | |               |   | OSPFv3 Data         | 
+|                     | v               v   |                     | 
++---------------------+ --              --  +---------------------+ 
+|                     | ^               ^   |                     | 
+| Authentication Data | | Y             | Y |  LLS Data           | 
+|                     | v               v   |                     | 
++---------------------+ --              --  +---------------------+ 
+|                     | ^
+|  LLS Data           | | Z
+|                     | v
++---------------------+ --
+
+
+            Figure 1: LLS Data Block in OSPFv2 and OSPFv3
+		</artwork>
+	    </figure>
+
+       <t>The LLS block MAY be attached to OSPF Hello and Database Description (DD) packets.
+
+           The LLS block MUST NOT be attached to any other OSPF packet
+           types on generation and MUST be ignored on reception.</t>
+
+       <t>The data included in the LLS block attached to a Hello packet MAY
+           be used for dynamic signaling since Hello packets may be
+           sent at any time. However, delivery of LLS data in
+           Hello packets is not guaranteed. The data sent with DD
+           packets is guaranteed to be delivered as part of the
+           adjacency forming process.</t>
+
+   <t>This document does not specify how the data transmitted by the
+       LLS mechanism should be interpreted by OSPF routers. As routers
+       that do not understand LLS may receive these packets, changes
+       made due to LLS block TLV's do not affect the basic routing when
+       interacting with non-LLS routers. </t>
+
+	    <section anchor="OPTS" title="L-Bit in Options Field">
+		<t>A new L-bit (L stands for LLS) is introduced into the OSPF Options
+		    field (see Figures 2a and 2b). Routers set the L-bit in Hello and DD packets
+		    to indicate that the packet contains an LLS data block. In other words,
+		    the LLS data block is only examined if the L-bit is set.</t>
+
+		<figure>
+		    <artwork>
+          +---+---+---+---+---+---+---+---+
+          | * | O | DC| L |N/P| MC| E | * |
+          +---+---+---+---+---+---+---+-+-+
+
+           Figure 2a: OSPFv2 Options Field
+
+
+0                   1                       2
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4  5 6 7  8  9  0  1  2  3
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+--+-+-+--+--+--+--+--+--+
+| | | | | | | | | | | | | | |L|AF|*|*|DC| R| N|MC| E|V6|
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+--+-+-+--+--+--+--+--+--+
+
+           Figure 2b: OSPFv3 Options Field
+		    </artwork>
+		</figure>
+
+       <t>The L-bit MUST NOT be set except in Hello and DD packets that
+           contain an LLS block.</t>
+
+
+	    </section>
+	    <section title="LLS Data Block">
+
+		<t>The data block used for link-local signaling is formatted as
+		    described below (see Figure 3 for illustration).</t>
+
+		<figure>
+		    <artwork>
+
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|            Checksum           |       LLS Data Length         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+|                           LLS TLVs                            |
+.                                                               .
+.                                                               .
+.                                                               .
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                Figure 3: Format of LLS Data Block
+
+		    </artwork>
+		</figure>
+
+		<t>The Checksum field contains the standard IP checksum for
+           the entire contents of the LLS block. Before computing the
+           checksum, the checksum field is set to 0. If the checksum is
+           incorrect, the OSPF packet MUST be processed, but the LLS
+           block MUST be discarded.</t>
+
+		<t>The 16-bit LLS Data Length field contains the length (in 32-bit
+		    words) of the LLS block including the header and payload.</t>
+
+       <t>Note that if the OSPF packet is cryptographically
+           authenticated, the LLS data block MUST also be
+           cryptographically authenticated. In this case, the regular
+           LLS checksum is not calculated, but is instead set to 0.</t>
+
+		<t>The rest of the block contains a set of
+		    Type/Length/Value (TLV) triplets as described in
+		    <xref target="LLS-TLVs"></xref>.  All TLVs MUST be
+		    32-bit aligned (with padding if necessary).</t>
+
+	    </section>
+	    <section anchor="LLS-TLVs" title="LLS TLVs">
+		<t>The contents of an LLS data block are constructed using TLVs.  See Figure
+		    4 for the TLV format.</t>
+
+		<t>The Type field contains the TLV ID, which is unique for each type of
+		    TLV. The Length field contains the length of the Value field (in
+		    bytes). The Value field is variable and contains arbitrary data.</t>
+
+		<figure>
+		    <artwork>
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|            Type               |           Length              |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+.                                                               .
+.                             Value                             .
+.                                                               .
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                   Figure 4: Format of LLS TLVs
+		    </artwork>
+		</figure>
+
+       <t>Note that TLVs are always padded to a 32-bit boundary, but
+           padding bytes are not included in the TLV Length field (though
+           they are included in the LLS Data Length field in the LLS
+           block header). Unrecognized TLV types are ignored.</t>
+
+	    </section>
+	    <section title="Extended Options and Flags TLV">
+
+       <t>This subsection describes a TLV called the Extended Options
+           and Flags (EOF) TLV.  The format of the EOF-TLV is shown in
+           Figure 5.</t>
+
+       <t>Bits in the Value field do not have any semantics from the
+           point of view of the LLS mechanism. Bits MAY be allocated to
+           announce OSPF link-local capabilities. Bits MAY also be
+           allocated to perform boolean link-local signaling.</t>
+
+		<t>The length of the Value field in the EOF-TLV is 4 bytes.</t>
+
+		<t>The value of the Type field in the EOF-TLV is 1.</t>
+
+		<t>The EOF-TLV MUST only appear once in the LLS data block.</t>
+
+
+		<figure>
+		    <artwork>
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             1                 |            4                  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                  Extended Options and Flags                   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                     Figure 5: Format of the EOF-TLV
+		    </artwork>
+		</figure>
+
+		<t>Currently, <xref target="OOB"/> and <xref
+			target="RESTART"/> use bits in the Extended
+		    Options field of the EOF-TLV.</t>
+
+		<t>The Extended Options and Flags bits are defined in Section 3.</t>
+
+	    </section>
+	    <section anchor="CRYPTO" title="Cryptographic Authentication TLV (OSPFv2 ONLY)">
+
+       <t>This document defines a special TLV that is used for
+           cryptographic authentication (CA-TLV) of the LLS data block.
+           This TLV MUST only be included in the LLS block when 
+           cryptographic authentication is enabled on the corresponding
+           interface. The message digest of the LLS block MUST be
+           calculated using the same key and authentication algorithm
+           as used for the OSPFv2 packet. The cryptographic sequence
+           number is included in the TLV and MUST be the same as the
+           one in the OSPFv2 authentication data for the LLS block to
+           be considered authentic.</t>
+
+		<t>The TLV is constructed as shown in Figure 6.</t>
+
+		<figure>
+		    <artwork>
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|              2                |         AuthLen               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                         Sequence Number                       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+.                                                               .
+.                           AuthData                            .
+.                                                               .
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+      Figure 6: Format of Cryptographic Authentication TLV
+		    </artwork>
+		</figure>
+
+		<t>The value of the Type field for the CA-TLV is 2.</t>
+
+       <t>The Length field in the header contains the length of the
+           data portion of the TLV including 4 bytes for Sequence
+           Number and the length of the message digest block for the
+           whole LLS block in bytes.</t>
+
+       <t>The Sequence Number field contains the cryptographic sequence
+           number 
+that is used to prevent simple replay attacks. For
+           the LLS block to be considered authentic, the Sequence
+           Number in the CA-TLV MUST match the Sequence Number in the
+           OSPFv2 packet header Authentication field (which MUST be
+           present). In the event of Sequence Number mismatch or
+           Authentication failure, the whole LLS block MUST be
+           ignored.</t>
+
+       <t>The CA-TLV MUST NOT appear more than once in the LLS block.
+           Also, when present, this TLV MUST be the last TLV in the LLS
+           block. If it appears more than once, only the first
+           occurrence is processed and any others MUST be ignored.</t>
+       <t>
+           The AuthData field contains the message digest calculated for the LLS data
+           block up to the CA-TLV AuthData field (i.e., exludes the CA-TLV AuthData).</t>
+
+       <t>The CA-TLV is not applicable to OSPFv3 and it MUST NOT be
+           added to any OSPFv3 packet. If found on reception, this TLV
+           MUST be ignored.</t>
+
+	    </section>
+	    <section title="Private TLVs">
+           <t>LLS type values in the range of 32768-65536 are reserved
+               for private use. The first four octets
+               of the Value field MUST be the private enterprise
+               code <xref target="ENTNUM"/>. This allows multiple
+               vendor private extensions to coexist in a network.</t>
+	    </section>
+	</section>
+	<section title="IANA Considerations">
+
+       <t>This document uses the registry that was originally created in
+           <xref target="RFC4813"/>. IANA updated the
+               following registry to point to this document instead:
+               <list style="symbols">
+                   <t>"Open Shortest Path First (OSPF) Link-Local Signalling
+                       (LLS) - Type/Length/Value Identifiers (TLV)"</t>
+               </list>
+               </t>
+
+       <t>IANA allocated L-bit in the "OSPFv2 Options
+           Registry" and "OSPFv3 Options Registry" as per <xref
+               target="OPTS"/>. </t>
+
+       <t>LLS TLV types are maintained by the IANA.  Extensions to OSPF that
+           require a new LLS TLV type MUST be reviewed by a Designated Expert
+           from the routing area.</t>
+
+       <t>
+           The criteria for allocating LLS TLVs are:
+           <list style='symbols'>
+               <t>LLS should not be used for information that would be better
+                   suited to be advertised in a link-local link state advertisement (LSA).</t>
+               <t>LLS should be confined to signaling between direct
+                   neighbors.</t>
+               <t>Discretion should be used in the volume of
+                   information signaled using LLS due to the obvious MTU
+                   and performance implications.</t>
+           </list>
+       </t>
+
+       <t>Following the policies outlined in <xref target="IANA"/>, LLS
+           type values in the range of 0-32767 are allocated through an
+           IETF Review and LLS type values in the range of
+           32768-65535 are reserved for private use.</t>
+
+	    <t>This document assigns the following LLS TLV types in
+		OSPFv2/OSPFv3.</t>
+	    <figure>
+		<artwork>
+TLV Type    Name                                      Reference
+0           Reserved
+1           Extended Options and Flags                [RFC5613]
+2           Cryptographic Authentication+             [RFC5613]
+3-32767     Reserved for assignment by the IANA
+32768-65535 Private Use
+
++ Cryptographic Authentication TLV is only defined for OSPFv2
+		</artwork>
+	    </figure>
+
+       <t>IANA renamed the sub-registry from "LLS Type 1
+           Extended Options" to "LLS Type 1 Extended Options and
+           Flags".</t>
+
+       <t>This document also assigns the following bits in the EOF-TLV
+           outlined in Section 2.5:</t>
+
+	    <figure>
+		<artwork>
+Bit                     Name                        Reference
+0x00000001              LSDB Resynchronization (LR) [RFC4811]
+0x00000002              Restart Signal (RS-bit)     [RFC4812]
+	</artwork>
+	    </figure>
+
+       <t>Future allocation of Extended Options and Flags bits MUST be
+           reviewed by a Designated Expert from the routing area.</t>
+
+	</section>
+	<section title="Compatibility Issues">
+
+       <t>The modifications to OSPF packet formats are compatible with
+           standard OSPF since OSPF routers not supporting LLS will
+           ignore the LLS data block after the OSPF packet or
+           cryptographic message digest. As of this writing, there are
+           implementations deployed with <xref target="RFC4813"/>-compliant software.
+           Routers not implementing <xref target="RFC4813"/> ignore the
+           LLS data at the end of the OSPF packet. 
+       </t>
+       <t>
+           Careful consideration should be given to carrying additional
+           LLS data, as it may affect the OSPF adjacency bring-up time
+           due to additional propagation delay and/or processing time.
+       </t>
+
+	</section>
+	<section title="Security Considerations">
+       <t>Security considerations inherited from OSPFv2 are described
+           in <xref target="OSPFV2"/>. This technique provides the same
+           level of security as the basic OSPFv2 protocol by allowing LLS
+           data to be authenticated using the same cryptographic
+           authentication that OSPFv2 uses (see <xref
+               target="CRYPTO"></xref> for more details).</t>
+
+       <t>Security considerations inherited from OSPFv3 are described
+           in <xref target="OSPFV3"/> and <xref
+               target="OSPFV3AUTH"/>. OSPFv3 utilizes IPsec for
+           authentication and encryption. With IPsec, the AH
+           (Authentication Header), ESP (Encapsulating Security
+           Payload), or both are applied to the entire OSPFv3 payload
+           including the LLS block.</t>
+   </section>
+
+   </middle>
+
+   <back>
+
+	<references title="Normative References">
+
+
+<reference anchor='IANA'>
+
+<front>
+<title>Guidelines for Writing an IANA Considerations Section in RFCs</title>
+<author initials='T.' surname='Narten' fullname='T. Narten'>
+<organization /></author>
+<author initials='H.' surname='Alvestrand' fullname='H. Alvestrand'>
+<organization /></author>
+<date year='2008' month='May' />
+<abstract>
+<t>Many protocols make use of identifiers consisting of constants and other well-known values. Even after a protocol has been defined and deployment has begun, new values may need to be assigned (e.g., for a new option type in DHCP, or a new encryption or authentication transform for IPsec). To ensure that such quantities have consistent values and interpretations across all implementations, their assignment must be administered by a central authority. For IETF protocols, that role is provided by the Internet Assigned Numbers Authority (IANA).&lt;/t>&lt;t> In order for IANA to manage a given namespace prudently, it needs guidelines describing the conditions under which new values can be assigned or when modifications to existing values can be made. If IANA is expected to play a role in the management of a namespace, IANA must be given clear and concise instructions describing that role. This document discusses issues that should be considered in formulating a policy for assigning values to a namespace and provides guidelines for authors on the specific text that must be included in documents that place demands on IANA.&lt;/t>&lt;t> This document obsoletes RFC 2434. This document specifies an Internet Best Current Practices for the Internet Community, and requests discussion and suggestions for improvements.</t></abstract></front>
+
+<seriesInfo name='BCP' value='26' />
+<seriesInfo name='RFC' value='5226' />
+<format type='TXT' octets='66160' target='ftp://ftp.isi.edu/in-notes/rfc5226.txt' />
+</reference>
+
+<reference anchor='KEY'>
+
+<front>
+<title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+<author initials='S.' surname='Bradner' fullname='Scott Bradner'>
+<organization>Harvard University</organization>
+<address>
+<postal>
+<street>1350 Mass. Ave.</street>
+<street>Cambridge</street>
+<street>MA 02138</street></postal>
+
+<phone>- +1 617 495 3864</phone>
+<email>sob@harvard.edu</email></address></author>
+<date year='1997' month='March' />
+<area>General</area>
+<keyword>keyword</keyword>
+<abstract>
+<t>
+   In many standards track documents several words are used to signify
+   the requirements in the specification.  These words are often
+   capitalized.  This document defines these words as they should be
+   interpreted in IETF documents.  Authors who follow these guidelines
+   should incorporate this phrase near the beginning of their document:
+
+<list>
+<t>
+      The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+      NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
+      "OPTIONAL" in this document are to be interpreted as described in
+      RFC 2119.
+
+</t></list></t>
+<t>
+   Note that the force of these words is modified by the requirement
+   level of the document in which they are used.
+</t></abstract></front>
+
+<seriesInfo name='BCP' value='14' />
+<seriesInfo name='RFC' value='2119' />
+<format type='TXT' octets='4723' target='ftp://ftp.isi.edu/in-notes/rfc2119.txt' />
+<format type='HTML' octets='17491' target='http://xml.resource.org/public/rfc/html/rfc2119.html' />
+<format type='XML' octets='5777' target='http://xml.resource.org/public/rfc/xml/rfc2119.xml' />
+</reference>
+
+<reference anchor='OSPFV2'>
+
+<front>
+<title>OSPF Version 2</title>
+<author initials='J.' surname='Moy' fullname='John Moy'>
+<organization>Ascend Communications, Inc.</organization>
+<address>
+<postal>
+<street>1 Robbins Road</street>
+<city>Westford</city>
+<region>MA</region>
+
+<code>01886</code></postal>
+<phone>978-952-1367</phone>
+<facsimile>978-392-2075</facsimile>
+<email>jmoy@casc.com</email></address></author>
+<date year='1998' month='April' />
+<area>Routing</area>
+<keyword>open shortest-path first protocol</keyword>
+<keyword>routing</keyword>
+<keyword>OSPF</keyword>
+
+<abstract>
+<t>
+
+    This memo documents	version	2 of the OSPF protocol.	 OSPF is a
+
+    link-state routing protocol.  It is	designed to be run internal to a
+
+    single Autonomous System.  Each OSPF router	maintains an identical
+
+    database describing	the Autonomous System's	topology.  From	this
+
+    database, a	routing	table is calculated by constructing a shortest-
+
+    path tree.
+</t>
+<t>
+
+
+    OSPF recalculates routes quickly in	the face of topological	changes,
+
+    utilizing a	minimum	of routing protocol traffic.  OSPF provides
+
+    support for	equal-cost multipath.  An area routing capability is
+
+    provided, enabling an additional level of routing protection and a
+
+    reduction in routing protocol traffic.  In addition, all OSPF
+
+    routing protocol exchanges are authenticated.
+
+</t>
+<t>
+
+    The	differences between this memo and RFC 2178 are explained in
+
+    Appendix G.	All differences	are backward-compatible	in nature.
+
+    Implementations of this memo and of	RFCs 2178, 1583, and 1247 will
+
+    interoperate.
+
+</t>
+
+<t>
+
+    Please send	comments to ospf@gated.cornell.edu.
+</t></abstract></front>
+
+<seriesInfo name='STD' value='54' />
+<seriesInfo name='RFC' value='2328' />
+<format type='TXT' octets='447367' target='ftp://ftp.isi.edu/in-notes/rfc2328.txt' />
+<format type='HTML' octets='466915' target='http://xml.resource.org/public/rfc/html/rfc2328.html' />
+<format type='XML' octets='446625' target='http://xml.resource.org/public/rfc/xml/rfc2328.xml' />
+</reference>
+
+
+<reference anchor='OSPFV3'>
+
+<front>
+<title>OSPF for IPv6</title>
+<author initials='R.' surname='Coltun' fullname='R. Coltun'>
+<organization /></author>
+<author initials='D.' surname='Ferguson' fullname='D. Ferguson'>
+<organization /></author>
+<author initials='J.' surname='Moy' fullname='J. Moy'>
+<organization /></author>
+<author initials='A.' surname='Lindem' fullname='A. Lindem'>
+<organization /></author>
+<date year='2008' month='July' />
+<abstract>
+
+<t>This document describes the modifications to OSPF to support version 6 of the Internet Protocol (IPv6). The fundamental mechanisms of OSPF (flooding, Designated Router (DR) election, area support, Short Path First (SPF) calculations, etc.) remain unchanged. However, some changes have been necessary, either due to changes in protocol semantics between IPv4 and IPv6, or simply to handle the increased address size of IPv6. These modifications will necessitate incrementing the protocol version from version 2 to version 3. OSPF for IPv6 is also referred to as OSPF version 3 (OSPFv3).&lt;/t>&lt;t> Changes between OSPF for IPv4, OSPF Version 2, and OSPF for IPv6 as described herein include the following. Addressing semantics have been removed from OSPF packets and the basic Link State Advertisements (LSAs). New LSAs have been created to carry IPv6 addresses and prefixes. OSPF now runs on a per-link basis rather than on a per-IP-subnet basis. Flooding scope for LSAs has been generalized. Authentication has been removed from the OSPF protocol and instead relies on IPv6's Authentication Header and Encapsulating Security Payload (ESP).&lt;/t>&lt;t> Even with larger IPv6 addresses, most packets in OSPF for IPv6 are almost as compact as those in OSPF for IPv4. Most fields and packet- size limitations present in OSPF for IPv4 have been relaxed. In addition, option handling has been made more flexible.&lt;/t>&lt;t> All of OSPF for IPv4's optional capabilities, including demand circuit support and Not-So-Stubby Areas (NSSAs), are also supported in OSPF for IPv6. [STANDARDS TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='5340' />
+<format type='TXT' octets='225664' target='ftp://ftp.isi.edu/in-notes/rfc5340.txt' />
+</reference>
+
+<reference anchor='OSPFV3AUTH'>
+
+<front>
+<title>Authentication/Confidentiality for OSPFv3</title>
+<author initials='M.' surname='Gupta' fullname='M. Gupta'>
+<organization /></author>
+<author initials='N.' surname='Melam' fullname='N. Melam'>
+<organization /></author>
+<date year='2006' month='June' />
+<abstract>
+<t>This document describes means and mechanisms to provide authentication/confidentiality to OSPFv3 using an IPv6 Authentication Header/Encapsulating Security Payload (AH/ESP) extension header. [STANDARDS TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='4552' />
+
+<format type='TXT' octets='31540' target='ftp://ftp.isi.edu/in-notes/rfc4552.txt' />
+</reference>
+
+
+
+   </references>
+
+   <references title="Informative References">
+
+<reference anchor='OOB'>
+
+<front>
+<title>OSPF Out-of-Band Link State Database (LSDB) Resynchronization</title>
+<author initials='L.' surname='Nguyen' fullname='L. Nguyen'>
+<organization /></author>
+<author initials='A.' surname='Roy' fullname='A. Roy'>
+<organization /></author>
+<author initials='A.' surname='Zinin' fullname='A. Zinin'>
+<organization /></author>
+<date year='2007' month='March' />
+<abstract>
+<t>OSPF is a link-state intra-domain routing protocol used in IP networks. Link State Database (LSDB) synchronization in OSPF is achieved via two methods -- initial LSDB synchronization when an OSPF router has just been connected to the network and asynchronous flooding that ensures continuous LSDB synchronization in the presence of topology changes after the initial procedure was completed. It may sometime be necessary for OSPF routers to resynchronize their LSDBs. The OSPF standard, however, does not allow routers to do so without actually changing the topology view of the network.&lt;/t>&lt;t> This memo describes a vendor-specific mechanism to perform such a form of out-of-band LSDB synchronization. The mechanism described in this document was proposed before Graceful OSPF Restart, as described in RFC 3623, came into existence. It is implemented/supported by at least one major vendor and is currently deployed in the field. The purpose of this document is to capture the details of this mechanism for public use. This mechanism is not an IETF standard. This memo provides information for the Internet community.</t></abstract></front>
+
+<seriesInfo name='RFC' value='4811' />
+<format type='TXT' octets='18976' target='ftp://ftp.isi.edu/in-notes/rfc4811.txt' />
+</reference>
+
+<reference anchor='RESTART'>
+
+<front>
+<title>OSPF Restart Signaling</title>
+<author initials='L.' surname='Nguyen' fullname='L. Nguyen'>
+<organization /></author>
+<author initials='A.' surname='Roy' fullname='A. Roy'>
+<organization /></author>
+<author initials='A.' surname='Zinin' fullname='A. Zinin'>
+<organization /></author>
+<date year='2007' month='March' />
+<abstract>
+<t>OSPF is a link-state intra-domain routing protocol used in IP networks. Routers find new and detect unreachable neighbors via the Hello subprotocol. Hello OSPF packets are also used to ensure two-way connectivity within time. When a router restarts its OSPF software, it may not know its neighbors. If such a router sends a Hello packet on an interface, its neighbors are going to reset the adjacency, which may not be desirable in certain conditions.&lt;/t>&lt;t> This memo describes a vendor-specific mechanism that allows OSPF routers to inform their neighbors about the restart process. Note that this mechanism requires support from neighboring routers. The mechanism described in this document was proposed before Graceful OSPF Restart, as described in RFC 3623, came into existence. It is implemented/supported by at least one major vendor and is currently deployed in the field. The purpose of this document is to capture the details of this mechanism for public use. This mechanism is not an IETF standard. This memo provides information for the Internet community.</t></abstract></front>
+
+<seriesInfo name='RFC' value='4812' />
+<format type='TXT' octets='12111' target='ftp://ftp.isi.edu/in-notes/rfc4812.txt' />
+</reference>
+
+
+
+       <reference anchor="ENTNUM">
+           <front>
+               <title>PRIVATE ENTERPRISE NUMBERS</title>
+               <author initials="" surname="IANA" fullname="IANA">
+                   <organization>http://www.iana.org/</organization>
+               </author>
+           </front>
+       </reference>
+       &RFC4813;
+
+	</references>
+
+	<section title="Acknowledgements">
+	    <t>The authors would like to acknowledge Russ White, Acee Lindem,
+           and Manral Vishwas for their review of this document.</t>
+	</section>
+
+   <section title="Changes from RFC 4813">
+
+       <t>
+           This section describes the substantive change from <xref
+               target="RFC4813"/>.
+
+           <list style="symbols">
+
+               <t> Added OSPFv3 support</t>
+               <t> Private TLVs MUST use private enterprise code</t>
+               <t> Clarified requirement levels at several places</t>
+               <t> Changed from Experimental to Standards Track</t>
+
+           </list>
+       </t>
+
+
+   </section>
+
+   </back>
+</rfc>

@@ -1,0 +1,822 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc rfcedstyle="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="5497" category="std">
+
+  <front>
+
+    <title abbrev="Time TLV">Representing Multi-Value Time in Mobile Ad Hoc Networks (MANETs)</title>
+
+    <author initials="T.H." surname="Clausen" fullname="Thomas Heide Clausen">
+      <organization abbrev="LIX, Ecole Polytechnique">LIX, Ecole Polytechnique, France</organization>
+      <address>
+         <phone>+33 6 6058 9349</phone>
+         <email>T.Clausen@computer.org</email>
+         <uri>http://www.ThomasClausen.org/</uri>
+      </address>
+    </author>
+
+    <author initials="C.M." surname="Dearlove" fullname="Christopher Dearlove">
+      <organization abbrev="BAE Systems ATC">BAE Systems Advanced Technology Centre</organization>
+      <address>
+         <phone>+44 1245 242194</phone>
+         <email>chris.dearlove@baesystems.com</email>
+         <uri>http://www.baesystems.com/</uri>
+      </address>
+    </author>
+
+    <date month='March' year='2009'/>
+    <area>Routing</area>
+    <workgroup>Mobile Ad hoc Networking (MANET)</workgroup>
+
+    <keyword>Routing Protocol</keyword>
+    <keyword>TLV</keyword>
+    <keyword>Fisheye</keyword>
+    <keyword>FSR</keyword>
+    <keyword>Fuzzy-Sighted</keyword>
+    <keyword>Hazy-Sighted</keyword>
+    <keyword>extension</keyword>
+    <keyword>packetbb</keyword>
+    <keyword>RFC5444</keyword>
+
+<note title="">
+<t>
+This document may contain material from IETF Documents or IETF
+Contributions published or made publicly available before November 10,
+2008.  The person(s) controlling the copyright in some of this material
+may not have granted the IETF Trust the right to allow modifications
+of such material outside the IETF Standards Process.  Without
+obtaining an adequate license from the person(s) controlling the
+copyright in such materials, this document may not be modified outside
+the IETF Standards Process, and derivative works of it may not be
+created outside the IETF Standards Process, except to format it for
+publication as an RFC or to translate it into languages other than
+English. 
+</t>
+</note>
+
+    <abstract>
+      <t>
+	  This document describes a general and flexible TLV
+        (type-length-value structure) for representing time-values, such as an
+        interval or a duration, using the generalized Mobile Ad hoc NETwork (MANET)
+        packet/message format. It defines two Message TLVs and two Address Block
+        TLVs for representing validity and interval times for MANET routing protocols.
+      </t>
+    </abstract>
+
+    </front>
+
+    <middle>
+
+<section anchor='introduction' title='Introduction'>
+
+  <t>
+    The generalized packet/message format <xref target="RFC5444"/>
+    specifies a signaling format that MANET routing protocols can
+    employ for exchanging protocol information. This format presents
+    the ability to express and associate attributes to packets,
+    messages, or addresses, by way of a general TLV (type-length-value)
+    mechanism.
+  </t>
+
+  <t>
+    This document specifies a general Time TLV structure, which can
+    be used by any MANET routing protocol that needs to express
+    either single time-values or a set of time-values with each time-value
+    associated with a range of hop counts, as provided by the Message Header
+    of <xref target="RFC5444"/>. This allows a receiving node to determine
+    a single time-value if either it knows its hop count from the originator
+    node or the Time TLV specifies a single time-value.
+  </t>
+  <t>
+    A time-value is, in this context, not an "absolute point in time",
+    but rather an interval or a duration. An instance of a Time TLV can,
+    therefore, express an interval or a duration such as "10 seconds".
+  </t>
+  <t>
+    This document also specifies two Message TLV Types, which use
+    the TLV structure proposed. These TLV Types are INTERVAL_TIME
+    and VALIDITY_TIME, specifying, respectively, the maximum time before
+    another message of the same type as this message from the same
+    originator should be received, and the duration for which the
+    information in this message is valid after receipt. Note that,
+    if both are present, then the latter will usually be greater
+    than the former in order to allow for possible message loss.
+  </t>
+
+  <t>
+    This document also specifies two Address Block TLV Types, which use
+    the TLV structure proposed. These TLV Types are INTERVAL_TIME
+    and VALIDITY_TIME, defined equivalently to the two Message TLVs
+    with the same names.
+  </t>
+
+  <section title="Motivation and Rationale">
+
+    <t>
+      The Time TLV structure, specified in this document, is intended to be used
+      as a component in a MANET routing protocol, e.g., to indicate the expected
+      spacing between successive transmissions of a given Message Type, by
+      including a Time TLV in transmitted messages.
+    </t>
+
+    <t>
+      Some MANET routing protocols may employ very short spacing for some messages
+      and very long spacing for others, or may change the message transmission rate
+      according to observed behavior. For example, if a network is observed at some
+      point in time to exhibit a highly dynamic topology, a very short (sub-second)
+      message spacing could be appropriate, whereas if the network later is observed
+      to stabilize, multi-hour message spacing may become appropriate. Different
+      MANET routing protocols and different deployments of MANET routing protocols
+      may have different granularity requirements and bounds on shortest and longest
+      spacing between successive message transmissions.
+    </t>
+
+    <t>
+      In addition, MANET routing protocol deployments typically use bandwidth-limited
+      wireless network interfaces, and therefore prefer to trade off computational
+      complexity for a saving in the number of bits transmitted. This is practical
+      in this case, because the intended usages of Time TLVs, including the specified
+      examples of message interval time and information validity time, do not require
+      high-precision values of time.
+    </t>
+
+    <t>
+      The Time TLV structure, specified in this document, caters to these characteristics by:
+		
+      <list style="symbols">
+        <t>
+          encoding time-values, such as an interval or a duration, in an 8-bit field; while
+        </t>
+        <t>
+          allowing these time-values to range from "very small" (e.g., 1/1024 second)
+          to "very long" (e.g., 45 days); and
+        </t>
+        <t>
+          allowing a MANET routing protocol, or a deployment, to parameterize this
+          (e.g., to attain finer granularity at the expense of a lower upper bound)
+          through a single parameter, C.
+        </t>
+      </list>
+
+    </t>
+
+    <t>
+      The parameter C must be the same for all MANET routers in the same deployment.
+    </t>
+    <t>
+      The TLV mechanism as specified in <xref target="RFC5444"/> allows
+      associating a "value" to either a packet, a message, or to addresses.
+      The data structure for doing so -- the TLV -- is identical in each
+      of the three cases; however, the TLV's position in a received packet
+      allows determining if that TLV is a "Packet TLV" (it appears in the
+      Packet Header, before any messages), a "Message TLV" (it appears in
+      the TLV Block immediately following a Message Header), or an
+      "Address Block TLV" (it appears in the TLV Block immediately following an
+      Address Block).
+    </t>
+
+    <t>
+      While TLVs may be structurally identical, that which they express may be
+      different. This is determined from the kind (packet, message, or Address
+      Block) and type of the TLV. For example, one TLV might associate a lifetime
+      to an address, another a content sequence number to a message, and another
+      a cryptographic signature to a packet. For this reason, <xref target="RFC5444"/>
+      specifies separate registries for Packet TLV Types, Message TLV Types, and
+      Address Block TLV Types, and it does not specify any structure in the
+      TLV Value field.
+    </t>
+
+    <t>
+      The TLVs defined in this document express, essentially, that "this
+      information will be refreshed within X seconds" and that "this
+      information is valid for X seconds after being received", each allowing
+      the "X seconds" to be specified as a function of the number of hops
+      from the originator of the information. This document specifies a
+      general format allowing expressing and encoding this as the value
+      field of a TLV. This representation uses a compact (8-bit) representation
+      of time, as message size is an issue in many MANETs, and the offered
+      precision and range is appropriate for MANET routing protocols.
+    </t>
+
+    <t>
+      A TLV of this format may be used for packets, messages, or addresses.
+      For example, a proactive MANET routing protocol periodically reporting
+      link-state information could include a TLV of this format as a Message TLV. 
+      This may indicate a different periodicity in different scopes (possibly
+      frequently up to a few hops, less frequently beyond that) because some
+      messages may be sent with limited scope, as specified in
+      <xref target="RFC5444"/>. A reactive MANET routing protocol could
+      include a TLV of this format as an Address Block TLV for reporting the
+      lifetime of routes to individual addresses.
+    </t>
+
+    <t>
+      In addition to defining the general format as outlined above, this document
+      requests IANA assignments for INTERVAL_TIME and VALIDITY_TIME TLVs. These
+      IANA assignments are requested in this document in order to avoid
+      interdependencies between otherwise unrelated MANET protocols and in order
+      to not exhaust the TLV Type spaces by having different protocols request
+      types for essentially identical data structures. Only Message TLVs
+      and Address Block TLVs are requested, as these are those for which a need
+      has been demonstrated.
+    </t>
+
+  </section>
+
+</section>
+
+<section anchor="terminology" title="Terminology">
+
+  <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+    "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+    "OPTIONAL" in this document are to be interpreted as described in
+    <xref target="RFC2119"/>.
+  </t>
+
+  <t>
+    Additionally, this document uses terminology from <xref target="RFC5444"/>, and
+    introduces the following terminology:
+
+    <list style="hanging" hangIndent="3">
+ 
+      <t hangText="hop count">
+        - the number of hops from the message originator to the message
+        recipient. This is defined to equal the &lt;msg-hop-count&gt; field
+        in the &lt;msg-header&gt; element defined in <xref target="RFC5444"/>,
+        if present, after it is incremented on reception. If the &lt;msg-hop-count&gt;
+        field is not present, or in a Packet TLV, then hop count is defined to
+        equal 255.
+      </t>
+
+      <t hangText="time-value">
+        - a time, measured in seconds.
+      </t>
+
+      <t hangText="time-code">
+        - an 8-bit field, representing a time-value.
+      </t>
+
+    </list>
+
+  </t>
+
+</section>
+
+<section anchor="applicability" title="Applicability Statement">  
+  
+  <t>
+    The TLV structure described in this document is applicable whenever a
+    single time-value, or a time-value that varies with the number of hops
+    from the originator of a message, is required in a protocol
+    using the generalized MANET packet/message format
+    <xref target="RFC5444"/>.
+  </t>
+
+  <t>
+    Examples of time-values that may be included in a protocol
+    message are:
+    <list style="symbols">
+      <t>
+        The maximum time interval until the next message of the same
+        type is to be generated by the message's originator node.
+      </t>
+      <t>
+        The validity time of the information with which the time-value
+        is associated.
+      </t>
+    </list>
+  </t>
+
+  <t>
+    Either of these may vary with the hop count between the originating
+    and receiving nodes, e.g., if messages of the same type are sent with
+    different hop limits as defined in <xref target="RFC5444"/>. 
+  </t>
+  
+  <t>
+    Parts of this document have been generalized from material in the
+    proactive MANET routing protocol OLSR (Optimized Link State
+    Routing Protocol) <xref target="RFC3626"/>.
+  </t>
+
+</section>
+<section anchor="functioning" title="Protocol Overview and Functioning">
+
+  <t>
+    This document does not specify a protocol nor does it mandate specific
+    node or protocol behavior. Rather, it outlines mechanisms for encoding
+    time-values using the TLV mechanism of <xref target="RFC5444"/>.
+  </t>
+
+</section>
+<section anchor="time" title="Representing Time">
+
+  <t>
+    This document specifies a TLV structure in which time-values
+    are each represented in an 8-bit time-code, one or more of which
+    may be used in a TLV's &lt;value&gt; field. Of these 8 bits, the
+    least significant 3 bits represent the mantissa (a), and the most
+    significant 5 bits represent the exponent (b), so that:
+
+  <list style="symbols">
+    <t>time-value := (1 + a/8) * 2^b * C</t>
+    <t>time-code := 8 * b + a</t>
+  </list>
+</t>
+  <t>
+    All nodes in the MANET MUST use the same value of the constant C, which
+    will be specified in seconds, hence so will be all time-values. C MUST be
+    greater than 0 seconds. Note that ascending values of the time-code
+    represent ascending time-values; time-values may thus be compared by
+    comparison of time-codes.
+  </t>
+
+  <t>
+    An algorithm for computing the time-code representing the smallest
+    representable time-value not less than the time-value t is:
+
+  <list style="numbers">
+    <t>find the largest integer b such that t/C &gt;= 2^b;</t>
+    <t>set a := 8 * (t / (C * 2^b) - 1), rounded up to the nearest integer;</t>
+    <t>if a = 8, then set b := b + 1 and set a := 0;</t>
+    <t>if 0 &lt;= a &lt;= 7, and 0 &lt;= b &lt;= 31, then the required
+       time-value can be represented by the time-code 8 * b + a,
+       otherwise it cannot.</t>
+  </list>
+  </t>
+
+  <t>
+    The minimum time-value that can be represented in this manner is C.
+    The maximum time-value that can be represented in this manner is
+    15 * 2^28 * C, or about 4.0 * 10^9 * C.  If, for example,
+    C = 1/1024 second, then this is about 45 days.
+  </t>
+
+  <t>
+    A protocol using this time representation MUST define the value of C.
+    A protocol using this specification MAY specify that the all-bits zero
+    time-value (0) represents a time-value of zero and/or that the all-bits
+    one time-value (255) represents an indefinitely large time-value.
+  </t>
+
+</section>
+<section anchor="timetlv" title="General Time TLV Structure">
+	
+  <t>
+    The following data structure allows the representation of a single time-value,
+    or of a default time-value plus pairs of (time-values, hop counts) for when
+    hop-count-dependent time-values are required. The time-values are represented
+    as time-codes as defined in <xref target="time"/>. This &lt;time-data&gt;
+    data structure is specified, using the regular expression syntax of
+    <xref target="RFC5444"/>, by:
+  </t>
+
+  <figure>
+    <artwork>
+    &lt;time-data&gt; = (&lt;time-code&gt;&lt;hop-count&gt;)*&lt;time-code&gt;
+    </artwork>	 
+  </figure>
+
+  <t>
+    where:
+    <list style="hanging">
+      <t hangText="&lt;time-code&gt;">
+	  is an 8-bit unsigned integer field containing a time-code as defined in
+        <xref target="time"/>.
+      </t>
+
+      <t hangText="&lt;hop-count&gt;">
+	  is an 8-bit unsigned integer field specifying a hop count from the message
+        originator.
+      </t>
+    </list>
+  </t>
+
+  <t>
+    A &lt;time-data&gt; structure thus consists of an odd number of octets;
+    with a repetition factor of n for the (time, hop count) pairs in the
+    regular expression syntax, it contains 2n+1 octets. On reception, n is
+    determined from the length.
+  </t>
+
+  <t>
+    A &lt;time-data&gt; field may be thus represented by:
+  </t>
+
+  <figure>
+    <artwork>
+    &lt;t_1&gt;&lt;d_1&gt;&lt;t_2&gt;&lt;d_2&gt; ... &lt;t_i&gt;&lt;d_i&gt; ...  &lt;t_n&gt;&lt;d_n&gt;&lt;t_default&gt;
+    </artwork>
+  </figure>
+
+  <t>
+    &lt;d_1&gt;, ... &lt;d_n&gt;, if present, MUST be a strictly increasing sequence,
+    with &lt;d_n&gt; &lt; 255. Then, at the receiving node's hop count from the originator
+    node, the time-value indicated is that represented by the time-code:
+    <list style="symbols">
+      <t>
+	  &lt;t_1&gt;, if n > 0 and hop count &lt;= &lt;d_1&gt;;
+      </t>
+      <t>
+	  &lt;t_i+1&gt;, if n > 1 and &lt;d_i&gt; &lt; hop count &lt;= &lt;d_i+1&gt; for some
+        i such that 1 &lt;= i &lt; n;
+      </t>
+      <t>
+        &lt;t_default&gt; otherwise, i.e. if n = 0 or hop count > &lt;d_n&gt;.
+      </t>
+    </list>
+  </t>
+
+   <t>
+    If included in a message without a &lt;msg-hop-count&gt; field in its Message
+    Header, or in a Packet TLV, then the form of this data structure with a
+    single time-code in &lt;time-data&gt; (i.e., n = 0) SHOULD be used.
+  </t>
+  
+  <section title="Single-Value Time TLVs">
+
+    <t>
+      The purpose of a single value Time TLV is to allow a single time-value
+      to be determined by a node receiving an entity containing the Time TLV,
+      based on its hop count from the entity's originator. The Time TLV may
+      contain information that allows that time-value to be a function of
+      the hop count; thus, different receiving nodes may determine different
+      time-values.
+    </t>
+
+    <t>
+      A single-value Time TLV may be a Packet TLV, a Message TLV, or
+      an Address Block TLV.
+    </t>
+
+    <t>
+      A Time TLV that has the tismultivalue flag cleared ('0') in its &lt;tlv-flags&gt;
+      field, as defined in <xref target="RFC5444"/>, contains a single &lt;time-data&gt;,
+      as defined above, in its &lt;value&gt; field. For such a Time TLV:
+		
+      <list style="symbols">
+        <t>	
+          The &lt;length&gt; field in the TLV MUST contain the value 2n+1, with n being
+          the number of (time-value, hop count) pairs in the Time TLV.
+        </t>
+        <t>
+          The number of (time-value, hop count) pairs MUST be identified by inspecting
+          the &lt;length&gt; field in the TLV. The number of such pairs, n, is:
+          <list style="symbols">
+            <t>n := (&lt;length&gt; - 1) / 2</t>
+          </list>
+          This MUST be an integer value.
+        </t>
+      </list>
+
+    </t>
+
+  </section>
+
+  <section title="Multi-Value Time TLVs">
+
+    <t>
+      The purpose of a multi-value Time TLV is to associate a set of &lt;time-data&gt; structures
+      to an identically sized set of addresses, as described in <xref target="RFC5444"/>.
+      For each of these &lt;time-data&gt; structures, a single time-value can be determined by a
+      node receiving an entity containing the Time TLV, based on its hop count from the entity's
+      originator. The Time TLV may contain information that allows that time-value to be a function
+      of the hop count, and thus different receiving nodes may determine different time-values. 
+    </t>
+
+    <t>
+      Multi-value Time TLVs MUST be Address Block TLVs. A multi-value Time TLV MUST NOT be a Packet
+      TLV or Message TLV.
+    </t>
+
+    <t>
+      A Time TLV that has the tismultivalue flag set ('1') in its &lt;tlv-flags&gt; field,
+      as defined in <xref target="RFC5444"/>, contains a sequence of &lt;time-data&gt;
+      structures, as defined above, in its &lt;value&gt; field. For such a Time TLV:
+		
+      <list style="symbols">
+        <t>
+          The &lt;length&gt; field in the TLV MUST contain the value m * (2n+1), with n
+          being the number of (time-value, hop count) pairs in the Time TLV, and m being
+          number-values as defined in <xref target="RFC5444"/>.
+        </t>
+        <t>
+          The number of &lt;time-data&gt; structures included in the &lt;value&gt; field
+          is equal to number-values as defined in <xref target="RFC5444"/>.
+        </t>
+        <t>
+          The number of (time-value, hop count) pairs in each &lt;time-data&gt; structure
+          MUST be the same, and MUST be identified by inspecting the &lt;length&gt; field
+          in the TLV and using number-values as defined in <xref target="RFC5444"/>.
+          The number of such pairs in each &lt;time-data&gt; structure, n, is:
+          <list style="symbols">
+            <t>n := ((&lt;length&gt; / number-values) - 1) / 2</t>
+          </list>
+          This MUST be an integer value. The lists of hop count values MAY be different.
+        </t>
+      </list>
+
+    </t>
+
+  </section>
+
+</section>
+<section anchor="message TLVs" title="Message TLVs">
+
+  <t>
+    Two Message TLVs are defined, for signaling message interval
+    (INTERVAL_TIME) and message validity time (VALIDITY_TIME).
+  </t>
+
+  <section anchor="interval time" title="INTERVAL_TIME TLV">
+
+    <t>
+      An INTERVAL_TIME TLV is a Message TLV that defines
+      the maximum time before another message of the same type
+      as this message from the same originator should be received.
+      This interval time MAY be specified to depend on the hop count
+      from the originator. (This is appropriate if messages are sent
+      with different hop limits so that receiving nodes at greater
+      hop counts have an increased interval time.)
+    </t>
+
+    <t>
+      A message MUST NOT include more than one INTERVAL_TIME TLV.
+    </t>
+
+    <t>
+      An INTERVAL_TIME TLV is an example of a Time TLV specified
+      as in <xref target="time"/>.
+    </t>
+
+  </section>
+
+  <section anchor="validity time" title="VALIDITY_TIME TLV">
+
+    <t>
+      A VALIDITY_TIME TLV is a Message TLV that defines the
+      validity time of the information carried in the message
+      in which the TLV is contained. After this time, the
+      receiving node MUST consider the message content to no
+      longer be valid (unless repeated in a later message).
+      The validity time of a message MAY be specified to depend
+      on the hop count from its originator. (This is appropriate
+      if messages are sent with different hop limits so that
+      receiving nodes at greater hop counts receive information
+      less frequently and must treat is as valid for longer.)
+    </t>
+
+    <t>
+      A message MUST NOT include more than one VALIDITY_TIME TLV.
+    </t>
+
+    <t>
+      A VALIDITY_TIME TLV is an example of a Time TLV specified
+      as in <xref target="time"/>.
+    </t>
+
+  </section>
+
+</section>
+
+<section anchor="address block TLVs" title="Address Block TLVs">
+
+  <t>
+    Two Address Block TLVs are defined, for signaling address
+    advertisement interval (INTERVAL_TIME) and address validity time
+    (VALIDITY_TIME).
+  </t>
+
+  <section anchor="address block interval time" title="INTERVAL_TIME TLV">
+
+    <t>
+      An INTERVAL_TIME TLV is an Address Block TLV that defines the maximum
+      time before this address from the same originator should be received
+      again. This interval time MAY be specified to depend on the hop count
+      from the originator. (This is appropriate if addresses are contained in
+      messages sent with different hop limits so that receiving nodes at greater
+      hop counts have an increased interval time.)
+    </t>
+
+    <t>
+      A protocol using this TLV and the same named Message TLV MUST specify
+      how to interpret the case when both are present (typically, that the former
+      overrides the latter for those addresses that are covered by the former).
+    </t>
+
+    <t>
+      An INTERVAL_TIME TLV is an example of a Time TLV specified
+      as in <xref target="time"/>.
+    </t>
+
+  </section>
+
+  <section anchor="address block validity time" title="VALIDITY_TIME TLV">
+
+    <t>
+      A VALIDITY_TIME TLV is an Address Block TLV that defines the
+      validity time of the addresses to which the TLV is associated.
+      After this time, the receiving node MUST consider the addresses to no
+      longer be valid (unless these are repeated in a later message).
+      The validity time of an address MAY be specified to depend
+      on the hop count from its originator. (This is appropriate
+      if addresses are contained in messages sent with different hop limits
+      so that receiving nodes at greater hop counts receive information
+      less frequently and must treat is as valid for longer.)
+    </t>
+
+    <t>
+      A protocol using this TLV and the same named Message TLV MUST specify
+      how to interpret the case when both are present (typically, that the former
+      overrides the latter for those addresses that are covered by the former).
+    </t>
+
+    <t>
+      A VALIDITY_TIME TLV is an example of a Time TLV specified
+      as in <xref target="time"/>.
+    </t>
+
+  </section>
+
+</section>
+<section anchor="iana" title="IANA Considerations">
+
+  <t>
+    This specification defines two Message TLV Types, which
+    have been allocated from the "Assigned Message TLV Types"
+    repository of <xref target="RFC5444"/> as specified in
+    <xref target="msgtlvtypesiana"/>, and two Address Block TLV Types,
+    which have been allocated from the "Assigned Address Block TLV Types"
+    repository of <xref target="RFC5444"/> as specified in
+    <xref target="addrblocktlvtypesiana"/>.
+  </t>
+
+  <t>
+    IANA has assigned the same numerical value to the Message TLV Type
+    and Address Block TLV Type with the same name.
+  </t>
+
+  <section title="Expert Review: Evaluation Guidelines">
+
+    <t>
+      For the registries for TLV Type Extensions where an Expert Review is required,
+      the designated expert SHOULD take the same general recommendations into
+      consideration as are specified by <xref target="RFC5444"/>.
+    </t>
+
+  </section>
+
+  <section title="Message TLV Types">
+
+    <texttable anchor="msgtlvtypesiana">
+      <ttcol align="center">Name</ttcol>
+      <ttcol align="center">Type</ttcol>
+      <ttcol align="center">Type Extension</ttcol>
+      <ttcol align="left">Description</ttcol>
+      <c>INTERVAL_TIME</c><c>0</c><c>0</c>
+        <c>The maximum time before another message of the same type
+           as this message from the same originator should be received</c>
+      <c>Unassigned</c><c>0</c><c>1-223</c><c>Expert Review</c>
+      <c></c><c></c><c>224-255</c><c>Experimental Use</c>
+      <c>VALIDITY_TIME</c><c>1</c><c>0</c>
+        <c>The time from receipt of the message during which the information
+           contained in the message is to be considered valid</c>
+      <c>Unassigned</c><c>1</c><c>1-223</c><c>Expert Review</c>
+      <c></c><c></c><c>224-255</c><c>Experimental Use</c>
+    </texttable>	
+
+  </section>
+
+  <section title="Address Block TLV Types">
+
+    <texttable anchor="addrblocktlvtypesiana">
+      <ttcol align="center">Name</ttcol>
+      <ttcol align="center">Type</ttcol>
+      <ttcol align="center">Type extension</ttcol>
+      <ttcol align="left">Description</ttcol>
+      <c>INTERVAL_TIME</c><c>0</c><c>0</c>
+        <c>The maximum time before another message of the same type
+           as this message from the same originator and containing this address should be received</c>
+      <c>Unassigned</c><c>0</c><c>1-223</c><c>Expert Review</c>
+      <c></c><c></c><c>224-255</c><c>Experimental Use</c>
+      <c>VALIDITY_TIME</c><c>1</c><c>0</c>
+        <c>The time from receipt of the address during which the information
+           regarding this address is to be considered valid</c>
+      <c>Unassigned</c><c>0</c><c>1-223</c><c>Expert Review</c>
+      <c></c><c></c><c>224-255</c><c>Experimental Use</c>
+    </texttable>	
+
+  </section>
+
+</section>
+<section anchor="security" title="Security Considerations">
+
+  <t>
+    This document specifies how to add data structures (TLVs) that provide timing
+    information  to packets and messages specified using <xref target="RFC5444"/>.
+    In particular, information validity durations and reporting intervals may be added.
+  </t>
+
+  <t>
+    The general security threats that apply are those general to
+    <xref target="RFC5444"/> and described therein, problems of
+    integrity and confidentiality. With regard to the former,
+    modification of a Time TLV can cause information to have an
+    invalid validity time, or expected interval time. This may cause
+    incorrect protocol performance. Modification or addition of
+    timed information can add to a protocol's workload (especially
+    if a short validity time is specified) and storage requirements
+    (especially if a long validity time is specified).
+  </t>
+
+  <t>
+    To counter these threats, the security suggestions in
+    <xref target="RFC5444"/>, for the use of authentication and
+    encryption, are appropriate.
+  </t>
+
+</section>
+  </middle>
+
+  <back>
+<references title="Normative References">
+
+  <reference anchor="RFC2119">
+    <front>
+      <title abbrev="RFC2119">Key words for use in RFCs to Indicate Requirement Levels</title>
+      <author initials="S." surname="Bradner" fullname="Scott Bradner">
+        <organization abbrev="HU">Harvard University</organization>
+      </author>
+      <date month="March" year="1997"/>
+    </front>
+    <seriesInfo name="BCP" value="14"/>
+    <seriesInfo name="RFC" value="2119"/>
+  </reference>
+
+<reference anchor='RFC5444'>
+
+<front>
+
+<title>Generalized Mobile Ad Hoc Network (MANET) Packet/Message Format</title>
+<author initials='T.' surname='Clausen' fullname='T. Clausen'>
+<organization /></author>
+<author initials='C.' surname='Dearlove' fullname='C. Dearlove'>
+<organization /></author>
+<author initials='J.' surname='Dean' fullname='J. Dean'>
+<organization /></author>
+<author initials='C.' surname='Adjih' fullname='C. Adjih'>
+<organization /></author>
+<date year='2009' month='February' />
+
+<abstract>
+  <t>
+    This document specifies a packet format capable of carrying multiple messages
+    that may be used by mobile ad hoc network routing protocols. [STANDARDS TRACK]
+  </t>
+</abstract>
+
+</front>
+
+<seriesInfo name='RFC' value='5444' />
+<format type='TXT' octets='139048' target='ftp://ftp.isi.edu/in-notes/rfc5444.txt' />
+</reference>
+
+</references>
+
+<references title="Informative References">
+
+  <reference anchor="RFC3626">
+    <front>
+      <title>The Optimized Link State Routing Protocol</title>
+      <author initials="T.H." surname="Clausen" fullname="Thomas Heide Clausen (ed.)">
+        <organization abbrev="X">Ecole Polytechnique, France</organization>
+      </author>
+      <author initials="P." surname="Jacquet" fullname="Philippe Jacquet (ed.)">
+        <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+      </author>
+      <date month="October" year="2003"/>
+    </front>
+    <seriesInfo name="RFC" value="3626"/>
+  </reference>
+
+</references>
+<section anchor="acknowledgements" title="Acknowledgements">
+
+  <t>
+    The authors would like to thank Brian Adamson and Justin Dean (both NRL)
+    and Ian Chakeres (Motorola) for their contributions, and Alan Cullen (BAE Systems)
+    and Jari Arkko (Ericsson, Finland) for their careful reviews of this specification.
+  </t>
+
+</section>
+
+  </back>
+
+</rfc>

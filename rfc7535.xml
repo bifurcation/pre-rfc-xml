@@ -1,0 +1,803 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<rfc category="info" number="7535" ipr="trust200902" submissionType="IETF" consensus="yes">
+
+  <?rfc toc="yes" ?>
+  <?rfc symrefs="yes" ?>
+  <?rfc sortrefs="yes"?>
+  <?rfc compact="yes"?>
+  <?rfc subcompact="no"?>
+  <?rfc rfcedstyle="yes"?>
+
+  <front>
+    <title>AS112 Redirection Using DNAME</title>
+
+    <author fullname="Joe Abley" initials="J." surname="Abley">
+      <organization>Dyn, Inc.</organization>
+      <address>
+        <postal>
+          <street>103-186 Albert Street</street>
+          <city>London</city>
+          <region>ON</region>
+          <code>N6A 1M1</code>
+          <country>Canada</country>
+        </postal>
+        <phone>+1 519 670 9327</phone>
+        <email>jabley@dyn.com</email>
+      </address>
+    </author>
+
+    <author fullname="Brian Dickson" initials="B.P." surname="Dickson">
+      <organization>Twitter, Inc.</organization>
+      <address>
+        <email>bdickson@twitter.com</email>
+      </address>
+    </author>
+
+    <author fullname="Warren Kumari" initials="W." surname="Kumari">
+      <organization>Google</organization>
+      <address>
+        <postal>
+          <street>1600 Amphitheatre Parkway</street>
+          <city>Mountain View</city>
+          <region>CA</region>
+          <code>94043</code>
+          <country>United States</country>
+        </postal>
+        <email>warren@kumari.net</email>
+      </address>
+    </author>
+
+    <author fullname="George Michaelson" initials="G." surname="Michaelson">
+      <organization>APNIC</organization>
+      <address>
+        <email>ggm@apnic.net</email>
+      </address>
+    </author>
+
+    <date month="May" year="2015" />
+
+    <abstract>
+      <t>AS112 provides a mechanism for handling reverse lookups
+        on IP addresses that are not unique (e.g., RFC 1918 addresses).
+        This document describes modifications to the deployment and
+        use of AS112 infrastructure that will allow zones to be
+        added and dropped much more easily, using DNAME resource
+        records.</t>
+
+      <t>This approach makes it possible for any DNS zone administrator
+        to sink traffic relating to parts of the global DNS namespace
+        under their control to the AS112 infrastructure without
+        coordination with the operators of AS112 infrastructure.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t>Many sites connected to the Internet make use of IPv4
+        addresses that are not globally unique. Examples are the
+        addresses designated in <xref target="RFC1918"/> for private
+        use within individual sites.</t>
+
+      <t>Devices in such environments may occasionally originate
+        Domain Name System (DNS) queries (so-called "reverse lookups")
+        corresponding to those private-use addresses. Since the
+        addresses concerned have only local significance, it is
+        good practice for site administrators to ensure that such
+        queries are answered locally. However, it is not uncommon
+        for such queries to follow the normal delegation path in
+        the public DNS instead of being answered within the site.</t>
+
+      <t>It is not possible for public DNS servers to give useful
+        answers to such queries. In addition, due to the wide
+        deployment of private-use addresses and the continuing
+        growth of the Internet, the volume of such queries is large
+        and growing.  The AS112 project aims to provide a distributed
+        sink for such queries in order to reduce the load on the
+        IN-ADDR.ARPA authoritative servers. The AS112 project is
+        named after the Autonomous System Number (ASN) that was
+        assigned to it.</t>
+
+      <t>Prior to implementation of this technique, the AS112 project
+        did not accommodate the addition and removal of DNS zones
+        elegantly. Since additional zones of definitively local
+        significance are known to exist, this presents a problem.
+        This document describes modifications to the deployment and
+        use of AS112 infrastructure that will allow zones to be
+        added and dropped much more easily.</t>
+
+      <t>The AS112 project is described in detail
+         in <xref target="RFC7534"></xref>.</t>
+
+      <t>The AS112 nameservers (PRISONER.IANA.ORG, BLACKHOLE-1.IANA.ORG,
+        and BLACKHOLE-2.IANA.ORG) are required to answer authoritatively
+        for each and every zone that is delegated to them.  If a
+        zone is delegated to AS112 nameservers without those
+        nameservers being configured ahead of time to answer
+        authoritatively for that zone, there is a detrimental impact
+        on clients following referrals for queries within that zone.
+        This misconfiguration is colloquially known as a "lame
+        delegation".</t>
+
+      <t>AS112 nameserver operators are only loosely coordinated,
+        and hence adding support for a new zone (or, correspondingly,
+        removing support for a zone that is no longer delegated to
+        the AS112 nameservers) is difficult to accomplish with
+        accuracy. Testing AS112 nameservers remotely to see whether
+        they are configured to answer authoritatively for a particular
+        zone is similarly challenging, since AS112 nodes are distributed
+        using <xref target="RFC4786">anycast</xref>.</t>
+
+      <t>This document defines a more flexible approach for sinking
+        queries on AS112 infrastructure that can be deployed alongside
+        unmodified, existing AS112 nodes. Instead of delegating
+        additional zones directly to AS112 nameservers, <xref
+        target="RFC6672">DNAME</xref> redirection is used.  This
+        approach has the advantage that query traffic for arbitrary
+        parts of the namespace can be directed to AS112 servers
+        without those servers having to be reconfigured every time
+        a zone is added or removed.</t>
+
+      <t>This approach makes it possible for any DNS zone administrator
+        to sink traffic relating to parts of the global DNS namespace
+        under their control to the AS112 infrastructure without
+        coordination with the operators of AS112 infrastructure.</t>
+    </section>
+
+    <section title="Design Overview">
+      <t>A new zone, EMPTY.AS112.ARPA, is delegated to a single
+        nameserver BLACKHOLE.AS112.ARPA (IPv4 address 192.31.196.1, IPv6
+        address 2001:4:112::1).</t>
+
+      <t>The IPv4 address 192.31.196.1 has been selected from the
+        prefix assigned by the IANA
+        such that the address is coverable by a single IPv4 /24
+        prefix, and that no other address covered by that prefix
+        is in use.  The IPv6 address 2001:4:112::1 has been similarly
+        assigned such that no other address within a covering /48
+        is in use. This addressing plan accommodates the anycast
+        distribution of the BLACKHOLE.AS112.ARPA service using a
+        single IPv4 service prefix and a single IPv6 service prefix.
+        See <xref target="RFC4786"></xref> for more discussion of
+        anycast service distribution; see <xref target="iana"></xref>
+        for the specific actions completed by IANA per this document.</t>
+
+      <t>Some or all of the existing AS112 nodes should be extended
+        to support these new nameserver addresses and to host the
+        EMPTY.AS112.ARPA zone. See <xref target="RFC7534"></xref>
+        for revised guidance to AS112 server operators.</t>
+
+      <t>Each part of the DNS namespace for which it is desirable
+        to sink queries at AS112 nameservers should be redirected
+        to the EMPTY.AS112.ARPA zone using
+        <xref target="RFC6672">DNAME</xref>.  See <xref
+        target="redirection"></xref> for guidance to zone
+        administrators.</t>
+    </section>
+
+    <section title="AS112 Operations">
+      <section anchor="extensions"
+          title="Extensions to Support DNAME Redirection">
+        <t>Guidance to operators of AS112 nodes is extended to
+          include configuration of the 192.31.196.1 and 2001:4:112::1 addresses,
+          and the corresponding announcement of covering routes for
+          those addresses, and to host the EMPTY.AS112.ARPA zone.</t>
+
+        <t>IPv4-only AS112 nodes should only configure the 192.31.196.1
+          nameserver address; IPv6-only AS112 nodes should only
+          configure the 2001:4:112::1 nameserver address.</t>
+
+        <t>It is only necessary for a single AS112 server operator
+          to implement these extensions for this mechanism to
+          function as intended.  It is beneficial if many more than
+          one AS112 server operator makes these changes, however,
+          since that provides for greater distribution and capacity
+          for the nameservers serving the EMPTY.AS112.ARPA zone.
+          It is not necessary for all AS112 server operators to
+          make these changes for the mechanism to be viable.</t>
+
+        <t>Detailed instructions for the implementation of these
+          extensions are included in <xref target="RFC7534"></xref>.</t>
+      </section>
+
+      <section anchor="redirection"
+          title="Redirection of Query Traffic to AS112 Servers">
+        <t>Once the EMPTY.AS112.ARPA zone has been deployed using
+          the nameservers described in <xref target="extensions"></xref>,
+          redirections may be installed in the DNS namespace for
+          queries that are intended to be answered by the AS112
+          infrastructure.</t>
+
+        <t>For example, reverse queries corresponding to <xref
+          target="RFC5737">TEST-NET-1 (192.0.2.0/24)</xref> could
+          be redirected to AS112 nameservers by installing a DNAME
+          resource record in the 192.IN-ADDR.ARPA zone, as illustrated
+          in <xref target="TEST-NET-1"></xref>.</t>
+
+        <figure anchor="TEST-NET-1">
+          <artwork><![CDATA[
+  $ORIGIN 192.IN-ADDR.ARPA.
+  ...
+  2.0     IN      DNAME   EMPTY.AS112.ARPA.
+  ...          ]]></artwork> </figure>
+
+        <t>There is no practical limit to the number of redirections
+          that can be configured in this fashion. Redirection of a
+          particular part of the namespace to EMPTY.AS112.ARPA can
+          be removed at any time, under the control of the
+          administrators of the corresponding part of the DNS
+          namespace. No changes to deployed AS112 nodes incorporating
+          the extensions described in this document are required
+          to support additional redirections. A list of possible
+          candidates for AS112 redirection can be found in <xref
+          target="candidates"></xref>.</t>
+
+        <t>DNAME resource records deployed for this purpose can be
+          signed with <xref target="RFC4033">DNSSEC</xref>, providing
+          a secure means of authenticating the legitimacy of each
+          redirection.</t>
+      </section>
+    </section>
+
+    <section title="Continuity of AS112 Operations">
+      <t>Existing guidance to AS112 server operators to accept and
+        respond to queries directed at the PRISONER.IANA.ORG,
+        BLACKHOLE-1.IANA.ORG, and BLACKHOLE-2.IANA.ORG nameservers
+        should continue to be followed, and no changes to the
+        delegation of existing zones hosted on AS112 servers should
+        occur. These measures are intended to provide continuity
+        of operations for zones currently delegated to AS112 servers
+        and avoid any accidental client impact due to the changes
+        proposed in this document.</t>
+
+      <t>Once it has become empirically and quantitatively clear
+        that the EMPTY.AS112.ARPA zone is well hosted to the extent
+        that it is thought that the existing, unmodified AS112
+        servers host 10.IN-ADDR.ARPA, the decision might be made
+        to replace the delegation of those <xref target="RFC1918"></xref>
+        zones with DNAME redirection. Once implemented, the
+        PRISONER.IANA.ORG, BLACKHOLE-1.IANA.ORG, and BLACKHOLE-2.IANA.ORG
+        nameservers could be retired. This document gives no such
+        direction to the IANA, however.</t>
+    </section>
+
+    <section anchor="candidates" title="Candidate Zones for AS112 Redirection">
+      <t>All zones listed in <xref target="RFC6303"></xref> are
+        candidates for AS112 redirection.</t>
+
+      <t>Since no pre-provisioning is required on the part of AS112
+        operators to facilitate sinking of any name in the DNS
+        namespace by AS112 infrastructure, this mechanism supports
+        AS112 redirection by any zone owner in the DNS.</t>
+
+      <t>This document is simply concerned with provision of the
+        AS112 redirection service and does not specify that any
+        particular AS112 redirection be put in place.</t>
+    </section>
+
+    <section title="DNAME Deployment Considerations">
+      <t>DNAME was specified years after the original implementations
+        of <xref target="RFC1035"></xref>, and hence universal
+        deployment cannot be expected. <xref target="RFC6672"></xref>
+        specifies a fallback mechanism that makes use of synthesised
+        CNAME RRSets for this reason. The expectation that design
+        choices in the DNAME specification ought to mitigate any
+        lack of deployment is reviewed below. Experimental validation
+        of those expectations is included in <xref
+        target="experiment"></xref>.</t>
+
+      <t>It is a fundamental design requirement of AS112 service
+        that responses be cached. We can safely declare DNAME support
+        on the authoritative server to be a prerequisite for DNAME
+        redirection, but the cases where individual elements in
+        resolver chains do not support DNAME processing deserve
+        closer examination.</t>
+
+      <t>The expected behaviour when a DNAME response is supplied
+        to a resolver that does not support DNAME is that the
+        accompanying, synthesised CNAME will be accepted and cached.
+        Re-query frequency will be determined by the TTLs
+        (Time to Live) returned by the DNAME&nbhy;responding
+        authoritative servers.</t>
+
+      <t>Resolution of the CNAME target is straightforward and
+        functions exactly as the AS112 project has operated since
+        it was deployed. The <xref target="RFC2308">negative
+        caching</xref> of the CNAME target follows the parameters
+        defined in the target zone, EMPTY.AS112.ARPA.  This has the
+        side effects that all redirected names ultimately landing
+        on an AS112 node will be negatively cached with the same
+        parameters, but this lack of flexibility seems non-controversial;
+        the effect of reducing the negative cache TTL would be
+        increased query volume on the AS112 node operator concerned,
+        and hence controls seem well aligned with operation.</t>
+
+      <t>Validating resolvers (i.e., those requesting and processing
+        <xref target="RFC4033">DNSSEC</xref> metadata) are required
+        to implement DNAME and hence should not make use of
+        synthesised CNAME RRs. The lack of signature over a received
+        CNAME RR should hence not limit the ability to sign the
+        (DNAME) redirection point, and for those (DNAME) signatures to
+        be validated.</t>
+
+      <t>In the case where a recursive server implements DNAME but
+        DNAME is not implemented in a stub resolver, CNAME synthesis
+        will again provide a viable path.</t>
+
+      <t>DNAME support on AS112 nodes themselves is never required
+        under this proposal.</t>
+    </section>
+
+    <section title="IAB Statement Regarding This .ARPA Request">
+
+      <t>With the publication of this document, the IAB approves
+        of the delegation of 'AS112' in the ARPA domain. Under <xref
+        target="RFC3172"/>, the IAB has requested that IANA delegate
+        and provision "AS112.ARPA" as specified in this specification.
+        However, the IAB does not take any architectural or technical
+        position about this specification.</t>
+    </section>
+
+    <section anchor="iana" title="IANA Considerations">
+      <section title="Address Assignment">
+        <t>Per this document, IANA has assigned IPv4 and IPv6
+          number resources in conformance with Section 4 of <xref
+          target="RFC2860"></xref>.</t>
+
+        <t>The IANA has assigned one IPv4 /24 netblock
+          and registered its use in the "IANA IPv4 Special-Purpose Address
+          Registry" <xref target="RFC6890"></xref> as follows:</t>
+
+  <?rfc compact="no"?>
+        <texttable>
+          <ttcol>Name</ttcol>
+          <ttcol>Value</ttcol>
+
+          <c>Address Block</c>
+          <c>192.31.196.0/24</c>
+
+          <c>Name</c>
+          <c>AS112-v4</c>
+
+          <c>RFC</c>
+          <c>RFC 7535</c>
+
+          <c>Allocation Date</c>
+          <c>2014-12</c>
+
+          <c>Termination Date</c>
+          <c>N/A</c>
+
+          <c>Source</c>
+          <c>True</c>
+
+          <c>Destination</c>
+          <c>True</c>
+
+          <c>Forwardable</c>
+          <c>True</c>
+
+          <c>Global</c>
+          <c>True</c>
+
+          <c>Reserved-by-Protocol</c>
+          <c>False</c>
+        </texttable>
+  <?rfc compact="yes"?>
+
+        <t>IANA has assigned one IPv6 /48 netblock
+          and registered its use in the "IANA IPv6 Special-Purpose Address
+          Registry" <xref target="RFC6890"></xref> as follows:</t>
+  <?rfc compact="no"?>
+        <texttable>
+          <ttcol>Name</ttcol>
+          <ttcol>Value</ttcol>
+
+          <c>Address Block</c>
+          <c>2001:4:112::/48</c>
+
+          <c>Name</c>
+          <c>AS112-v6</c>
+
+          <c>RFC</c>
+          <c>RFC 7535</c>
+
+          <c>Allocation Date</c>
+          <c>2014-12</c>
+
+          <c>Termination Date</c>
+          <c>N/A</c>
+
+          <c>Source</c>
+          <c>True</c>
+
+          <c>Destination</c>
+          <c>True</c>
+
+          <c>Forwardable</c>
+          <c>True</c>
+
+          <c>Global</c>
+          <c>True</c>
+
+          <c>Reserved-by-Protocol</c>
+          <c>False</c>
+        </texttable>
+  <?rfc compact="yes"?>
+
+      </section>
+
+      <section anchor="hosting" title="Hosting of AS112.ARPA">
+        <t>The IANA hosts and signs the zone AS112.ARPA
+          using nameservers and DNSSEC signing infrastructure of
+          their choosing, as shown in <xref target="as112arpa"></xref>.
+          SOA RDATA may be adjusted by the IANA to suit their
+          operational requirements.</t>
+
+        <figure anchor="as112arpa">
+          <artwork><![CDATA[
+$ORIGIN AS112.ARPA.
+$TTL 3600
+
+@       IN      SOA     BLACKHOLE.AS112.ARPA. NOC.DNS.ICANN.ORG. (
+                                1               ; serial
+                                10800           ; refresh
+                                3600            ; retry
+                                1209600         ; expire
+                                3600 )          ; negative cache TTL
+
+                NS      A.IANA-SERVERS.NET.
+                NS      B.IANA-SERVERS.NET.
+                NS      C.IANA-SERVERS.NET.
+
+BLACKHOLE       A       192.31.196.1
+                AAAA    2001:4:112::1
+
+HOSTNAME        NS      BLACKHOLE
+
+EMPTY           NS      BLACKHOLE
+          ]]></artwork>
+        </figure>
+      </section>
+
+      <section title="Delegation of AS112.ARPA">
+        <t>
+          The IANA has arranged delegation from the ARPA
+          zone according to normal IANA procedure for ARPA zone
+          management, to the nameservers used in carrying out the
+          direction in <xref target="hosting"></xref>. The whois
+          contact information for the new record is specified
+          by the IAB under <xref target="RFC3172"/>.</t>
+      </section>
+    </section>
+
+    <section title="Security Considerations">
+      <t>This document presents no known additional security concerns
+        to the Internet.</t>
+
+      <t>For security considerations relating to AS112 service in
+        general, see <xref target="RFC7534"></xref>.</t>
+    </section>
+
+  </middle>
+
+  <back>
+    <references title="Normative References">
+
+    <reference  anchor='RFC1035' target='http://www.rfc-editor.org/info/rfc1035'>
+    <front>
+    <title>Domain names - implementation and specification</title>
+    <author initials='P.V.' surname='Mockapetris' fullname='P.V. Mockapetris'><organization /></author>
+    <date year='1987' month='November' />
+    </front>
+    <seriesInfo name='STD' value='13'/>
+    <seriesInfo name='RFC' value='1035'/>
+    <format type='ASCII' octets='125626'/>
+    </reference>
+
+    <reference  anchor='RFC2308' target='http://www.rfc-editor.org/info/rfc2308'>
+    <front>
+    <title>Negative Caching of DNS Queries (DNS NCACHE)</title>
+    <author initials='M.' surname='Andrews' fullname='M. Andrews'><organization /></author>
+    <date year='1998' month='March' />
+    </front>
+    <seriesInfo name='RFC' value='2308'/>
+    <format type='ASCII' octets='41428'/>
+    </reference>
+
+    <reference  anchor='RFC6672' target='http://www.rfc-editor.org/info/rfc6672'>
+    <front>
+    <title>DNAME Redirection in the DNS</title>
+    <author initials='S.' surname='Rose' fullname='S. Rose'><organization /></author>
+    <author initials='W.' surname='Wijngaards' fullname='W. Wijngaards'><organization /></author>
+    <date year='2012' month='June' />
+    </front>
+    <seriesInfo name='RFC' value='6672'/>
+    <format type='ASCII' octets='45704'/>
+    </reference>
+
+<!-- draft-ietf-dnsop-rfc6304bis (RFC 7534) -->
+<reference anchor='RFC7534' target='http://www.rfc-editor.org/info/rfc7534'>
+<front>
+<title>AS112 Nameserver Operations</title>
+<author initials='J' surname='Abley' fullname='Joe Abley'>
+    <organization />
+</author>
+<author initials='W' surname='Sotomayor' fullname='William Maton Sotomayor'>
+    <organization />
+</author>
+<date month='May' year='2015' />
+</front>
+<seriesInfo name='RFC' value='7534' />
+</reference>
+
+    </references>
+
+    <references title="Informative References">
+
+    <reference  anchor='RFC1918' target='http://www.rfc-editor.org/info/rfc1918'>
+    <front>
+    <title>Address Allocation for Private Internets</title>
+    <author initials='Y.' surname='Rekhter' fullname='Y. Rekhter'><organization /></author>
+    <author initials='B.' surname='Moskowitz' fullname='B. Moskowitz'><organization /></author>
+    <author initials='D.' surname='Karrenberg' fullname='D. Karrenberg'><organization /></author>
+    <author initials='G.' surname='J. de Groot' fullname='G. J. de Groot'><organization /></author>
+    <author initials='E.' surname='Lear' fullname='E. Lear'><organization /></author>
+    <date year='1996' month='February' />
+    </front>
+    <seriesInfo name='BCP' value='5'/>
+    <seriesInfo name='RFC' value='1918'/>
+    <format type='ASCII' octets='22270'/>
+    </reference>
+
+    <reference  anchor='RFC2860' target='http://www.rfc-editor.org/info/rfc2860'>
+    <front>
+    <title>Memorandum of Understanding Concerning the Technical Work of the Internet Assigned Numbers Authority</title>
+    <author initials='B.' surname='Carpenter' fullname='B. Carpenter'><organization /></author>
+    <author initials='F.' surname='Baker' fullname='F. Baker'><organization /></author>
+    <author initials='M.' surname='Roberts' fullname='M. Roberts'><organization /></author>
+    <date year='2000' month='June' />
+    </front>
+    <seriesInfo name='RFC' value='2860'/>
+    <format type='ASCII' octets='12361'/>
+    </reference>
+
+    <reference  anchor='RFC3172' target='http://www.rfc-editor.org/info/rfc3172'>
+    <front>
+    <title>Management Guidelines &amp; Operational Requirements for the Address and Routing Parameter Area Domain (&quot;arpa&quot;)</title>
+    <author initials='G.' surname='Huston' fullname='G. Huston' role='editor'><organization /></author>
+    <date year='2001' month='September' />
+    </front>
+    <seriesInfo name='BCP' value='52'/>
+    <seriesInfo name='RFC' value='3172'/>
+    <format type='ASCII' octets='18097'/>
+    </reference>
+
+    <reference  anchor='RFC4033' target='http://www.rfc-editor.org/info/rfc4033'>
+    <front>
+    <title>DNS Security Introduction and Requirements</title>
+    <author initials='R.' surname='Arends' fullname='R. Arends'><organization /></author>
+    <author initials='R.' surname='Austein' fullname='R. Austein'><organization /></author>
+    <author initials='M.' surname='Larson' fullname='M. Larson'><organization /></author>
+    <author initials='D.' surname='Massey' fullname='D. Massey'><organization /></author>
+    <author initials='S.' surname='Rose' fullname='S. Rose'><organization /></author>
+    <date year='2005' month='March' />
+    </front>
+    <seriesInfo name='RFC' value='4033'/>
+    <format type='ASCII' octets='52445'/>
+    </reference>
+
+    <reference  anchor='RFC4786' target='http://www.rfc-editor.org/info/rfc4786'>
+    <front>
+    <title>Operation of Anycast Services</title>
+    <author initials='J.' surname='Abley' fullname='J. Abley'><organization /></author>
+    <author initials='K.' surname='Lindqvist' fullname='K. Lindqvist'><organization /></author>
+    <date year='2006' month='December' />
+    </front>
+    <seriesInfo name='BCP' value='126'/>
+    <seriesInfo name='RFC' value='4786'/>
+    <format type='ASCII' octets='56818'/>
+    </reference>
+
+    <reference  anchor='RFC5737' target='http://www.rfc-editor.org/info/rfc5737'>
+    <front>
+    <title>IPv4 Address Blocks Reserved for Documentation</title>
+    <author initials='J.' surname='Arkko' fullname='J. Arkko'><organization /></author>
+    <author initials='M.' surname='Cotton' fullname='M. Cotton'><organization /></author>
+    <author initials='L.' surname='Vegoda' fullname='L. Vegoda'><organization /></author>
+    <date year='2010' month='January' />
+    </front>
+    <seriesInfo name='RFC' value='5737'/>
+    <format type='ASCII' octets='7036'/>
+    </reference>
+
+    <reference  anchor='RFC6303' target='http://www.rfc-editor.org/info/rfc6303'>
+    <front>
+    <title>Locally Served DNS Zones</title>
+    <author initials='M.' surname='Andrews' fullname='M. Andrews'><organization /></author>
+    <date year='2011' month='July' />
+    </front>
+    <seriesInfo name='BCP' value='163'/>
+    <seriesInfo name='RFC' value='6303'/>
+    <format type='ASCII' octets='22503'/>
+    </reference>
+
+    <reference  anchor='RFC6890' target='http://www.rfc-editor.org/info/rfc6890'>
+    <front>
+    <title>Special-Purpose IP Address Registries</title>
+    <author initials='M.' surname='Cotton' fullname='M. Cotton'><organization /></author>
+    <author initials='L.' surname='Vegoda' fullname='L. Vegoda'><organization /></author>
+    <author initials='R.' surname='Bonica' fullname='R. Bonica' role='editor'><organization /></author>
+    <author initials='B.' surname='Haberman' fullname='B. Haberman'><organization /></author>
+    <date year='2013' month='April' />
+    </front>
+    <seriesInfo name='BCP' value='153'/>
+    <seriesInfo name='RFC' value='6890'/>
+    <format type='ASCII' octets='48326'/>
+    </reference>
+
+    </references>
+
+    <section anchor="experiment"
+        title="Assessing Support for DNAME in the Real World">
+      <t>To measure the extent to which the DNAME construct is
+        supported in the Internet, we have used an experimental
+        technique to test the DNS resolvers used by end hosts and
+        derive from the test a measurement of DNAME support within
+        the Internet.</t>
+
+      <section title="Methodology">
+        <t>The test was conducted by loading a user's browser with
+          four URLs to retrieve. The first three comprise the test
+          setup, while the final URL communicates the result to
+          the experiment controller. The URLs are:
+           <list style="hanging">
+            <t hangText="A">http://a.&lt;unique_string&gt;.dname.example.com/1x1.png?<vspace blankLines="0" />a.&lt;unique_string&gt;.dname</t>
+
+            <t hangText="B">http://b.dname.example.com/1x1.png?<vspace blankLines="0" />b.&lt;unique_string&gt;.dname</t>
+
+            <t hangText="C">http://c.&lt;unique_string&gt;.target.example.net/1x1.png?<vspace blankLines="0" />c.&lt;unique_string&gt;.target</t>
+
+            <t hangText="D">http://results.recorder.example.net/1x1.png?<vspace blankLines="0" />results.&lt;unique_string&gt;?za=&lt;a_result&gt;&amp;zb=&lt;b_result&gt;&amp;zc=&lt;c_result&gt;</t>
+          </list></t>
+
+        <t>The A URL is designed to test the end user's capability
+          to resolve a name that has never been seen before, so
+          that the resolution of this domain name will reliably
+          result in a query at the authoritative nameserver. This
+          is intended to test the use of domain names where there
+          is a dynamic component that also uses the DNAME construct.</t>
+
+        <t>The B URL is deliberately designed to be cached by caching
+          resolvers that are used in the process of resolving the
+          domain name.</t>
+
+        <t>The C URL is a control URL. This is a unique URL, similar
+          to A, but does not refer to a DNAME structure.</t>
+
+        <t>The D URL uses a static cacheable domain name.</t>
+
+        <t>The &lt;unique_string&gt; value is common to the four
+          URLs used in each individual instance of this test but
+          varies from test to test.  The result is that each end
+          user is presented with a unique string.</t>
+
+        <t>The contents of the EXAMPLE.COM, TARGET.EXAMPLE.NET, and
+          RECORDER.EXAMPLE.NET zones are shown in <xref
+          target="experiment-zones"></xref>.</t>
+
+        <figure anchor="experiment-zones">
+          <artwork><![CDATA[
+  $ORIGIN EXAMPLE.COM.
+  ...
+  DNAME.             IN  DNAME  TARGET.EXAMPLE.NET.
+  ...
+
+  $ORIGIN TARGET.EXAMPLE.NET.
+  ...
+  B                  IN  A      192.0.2.0
+  *                  IN  A      192.0.2.0
+  ...
+
+  $ORIGIN RECORDER.EXAMPLE.NET.
+  ...
+  RESULTS            IN  A      192.0.2.0
+  ...
+          ]]></artwork>
+        </figure>
+
+        <t>The first three URLs (A, B, and C) are loaded as tasks
+          into the user's browser upon execution of the test's
+          script.  The script starts a timer with each of these
+          URLs to measure the elapsed time to fetch the URL. The
+          script then waits for the three fetches to complete, or
+          10 seconds, whichever occurs first. The script then loads
+          the results of the three timers into the GET arguments
+          of the D&nbsp;URL and performs a fetch to pass these results
+          back to the experiment's server.</t>
+
+        <t>Logs on the web server reached at RESULTS.RECORDER.EXAMPLE.NET
+          will include entries of the form shown in <xref
+          target="experiment-results"></xref>. If any of the URLs
+          fail to load within 10 seconds, the D URL will report the
+          failure as a "null" timer value.</t>
+
+        <figure anchor="experiment-results">
+          <artwork><![CDATA[
+  GET /1x1.png?results.<unique_string>?za=1822&zb=1674&zc=1582
+  GET /1x1.png?results.<unique_string>?za=null&zb=null&zc=161
+          ]]></artwork>
+        </figure>
+
+        <t>The script has been encoded in Adobe Flash with a simple
+          image in the form of an online advertisement. An online
+          advertisement network has been used to distribute the
+          script.  The script is invoked when the advertisement is
+          presented in the end user's browser or application and
+          does not require the user to click on the supplied image
+          in any way.  The advertisement placement parameters were
+          set to the broadest possible scope to sample users from
+          across the entire Internet.</t>
+      </section>
+
+      <section title="Results">
+        <t>The test was loaded into an advertisement distributed
+          on 2013-10-10 and 2013-10-11.</t>
+
+  <?rfc compact="no"?>
+        <texttable anchor="table_ex">
+          <ttcol align="left"></ttcol>
+          <ttcol align="right">Count</ttcol>
+          <ttcol align="right">Percentage</ttcol>
+
+          <c>Recorded Results:</c>
+          <c>338,478</c>
+          <c></c>
+
+          <c>A or B Loaded:</c>
+          <c>331,896</c>
+          <c>98.1%</c>
+
+          <c>A Fail and B Fail:</c>
+          <c>6,492</c>
+          <c>1.9%</c>
+
+          <c>A Fail and B Load:</c>
+          <c>4,249</c>
+          <c>1.3%</c>
+
+          <c>A Load and B Fail:</c>
+          <c>1,624</c>
+          <c>0.5%</c>
+
+          <c>C Fail:</c>
+          <c>9,355</c>
+          <c>2.8%</c>
+        </texttable>
+
+  <?rfc compact="yes"?>
+        <t>These results indicate that at most 1.9% of tested clients
+          use DNS resolvers that fail to resolve a domain name that
+          contains a DNAME redirection. However, the failure rate
+          of slightly lower than 3% for the control URL indicates
+          that the failure rate for the DNAME construct lies within
+          the bounds of error within the experimental framework.
+          We conclude that there is no evidence of a consistent
+          failure on the part of deployed DNS resolvers to correctly
+          resolve a DNAME construct.</t>
+
+        <t>This experiment was conducted by Geoff Huston and George
+          Michaelson.</t>
+      </section>
+    </section>
+
+    <section title="Acknowledgements" numbered="no">
+      <t>The authors acknowledge the valuable contributions of Bob
+        Harold and other participants in the DNSOP working group
+        in the preparation of this document.</t>
+    </section>
+  </back>
+</rfc>

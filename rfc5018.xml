@@ -1,0 +1,427 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc rfcedstyle="yes" ?>
+<?rfc toc="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="no" ?>
+
+<rfc number="5018" category="std">
+<front>
+    <title abbrev="BFCP">
+       Connection Establishment in the Binary Floor Control Protocol (BFCP)
+    </title>
+    <author initials="G." surname="Camarillo" fullname="Gonzalo Camarillo">
+      <organization>Ericsson</organization>
+      <address>
+	<postal>
+          <street>Hirsalantie 11</street>
+	  <code>02420</code>
+	  <city>Jorvas</city>
+	  <country>Finland</country>
+ 	</postal>
+	<email>Gonzalo.Camarillo@ericsson.com</email>
+      </address>
+    </author>
+
+    <date month="September" year="2007" />
+
+    <area>RAI</area>
+    <workgroup>XCON Working Group</workgroup>
+    <keyword>bfcp</keyword>
+    <keyword>floor</keyword>
+    <keyword>control</keyword>
+    <abstract>
+    <t>
+This document specifies how a Binary Floor Control Protocol (BFCP)
+client establishes a connection to a BFCP floor control server outside
+the context of an offer/answer exchange. Client and server
+authentication are based on Transport Layer Security (TLS).
+    </t>
+    </abstract>
+</front>
+<middle>
+
+<section title="Introduction"
+anchor="sec-intro">
+<t>
+As discussed in the BFCP (Binary Floor Control Protocol) specification
+<xref target="RFC4582"/>, a given BFCP client needs a set of data in
+order to establish a BFCP connection to a floor control server. These
+data include the transport address of the server, the conference
+identifier, and the user identifier.
+</t>
+<t>
+Once a client obtains this information, it needs to establish a BFCP
+connection to the floor control server. The way this connection is
+established depends on the context of the client and the floor control
+server. How to establish such a connection in the context of an SDP
+(Session Description Protocol) <xref target="RFC4566"/> offer/answer
+<xref target="RFC3264"/> exchange between a client and a floor control
+server is specified in RFC 4583 <xref target="RFC4583"/>. This
+document specifies how a client establishes a connection to a floor
+control server outside the context of an SDP offer/answer exchange.
+</t>
+<t>
+BFCP entities establishing a connection outside an SDP offer/answer
+exchange need different authentication mechanisms than entities using
+offer/answer exchanges. This is because offer/answer exchanges provide
+parties with an initial integrity-protected channel that clients and
+floor control servers can use to exchange the fingerprints of their
+self-signed certificates. Outside the offer/answer model, such a
+channel is not typically available. This document specifies how to
+authenticate clients using PSK (Pre-Shared Key)-TLS (Transport Layer
+Security) <xref target="RFC4279"/> and how to authenticate servers
+using server certificates.
+</t>
+
+</section>
+
+<section title="Terminology" anchor="sec:terminology">
+<t>
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+document are to be interpreted as described in <xref
+target="RFC2119"/>.
+</t>
+</section>
+
+<section title="TCP Connection Establishment"
+anchor="sec-tcp">
+<t>
+As stated in <xref target="sec-intro"/>, a given BFCP client needs a
+set of data in order to establish a BFCP connection to a floor control
+server. These data include the transport address of the server, the
+conference identifier, and the user identifier. It is outside the
+scope of this document to specify how a client obtains this
+information. This document assumes that the client obtains this
+information using an out-of-band method.
+</t>
+<t>
+Once the client has the transport address (i.e., IP address and port)
+of the floor control server, it initiates a TCP connection towards
+it. That is, the client performs an active TCP open.
+</t>
+<t>
+If the client is provided with the floor control server's host name
+instead of with its IP address, the client MUST perform a DNS lookup
+in order to resolve the host name into an IP address. Clients
+eventually perform an A or AAAA DNS lookup (or both) on the host name.
+</t>
+<t>
+In order to translate the target to the corresponding set of IP
+addresses, IPv6-only or dual-stack clients MUST use name resolution
+functions that implement the Source and Destination Address Selection
+algorithms specified in <xref target="RFC3484"/>.  (On many hosts that
+support IPv6, APIs like getaddrinfo() provide this functionality and
+subsume existing APIs like gethostbyname().)
+</t>
+<t>
+The advantage of the additional complexity is that this technique will
+output an ordered list of IPv6/IPv4 destination addresses based on the
+relative merits of the corresponding source/destination pairs.  This
+will result in the selection of a preferred destination address.
+However, the Source and Destination Selection algorithms of <xref
+target="RFC3484"/> are dependent on broad operating system support and
+uniform implementation of the application programming interfaces that
+implement this behavior.
+</t>
+<t>
+<list style="hanging">
+<t>
+Developers should carefully consider the issues described by Roy et
+al. <xref target="RFC4943"/> with respect to
+address resolution delays and address selection rules.  For example,
+implementations of getaddrinfo() may return address lists containing
+IPv6 global addresses at the top of the list and IPv4 addresses at the
+bottom, even when the host is only configured with an IPv6 local scope
+(e.g., link-local) and an IPv4 address.  This will, of course,
+introduce a delay in completing the connection.
+</t>
+</list>
+</t>
+<t>
+The BFCP specification <xref target="RFC4582"/> describes a number of
+situations when the TCP connection between a client and the floor
+control server needs to be reestablished.  However, that specification
+does not describe the reestablishment process because this process
+depends on how the connection was established in the first place.
+</t>
+<t>
+When the existing TCP connection is closed following the rules in
+<xref target="RFC4582"/>, the client SHOULD reestablish the connection
+towards the floor control server.  If a TCP connection cannot deliver
+a BFCP message from the client to the floor control server and times
+out, the client SHOULD reestablish the TCP connection.
+</t>
+
+</section>
+
+<?rfc needLines="10"?>
+<section title="TLS Usage"
+anchor="sec-tls">
+<t>
+<xref target="RFC4582"/> requires that all BFCP entities implement TLS
+<xref target="RFC4346"/> and recommends that they use it in all their
+connections.  TLS provides integrity and replay protection, and
+optional confidentiality. The floor control server MUST always act as
+the TLS server.
+</t>
+<t>
+A floor control server that receives a BFCP message over TCP (no TLS)
+SHOULD request the use of TLS by generating an Error message with an
+Error code with a value of 9 (Use TLS).
+</t>
+</section>
+
+<section title="Authentication"
+anchor="sec-auth">
+<t>
+BFCP supports client authentication based on pre-shared secrets and
+server authentication based on server certificates.
+</t>
+
+<section title="Certificate-Based Server Authentication"
+anchor="sec-auth-server">
+<t>
+At TLS connection establishment, the floor control server MUST present
+its certificate to the client. The certificate provided at the
+TLS level MUST either be directly signed by one of the other party's
+trust anchors or be validated using a certification path that
+terminates at one of the other party's trust anchors <xref
+target="RFC3280"/>.
+</t>
+<t>
+A client establishing a connection to a server knows the server's
+host name or IP address. If the client knows the server's host name, the
+client MUST check it against the server's identity as presented in the
+server's Certificate message, in order to prevent man-in-the-middle
+attacks.
+</t>
+<t>
+If a subjectAltName extension of type dNSName is present, that MUST be
+used as the identity. Otherwise, the (most specific) Common Name field
+in the Subject field of the certificate MUST be used. Although the use
+of the Common Name is existing practice, it is deprecated and
+Certification Authorities are encouraged to use the subjectAltName
+instead.
+</t>
+<t>
+Matching is performed using the matching rules specified by <xref
+target="RFC3280"/>.  If more than one identity of a given type is
+present in the certificate (e.g., more than one dNSName name), a match
+in any one of the set is considered acceptable. Names in Common Name
+fields may contain the wildcard character *, which is considered to
+match any single domain name component or component fragment (e.g.,
+*.a.com matches foo.a.com but not bar.foo.a.com. f*.com matches
+foo.com but not bar.com).
+</t>
+
+<?rfc needLines="4"?>
+<t>
+If the client does not know the server's host name and contacts the
+server directly using the server's IP address, the iPAddress
+subjectAltName must be present in the certificate and must exactly
+match the IP address known to the client.
+</t>
+<t>
+If the host name or IP address known to the client does not match the
+identity in the certificate, user-oriented clients MUST either notify
+the user (clients MAY give the user the opportunity to continue with
+the connection in any case) or terminate the connection with a bad
+certificate error. Automated clients MUST log the error to an
+appropriate audit log (if available) and SHOULD terminate the
+connection (with a bad certificate error).  Automated clients MAY
+provide a configuration setting that disables this check, but MUST
+provide a setting that enables it.
+</t>
+
+</section>
+
+
+<section title="Client Authentication Based on a Pre-Shared Secret"
+anchor="sec-auth-secret">
+<t>
+Client authentication is based on a pre-shared secret between client
+and server. Authentication is performed using PSK-TLS <xref
+target="RFC4279"/>.
+</t>
+<t>
+The BFCP specification mandates support for the
+TLS_RSA_WITH_AES_128_CBC_SHA ciphersuite. Additionally, clients and
+servers supporting this specification MUST support the
+TLS_RSA_PSK_WITH_AES_128_CBC_SHA ciphersuite as well.
+</t>
+
+</section>
+
+</section>
+
+
+<section title="Security Considerations" anchor="sec:security">
+<t>
+Client and server authentication as specified in this document are
+based on the use of TLS. Therefore, it is strongly RECOMMENDED that
+TLS with non-null encryption is always used. Clients and floor control
+servers MAY use other security mechanisms as long as they provide
+similar security properties (i.e., replay and integrity protection,
+confidentiality, and client and server authentication).
+</t>
+<t>
+TLS PSK simply relies on a pre-shared key without specifying the
+nature of the key. In practice, such keys have two sources: text
+passwords and randomly generated binary keys. When keys are derived
+from passwords, TLS PSK mode is subject to offline dictionary
+attacks. In DHE (Diffie-Hellman Exchange) and RSA modes, an attacker who can mount a single
+man-in-the-middle attack on a client/server pair can then mount a
+dictionary attack on the password. In modes without DHE or RSA, an
+attacker who can record communications between a client/server pair
+can mount a dictionary attack on the password. Accordingly, it is
+RECOMMENDED that, where possible, clients use certificate-based server
+authentication ciphersuites with password-derived PSKs in order to
+defend against dictionary attacks.
+</t>
+
+<?rfc needLines="3"?>
+<t>
+In addition, passwords SHOULD be chosen with enough entropy to provide
+some protection against dictionary attacks.  Because the entropy of
+text varies dramatically and is generally far less than that of an
+equivalent random bitstring, no hard and fast rules about password
+length are possible.  However, in general passwords SHOULD be chosen
+to be at least 8 characters and selected from a pool containing both
+upper and lower case, numbers, and special keyboard characters (note
+that an 8-character ASCII password has a maximum entropy of 56 bits
+and in general far lower).  FIPS PUB 112 <xref target="PUB112"/>
+provides some guidance on the relevant issues.  If possible,
+passphrases are preferable to passwords.  It is RECOMMENDED that
+implementations support, at minimum, 16-character passwords or
+passphrases. In addition, a cooperating
+client and server pair MAY choose to derive the TLS PSK shared key
+from the passphrase via a password-based key derivation function such
+as PBKDF2 <xref target="RFC2898"/>. Because such key derivation
+functions may incorporate iteration functions for key strengthening,
+they provide some additional protection against dictionary attacks by
+increasing the amount of work that the attacker must perform.
+</t>
+<t>
+When the keys are randomly generated and of sufficient length,
+dictionary attacks are not effective because such keys are highly
+unlikely to be in the attacker's dictionary. Where possible, keys
+SHOULD be generated using a strong random number generator as
+specified in <xref target="RFC4086"/>. A minimum key length of 80 bits
+SHOULD be used.
+</t>
+<t>
+The remainder of this section analyzes some of the threats against
+BFCP and how they are addressed.
+</t>
+<t>
+An attacker may attempt to impersonate a client (a floor participant
+or a floor chair) in order to generate forged floor requests or to
+grant or deny existing floor requests. Client impersonation is avoided
+by using TLS. The floor control server assumes that attackers cannot
+hijack TLS connections from authenticated clients.
+</t>
+<t>
+An attacker may attempt to impersonate a floor control server. A
+successful attacker would be able to make clients think that they hold
+a particular floor so that they would try to access a resource (e.g.,
+sending media) without having legitimate rights to access it. Floor
+control server impersonation is avoided by having floor control
+servers present their server certificates at TLS connection
+establishment time.
+</t>
+<t>
+Attackers may attempt to modify messages exchanged by a client and a
+floor control server. The integrity protection provided by TLS
+connections prevents this attack.
+</t>
+
+<?rfc needLines="5"?>
+<t>
+Attackers may attempt to pick messages from the network to get access
+to confidential information between the floor control server and a
+client (e.g., why a floor request was denied). TLS confidentiality
+prevents this attack. Therefore, it is RECOMMENDED that TLS is used
+with a non-null encryption algorithm.
+</t>
+
+</section>
+
+
+<section title="Acknowledgments" anchor="sec:acks">
+<t>
+Sam Hartman, David Black, Karim El Malki, and Vijay Gurbani provided
+useful comments on this document. Eric Rescorla performed a detailed
+security analysis of this document.
+</t>
+</section>
+
+</middle>
+<back>
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2119" ?>
+      <?rfc include="reference.RFC.3264" ?>
+      <?rfc include="reference.RFC.3280" ?>
+      <?rfc include="reference.RFC.3484" ?>
+      <?rfc include="reference.RFC.4086" ?>
+      <?rfc include="reference.RFC.4279" ?>
+      <?rfc include="reference.RFC.4346" ?>
+      <?rfc include="reference.RFC.4566" ?>
+      <?rfc include="reference.RFC.4582" ?>
+      <?rfc include="reference.RFC.4583" ?>
+
+  <reference anchor="PUB112">
+        <front>
+            <title>Password Usage</title>
+            <author surname="National Institute of Standards and Technology (NIST)">
+            </author>
+    
+            <date month="May" year="1985" />
+        </front>
+        <seriesInfo name="FIPS PUB" value="112" />
+    </reference>
+
+    </references>
+
+    <references title="Informative References">
+
+      <?rfc include="reference.RFC.2898" ?>
+
+<reference anchor='RFC4943'>
+<front>
+<title>IPv6 Neighbor Discovery On-Link Assumption Considered Harmful</title>
+
+<author initials='S' surname='Roy' fullname='Sebastien  Roy'>
+    <organization />
+</author>
+<author initials='A' surname='Durand'>
+    <organization />
+</author>
+<author initials='J' surname='Paugh'>
+    <organization />
+</author>
+
+<date month='September' year='2007' />
+
+<abstract><t>This document describes the historical and background information behind the removal of the "on-link assumption" from the conceptual host sending algorithm defined in Neighbor Discovery for IP Version 6 (IPv6). According to the algorithm as originally described, when a host's default router list is empty, the host assumes that all destinations are on-link. This is particularly problematic with IPv6-capable nodes that do not have off-link IPv6 connectivity (e.g., no default router). This document describes how making this assumption causes problems, and describes how these problems outweigh the benefits of this part of the conceptual sending algorithm.</t></abstract>
+
+</front>
+
+<seriesInfo name='RFC' value='4943' />
+
+</reference>
+
+
+    </references>
+
+  </back>
+
+</rfc>
+
+
+<!--  LocalWords:  xref PPR PPA SAA RTA RTR LIR LIA CDATA
+ -->
+

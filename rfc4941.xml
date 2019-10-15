@@ -1,0 +1,1431 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc rfcedstyle="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+
+<rfc number="4941" obsoletes="3041" category="std">
+
+  <front>
+    <title abbrev="Privacy Extensions to Autoconf">Privacy
+    Extensions for Stateless Address Autoconfiguration in
+    IPv6</title>
+    <author initials="T.N." surname="Narten"
+    fullname="Thomas Narten">
+      <organization>IBM Corporation</organization>
+      <address>
+        <postal>
+          <street>P.O. Box 12195</street>
+          <city>Research Triangle Park</city>
+          <region>NC</region>
+          <country>USA</country>
+        </postal>
+        <email>narten@us.ibm.com</email>
+      </address>
+    </author>
+    <author initials="R.D." surname="Draves"
+    fullname="Richard Draves">
+      <organization>Microsoft Research</organization>
+      <address>
+        <postal>
+          <street>One Microsoft Way</street>
+          <city>Redmond</city>
+          <region>WA</region>
+          <country>USA</country>
+        </postal>
+        <email>richdr@microsoft.com</email>
+      </address>
+    </author>
+    <author initials="S.K." surname="Krishnan"
+    fullname="Suresh Krishnan">
+      <organization>Ericsson Research</organization>
+      <address>
+        <postal>
+          <street>8400 Decarie Blvd.</street>
+          <city>Town of Mount Royal</city>
+          <region>QC</region>
+          <country>Canada</country>
+        </postal>
+        <email>suresh.krishnan@ericsson.com</email>
+      </address>
+    </author>
+    <date month="September" year="2007" />
+
+    <area>Internet</area>
+    <workgroup>IPv6 Working Group</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in
+the title) for use on http://www.rfc-editor.org/search.html. -->
+
+<keyword>privacy</keyword>
+<keyword>anonymity</keyword> 
+<keyword>unlinkability</keyword>
+<keyword>crypto-based address changing</keyword>
+
+
+    <abstract>
+      <t>Nodes use IPv6 stateless address autoconfiguration to
+      generate addresses using a combination of locally available
+      information and information advertised by routers. Addresses
+      are formed by combining network prefixes with an interface
+      identifier. On an interface that contains an embedded IEEE
+      Identifier, the interface identifier is typically derived
+      from it. On other interface types, the interface identifier
+      is generated through other means, for example, via random
+      number generation. This document describes an extension to
+      IPv6 stateless address autoconfiguration for interfaces whose
+      interface identifier is derived from an IEEE identifier. Use
+      of the extension causes nodes to generate global scope
+      addresses from interface identifiers that change over time,
+      even in cases where the interface contains an embedded IEEE
+      identifier. Changing the interface identifier (and the global
+      scope addresses generated from it) over time makes it more
+      difficult for eavesdroppers and other information collectors
+      to identify when different addresses used in different
+      transactions actually correspond to the same node.</t>
+    </abstract>
+  </front>
+  <middle>
+    <section anchor="intro" title="Introduction">
+      <t>Stateless address autoconfiguration 
+      <xref target='ADDRCONF' /> defines how an IPv6 node generates
+      addresses without the need for a Dynamic Host Configuration Protocol for IPv6 (DHCPv6) server. Some types of
+      network interfaces come with an embedded IEEE Identifier
+      (i.e., a link-layer MAC address), and in those cases,
+      stateless address autoconfiguration uses the IEEE identifier
+      to generate a 64-bit interface identifier 
+      <xref target='ADDRARCH' />. By design, the interface
+      identifier is likely to be globally unique when generated in
+      this fashion. The interface identifier is in turn appended to
+      a prefix to form a 128&nbhy;bit IPv6 address. Note that an IPv6
+      identifier does not necessarily have to be 64 bits in length,
+      but the algorithm specified in this document is targeted
+      towards 64-bit interface identifiers.</t>
+      <t>All nodes combine interface identifiers (whether derived
+      from an IEEE identifier or generated through some other
+      technique) with the reserved link-local prefix to generate
+      link-local addresses for their attached interfaces.
+      Additional addresses can then be created by combining
+      prefixes advertised in Router Advertisements via Neighbor
+      Discovery 
+      <xref target='DISCOVERY' /> with the interface identifier.</t>
+      <t>Not all nodes and interfaces contain IEEE identifiers. In
+      such cases, an interface identifier is generated through some
+      other means (e.g., at random), and the resultant interface
+      identifier may not be globally unique and may also change
+      over time. The focus of this document is on addresses derived
+      from IEEE identifiers because tracking of individual
+      devices, the concern being addressed here, is possible only
+      in those cases where the interface identifier is globally
+      unique and non-changing. The rest of this document assumes
+      that IEEE identifiers are being used, but the techniques
+      described may also apply to interfaces with other types of
+      globally unique and/or persistent identifiers.</t>
+      <t>This document discusses concerns associated with the
+      embedding of non-changing interface identifiers within IPv6
+      addresses and describes extensions to stateless address
+      autoconfiguration that can help mitigate those concerns for
+      individual users and in environments where such concerns are
+      significant. 
+      <xref target='SECTION2' /> provides background information on
+      the issue. 
+      <xref target='SECTION3' /> describes a procedure for
+      generating alternate interface identifiers and global scope
+      addresses. 
+      <xref target='SECTION4' /> discusses implications of changing
+      interface identifiers. The term "global scope addresses" is
+      used in this document to collectively refer to "Global
+      unicast addresses" as defined in 
+      <xref target='ADDRARCH' /> and "Unique local addresses" as
+      defined in 
+      <xref target='ULA' />.
+</t>
+   <vspace blankLines="100" />
+
+      <section title="Conventions Used in This Document">
+        <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+        "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY",
+        and "OPTIONAL" in this document are to be interpreted as
+        described in 
+        <xref target='RFC2119' />.</t>
+      </section>
+      <section title="Problem Statement">
+        <t>Addresses generated using stateless address
+        autoconfiguration 
+        <xref target='ADDRCONF' /> contain an embedded interface
+        identifier, which remains constant over time. Anytime a
+        fixed identifier is used in multiple contexts, it becomes
+        possible to correlate seemingly unrelated activity using
+        this identifier.</t>
+        <t>The correlation can be performed by 
+        <list style="symbols">
+          <t>An attacker who is in the path between the node in
+          question and the peer(s) to which it is communicating, and
+          who can
+          view the IPv6 addresses present in the datagrams.</t>
+          <t>An attacker who can access the communication logs of
+          the peers with which the node has communicated.</t>
+        </list></t>
+        <t>Since the identifier is embedded within the IPv6
+        address, which is a fundamental requirement of
+        communication, it cannot be easily hidden. This document
+        proposes a solution to this issue by generating interface
+        identifiers that vary over time.</t>
+        <t>Note that an attacker, who is on path, may be able to
+        perform significant correlation based on 
+        <list style="symbols">
+          <t>The payload contents of the packets on the wire</t>
+          <t>The characteristics of the packets such as packet size
+          and timing</t>
+        </list>Use of temporary addresses will not prevent such
+        payload-based correlation.</t>
+      </section>
+    </section>
+    <vspace blankLines="100" />
+
+   <section anchor="SECTION2" title="Background">
+      <t>This section discusses the problem in more detail,
+      provides context for evaluating the significance of the
+      concerns in specific environments and makes comparisons with
+      existing practices.</t>
+      <section title="Extended Use of the Same Identifier">
+        <t>The use of a non-changing interface identifier to form
+        addresses is a specific instance of the more general case
+        where a constant identifier is reused over an extended
+        period of time and in multiple independent activities.
+        Any time the same identifier is used in multiple contexts,
+        it becomes possible for that identifier to be used to
+        correlate seemingly unrelated activity. For example, a
+        network sniffer placed strategically on a link across which
+        all traffic to/from a particular host crosses could keep
+        track of which destinations a node communicated with and at
+        what times. Such information can in some cases be used to
+        infer things, such as what hours an employee was active,
+        when someone is at home, etc. Although it might appear that
+        changing an address regularly in such environments would be
+        desirable to lessen privacy concerns, it should be noted
+        that the network prefix portion of an address also serves
+        as a constant identifier. All nodes at, say, a home, would
+        have the same network prefix, which identifies the
+        topological location of those nodes. This has implications
+        for privacy, though not at the same granularity as the
+        concern that this document addresses. Specifically, all
+        nodes within a home could be grouped together for the
+        purposes of collecting information. If the network contains
+        a very small number of nodes, say, just one, changing just
+        the interface identifier will not enhance privacy at all,
+        since the prefix serves as a constant identifier.</t>
+        <t>One of the requirements for correlating seemingly
+        unrelated activities is the use (and reuse) of an
+        identifier that is recognizable over time within different
+        contexts. IP addresses provide one obvious example, but
+        there are more. Many nodes also have DNS names associated
+        with their addresses, in which case the DNS name serves as
+        a similar identifier. Although the DNS name associated with
+        an address is more work to obtain (it may require a DNS
+        query), the information is often readily available. In such
+        cases, changing the address on a machine over time would do
+        little to address the concerns raised in this document,
+        unless the DNS name is changed as well (see 
+        <xref target='SECTION4' />).</t>
+        <t>Web browsers and servers typically exchange "cookies"
+        with each other 
+        <xref target='COOKIES' />. Cookies allow Web servers to
+        correlate a current activity with a previous activity. One
+        common usage is to send back targeted advertising to a user
+        by using the cookie supplied by the browser to identify
+        what earlier queries had been made (e.g., for what type of
+        information). Based on the earlier queries, advertisements
+        can be targeted to match the (assumed) interests of the
+        end user.</t>
+        <t>The use of a constant identifier within an address is of
+        special concern because addresses are a fundamental
+        requirement of communication and cannot easily be hidden
+        from eavesdroppers and other parties. Even when higher
+        layers encrypt their payloads, addresses in packet headers
+        appear in the clear. Consequently, if a mobile host (e.g.,
+        laptop) accessed the network from several different
+        locations, an eavesdropper might be able to track the
+        movement of that mobile host from place to place, even if
+        the upper layer payloads were encrypted.</t>
+      </section>
+      <section title="Address Usage in IPv4 Today">
+        <t>Addresses used in today's Internet are often
+        non-changing in practice for extended periods of time. In
+        an increasing number of sites, addresses are assigned
+        statically and typically change infrequently. Over the last
+        few years, sites have begun moving away from static
+        allocation to dynamic allocation via DHCP 
+        <xref target='DHCP' />. In theory, the address a client
+        gets via DHCP can change over time, but in practice servers
+        often return the same address to the same client (unless
+        addresses are in such short supply that they are reused
+        immediately by a different node when they become free).
+        Thus, even within sites using DHCP, clients frequently end
+        up using the same address for weeks to months at a
+        time.</t>
+        <t>For home users accessing the Internet over dial-up lines,
+        the situation is generally different. Such users do not
+        have permanent connections and are often assigned temporary
+        addresses each time they connect to their ISP.
+        Consequently, the addresses they use change frequently over
+        time and are shared among a number of different users.
+        Thus, an address does not reliably identify a particular
+        device over time spans of more than a few minutes.</t>
+        <t>A more interesting case concerns always-on connections
+        (e.g., cable modems, ISDN, DSL, etc.) that result in a home
+        site using the same address for extended periods of time.
+        This is a scenario that is just starting to become common
+        in IPv4 and promises to become more of a concern as
+        always-on Internet connectivity becomes widely
+        available.</t>
+        <t>Finally, it should be noted that nodes that need a
+        (non-changing) DNS name generally have static addresses
+        assigned to them to simplify the configuration of DNS
+        servers. Although Dynamic DNS 
+        <xref target='DDNS' /> can be used to update the DNS
+        dynamically, it may not always be available depending on
+        the administrative policy. In addition, changing an address
+        but keeping the same DNS name does not really address the
+        underlying concern, since the DNS name becomes a
+        non-changing identifier. Servers generally require a DNS
+        name (so clients can connect to them), and clients often do
+        as well (e.g., some servers refuse to speak to a client
+        whose address cannot be mapped into a DNS name that also
+        maps back into the same address). 
+        <xref target='SECTION4' /> describes one approach to this
+        issue.</t>
+      </section>
+      <section title="The Concern with IPv6 Addresses">
+        <t>The division of IPv6 addresses into distinct topology
+        and interface identifier portions raises an issue new to
+        IPv6 in that a fixed portion of an IPv6 address (i.e., the
+        interface identifier) can contain an identifier that
+        remains constant even when the topology portion of an
+        address changes (e.g., as the result of connecting to a
+        different part of the Internet). In IPv4, when an address
+        changes, the entire address (including the local part of
+        the address) usually changes. It is this new issue that
+        this document addresses.</t>
+        <t>If addresses are generated from an interface identifier,
+        a home user's address could contain an interface identifier
+        that remains the same from one dial-up session to the next,
+        even if the rest of the address changes. The way PPP is
+        used today, however, PPP servers typically unilaterally
+        inform the client what address they are to use (i.e., the
+        client doesn't generate one on its own). This practice, if
+        continued in IPv6, would avoid the concerns that are the
+        focus of this document.</t>
+        <t>A more troubling case concerns mobile devices (e.g.,
+        laptops, PDAs, etc.) that move topologically within the
+        Internet. Whenever they move, they form new addresses for
+        their current topological point of attachment. This is
+        typified today by the "road warrior" who has Internet
+        connectivity both at home and at the office. While the
+        node's address changes as it moves, the interface
+        identifier contained within the address remains the same
+        (when derived from an IEEE Identifier). In such cases, the
+        interface identifier can be used to track the movement and
+        usage of a particular machine. For example, a server that
+        logs usage information together with source addresses, is
+        also recording the interface identifier since it is
+        embedded within an address. Consequently, any data-mining
+        technique that correlates activity based on addresses could
+        easily be extended to do the same using the interface
+        identifier. This is of particular concern with the expected
+        proliferation of next-generation network-connected devices
+        (e.g., PDAs, cell phones, etc.) in which large numbers of
+        devices are, in practice, associated with individual users
+        (i.e., not shared). Thus, the interface identifier embedded
+        within an address could be used to track activities of an
+        individual, even as they move topologically within the
+        Internet.</t>
+        <t>In summary, IPv6 addresses on a given interface
+        generated via Stateless Autoconfiguration contain the same
+        interface identifier, regardless of where within the
+        Internet the device connects. This facilitates the tracking
+        of individual devices (and thus, potentially, users). The
+        purpose of this document is to define mechanisms that
+        eliminate this issue in those situations where it is a
+        concern.</t>
+      </section>
+      <section title="Possible Approaches">
+        <t>One way to avoid having a static non-changing address is
+        to use DHCPv6 <xref target='DHCPV6' /> for obtaining addresses. 
+	Section 12 of 
+        <xref target='DHCPV6' /> discusses the use of DHCPv6 for the
+        assignment and management of "temporary addresses", which
+        are never renewed and provide the same property of
+        temporary addresses described in this document with regards
+        to the privacy concern.</t>
+        <t>Another approach, compatible with the stateless address
+        autoconfiguration architecture, would be to change the
+        interface identifier portion of an address over time and
+        generate new addresses from the interface identifier for
+        some address scopes. Changing the interface identifier can
+        make it more difficult to look at the IP addresses in
+        independent transactions and identify which ones actually
+        correspond to the same node, both in the case where the
+        routing prefix portion of an address changes and when it
+        does not.</t>
+        <t>Many machines function as both clients and servers. In
+        such cases, the machine would need a DNS name for its use
+        as a server. Whether the address stays fixed or changes has
+        little privacy implication since the DNS name remains
+        constant and serves as a constant identifier. When acting
+        as a client (e.g., initiating communication), however, such
+        a machine may want to vary the addresses it uses. In such
+        environments, one may need multiple addresses: a "public"
+        (i.e., non-secret) server address, registered in the DNS,
+        that is used to accept incoming connection requests from
+        other machines, and a "temporary" address used to shield
+        the identity of the client when it initiates communication.
+        These two cases are roughly analogous to telephone numbers
+        and caller ID, where a user may list their telephone number
+        in the public phone book, but disable the display of its
+        number via caller ID when initiating calls.</t>
+        <t>To make it difficult to make educated guesses as to
+        whether two different interface identifiers belong to the
+        same node, the algorithm for generating alternate
+        identifiers must include input that has an unpredictable
+        component from the perspective of the outside entities that
+        are collecting information. Picking identifiers from a
+        pseudo-random sequence suffices, so long as the specific
+        sequence cannot be determined by an outsider examining
+        information that is readily available or easily
+        determinable (e.g., by examining packet contents). This
+        document proposes the generation of a pseudo-random
+        sequence of interface identifiers via an MD5 hash.
+        Periodically, the next interface identifier in the sequence
+        is generated, a new set of temporary addresses is created,
+        and the previous temporary addresses are deprecated to
+        discourage their further use. The precise pseudo-random
+        sequence depends on both a random component and the
+        globally unique interface identifier (when available), to
+        increase the likelihood that different nodes generate
+        different sequences.</t>
+      </section>
+    </section>
+    <section anchor="SECTION3" title="Protocol Description">
+      <t>The goal of this section is to define procedures that:</t>
+      <t>
+        <list style="numbers">
+          <t>Do not result in any changes to the basic behavior of
+          addresses generated via stateless address
+          autoconfiguration 
+          <xref target='ADDRCONF' />.</t>
+          <t>Create additional addresses based on a random
+          interface identifier for the purpose of initiating
+          outgoing sessions. These "random" or temporary addresses
+          would be used for a short period of time (hours to days)
+          and would then be deprecated. Deprecated address can
+          continue to be used for already established connections,
+          but are not used to initiate new connections. New
+          temporary addresses are generated periodically to replace
+          temporary addresses that expire, with the exact time
+          between address generation a matter of local policy.</t>
+          <t>Produce a sequence of temporary global scope addresses
+          from a sequence of interface identifiers that appear to
+          be random in the sense that it is difficult for an
+          outside observer to predict a future address (or
+          identifier) based on a current one, and it is difficult to
+          determine previous addresses (or identifiers) knowing
+          only the present one.</t>
+          <t>By default, generate a set of addresses from the same
+          (randomized) interface identifier, one address for each
+          prefix for which a global address has been generated via
+          stateless address autoconfiguration. Using the same
+          interface identifier to generate a set of temporary
+          addresses reduces the number of IP multicast groups a
+          host must join. Nodes join the solicited-node multicast
+          address for each unicast address they support, and
+          solicited-node addresses are dependent only on the
+          low-order bits of the corresponding address. This default
+          behavior was made to address the concern that a node
+          that joins a large number of multicast groups may be
+          required to put its interface into promiscuous mode,
+          resulting in possible reduced performance. 
+          <vspace blankLines="1" />A node highly concerned about
+          privacy MAY use different interface identifiers on
+          different prefixes, resulting in a set of global
+          addresses that cannot be easily tied to each other. For
+          example a node MAY create different interface identifiers
+          I1, I2, and I3 for use with different prefixes P1, P2, and
+          P3 on the same interface.</t>
+        </list>
+      </t>
+      <section title="Assumptions">
+        <t>The following algorithm assumes that each interface
+        maintains an associated randomized interface identifier.
+        When temporary addresses are generated, the current value
+        of the associated randomized interface identifier is used.
+        While the same identifier can be used to create more than
+        one temporary address, the value SHOULD change over time as
+        described in 
+        <xref target='REGEN' />.</t>
+        <t>The algorithm also assumes that, for a given temporary
+        address, an implementation can determine the prefix from
+        which it was generated. When a temporary address is
+        deprecated, a new temporary address is generated. The
+        specific valid and preferred lifetimes for the new address
+        are dependent on the corresponding lifetime values set for
+        the prefix from which it was generated.</t>
+        <t>Finally, this document assumes that when a node
+        initiates outgoing communication, temporary addresses can
+        be given preference over public addresses when the device
+        is configured to do so. 
+        <xref target='ADDR_SELECT' /> mandates implementations to
+        provide a mechanism, which allows an application to
+        configure its preference for temporary addresses over
+        public addresses. It also allows for an implementation to
+        prefer temporary addresses by default, so that the
+        connections initiated by the node can use temporary
+        addresses without requiring application-specific
+        enablement. This document also assumes that an API will
+        exist that allows individual applications to indicate
+        whether they prefer to use temporary or public addresses
+        and override the system defaults. 
+</t>
+      </section>
+      <section anchor="SECTION3_2"
+      title="Generation of Randomized Interface Identifiers">
+        <t>We describe two approaches for the generation and
+        maintenance of the randomized interface identifier. The
+        first assumes the presence of stable storage that can be
+        used to record state history for use as input into the next
+        iteration of the algorithm across system restarts. A second
+        approach addresses the case where stable storage is
+        unavailable and there is a need to generate randomized
+        interface identifiers without previous state.</t>
+
+      <?rfc needLines="5" ?>
+        <t>The random interface identifier generation algorithm, as
+        described in this document, uses MD5 as the hash algorithm.
+        The node MAY use another algorithm instead of MD5 to
+        produce the random interface identifier.</t>
+        <section title="When Stable Storage Is Present">
+          <t>The following algorithm assumes the presence of a
+          64-bit "history value" that is used as input in
+          generating a randomized interface identifier. The very
+          first time the system boots (i.e., out-of-the- box), a
+          random value SHOULD be generated using techniques that
+          help ensure the initial value is hard to guess 
+          <xref target='RANDOM' />. Whenever a new interface
+          identifier is generated, a value generated by the
+          computation is saved in the history value for the next
+          iteration of the algorithm.</t>
+          <t>A randomized interface identifier is created as
+          follows:</t>
+          <t>
+            <list style="numbers">
+              <t>Take the history value from the previous iteration
+              of this algorithm (or a random value if there is no
+              previous value) and append to it the interface
+              identifier generated as described in 
+              <xref target='ADDRARCH' />.</t>
+              <t>Compute the MD5 message digest 
+              <xref target='MD5' /> over the quantity created in the
+              previous step.</t>
+              <t>Take the leftmost 64-bits of the MD5 digest and
+              set bit 6 (the leftmost bit is numbered 0) to zero.
+              This creates an interface identifier with the
+              universal/local bit indicating local significance
+              only.</t>
+              <t>Compare the generated identifier against a list of
+              reserved interface identifiers and to those already
+              assigned to an address on the local device. In the
+              event that an unacceptable identifier has been
+              generated, the node MUST restart the process at step
+              1 above, using the rightmost 64 bits of the MD5
+              digest obtained in step 2 in place of the history
+              value in step 1.</t>
+              <t>Save the generated identifier as the associated
+              randomized interface identifier.</t>
+              <t>Take the rightmost 64-bits of the MD5 digest
+              computed in step 2) and save them in stable storage
+              as the history value to be used in the next iteration
+              of the algorithm.</t>
+            </list>
+          </t>
+
+      <?rfc needLines="5" ?>
+          <t>MD5 was chosen for convenience, and because its
+          particular properties were adequate to produce the
+          desired level of randomization. The node MAY use another
+          algorithm instead of MD5 to produce the random interface
+          identifier</t>
+          <t>In theory, generating successive randomized interface
+          identifiers using a history scheme as above has no
+          advantages over generating them at random. In practice,
+          however, generating truly random numbers can be tricky.
+          Use of a history value is intended to avoid the
+          particular scenario where two nodes generate the same
+          randomized interface identifier, both detect the
+          situation via DAD, but then proceed to generate identical
+          randomized interface identifiers via the same (flawed)
+          random number generation algorithm. The above algorithm
+          avoids this problem by having the interface identifier
+          (which will often be globally unique) used in the
+          calculation that generates subsequent randomized
+          interface identifiers. Thus, if two nodes happen to
+          generate the same randomized interface identifier, they
+          should generate different ones on the follow-up
+          attempt.</t>
+        </section>
+        <section title="In The Absence of Stable Storage">
+          <t>In the absence of stable storage, no history value
+          will be available across system restarts to generate a
+          pseudo-random sequence of interface identifiers.
+          Consequently, the initial history value used above SHOULD
+          be generated at random. A number of techniques might be
+          appropriate. Consult 
+          <xref target='RANDOM' /> for suggestions on good sources
+          for obtaining random numbers. Note that even though
+          machines may not have stable storage for storing a
+          history value, they will in many cases have configuration
+          information that differs from one machine to another
+          (e.g., user identity, security keys, serial numbers,
+          etc.). One approach to generating a random initial
+          history value in such cases is to use the configuration
+          information to generate some data bits (which may remain
+          constant for the life of the machine, but will vary from
+          one machine to another), append some random data, and
+          compute the MD5 digest as before. 
+       </t>
+        </section>
+        <section title="Alternate Approaches">
+          <t>Note that there are other approaches to generate
+          random interface identifiers, albeit with different goals
+          and applicability. One such approach is Cryptographically
+          Generated Addresses (CGAs) 
+          <xref target='CGA' />, which generate a random interface
+          identifier based on the public key of the node. The goal
+          of CGAs is to prove ownership of an address and to
+          prevent spoofing and stealing of existing IPv6 addresses.
+          They are used for securing neighbor discovery using 
+          <xref target='SEND' />. The CGA random interface
+          identifier generation algorithm may not be suitable for
+          privacy addresses because of the following properties:</t>
+          <t>
+            <list style="symbols">
+              <t>It requires the node to have a public key. This
+              means that the node can still be identified by its
+              public key.</t>
+              <t>The random interface identifier process is
+              computationally intensive and hence discourages
+              frequent regeneration.</t>
+            </list>
+          </t>
+        </section>
+      </section>
+      <section anchor="SECTION3_3"
+      title="Generating Temporary Addresses">
+        <t>
+        <xref target='ADDRCONF' /> describes the steps for
+        generating a link-local address when an interface becomes
+        enabled as well as the steps for generating addresses for
+        other scopes. This document extends 
+        <xref target='ADDRCONF' /> as follows. When processing a
+        Router Advertisement with a Prefix Information option
+        carrying a global scope prefix for the purposes of address
+        autoconfiguration (i.e., the A bit is set), the node MUST
+        perform the following steps:</t>
+        <t>
+          <list style="numbers">
+            <t>Process the Prefix Information Option as defined in 
+            <xref target='ADDRCONF' />, either creating a new
+            public address or adjusting the lifetimes of existing
+            addresses, both public and temporary. If a received
+            option will extend the lifetime of a public address,
+            the lifetimes of temporary addresses should be
+            extended, subject to the overall constraint that no
+            temporary addresses should ever remain "valid" or
+            "preferred" for a time longer than (TEMP_VALID_LIFETIME) or (TEMP_PREFERRED_LIFETIME -
+            DESYNC_FACTOR), respectively. The configuration
+            variables TEMP_VALID_LIFETIME and
+            TEMP_PREFERRED_LIFETIME correspond to approximate
+            target lifetimes for temporary addresses.</t>
+            <t>One way an implementation can satisfy the above
+            constraints is to associate with each temporary address
+            a creation time (called CREATION_TIME) that indicates
+            the time at which the address was created. When
+            updating the preferred lifetime of an existing
+            temporary address, it would be set to expire at
+            whichever time is earlier: the time indicated by the
+            received lifetime or (CREATION_TIME +
+            TEMP_PREFERRED_LIFETIME - DESYNC_FACTOR). A similar
+            approach can be used with the valid lifetime.</t>
+            <t>When a new public address is created as described in
+            
+            <xref target='ADDRCONF' />, the node SHOULD also create
+            a new temporary address.</t>
+            <t>When creating a temporary address, the lifetime
+            values MUST be derived from the corresponding prefix as
+            follows: 
+            <list style="symbols">
+              <t>Its Valid Lifetime is the lower of the Valid
+              Lifetime of the public address or
+              TEMP_VALID_LIFETIME.</t>
+
+      <?rfc needLines="5" ?>
+              <t>Its Preferred Lifetime is the lower of the
+              Preferred Lifetime of the public address or
+              TEMP_PREFERRED_LIFETIME - DESYNC_FACTOR.</t>
+            </list></t>
+            <t>A temporary address is created only if this
+            calculated Preferred Lifetime is greater than
+            REGEN_ADVANCE time units. In particular, an
+            implementation MUST NOT create a temporary address with
+            a zero Preferred Lifetime.</t>
+            <t>New temporary addresses MUST be created by appending
+            the interface's current randomized interface identifier
+            to the prefix that was received.</t>
+            <t>The node MUST perform duplicate address detection
+            (DAD) on the generated temporary address. If DAD
+            indicates the address is already in use, the node MUST
+            generate a new randomized interface identifier as
+            described in 
+            <xref target='SECTION3_2' /> above, and repeat the
+            previous steps as appropriate up to TEMP_IDGEN_RETRIES
+            times. If after TEMP_IDGEN_RETRIES consecutive attempts
+            no non-unique address was generated, the node MUST log
+            a system error and MUST NOT attempt to generate
+            temporary addresses for that interface. Note that DAD
+            MUST be performed on every unicast address generated
+            from this randomized interface identifier.</t>
+          </list>
+        </t>
+      </section>
+      <section anchor="SECTION3_4"
+      title="Expiration of Temporary Addresses">
+        <t>When a temporary address becomes deprecated, a new one
+        MUST be generated. This is done by repeating the actions
+        described in 
+        <xref target='SECTION3_3' />, starting at step 3). Note
+        that, except for the transient period when a temporary
+        address is being regenerated, in normal operation at most
+        one temporary address per prefix should be in a
+        non-deprecated state at any given time on a given
+        interface. Note that if a temporary address becomes
+        deprecated as result of processing a Prefix Information
+        Option with a zero Preferred Lifetime, then a new temporary
+        address MUST NOT be generated. To ensure that a preferred
+        temporary address is always available, a new temporary
+        address SHOULD be regenerated slightly before its
+        predecessor is deprecated. This is to allow sufficient time
+        to avoid race conditions in the case where generating a new
+        temporary address is not instantaneous, such as when
+        duplicate address detection must be run. The node SHOULD
+        start the address regeneration process REGEN_ADVANCE time
+        units before a temporary address would actually be
+        deprecated.</t>
+        <t>As an optional optimization, an implementation MAY
+        remove a deprecated temporary address that is not in use by
+        applications or upper layers as detailed in 
+        <xref target='SECTION6' />.</t>
+      </section>
+
+      <?rfc needLines="6" ?>
+      <section anchor="REGEN"
+      title="Regeneration of Randomized Interface Identifiers">
+        <t>The frequency at which temporary addresses changes
+        depends on how a device is being used (e.g., how frequently
+        it initiates new communication) and the concerns of the end
+        user. The most egregious privacy concerns appear to involve
+        addresses used for long periods of time (weeks to months to
+        years). The more frequently an address changes, the less
+        feasible collecting or coordinating information keyed on
+        interface identifiers becomes. Moreover, the cost of
+        collecting information and attempting to correlate it based
+        on interface identifiers will only be justified if enough
+        addresses contain non-changing identifiers to make it
+        worthwhile. Thus, having large numbers of clients change
+        their address on a daily or weekly basis is likely to be
+        sufficient to alleviate most privacy concerns.</t>
+        <t>There are also client costs associated with having a
+        large number of addresses associated with a node (e.g., in
+        doing address lookups, the need to join many multicast
+        groups, etc.). Thus, changing addresses frequently (e.g.,
+        every few minutes) may have performance implications.</t>
+        <t>Nodes following this specification SHOULD generate new
+        temporary addresses on a periodic basis. This can be
+        achieved automatically by generating a new randomized
+        interface identifier at least once every
+        (TEMP_PREFERRED_LIFETIME - REGEN_ADVANCE - DESYNC_FACTOR)
+        time units. As described above, generating a new temporary
+        address REGEN_ADVANCE time units before a temporary address
+        becomes deprecated produces addresses with a preferred
+        lifetime no larger than TEMP_PREFERRED_LIFETIME. The value
+        DESYNC_FACTOR is a random value (different for each client)
+        that ensures that clients don't synchronize with each other
+        and generate new addresses at exactly the same time. When
+        the preferred lifetime expires, a new temporary address
+        MUST be generated using the new randomized interface
+        identifier.</t>
+        <t>Because the precise frequency at which it is appropriate
+        to generate new addresses varies from one environment to
+        another, implementations SHOULD provide end users with the
+        ability to change the frequency at which addresses are
+        regenerated. The default value is given in
+        TEMP_PREFERRED_LIFETIME and is one day. In addition, the
+        exact time at which to invalidate a temporary address
+        depends on how applications are used by end users. Thus,
+        the suggested default value of one week
+        (TEMP_VALID_LIFETIME) may not be appropriate in all
+        environments. Implementations SHOULD provide end users with
+        the ability to override both of these default values.</t>
+
+      <?rfc needLines="3" ?>
+        <t>Finally, when an interface connects to a new link, a new
+        randomized interface identifier SHOULD be generated
+        immediately together with a new set of temporary addresses.
+        If a device moves from one ethernet to another, generating
+        a new set of temporary addresses from a different
+        randomized interface identifier ensures that the device
+        uses different randomized interface identifiers for the
+        temporary addresses associated with the two links, making
+        it more difficult to correlate addresses from the two
+        different links as being from the same node. The node MAY
+        follow any process available to it, to determine that the
+        link change has occurred. One such process is described by
+        Detecting Network Attachment 
+        <xref target='DNA' />.</t>
+      </section>
+      <section title="Deployment Considerations">
+        <t>Devices implementing this specification MUST provide a
+        way for the end user to explicitly enable or disable the
+        use of temporary addresses. In addition, a site might wish
+        to disable the use of temporary addresses in order to
+        simplify network debugging and operations. Consequently,
+        implementations SHOULD provide a way for trusted system
+        administrators to enable or disable the use of temporary
+        addresses.</t>
+        <t>Additionally, sites might wish to selectively enable or
+        disable the use of temporary addresses for some prefixes.
+        For example, a site might wish to disable temporary address
+        generation for "Unique local" 
+        <xref target='ULA' /> prefixes while still generating
+        temporary addresses for all other global prefixes. Another
+        site might wish to enable temporary address generation only
+        for the prefixes 2001::/16 and 2002::/16, while disabling it
+        for all other prefixes. To support this behavior,
+        implementations SHOULD provide a way to enable and disable
+        generation of temporary addresses for specific prefix
+        subranges. This per-prefix setting SHOULD override the
+        global settings on the node with respect to the specified
+        prefix subranges. Note that the pre-prefix setting can be
+        applied at any granularity, and not necessarily on a per-subnet basis.</t>
+
+        <t>The use of temporary addresses may cause unexpected
+        difficulties with some applications. As described below,
+        some servers refuse to accept communications from clients
+        for which they cannot map the IP address into a DNS name.
+        In addition, some applications may not behave robustly if
+        temporary addresses are used and an address expires before
+        the application has terminated, or if it opens multiple
+        sessions, but expects them to all use the same addresses.
+        Consequently, the use of temporary addresses SHOULD be
+        disabled by default in order to minimize potential
+        disruptions. Individual applications, which have specific
+        knowledge about the normal duration of connections, MAY
+        override this as appropriate.</t>
+
+      <?rfc needLines="3" ?>
+        <t>If a very small number of nodes (say, only one) use a
+        given prefix for extended periods of time, just changing
+        the interface identifier part of the address may not be
+        sufficient to ensure privacy, since the prefix acts as a
+        constant identifier. The procedures described in this
+        document are most effective when the prefix is reasonably
+        non static or is used by a fairly large number of
+        nodes.</t>
+      </section>
+    </section>
+    <section anchor="SECTION4"
+    title="Implications of Changing Interface Identifiers">
+      <t>The IPv6 addressing architecture goes to some lengths to
+      ensure that interface identifiers are likely to be globally
+      unique where easy to do so. The widespread use of temporary
+      addresses may result in a significant fraction of Internet
+      traffic not using addresses in which the interface identifier
+      portion is globally unique. Consequently, usage of the
+      algorithms in this document may complicate providing such a
+      future flexibility, if global uniqueness is necessary.</t>
+      <t>The desires of protecting individual privacy versus the
+      desire to effectively maintain and debug a network can
+      conflict with each other. Having clients use addresses that
+      change over time will make it more difficult to track down
+      and isolate operational problems. For example, when looking
+      at packet traces, it could become more difficult to determine
+      whether one is seeing behavior caused by a single errant
+      machine, or by a number of them.</t>
+      <t>Some servers refuse to grant access to clients for which
+      no DNS name exists. That is, they perform a DNS PTR query to
+      determine the DNS name, and may then also perform an AAAA
+      query on the returned name to verify that the returned DNS
+      name maps back into the address being used. Consequently,
+      clients not properly registered in the DNS may be unable to
+      access some services. As noted earlier, however, a node's DNS
+      name (if non-changing) serves as a constant identifier. The
+      wide deployment of the extension described in this document
+      could challenge the practice of inverse-DNS-based
+      "authentication," which has little validity, though it is
+      widely implemented. In order to meet server challenges, nodes
+      could register temporary addresses in the DNS using random
+      names (for example, a string version of the random address
+      itself).</t>
+      <t>Use of the extensions defined in this document may
+      complicate debugging and other operational troubleshooting
+      activities. Consequently, it may be site policy that
+      temporary addresses should not be used. Consequently,
+      implementations MUST provide a method for the end user or
+      trusted administrator to override the use of temporary
+      addresses.</t>
+    </section>
+
+   <vspace blankLines="100" />
+    <section title="Defined Constants">
+      <t>Constants defined in this document include:</t>
+      <t>TEMP_VALID_LIFETIME -- Default value: 1 week. Users should
+      be able to override the default value.</t>
+      <t>TEMP_PREFERRED_LIFETIME -- Default value: 1 day. Users
+      should be able to override the default value.</t>
+      <t>REGEN_ADVANCE -- 5 seconds</t>
+      <t>MAX_DESYNC_FACTOR -- 10 minutes. Upper bound on
+      DESYNC_FACTOR.</t>
+      <t>DESYNC_FACTOR -- A random value within the range 0 -
+      MAX_DESYNC_FACTOR. It is computed once at system start
+      (rather than each time it is used) and must never be greater
+      than (TEMP_VALID_LIFETIME - REGEN_ADVANCE).</t>
+      <t>TEMP_IDGEN_RETRIES -- Default value: 3</t>
+    </section>
+    <section anchor="SECTION6" title="Future Work">
+      <t>An implementation might want to keep track of which
+      addresses are being used by upper layers so as to be able to
+      remove a deprecated temporary address from internal data
+      structures once no upper layer protocols are using it (but
+      not before). This is in contrast to current approaches where
+      addresses are removed from an interface when they become
+      invalid 
+      <xref target='ADDRCONF' />, independent of whether or not
+      upper layer protocols are still using them. For TCP
+      connections, such information is available in control blocks.
+      For UDP-based applications, it may be the case that only the
+      applications have knowledge about what addresses are actually
+      in use. Consequently, an implementation generally will need
+      to use heuristics in deciding when an address is no longer in
+      use.</t>
+      <t>The determination as to whether to use public versus
+      temporary addresses can in some cases only be made by an
+      application. For example, some applications may always want
+      to use temporary addresses, while others may want to use them
+      only in some circumstances or not at all. Suitable API
+      extensions will likely need to be developed to enable
+      individual applications to indicate with sufficient
+      granularity their needs with regards to the use of temporary
+      addresses. Recommendations on DNS practices to avoid the
+      problem described in 
+      <xref target='SECTION4' /> when reverse DNS lookups fail may
+      be needed. 
+      <xref target='DNSOP' /> contains a more detailed discussion of
+      the DNS-related issues.</t>
+      <t>While this document discusses ways of obscuring a user's
+      permanent IP address, the method described is believed to be
+      ineffective against sophisticated forms of traffic analysis.
+      To increase effectiveness, one may need to consider use of
+      more advanced techniques, such as Onion Routing 
+      <xref target='ONION' />.</t>
+    </section>
+
+      <?rfc needLines="6" ?>
+    <section title="Security Considerations">
+      <t>Ingress filtering has been and is being deployed as a
+      means of preventing the use of spoofed source addresses in
+      Distributed Denial of Service (DDoS) attacks. In a network
+      with a large number of nodes, new temporary addresses are
+      created at a fairly high rate. This might make it difficult
+      for ingress filtering mechanisms to distinguish between
+      legitimately changing temporary addresses and spoofed source
+      addresses, which are "in-prefix" (using a topologically
+      correct prefix and non-existent interface ID). This can be
+      addressed by using access control mechanisms on a per-address
+      basis on the network egress point.</t>
+    </section>
+    <section title="Significant Changes from RFC 3041">
+      <t>This section summarizes the changes in this document
+      relative to RFC 3041 that an implementer of RFC 3041 should
+      be aware of. 
+      <list style="numbers">
+        <t>Excluded certain interface identifiers from the range of
+        acceptable interface identifiers. Interface IDs such as
+        those for reserved anycast addresses <xref target='RFC2526'/>, etc.</t>
+<!-- [rfced] What text is missing here? What RFC number was intended?
+Please clarify. -->
+<!-- [suresh] it was RFC2526. I have added the reference -->
+        <t>Added a configuration knob that provides the end user
+        with a way to enable or disable the use of temporary
+        addresses on a per-prefix basis.</t>
+        <t>Added a check for denial of service attacks using low
+        valid lifetimes in router advertisements.</t>
+        <t>DAD is now run on all temporary addresses, not just the
+        first one generated from an interface identifier.</t>
+        <t>Changed the default setting for usage of temporary
+        addresses to be disabled.</t>
+        <t>The node is now allowed to generate different interface
+        identifiers for different prefixes, if it so desires.</t>
+        <t>The algorithm used for generating random interface
+        identifiers is no longer restricted to just MD5.</t>
+        <t>Reduced default number of retries to 3 and added a
+        configuration variable.</t>
+<!-- [rfced] Original text was "Reduced default number of retries to from"
+Please check that 3 is correct. In 3041, do not see a default number
+        of retries. -->
+<!-- [suresh] 3 is correct. RFC3041 did contain a default number of retries (5) though it was not obvious in the sense that the word "retry" was not used. You can find it in section 3.3 step 5 of RFC3041. -->
+
+        <t>Router advertisement (RA) processing
+	  algorithm is no longer included in the
+        document, and is replaced by a reference to [ADDRCONF].</t>
+      </list></t>
+    </section>
+
+<section title="Acknowledgments">
+      <t>Rich Draves and Thomas Narten were the authors of RFC
+3041. They would like to acknowledge the contributions of the ipv6
+working group and, in particular, Ran Atkinson, Matt Crawford, Steve
+Deering, Allison Mankin, and Peter Bieringer.</t>  
+
+<t>Suresh Krishnan was the sole author of this version of the document. He would like to acknowledge the contributions of the ipv6 working group and, in particular, Jari Arkko, Pekka Nikander, Pekka Savola, Francis Dupont, Brian Haberman, Tatuya Jinmei, and Margaret Wasserman for their detailed comments.</t>
+    </section>
+
+  </middle>
+  <back>
+    <references title="Normative References">
+      <reference anchor='RFC2119'>
+        <front>
+          <title>Key words for use in RFCs to Indicate Requirement
+          Levels</title>
+          <author initials='S.' surname='Bradner'
+          fullname='Scott Bradner'>
+            <organization>Harvard University</organization>
+          </author>
+          <date month='March' year='1997' />
+        </front>
+        <seriesInfo name='RFC' value='2119' />
+        <format type='TXT' octets='4723'
+        target='ftp://ftp.isi.edu/in-notes/rfc2119.txt' />
+      </reference>
+
+<!-- 3513 obs. by 4291 -->
+      <reference anchor='ADDRARCH'>
+
+<front>
+<title>IP Version 6 Addressing Architecture</title>
+<author initials='R.' surname='Hinden' fullname='R. Hinden'>
+<organization /></author>
+<author initials='S.' surname='Deering' fullname='S. Deering'>
+<organization /></author>
+<date year='2006' month='February' />
+<abstract>
+<t>This specification defines the addressing architecture of the IP Version 6 (IPv6) protocol. The document includes the IPv6 addressing model, text representations of IPv6 addresses, definition of IPv6 unicast addresses, anycast addresses, and multicast addresses, and an IPv6 node's required addresses.&lt;/t>&lt;t> This document obsoletes RFC 3513, "IP Version 6 Addressing Architecture". [STANDARDS TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='4291' />
+<format type='TXT' octets='52897' target='ftp://ftp.isi.edu/in-notes/rfc4291.txt' />
+</reference>
+
+
+<!-- 2462bis is RFC 4862 -->
+      <reference anchor='ADDRCONF'>
+        <front>
+          <title>IPv6 Stateless Address Autoconfiguration</title>
+          <author initials='S' surname='Thomson'
+          fullname='Susan Thomson'>
+            <organization />
+          </author>
+          <author initials='T' surname='Narten'
+          fullname='Thomas Narten'>
+            <organization />
+          </author>
+          <author initials='T' surname='Jinmei'
+          fullname='Tatuya Jinmei'>
+            <organization />
+          </author>
+          <date month='September' year='2007' />
+          <abstract>
+            <t>This document specifies the steps a host takes in
+            deciding how to autoconfigure its interfaces in IP
+            version 6. The autoconfiguration process includes
+            generating a link-local address, generating global
+            addresses via stateless address autoconfiguration, and
+            the Duplicate Address Detection procedure to verify the
+            uniqueness of the addresses on a link.</t>
+          </abstract>
+        </front>
+        <seriesInfo name='RFC' value='4862' />
+      </reference>
+
+<!-- 2461bis becomes RFC 4861 -->
+      <reference anchor='DISCOVERY'>
+        <front>
+          <title>Neighbor Discovery for IP version 6 (IPv6)</title>
+          <author initials='T.' surname='Narten'
+          fullname='Thomas Narten'>
+            <organization>IBM Corporation</organization>
+          </author>
+          <author initials='E.' surname='Nordmark'
+          fullname='Erik Nordmark'>
+            <organization>Sun Microsystems, Inc.</organization>
+          </author>
+          <author initials='W.A.' surname='Simpson'
+          fullname='William Allen Simpson'>
+            <organization>Daydreamer, Computer Systems Consulting
+            Services</organization>
+          </author>
+          <author initials='H.' surname='Soliman'
+          fullname='Hesham Soliman'>
+            <organization />
+          </author>
+          <date month='September' year='2007' />
+          <abstract>
+            <t>This document specifies the Neighbor Discovery
+            protocol for IP Version 6. IPv6 nodes on the same link
+            use Neighbor Discovery to discover each other's
+            presence, to determine each other's link-layer
+            addresses, to find routers and to maintain reachability
+            information about the paths to active neighbors.</t>
+          </abstract>
+        </front>
+        <seriesInfo name='RFC' value='4861' />
+      </reference>
+
+      <reference anchor='MD5'>
+        <front>
+          <title abbrev='MD5 Message-Digest Algorithm'>The MD5
+          Message-Digest Algorithm</title>
+          <author initials='R.' surname='Rivest'
+          fullname='Ronald L. Rivest'>
+            <organization>Massachusetts Institute of Technology,
+            (MIT) Laboratory for Computer Science</organization>
+          </author>
+          <date year='1992' month='April' />
+        </front>
+        <seriesInfo name='RFC' value='1321' />
+        <format type='TXT' octets='35222'
+        target='ftp://ftp.isi.edu/in-notes/rfc1321.txt' />
+      </reference>
+    </references>
+
+    <references title="Informative References">
+      <reference anchor='ADDR_SELECT'>
+        <front>
+          <title>Default Address Selection for Internet Protocol
+          version 6 (IPv6)</title>
+          <author initials='R.' surname='Draves'
+          fullname='R. Draves'>
+            <organization />
+          </author>
+          <date year='2003' month='February' />
+        </front>
+        <seriesInfo name='RFC' value='3484' />
+        <format type='TXT' octets='55076'
+        target='ftp://ftp.isi.edu/in-notes/rfc3484.txt' />
+      </reference>
+      <reference anchor='COOKIES'>
+        <front>
+          <title>HTTP State Management Mechanism</title>
+          <author initials='D. M.' surname='Kristol'
+          fullname='David M. Kristol'>
+            <organization>Bell Laboratories, Lucent
+            Technologies</organization>
+          </author>
+          <author initials='L.' surname='Montulli'
+          fullname='Lou Montulli'>
+            <organization>Epinions.com, Inc.</organization>
+          </author>
+          <date year='2000' month='October'></date>
+        </front>
+        <seriesInfo name='RFC' value='2965' />
+        <format type='TXT' octets='56176'
+        target='ftp://ftp.isi.edu/in-notes/rfc2965.txt' />
+        <format type='HTML' octets='75139'
+        target='http://xml.resource.org/public/rfc/html/rfc2965.html' />
+        <format type='XML' octets='59572'
+        target='http://xml.resource.org/public/rfc/xml/rfc2965.xml' />
+      </reference>
+
+      <?rfc needLines="5" ?>
+      <reference anchor='DHCP'>
+        <front>
+          <title abbrev='DHCP'>Dynamic Host Configuration
+          Protocol</title>
+          <author initials='R.' surname='Droms'
+          fullname='Ralph Droms'>
+            <organization>Computer Science
+            Department</organization>
+          </author>
+          <date year='1997' month='March' />
+          <area>Internet</area>
+          <keyword>DHCP</keyword>
+          <keyword>configuration</keyword>
+          <keyword>dynamic host configuration protocol</keyword>
+          <keyword>host</keyword>
+        </front>
+        <seriesInfo name='RFC' value='2131' />
+        <format type='TXT' octets='113738'
+        target='ftp://ftp.isi.edu/in-notes/rfc2131.txt' />
+        <format type='HTML' octets='134047'
+        target='http://xml.resource.org/public/rfc/html/rfc2131.html' />
+        <format type='XML' octets='117914'
+        target='http://xml.resource.org/public/rfc/xml/rfc2131.xml' />
+      </reference>
+      <reference anchor='DHCPV6'>
+        <front>
+          <title>Dynamic Host Configuration Protocol for IPv6
+          (DHCPv6)</title>
+          <author initials='R.' surname='Droms'
+          fullname='R. Droms'>
+            <organization />
+          </author>
+          <author initials='J.' surname='Bound'
+          fullname='J. Bound'>
+            <organization />
+          </author>
+          <author initials='B.' surname='Volz' fullname='B. Volz'>
+            <organization />
+          </author>
+          <author initials='T.' surname='Lemon'
+          fullname='T. Lemon'>
+            <organization />
+          </author>
+          <author initials='C.' surname='Perkins'
+          fullname='C. Perkins'>
+            <organization />
+          </author>
+          <author initials='M.' surname='Carney'
+          fullname='M. Carney'>
+            <organization />
+          </author>
+          <date year='2003' month='July' />
+        </front>
+        <seriesInfo name='RFC' value='3315' />
+        <format type='TXT' octets='231402'
+        target='ftp://ftp.isi.edu/in-notes/rfc3315.txt' />
+      </reference>
+      <reference anchor='DDNS'>
+        <front>
+          <title abbrev='DNS Update'>Dynamic Updates in the Domain
+          Name System (DNS UPDATE)</title>
+          <author initials='P.' surname='Vixie'
+          fullname='Paul Vixie'>
+            <organization>Internet Software
+            Consortium</organization>
+          </author>
+          <author initials='S.' surname='Thomson'
+          fullname='Susan Thomson'>
+            <organization>Bellcore</organization>
+          </author>
+          <author initials='Y.' surname='Rekhter'
+          fullname='Yakov Rekhter'>
+            <organization>Cisco Systems</organization>
+          </author>
+          <author initials='J.' surname='Bound'
+          fullname='Jim Bound'>
+            <organization>Digital Equipment Corp.</organization>
+          </author>
+          <date year='1997' month='April' />
+          <area>Applications</area>
+          <keyword>domain name</keyword>
+          <keyword>domain name system</keyword>
+        </front>
+        <seriesInfo name='RFC' value='2136' />
+        <format type='TXT' octets='56354'
+        target='ftp://ftp.isi.edu/in-notes/rfc2136.txt' />
+        <format type='HTML' octets='67722'
+        target='http://xml.resource.org/public/rfc/html/rfc2136.html' />
+        <format type='XML' octets='54818'
+        target='http://xml.resource.org/public/rfc/xml/rfc2136.xml' />
+      </reference>
+
+<!-- 1750 obs. by 4086 -->
+      <reference anchor='RANDOM'>
+<front>
+<title>Randomness Requirements for Security</title>
+<author initials='D.' surname='Eastlake' fullname='D. Eastlake'>
+<organization /></author>
+<author initials='J.' surname='Schiller' fullname='J. Schiller'>
+<organization /></author>
+<author initials='S.' surname='Crocker' fullname='S. Crocker'>
+<organization /></author>
+<date year='2005' month='June' />
+<abstract>
+<t>Security systems are built on strong cryptographic algorithms that foil pattern analysis attempts. However, the security of these systems is dependent on generating secret quantities for passwords, cryptographic keys, and similar quantities. The use of pseudo-random processes to generate secret quantities can result in pseudo-security. A sophisticated attacker may find it easier to reproduce the environment that produced the secret quantities and to search the resulting small set of possibilities than to locate the quantities in the whole of the potential number space.&lt;/t>&lt;t> Choosing random quantities to foil a resourceful and motivated adversary is surprisingly difficult. This document points out many pitfalls in using poor entropy sources or traditional pseudo-random number generation techniques for generating such quantities. It recommends the use of truly random hardware techniques and shows that the existing hardware on many systems can be used for this purpose. It provides suggestions to ameliorate the problem when a hardware solution is not available, and it gives examples of how large such quantities need to be for some applications. This document specifies an Internet Best Current Practices for the Internet Community, and requests discussion and suggestions for improvements.</t></abstract></front>
+
+<seriesInfo name='BCP' value='106' />
+<seriesInfo name='RFC' value='4086' />
+<format type='TXT' octets='114321' target='ftp://ftp.isi.edu/in-notes/rfc4086.txt' />
+</reference>
+
+      <reference anchor='ONION'>
+        <front>
+          <title>Proxies for Anonymous Routing</title>
+          <author initials='MGR' surname='Reed'
+          fullname='Michael G. Reed'>
+            <organization />
+          </author>
+          <author initials='PFS' surname='Syverson'
+          fullname='Paul F. Syverson'>
+            <organization />
+          </author>
+          <author initials='DMG' surname='Goldschlag'
+          fullname='David M. Goldschlag'>
+            <organization />
+          </author>
+          <date month='December' year='1996' />
+        </front>
+        <seriesInfo name=''
+        value='Proceedings of the 12th Annual Computer Security Applications Conference, San Diego, CA' />
+      </reference>
+
+      <?rfc needLines="5" ?>
+      <reference anchor='CGA'>
+        <front>
+          <title>Cryptographically Generated Addresses
+          (CGA)</title>
+          <author initials='T.' surname='Aura' fullname='T. Aura'>
+            <organization />
+          </author>
+          <date year='2005' month='March' />
+        </front>
+        <seriesInfo name='RFC' value='3972' />
+        <format type='TXT' octets='51473'
+        target='ftp://ftp.isi.edu/in-notes/rfc3972.txt' />
+      </reference>
+
+<!-- 4135 (draft-ietf-dna-goals) -->
+      <reference anchor='DNA'>
+<front>
+<title>Goals of Detecting Network Attachment in IPv6</title>
+<author initials='JH.' surname='Choi' fullname='JH. Choi'>
+<organization /></author>
+<author initials='G.' surname='Daley' fullname='G. Daley'>
+<organization /></author>
+<date year='2005' month='August' />
+<abstract>
+<t>When a host establishes a new link-layer connection, it may or may not have a valid IP configuration for Internet connectivity. The host may check for link change (i.e., determine whether a link change has occurred), and then, based on the result, it can automatically decide whether its IP configuration is still valid. During link identity detection, the host may also collect necessary information to initiate a new IP configuration if the IP subnet has changed. In this memo, this procedure is called Detecting Network Attachment (DNA). DNA schemes should be precise, sufficiently fast, secure, and of limited signaling. This memo provides information for the Internet community.</t></abstract></front>
+
+<seriesInfo name='RFC' value='4135' />
+
+<format type='TXT' octets='20518' target='ftp://ftp.isi.edu/in-notes/rfc4135.txt' />
+</reference>
+
+
+<!-- 4193 (draft-ietf-ipv6-unique-local-addr) -->
+      <reference anchor='ULA'>
+<front>
+<title>Unique Local IPv6 Unicast Addresses</title>
+<author initials='R.' surname='Hinden' fullname='R. Hinden'>
+<organization /></author>
+<author initials='B.' surname='Haberman' fullname='B. Haberman'>
+<organization /></author>
+<date year='2005' month='October' />
+<abstract>
+<t>This document defines an IPv6 unicast address format that is globally unique and is intended for local communications, usually inside of a site. These addresses are not expected to be routable on the global Internet. [STANDARDS TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='4193' />
+
+<format type='TXT' octets='35908' target='ftp://ftp.isi.edu/in-notes/rfc4193.txt' />
+</reference>
+
+
+<!-- 4472 (draft-ietf-dnsop-ipv6-dns-issues) -->
+      <reference anchor='DNSOP'>
+<front>
+<title>Operational Considerations and Issues with IPv6 DNS</title>
+<author initials='A.' surname='Durand' fullname='A. Durand'>
+<organization /></author>
+<author initials='J.' surname='Ihren' fullname='J. Ihren'>
+<organization /></author>
+<author initials='P.' surname='Savola' fullname='P. Savola'>
+<organization /></author>
+<date year='2006' month='April' />
+<abstract>
+<t>This memo presents operational considerations and issues with IPv6 Domain Name System (DNS), including a summary of special IPv6 addresses, documentation of known DNS implementation misbehavior, recommendations and considerations on how to perform DNS naming for service provisioning and for DNS resolver IPv6 support, considerations for DNS updates for both the forward and reverse trees, and miscellaneous issues. This memo is aimed to include a summary of information about IPv6 DNS considerations for those who have experience with IPv4 DNS. This memo provides information for the Internet community.</t></abstract></front>
+
+<seriesInfo name='RFC' value='4472' />
+<format type='TXT' octets='68882' target='ftp://ftp.isi.edu/in-notes/rfc4472.txt' />
+</reference>
+
+
+      <reference anchor='SEND'>
+        <front>
+          <title>SEcure Neighbor Discovery (SEND)</title>
+          <author initials='J.' surname='Arkko'
+          fullname='J. Arkko'>
+            <organization />
+          </author>
+          <author initials='J.' surname='Kempf'
+          fullname='J. Kempf'>
+            <organization />
+          </author>
+          <author initials='B.' surname='Zill' fullname='B. Zill'>
+            <organization />
+          </author>
+          <author initials='P.' surname='Nikander'
+          fullname='P. Nikander'>
+            <organization />
+          </author>
+          <date year='2005' month='March' />
+        </front>
+        <seriesInfo name='RFC' value='3971' />
+        <format type='TXT' octets='123372'
+        target='ftp://ftp.isi.edu/in-notes/rfc3971.txt' />
+      </reference>
+
+<reference anchor='RFC2526'>
+
+<front>
+<title>Reserved IPv6 Subnet Anycast Addresses</title>
+<author initials='D.' surname='Johnson' fullname='David B. Johnson'>
+<organization>Carnegie Mellon University</organization>
+<address>
+<postal>
+<street>Computer Science Department</street>
+<street>5000 Forbes Avenue</street>
+<city>Pittsburgh</city>
+<region>PA</region>
+<code>15213-3891</code>
+<country>US</country></postal>
+<phone>+1 412 268 7399</phone>
+<facsimile>+1 412 268 5576</facsimile>
+<email>dbj@cs.cmu.edu</email></address></author>
+<author initials='S.' surname='Deering' fullname='Stephen E. Deering'>
+<organization>Cisco Systems, Inc.</organization>
+<address>
+<postal>
+<street>170 West Tasman Drive</street>
+<city>San Jose</city>
+<region>CA</region>
+<code>95134-1706</code>
+<country>US</country></postal>
+<phone>+1 408 527 8213</phone>
+<facsimile>+1 408 527 8254</facsimile>
+<email>deering@cisco.com</email></address></author>
+<date year='1999' month='March' />
+<abstract>
+<t>The IP Version 6 addressing architecture defines an 'anycast' address as an IPv6 address that is assigned to one or more network interfaces (typically belonging to different nodes), with the property that a packet sent to an anycast address is routed to the 'nearest' interface having that address, according to the routing protocols' measure of distance. This document defines a set of reserved anycast addresses within each subnet prefix, and lists the initial allocation of these reserved subnet anycast addresses.</t></abstract></front>
+
+<seriesInfo name='RFC' value='2526' />
+<format type='TXT' octets='14555' target='ftp://ftp.isi.edu/in-notes/rfc2526.txt' />
+</reference>
+
+    </references>
+  </back>
+</rfc>
+<!--
+Local Variables:
+mode:xml
+End:
+=-->

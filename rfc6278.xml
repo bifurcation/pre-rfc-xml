@@ -1,0 +1,1244 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>         <!-- generate a table of contents -->
+<?rfc symrefs="yes"?>     <!-- use anchors instead of numbers for references -->
+<?rfc sortrefs="yes" ?>   <!-- alphabetize the references -->
+<?rfc compact="yes" ?>    <!-- conserve vertical whitespace -->
+<?rfc subcompact="no" ?> 
+<?rfc rfcedstyle="yes" ?>
+
+<rfc ipr='trust200902' number='6278' category="info" submissionType="IETF" consensus="yes">
+
+  <front>
+
+    <title abbrev="Static-Static ECDH in CMS">
+      Use of Static-Static Elliptic Curve Diffie-Hellman Key Agreement
+      in Cryptographic Message Syntax
+    </title>
+    
+    <author initials="J.C." surname="Herzog" 
+            fullname="Jonathan C. Herzog">
+      <organization>MIT Lincoln Laboratory</organization>
+      <address>
+        <postal>
+          <street>244 Wood St.</street>
+
+          <city>Lexington</city>
+          <region>MA</region>
+          <code>02144</code>
+          <country>USA</country>
+        </postal>
+        <email>jherzog@ll.mit.edu</email>
+
+      </address>
+    </author>
+
+    <author initials="R." surname="Khazan" 
+            fullname="Roger Khazan">
+      <organization>MIT Lincoln Laboratory</organization>
+      <address>
+        <postal>
+          <street>244 Wood St.</street>
+
+          <city>Lexington</city>
+          <region>MA</region>
+          <code>02144</code>
+          <country>USA</country>
+        </postal>
+        <email>rkh@ll.mit.edu</email>
+
+      </address>
+    </author>
+    
+    <date month='June' year='2011'/>
+
+    <area>Security</area>
+    
+    <keyword>set-key</keyword>
+    <keyword>group-key</keyword>
+
+    <abstract>
+      <t> This document describes how to use the 'static-static' Elliptic
+      Curve Diffie-Hellman key-agreement scheme (i.e., Elliptic Curve
+      Diffie-Hellman where both participants use static Diffie-Hellman
+      values) with the Cryptographic Message Syntax. In this form of
+      key agreement, the Diffie-Hellman values of both the sender and
+      receiver are long-term values contained in certificates.
+      </t>
+    </abstract>
+
+    <note title="Disclaimer">
+      <t>This work is sponsored by the United States Air Force under
+      Air Force Contract FA8721-05-C-0002.  Opinions, interpretations,
+      conclusions and recommendations are those of the authors and are
+      not necessarily endorsed by the United States Government.</t>
+    </note>
+
+  </front>
+
+  <middle>
+
+    <section anchor='intro' title='Introduction'>
+
+      <t>
+      This document describes how to use the static-static
+      Elliptic Curve Diffie-Hellman key-agreement scheme (i.e.,
+      Elliptic Curve Diffie-Hellman <xref target="RFC6090"/> where
+      both participants use static Diffie-Hellman values) in the
+      Cryptographic Message Syntax (CMS) <xref target="RFC5652"/>.
+      The CMS is a standard notation and representation for cryptographic
+      messages. The CMS uses ASN.1 notation <xref target="X.680"/> <xref
+      target="X.681"/> <xref target="X.682"/> <xref target="X.683"/>
+
+      to define a number of structures that carry both
+      cryptographically protected information and key-management
+      information regarding the keys used. Of particular interest here
+      are three structures:
+      <list style="symbols">
+        <t>
+          EnvelopedData, which holds encrypted (but not necessarily
+          authenticated) information <xref target="RFC5652"/>,
+        </t> 
+        <t>
+          AuthenticatedData, which holds authenticated (MACed)
+          information <xref target="RFC5652"/>, and
+        </t>
+        <t>
+          AuthEnvelopedData, which holds information protected by
+          authenticated encryption: a cryptographic scheme that
+          combines encryption and authentication <xref
+          target="RFC5083"/>.
+        </t> 
+      </list>
+
+      All three of these types share the same basic structure. First,
+      a fresh symmetric key is generated. This symmetric key has a
+      different name that reflects its usage in each of the three
+      structures. EnvelopedData uses a content-encryption key (CEK);
+      AuthenticatedData uses an authentication key; AuthEnvelopedData
+      uses a content-authenticated-encryption key. The originator uses
+      the symmetric key to cryptographically protect the content. The
+      symmetric key is then wrapped for each recipient; only the
+      intended recipient has access to the private keying material
+      necessary to unwrap the symmetric key. Once unwrapped, the
+      recipient uses the symmetric key to decrypt the content, check
+      the authenticity of the content, or both. The CMS supports several
+      different approaches to symmetric key wrapping, including:
+      <list style="symbols">
+        <t> 
+          key transport: the symmetric key is encrypted using the
+          public encryption key of some recipient,
+        </t>
+        <t>
+          key-encryption key: the symmetric key is encrypted using a
+          previously distributed symmetric key, and
+        </t>
+        <t>
+          key agreement: the symmetric key is encrypted using a
+          key-encryption key (KEK) created using a key-agreement
+          scheme and a key-derivation function (KDF).
+        </t>
+
+      </list>
+      One such key-agreement scheme is the Diffie-Hellman algorithm
+      <xref target="RFC2631"/>, which uses group theory to produce a
+      value known only to its two participants. In this case, the
+      participants are the originator and one of the recipients. Each
+      participant produces a private value and a public value, and
+      each participant can produce the shared secret value from their
+      own private value and their counterpart's public value. There
+      are some variations on the basic algorithm:
+      <list style="symbols">
+        <t>
+          The basic algorithm typically uses the group 'Z mod p',
+          meaning the set of integers modulo some prime p. One can
+          also use an elliptic curve group, which allows for shorter
+          messages.
+        </t>
+        <t>
+          Over elliptic curve groups, the standard algorithm can be
+          extended to incorporate the 'cofactor' of the group. This
+          method, called 'cofactor Elliptic Curve Diffie-Hellman'
+          <xref target="SP800-56A"/> can prevent certain attacks
+          possible in the elliptic curve group.
+        </t>
+
+        <t>
+          The participants can generate fresh new public/private
+          values (called ephemeral values) for each run of the
+          algorithm, or they can re-use long-term values (called static
+          values). Ephemeral values add randomness to the resulting
+          private value, while static values can be embedded in
+          certificates. The two participants do not need to use the
+          same kind of value: either participant can use either type.
+          In 'ephemeral-static' Diffie-Hellman, for example, the
+          sender uses an ephemeral public/private pair value while the
+          receiver uses a static pair. In 'static-static'
+          Diffie-Hellman, on the other hand, both participants use
+          static pairs. (Receivers cannot use ephemeral values in this
+          setting, and so we ignore ephemeral-ephemeral and
+          static-ephemeral Diffie-Hellman in this document.)
+        </t>
+      </list>
+
+      <t>
+      Several of these variations are already described in existing
+      CMS standards; for example, <xref target="RFC3370"/> contains
+      the conventions for using ephemeral-static and static-static
+      Diffie-Hellman over the 'basic' (Z mod p) group. <xref
+      target="RFC5753"/> contains the conventions for using
+      ephemeral-static Diffie-Hellman over elliptic curves (both
+      standard and cofactor methods). It does not, however, contain
+      conventions for using either method of static-static Elliptic
+      Curve Diffie-Hellman, preferring to discuss the Elliptic Curve
+      Menezes-Qu-Vanstone (ECMQV) algorithm instead.
+      </t>
+      
+      <t>
+      In this document, we specify the conventions for using
+      static-static Elliptic Curve Diffie-Hellman (ECDH) for both
+      standard and cofactor methods. Our motivation stems from the
+      fact that ECMQV has been removed from the National Security
+      Agency's Suite B of cryptographic algorithms and will therefore
+      be unavailable to some participants. These participants can use
+      ephemeral-static Elliptic Curve Diffie-Hellman, of course, but
+      ephemeral-static Diffie-Hellman does not provide source
+      authentication. The CMS does allow the application of digital
+      signatures for source authentication, but this alternative is
+      available only to those participants with certified signature keys.
+      By specifying conventions for static-static Elliptic Curve
+      Diffie-Hellman in this document, we present a third alternative
+      for source authentication, available to those participants with
+      certified Elliptic Curve Diffie-Hellman keys.
+      </t>
+
+      <t>
+      We note that like ephemeral-static ECDH, static-static ECDH
+      creates a secret key shared by the sender and receiver. Unlike
+      ephemeral-static ECDH, however, static-static ECDH uses a static
+      key pair for the sender. Each of the three CMS structures
+      discussed in this document (EnvelopedData, AuthenticatedData,
+      and AuthEnvelopedData) uses static-static ECDH to achieve different
+      goals:
+      </t>
+      <list style="symbols">
+        <t>
+
+          EnvelopedData uses static-static ECDH to provide data
+          confidentiality. It will not necessarily, however, provide
+          data authenticity.
+        </t>
+        <t>
+          AuthenticatedData uses static-static ECDH to provide
+          data authenticity. It will not provide data confidentiality.
+        </t>
+        <t>
+          AuthEnvelopedData uses static-static ECDH to provide both
+          confidentiality and data authenticity.
+        </t>
+      </list>
+    </t>
+
+    <section anchor="terminology" title="Requirements Terminology">
+      <t>
+        The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+        NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+        "OPTIONAL" in this document are to be interpreted as described
+        in <xref target='RFC2119'/>.
+      </t>
+    </section>
+  </section>
+
+    <section title="EnvelopedData Using Static-Static ECDH">
+
+      <t>
+        If an implementation uses static-static ECDH with the CMS
+        EnvelopedData, then the following techniques and formats MUST be used.
+        
+        The fields of EnvelopedData are as in <xref
+        target="RFC5652"/>; as static-static ECDH is a key-agreement
+        algorithm, the RecipientInfo 'kari' choice is used.  When using
+        static-static ECDH, the EnvelopedData originatorInfo field MAY
+        include the certificate(s) for the EC public key(s) used in
+        the formation of the pairwise key.
+      </t>
+
+      <section anchor="sec:env_fields" title="Fields of the KeyAgreeRecipientInfo">
+
+        <t>
+          When using static-static ECDH with EnvelopedData, the fields
+          of KeyAgreeRecipientInfo <xref target="RFC5652"/> are as follows:
+
+          <list style="symbols">
+
+            <t>
+              version MUST be 3.
+            </t> 
+
+            <t>
+              originator identifies the static EC public key of the
+              sender. It MUST be either issuerAndSerialNumber or
+              subjectKeyIdentifier, and it MUST point to one of the sending
+              agent's certificates.
+            </t>
+
+            <t>
+              ukm MAY be present or absent.  However, message
+              originators SHOULD include the ukm and SHOULD ensure
+              that the value of ukm is unique to the message being
+              sent. As specified in <xref target="RFC5652"/>,
+              implementations MUST support ukm message recipient
+              processing, so interoperability is not a concern if the
+              ukm is present or absent. The use of a fresh value for
+              ukm will ensure that a different key is generated for
+              each message between the same sender and receiver. The ukm,
+              if present, is placed in the entityUInfo field of the
+              ECC-CMS-SharedInfo structure <xref target="RFC5753"/>
+              and therefore used as an input to the key-derivation
+              function.
+            </t>
+
+            <t>
+              keyEncryptionAlgorithm MUST contain the object
+              identifier of the key-encryption algorithm, which in
+              this case is a key-agreement algorithm (see <xref
+              target="sec:comparison"/>).  The parameters field
+              contains KeyWrapAlgorithm.  The KeyWrapAlgorithm is the
+              algorithm identifier that indicates the symmetric
+              encryption algorithm used to encrypt the
+              content-encryption key (CEK) with the key-encryption key
+              (KEK) and any associated parameters (see <xref
+              target="sec:comparison"/>).
+            </t>
+            
+            <t>
+              recipientEncryptedKeys contains an identifier and an
+              encrypted CEK for each recipient. The
+              RecipientEncryptedKey KeyAgreeRecipientIdentifier MUST
+              contain either the issuerAndSerialNumber identifying the
+              recipient's certificate or the RecipientKeyIdentifier
+              containing the subject key identifier from the
+              recipient's certificate.  In both cases, the recipient's
+              certificate contains the recipient's static ECDH public
+              key.  RecipientEncryptedKey EncryptedKey MUST contain
+              the content-encryption key encrypted with the
+              static-static ECDH-generated pairwise key-encryption key
+              using the algorithm specified by the KeyWrapAlgorithm.
+            </t>
+          </list>
+        </t>
+
+      </section>
+
+      <section anchor="sec:env_sending_agent" 
+               title="Actions of the Sending Agent">
+        <t>
+          When using static-static ECDH with EnvelopedData, the
+          sending agent first obtains the EC public key(s) and domain
+          parameters contained in the recipient's certificate. It MUST
+          confirm the following at least once per recipient-certificate:
+          <list style='symbols'>
+            <t> 
+              that both certificates (the recipient's certificate
+              and its own) contain public-key values with the same curve
+              parameters, and
+            </t>
+            <t>
+              that both of these public-key values are
+              marked as appropriate for ECDH (that is, marked with
+              algorithm identifiers id-ecPublicKey or id-ecDH <xref
+              target="RFC5480"/>). 
+            </t>
+
+          </list>
+          The sender then determines whether to use standard or
+          cofactor Diffie-Hellman.
+          After doing so, the sender then determines which hash
+          algorithms to use for the key-derivation function. It then
+          chooses the keyEncryptionAlgorithm value that reflects these
+          choices. It then determines:
+          <list style="symbols">
+            <t>
+              an integer "keydatalen", which is the KeyWrapAlgorithm
+              symmetric key size in bits, and
+            </t>
+            <t>
+              the value of ukm, if used.
+            </t>
+          </list>
+
+          The sender then determines a bit string "SharedInfo", which
+          is the DER encoding of
+          ECC-CMS-SharedInfo (see Section 7.2
+          of <xref target="RFC5753"/>). The sending agent then
+          performs either the Elliptic Curve Diffie-Hellman operation
+          of <xref target="RFC6090"/> (for standard Diffie-Hellman) or
+          the Elliptic Curve Cryptography Cofactor Diffie-Hellman (ECC
+          CDH) Primitive of <xref target="SP800-56A"/> (for cofactor
+          Diffie-Hellman). The sending agent then applies the simple
+          hash-function construct of <xref target="X963"/> (using the
+          hash algorithm identified in the key-agreement algorithm) to
+          the results of the Diffie-Hellman operation and the
+          SharedInfo string. (This construct is also described in
+          Section 3.6.1 of <xref target="SEC1"/>.) As a result, the
+          sending agent obtains a shared secret bit string "K", which
+          is used as the pairwise key-encryption key (KEK) to wrap the
+          CEK for that recipient, as specified in <xref
+          target="RFC5652"/>.
+        </t>
+
+      </section>
+
+      <section anchor="sec:env_recv_agent" title="Actions of the Receiving Agent">
+
+        <t>
+          When using static-static ECDH with EnvelopedData, the
+          receiving agent retrieves keyEncryptionAlgorithm to
+          determine the key-agreement algorithm chosen by the sender,
+          which will identify:
+          <list style="symbols">
+            <t>
+              the domain parameters of the curve used,
+            </t>
+            <t>
+              whether standard or cofactor Diffie-Hellman was used,
+              and
+            </t>
+            <t>
+
+              which hash function was used for the KDF.
+            </t>
+          </list>
+          The receiver then retrieves the sender's certificate
+          identified in the rid field and extracts the EC public
+          key(s) and domain parameters contained therein. It MUST
+          confirm the following at least once per sender certificate:
+
+          <list style='symbols'>
+            <t> 
+              that both certificates (the sender's certificate
+              and its own) contain public-key values with the same curve
+              parameters, and
+            </t>
+            <t>
+              that both of these public-key values are
+              marked as appropriate for ECDH (that is, marked with
+              algorithm identifiers id-ecPublicKey or id-ecDH <xref
+              target="RFC5480"/>). 
+            </t>
+
+          </list>
+          The receiver then determines whether standard or cofactor
+          Diffie-Hellman was used.
+          The receiver then determines a bit string "SharedInfo",
+          which is the DER encoding of ECC-CMS-SharedInfo (see Section
+          7.2 of <xref target="RFC5753"/>). The receiving agent then
+          performs either the Elliptic Curve Diffie-Hellman operation
+          of <xref target="RFC6090"/> (for standard Diffie-Hellman) or
+          the Elliptic Curve Cryptography Cofactor Diffie-Hellman (ECC
+          CDH) Primitive of <xref target="SP800-56A"/> (for cofactor
+          Diffie-Hellman). The receiving agent then applies the simple
+          hash-function construct of <xref target="X963"/> (using the
+          hash algorithm identified in the key-agreement algorithm) to
+          the results of the Diffie-Hellman operation and the
+          SharedInfo string. (This construct is also described in
+          Section 3.6.1 of <xref target="SEC1"/>.) As a result, the
+          receiving agent obtains a shared secret bit string "K",
+          which it uses as the pairwise key-encryption key to unwrap
+          the CEK.
+        </t>
+      </section>
+
+    </section>
+
+    <section title="AuthenticatedData Using Static-Static ECDH">
+      <t>        
+        This section describes how to use the static-static ECDH
+        key-agreement algorithm with AuthenticatedData. 
+
+        When using static-static ECDH with AuthenticatedData, the
+        fields of AuthenticatedData are as in <xref target="RFC5652"/>,
+        but with the following restrictions:
+        <list style="symbols">
+          <t>
+            macAlgorithm MUST contain the algorithm identifier of the
+            message authentication code (MAC) algorithm. This
+            algorithm SHOULD be one of the following --
+            id-hmacWITHSHA224, id-hmacWITHSHA256, id&nbhy;hmacWITHSHA384,
+            or id-hmacWITHSHA512 -- and SHOULD NOT be hmac&nbhy;SHA1.  (See
+            <xref target="sec:comparison"/>.)
+          </t>
+          <t>
+
+            digestAlgorithm MUST contain the algorithm identifier of
+            the hash algorithm. This algorithm SHOULD be one of the
+            following -- id&nbhy;sha224, id-sha256, id-sha384, or id-sha512 --
+            and SHOULD NOT be id-sha1. (See <xref
+            target="sec:comparison"/>.)
+          </t>
+        </list>
+        As static-static ECDH is a key-agreement algorithm, the
+        RecipientInfo kari choice is used in the AuthenticatedData.
+        When using static-static ECDH, the AuthenticatedData
+        originatorInfo field MAY include the certificate(s) for the EC
+        public key(s) used in the formation of the pairwise key. 
+      </t>
+      <section title="Fields of the KeyAgreeRecipientInfo">
+        <t>
+          The AuthenticatedData KeyAgreeRecipientInfo fields are used
+          in the same manner as the fields for the corresponding
+          EnvelopedData KeyAgreeRecipientInfo fields of  <xref
+          target="sec:env_fields"/> of this document. The
+          authentication key is wrapped in the same manner as is
+          described there for the content-encryption key.
+        </t>
+
+      </section>
+
+      <section title="Actions of the Sending Agent">
+        <t>
+          The sending agent uses the same actions as for EnvelopedData
+          with static-static ECDH, as specified in  <xref
+          target="sec:env_sending_agent"/> of this document.
+        </t>
+      </section>
+
+      <section title="Actions of the Receiving Agent">
+
+        <t>
+          The receiving agent uses the same actions as for
+          EnvelopedData with static-static ECDH, as specified in
+           <xref target="sec:env_recv_agent"/> of this document.
+        </t>
+      </section>
+
+    </section>
+
+    <section title="AuthEnvelopedData Using Static-Static ECDH">
+      <t>        
+        When using static-static ECDH with AuthEnvelopedData, the
+        fields of AuthEnvelopedData are as in <xref
+        target="RFC5083"/>.
+        
+        As static-static ECDH is a key-agreement algorithm, the
+        RecipientInfo kari choice is used.  When using static-static
+        ECDH, the AuthEnvelopedData originatorInfo field MAY include
+        the certificate(s) for the EC public key used in the formation
+        of the pairwise key.
+      </t>
+
+      <section title="Fields of the KeyAgreeRecipientInfo">
+        <t>
+          The AuthEnvelopedData KeyAgreeRecipientInfo fields are used
+          in the same manner as the fields for the corresponding
+          EnvelopedData KeyAgreeRecipientInfo fields of  <xref
+          target="sec:env_fields"/> of this document. The
+          content-authenticated-encryption key is wrapped in the same
+          manner as is described there for the content-encryption key.
+        </t>
+      </section>
+
+      <section title="Actions of the Sending Agent">
+        <t>
+
+          The sending agent uses the same actions as for EnvelopedData
+          with static-static ECDH, as specified in <xref
+          target="sec:env_sending_agent"/> of this document.
+        </t>
+      </section>
+
+      <section title="Actions of the Receiving Agent">
+        <t>          
+          The receiving agent uses the same actions as for
+          EnvelopedData with static-static ECDH, as specified in
+           <xref target="sec:env_recv_agent"/> of this
+          document.
+        </t>
+      </section>
+
+    </section>
+
+    <section anchor="sec:comparison" 
+             title="Comparison to RFC 5753">
+
+      <t>
+        This document defines the use of static-static ECDH for
+        EnvelopedData, AuthenticatedData, and AuthEnvelopedData. <xref
+        target="RFC5753"/> defines ephemeral-static ECDH for
+        EnvelopedData only.
+      </t>
+
+      <t>
+        With regard to EnvelopedData, this document and <xref
+        target="RFC5753"/> greatly parallel each other. Both specify
+        how to apply Elliptic Curve Diffie-Hellman and differ only on
+        how the sender's public value is to be communicated to the
+        recipient. In <xref target="RFC5753"/>, the sender provides
+        the public value explicitly by including an
+        OriginatorPublicKey value in the originator field of
+        KeyAgreeRecipientInfo. In this document, the sender includes a
+        reference to a (certified) public value by including either an
+        IssuerAndSerialNumber or SubjectKeyIdentifier value in the
+        same field. Put another way, <xref target="RFC5753"/> provides
+        an interpretation of a KeyAgreeRecipientInfo structure where:
+      </t>
+
+        <list style="symbols">
+          <t>
+            the keyEncryptionAlgorithm value indicates Elliptic Curve
+            Diffie-Hellman, and
+          </t>
+
+          <t>
+            the originator field contains an OriginatorPublicKey value.
+          </t>
+        </list>
+        <t>
+        This document, on the other hand, provides an interpretation
+        of a KeyAgreeRecipientInfo structure where:
+        </t>
+        <list style="symbols">
+          <t>
+            the keyEncryptionAlgorithm value indicates Elliptic Curve
+            Diffie-Hellman, and
+          </t>
+
+          <t>
+            the originator field contains either an
+            IssuerAndSerialNumber value or a SubjectKeyIdentifier value.
+          </t>
+        </list>
+
+        <t>
+        AuthenticatedData or AuthEnvelopedData messages, on the other
+        hand, are not given any form of ECDH by <xref
+        target="RFC5753"/>. This is appropriate: that document only
+        defines ephemeral-static Diffie-Hellman, and this form of
+        Diffie-Hellman does not (inherently) provide any form of
+        data authentication or data-origin authentication. This
+        document, on the other hand, requires that the sender use a
+        certified public value. Thus, this form of key agreement
+        provides implicit key authentication and, under some limited
+        circumstances, data-origin authentication. (See <xref
+        target="sec:security"/>.)
+        </t>
+
+        <t>
+
+        This document does not define any new ASN.1 structures or
+        algorithm identifiers. It provides new ways to interpret
+        structures from <xref target="RFC5652"/> and <xref
+        target="RFC5753"/>, and it allows previously defined algorithms
+        to be used under these new interpretations. Specifically:
+        </t>
+        <list style="symbols">
+          <t>
+            The ECDH key-agreement algorithm identifiers from <xref
+            target="RFC5753"/> define only how Diffie-Hellman values are
+            processed, and not where these values are created. Therefore, they
+            can be used for static-static ECDH with no changes.
+          </t>
+          <t>
+
+            The key-wrap, MAC, and digest algorithms referenced in
+            <xref target="RFC5753"/> describe how the secret key is to
+            be used but not created. Therefore, they can be used with
+            keys from static-static ECDH without modification.
+          </t>
+        </list>
+
+    </section>
+
+    <section title="Requirements and Recommendations">
+      <t>
+        It is RECOMMENDED that implementations of this specification
+        support AuthenticatedData and EnvelopedData. Support for
+        AuthEnvelopedData is OPTIONAL. 
+
+        <t>
+
+        Implementations that support this specification MUST support
+        standard Elliptic Curve Diffie-Hellman, and these
+        implementations MAY also support cofactor Elliptic Curve
+        Diffie-Hellman.
+        </t>
+
+        <t>
+        In order to encourage interoperability, implementations SHOULD
+        use the elliptic curve domain parameters specified by <xref
+        target="RFC5480"/>.
+        </t>
+        
+        <t>
+        Implementations that support standard static-static Elliptic
+        Curve Diffie-Hellman:
+        </t>
+        <list style="symbols">
+
+          <t>
+            MUST support the dhSinglePass-stdDH-sha256kdf-scheme key-
+            agreement algorithm; 
+          </t>
+          <t>
+            MAY support the 
+            dhSinglePass-stdDH-sha224kdf-scheme,
+            dhSinglePass-stdDH-sha384kdf-scheme, and
+            dhSinglePass-stdDH-sha512kdf-scheme key-agreement
+            algorithms; and
+          </t>
+          <t>
+            SHOULD NOT support the dhSinglePass-stdDH-sha1kdf-scheme algorithm.
+          </t>
+        </list>
+
+        <t>
+        Other algorithms MAY also be supported.
+        </t>
+
+        <t>
+        Implementations that support cofactor static-static
+        Elliptic Curve Diffie-Hellman:
+        </t>
+        <list style="symbols">
+          <t>
+            MUST support the dhSinglePass-cofactorDH-sha256kdf-scheme key-
+            agreement algorithm;
+          </t>
+
+          <t>
+            MAY support the 
+            dhSinglePass-cofactorDH-sha224kdf-scheme,
+            dhSinglePass-cofactorDH-sha384kdf-scheme, and
+            dhSinglePass-cofactorDH-sha512kdf-scheme key-agreement
+            algorithms; and
+          </t>
+          <t>
+            SHOULD NOT support the
+            dhSinglePass-cofactorDH-sha1kdf-scheme algorithm.
+          </t>
+        </list>
+
+        In addition, all implementations:
+        <list style="symbols">
+          <t>
+
+            MUST support the id-aes128-wrap key-wrap algorithm and 
+            the id-aes128-cbc content-encryption algorithm; 
+          </t>
+          <t>
+            MAY support:
+            <list style='symbols'>
+              <t>
+                the id-aes192-wrap and id-aes256-wrap key-wrap
+                algorithms;
+              </t>
+              <t>
+                the id-aes128-CCM, id-aes192-CCM, id-aes256-CCM,
+                id-aes128-GCM, id-aes192-GCM, and id-aes256-GCM
+                authenticated-encryption algorithms; and
+              </t>
+
+              <t>
+                the id-aes192-cbc and id-aes256-cbc content-encryption
+                algorithms.
+              </t>
+            </list>
+          </t>
+          <t>
+            SHOULD NOT support the id-alg-CMS3DESwrap key-wrap
+            algorithm or the des-ede3-cbc content-encryption
+            algorithms.
+          </t>
+        </list>
+        (All algorithms above are defined in <xref target="RFC3370"/>,
+        <xref target="RFC3565"/>, <xref target="RFC5084"/>, and <xref
+        target="RFC5753"/>.)  Unless otherwise noted above, other
+        algorithms MAY also be supported.
+        
+      </t>
+
+      </section>
+      
+
+    <section anchor="sec:security" title="Security Considerations">
+      <t>
+        All security considerations in Section 9 of <xref
+        target="RFC5753"/> apply.
+      </t>
+        
+      <t>
+        Extreme care must be used when using static-static
+        Diffie-Hellman (either standard or cofactor) without the use
+        of some per-message value in the ukm. As described in <xref
+        target="RFC5753"/>, the ukm value (if present) will be
+        embedded in an ECC-CMS-SharedInfo structure, and the
+        DER encoding of this structure will be used as the
+        'SharedInfo' input to the key-derivation function of <xref
+        target="X963"/>. The purpose of this input is to add a
+        message-unique value to the key-distribution function so that
+        two different sessions of static-static ECDH between a given
+        pair of agents result in independent keys. If the ukm value is
+        not used or is re-used, on the other hand, then the
+        ECC-CMS-SharedInfo structure (and 'SharedInfo' input) will
+        likely not vary from message to message. In this case, the two
+        agents will re-use the same keying material across multiple
+        messages. This is considered to be bad cryptographic practice
+        and may open the sender to attacks on Diffie-Hellman (e.g.,
+        the 'small subgroup' attack <xref target="MenezesUstaoglu"/>
+
+        or other, yet-undiscovered attacks).
+      </t>
+
+      <t>
+        It is for these reasons that <xref target='sec:env_fields'/>
+        states that message senders SHOULD include the ukm and SHOULD
+        ensure that the value of ukm is unique to the message being
+        sent. One way to ensure the uniqueness of the ukm is for the
+        message sender to choose a 'sufficiently long' random string
+        for each message (where, as a rule of thumb, a 'sufficiently
+        long' string is one at least as long as the keys used by the
+        key-wrap algorithm identified in the keyEncryptionAlgorithm
+        field of the KeyAgreeRecipientInfo structure). However, other
+        methods (such as a counter) are possible.  Also, applications
+        that cannot tolerate the inclusion of per-message information
+        in the ukm (due to bandwidth requirements, for example) SHOULD NOT
+        use static-static ECDH for a recipient without ascertaining
+        that the recipient knows the private value associated with
+        their certified Diffie-Hellman value.
+      </t>
+
+      <t>
+        Static-static Diffie-Hellman, when used as described in this
+        document, does not necessarily provide data-origin
+        authentication. Consider, for example, the following sequence
+        of events:
+      </t>
+
+        <list style="symbols">
+          <t> Alice sends an AuthEnvelopedData message to both Bob and
+          Mallory. Furthermore, Alice uses a static-static DH method
+          to transport the content-authenticated-encryption key to
+          Bob, and some arbitrary method to transport the same key to
+          Mallory.</t>
+
+          <t> Mallory intercepts the message and prevents Bob from
+          receiving it.</t>
+
+          <t> Mallory recovers the content-authenticated-encryption
+          key from the message received from Alice. Mallory then
+          creates new plaintext of her choice, and encrypts it using
+          the same authenticated-encryption algorithm and the same
+          content-authenticated-encryption key used by Alice.</t>
+
+          <t> Mallory then replaces the EncryptedContentInfo and
+          MessageAuthenticationCode fields of Alice's message with the
+          values Mallory just generated. She may additionally remove
+          her RecipientInfo value from Alice's message.</t>
+
+          <t>Mallory sends the modified message to Bob.</t>
+
+          <t> Bob receives the message, validates the static-static DH
+          values, and decrypts/authenticates the message.</t>
+
+        </list>
+
+        <t>
+        At this point, Bob has received and validated a message that
+        appears to have been sent by Alice, but whose content was
+        chosen by Mallory. Mallory may not even be an apparent
+        receiver of the modified message. Thus, this use of
+        static-static Diffie-Hellman does not necessarily provide
+        data-origin authentication. (We note that this example does
+        not also contradict either confidentiality or
+        data authentication: Alice's message was not received by
+        anyone not intended by Alice, and Mallory's message was not
+        modified before reaching Bob.)
+        </t>
+
+        <t>
+        More generally, the data origin may not be authenticated unless:
+        </t>
+        <list style="symbols">
+          <t> it is a priori guaranteed that the message in question
+          was sent to exactly one recipient, or</t>
+
+          <t> data-origin authentication is provided by some other
+          mechanism (such as digital signatures).</t>
+        </list>
+      <t>
+        However, we also note that this lack of authentication is not
+        a product of static-static ECDH per se, but is inherent in
+        the way key-agreement schemes are used in the
+        AuthenticatedData and AuthEnvelopedData structures of the CMS.
+      </t>
+
+      <t>
+      When two parties are communicating using static-static ECDH as
+      described in this document, and either party's asymmetric keys
+      have been centrally generated, it is possible for that party's
+      central infrastructure to decrypt the communication (for
+      application-layer network monitoring or filtering, for example).
+      By way of contrast: were ephemeral-static ECDH to be used instead,
+      such decryption by the sender's infrastructure would not be
+      possible (though it would remain possible for the infrastructure
+      of any recipient).
+      </t>
+
+    </section>
+
+    <section anchor="sec:acknowledgements" title="Acknowledgements">
+      <t>
+      The authors would like to thank Jim Schaad, Russ Housley, Sean
+      Turner, Brian Weis, Rene Struik, Brian Carpenter, David McGrew,
+      and Stephen Farrell for their helpful comments and
+      suggestions. We would also like to thank Jim Schaad for
+      describing to us the attack described in <xref
+      target="sec:security"/>.
+      </t>
+    </section>
+
+  </middle>
+
+  <back>
+
+  <?rfc rfcedstyle="no"?>
+
+    <references title="Normative References">
+
+      <reference anchor='RFC5652'>
+        <front>
+          <title>Cryptographic Message Syntax (CMS)</title>
+
+          <author initials='R.' surname='Housley' fullname='Russ Housley'>
+            <organization>Vigil Security</organization>
+          </author>
+          <date month='September' year='2009'/>
+          <area>Security</area>
+          <workgroup>S/MIME Main Security</workgroup> 
+        </front>
+        <seriesInfo name="STD" value="70"/>
+
+        <seriesInfo name='RFC' value='5652'/>
+        <format type='TXT'
+                target='http://www.ietf.org/rfc/rfc5652.txt'/>
+      </reference>
+
+      <reference anchor='RFC5753'>
+        <front>
+          <title>
+            Use of Elliptic Curve Cryptography (ECC) Algorithms
+            in Cryptographic Message Syntax (CMS)
+          </title>
+          <author initials='S.' surname='Turner' fullname='S. Turner'>
+
+            <organization>IECA</organization>
+          </author>
+          <author initials='D.' surname='Brown' fullname='D. Brown'>
+            <organization>Certicom Corp.</organization>
+          </author>
+          <date month='January' year='2010'/>
+        </front>
+        <seriesInfo name='RFC' value='5753'/>
+
+      </reference>
+
+      <reference anchor='RFC5480'>
+        <front>
+          <title>
+            Elliptic Curve Cryptography Subject Public Key Information
+          </title>
+          <author initials='S.' surname='Turner' fullname='S. Turner'>
+            <organization>IECA</organization>
+
+          </author>
+          <author initials='D.' surname='Brown' fullname='D. Brown'>
+            <organization>Certicom Corp.</organization>
+          </author>
+          <author initials='K.' surname='Yiu' fullname='K. Yiu'>
+            <organization>Microsoft</organization>
+          </author>
+          <author initials='R.' surname='Housley' fullname='R. Housley'>
+
+            <organization>Vigil Security</organization>
+          </author>
+          <author initials='T.' surname='Polk' fullname='T. Polk'>
+            <organization>NIST</organization>
+          </author>
+          <date month='March' year='2009'/>
+        </front>
+        <seriesInfo name='RFC' value='5480'/>
+
+      </reference>
+
+      <reference anchor='RFC5083'>
+        <front>
+          <title>
+            Cryptographic Message Syntax (CMS)
+            Authenticated-Enveloped-Data Content Type
+          </title>
+          <author initials='R.' surname='Housley' fullname='Russ Housley'>
+            <organization>Vigil Security</organization>
+
+          </author>
+          <date month='November' year='2007'/>
+          <area>Security</area>
+          <workgroup>S/MIME Main Security</workgroup> 
+        </front>
+        <seriesInfo name='RFC' value='5083'/>
+      </reference>
+
+      <reference anchor='RFC2119'>
+
+        <front>
+          <title>
+            Key words for use in RFCs to Indicate Requirement Levels
+          </title>
+          <author initials='S.' surname="Bradner" fullname="S. Bradner">
+            <organization>Harvard University</organization>
+          </author>
+          <date month='March' year='1997'/>
+        </front>
+
+        <seriesInfo name="BCP" value="14"/>
+        <seriesInfo name='RFC' value='2119'/>
+      </reference>
+
+      <reference anchor='RFC3565'>
+        <front>
+          <title>
+            Use of the Advanced Encryption Standard (AES) Encryption
+            Algorithm in Cryptographic Message Syntax (CMS)
+          </title>
+          <author initials='J.' surname='Schaad' fullname='J. Schaad'>
+
+            <organization>Soaring Hawk Consulting</organization>
+          </author>
+          <date month='July' year='2003'/>
+        </front>
+        <seriesInfo name='RFC' value='3565'/>
+      </reference>
+
+      <reference anchor='RFC5084'>
+        <front>
+
+          <title>
+            Using AES-CCM and AES-GCM Authenticated Encryption
+            in the Cryptographic Message Syntax (CMS)
+          </title>
+          <author initials='R.' surname='Housley' fullname='Russ Housley'>
+            <organization>Vigil Security</organization>
+          </author>
+          <date month='November' year='2007'/>
+        </front>
+        <seriesInfo name='RFC' value='5084'/>
+
+      </reference>
+
+      <reference anchor='RFC3370'>
+        <front>
+          <title>Cryptographic Message Syntax (CMS) Algorithms</title>
+          <author initials='R.' surname='Housley' fullname='Russ Housley'>
+            <organization>RSA Laboratories</organization>
+          </author>
+
+          <date month='August' year='2002'/>
+          <area>Security</area>
+          <workgroup>S/MIME Main Security</workgroup> 
+        </front>
+        <seriesInfo name='RFC' value='3370'/>
+      </reference>
+
+      <reference anchor='RFC6090'>
+        <front>
+
+          <title>
+            Fundamental Elliptic Curve Cryptography Algorithms
+          </title>
+          <author initials='D.' surname='McGrew' fullname='D. McGrew'>
+            <organization>Cisco Systems</organization>
+          </author>
+          <author initials='K.' surname='Igoe' fullname='K. Igoe'>
+            <organization>National Security Agency</organization>
+
+          </author>
+          <author initials='M.' surname='Salter' fullname='M. Salter'>
+            <organization>National Security Agency</organization>
+          </author>
+          <date month='February' year='2011'/>
+        </front>
+        <seriesInfo name='RFC' value='6090'/>
+      </reference>
+
+      <reference anchor='SP800-56A'>
+        <front>
+          <title>
+            Recommendation for Pair-Wise Key Establishment Schemes Using Discrete Logarithm Cryptography
+            (Revised)
+          </title>
+          <author initials='E.' surname='Barker' fullname='Elaine Barker'>
+            <organization>NIST</organization>
+          </author>
+
+          <author initials='D.' surname='Johnson' fullname='Don Johnson'>
+            <organization>NIST</organization>
+          </author>
+          <author initials='M.' surname='Smid' fullname='Miles Smid'>
+            <organization>NIST</organization>
+          </author>
+          <date month='March' year='2007'/>
+        </front>
+
+        <seriesInfo name='NIST Special Publication (SP)' value='800-56A'/>
+      </reference>
+
+      <reference anchor='X963'>
+        <front>
+          <title>
+        Public Key Cryptography for the Financial Services Industry, Key Agreement and Key Transport Using Elliptic Curve Cryptography 
+          </title>
+          <author></author>
+          <date year='2001'/>
+
+        </front>
+        <seriesInfo name='ANSI' value='X9.63'/>
+      </reference>
+
+    </references>
+
+    <references title="Informative References">
+
+      <reference anchor="SEC1">
+        <front>
+
+          <title>
+           SEC 1: Elliptic Curve Cryptography
+          </title>
+          <author>
+          <organization>
+              Standards for Efficient Cryptography Group (SECG)
+            </organization>
+          </author>
+          <date month="May" year="2009"/>
+        </front>
+
+        <seriesInfo name="Version" value="2.0"/>
+      </reference>
+
+      <reference anchor='RFC2631'>
+        <front>
+          <title>
+            Diffie-Hellman Key Agreement Method
+          </title>
+          <author initials='E.' surname='Rescorla' fullname='E. Rescorla'>
+            <organization>RTFM Inc.</organization>
+
+          </author>
+          <date month='June' year='1999'/>
+        </front>
+        <seriesInfo name='RFC' value='2631'/>
+      </reference>
+
+      <reference anchor='X.680'>
+        <front>
+          <title>Information Technology - Abstract Syntax Notation One:
+Specification of Basic Notation</title>
+
+          <author>
+            <organization>ITU-T</organization>
+          </author>
+          <date year='2002'/>
+        </front>
+        <seriesInfo name="Recommendation" value="X.680"/>
+        <seriesInfo name="ISO/IEC" value="8824-1:2002"/>
+      </reference>
+
+      <reference anchor='X.681'>
+        <front>
+          <title>Information Technology - Abstract Syntax Notation
+          One: Information Object Specification</title>
+          <author>
+            <organization>ITU-T</organization>
+          </author>
+          <date year='2002'/>
+
+        </front>
+        <seriesInfo name="Recommendation" value="X.681"/>
+        <seriesInfo name="ISO/IEC" value="8824-2:2002"/>
+      </reference>
+
+      <reference anchor='X.682'>
+        <front>
+          <title>Information Technology - Abstract Syntax Notation
+          One: Constraint Specification</title>
+          <author>
+
+            <organization>ITU-T</organization>
+          </author>
+          <date year='2002'/>
+        </front>
+        <seriesInfo name="Recommendation" value="X.682"/>
+        <seriesInfo name="ISO/IEC" value="8824-3:2002"/>
+      </reference>
+
+      <reference anchor='X.683'>
+
+        <front>
+          <title>Information Technology - Abstract Syntax Notation
+          One: Parameterization of ASN.1 Specifications</title>
+          <author>
+            <organization>ITU-T</organization>
+          </author>
+          <date year='2002'/>
+        </front>
+        <seriesInfo name="Recommendation" value="X.683"/>
+
+        <seriesInfo name="ISO/IEC" value="8824-4:2002"/>
+      </reference>
+
+      <reference anchor='MenezesUstaoglu'>
+        <front>
+          <title>
+            On Reusing Ephemeral Keys in Diffie-Hellman Key Agreement
+            Protocols
+          </title>
+          <author initials="A." surname="Menezes" fullname="Alfred Menezes">
+            <organization>
+
+              University of Waterloo
+            </organization>
+          </author>
+          <author initials="B." surname="Ustaoglu" fullname="B. Ustaoglu">
+            <organization>
+              NTT
+            </organization>
+          </author>
+        <date year="2010"/>
+        </front>
+
+        <seriesInfo name="International Journal of Applied Cryptography," value="Vol. 2, No. 2, pp. 154-158"/>
+      </reference>
+
+    </references>
+
+  <?rfc rfcedstyle="yes"?>
+
+  </back>
+</rfc>
+
+
+<!-- LocalWords:  Diffie Hellman ECDH AuthEnvelopedData AuthenticatedData kari
+-->
+
+<!-- LocalWords:  EnvelopedData RecipientInfo originatorInfo EC ukm CEK KEK DER
+-->
+<!-- LocalWords:  KeyAgreeRecipientInfo subjectKeyIdentifier KeyWrapAlgorithm
+-->
+<!-- LocalWords:  keyEncryptionAlgorithm recipientEncryptedKeys EncryptedKey
+-->
+<!-- LocalWords:  RecipientEncryptedKey KeyAgreeRecipientIdentifier keydatalen
+-->
+<!-- LocalWords:  RecipientKeyIdentifier SharedInfo entityUInfo macAlgorithm
+-->
+<!-- LocalWords:  StaticECDHUserKeyingMaterial digestAlgorithm
+-->

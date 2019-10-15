@@ -1,0 +1,501 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc rfcedstyle="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc toc="yes" ?>
+<?rfc comments="yes" ?>
+<?rfc symrefs="no" ?>
+
+<rfc number="4955" category="std">
+  <front>
+    <title>DNS Security (DNSSEC) Experiments</title>
+
+    <author initials="D" surname="Blacka" fullname="David Blacka">
+      <organization>VeriSign, Inc.</organization>
+      <address>
+        <postal>
+          <street>21355 Ridgetop Circle</street>
+          <city>Dulles</city> <region>VA</region> <code>20166</code>
+          <country>US</country>
+        </postal>
+        <phone>+1 703 948 3200</phone>
+        <email>davidb@verisign.com</email>
+        <uri>http://www.verisignlabs.com</uri>
+      </address>
+    </author>
+
+    <date month="July" year="2007" /> 
+
+    <area>Internet</area>
+    <workgroup>DNSEXT</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in
+the title) for use on http://www.rfc-editor.org/search.html. -->
+<keyword>example</keyword>
+
+    <abstract>
+      
+      <t>This document describes a methodology for deploying
+      alternate, non-backwards-compatible, DNS Security (DNSSEC) methodologies in an
+      experimental fashion without disrupting the deployment of
+      standard DNSSEC.</t>
+
+    </abstract>
+
+  </front>
+
+  <middle>
+
+    <section anchor="overview" title="Overview">
+
+      <t>Historically, experimentation with DNSSEC alternatives has
+      been a problematic endeavor.  There has typically been a desire
+      to both introduce non-backwards-compatible changes to DNSSEC and
+      to try these changes on real zones in the public DNS.  This
+      creates a problem when the change to DNSSEC would make all or
+      part of the zone using those changes appear bogus (bad) or
+      otherwise broken to existing security-aware resolvers.</t>
+      
+      <t>This document describes a standard methodology for setting up
+      DNSSEC experiments.  This methodology addresses the issue of
+      coexistence with standard DNSSEC and DNS by using unknown
+      algorithm identifiers to hide the experimental DNSSEC protocol
+      modifications from standard security-aware resolvers.</t>
+
+    </section>
+
+    <section anchor="defs" title="Definitions and Terminology">
+
+      <t>Throughout this document, familiarity with the DNS system
+      (<xref target="RFC1035">RFC 1035</xref>) and the DNS security
+      extensions (<xref target="RFC4033">RFC 4033</xref>, <xref
+      target="RFC4034" >RFC 4034</xref>, and <xref
+      target="RFC4035">RFC 4035</xref>) is assumed.</t>
+
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+      NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+      "OPTIONAL" in this document are to be interpreted as described
+      in <xref target="RFC2119">RFC 2119</xref>.</t>
+    </section>
+
+    <section anchor="experiments" title="Experiments">
+
+      <t>When discussing DNSSEC experiments, it is necessary to
+      classify these experiments into two broad categories:</t>
+
+      <t>
+        <list style="hanging">
+        
+          <t hangText='Backwards-Compatible:'> describes experimental
+          changes that, while not strictly adhering to the DNSSEC
+          standard, are nonetheless interoperable with clients and
+          servers that do implement the DNSSEC standard.</t>
+
+          <t hangText='Non-Backwards-Compatible:'> describes
+          experiments that would cause a standard security-aware
+          resolver to (incorrectly) determine that all or part of a
+          zone is bogus, or to otherwise not interoperate with
+          standard DNSSEC clients and servers.</t>
+        </list>
+      </t>
+      
+      <t>Not included in these terms are experiments with the core DNS
+      protocol itself.</t>
+
+      <t>The methodology described in this document is not necessary
+      for backwards-compatible experiments, although it certainly
+      may be used if desired.</t>
+
+    </section>
+
+
+    <section anchor="method" title="Method">
+
+      <t>The core of the methodology is the use of strictly unknown
+      algorithm identifiers when signing the experimental zone, and
+      more importantly, having only unknown algorithm identifiers in
+      the DS records for the delegation to the zone at the parent.</t>
+
+      <t>This technique works because of the way DNSSEC-compliant
+      validators are expected to work in the presence of a DS set with
+      only unknown algorithm identifiers.  From <xref
+      target="RFC4035">RFC 4035</xref>, Section 5.2:</t>
+      
+      <t>
+        <list style="empty">
+          <t>If the validator does not support any of the algorithms
+          listed in an authenticated DS RRset, then the resolver has
+          no supported authentication path leading from the parent to
+          the child.  The resolver should treat this case as it would
+          the case of an authenticated NSEC RRset proving that no DS
+          RRset exists, as described above.</t>
+        </list>
+      </t>
+
+      <t>And further:</t>
+
+      <t>
+        <list style="empty">
+          <t>If the resolver does not support any of the algorithms
+          listed in an authenticated DS RRset, then the resolver will
+          not be able to verify the authentication path to the child
+          zone.  In this case, the resolver SHOULD treat the child
+          zone as if it were unsigned.</t>
+        </list>
+      </t>
+
+      <t>Although this behavior isn't strictly mandatory (as marked by
+      MUST), it is unlikely for a validator to implement a
+      substantially different behavior.  Essentially, if the validator
+      does not have a usable chain of trust to a child zone, then it
+      can only do one of two things: treat responses from the zone as
+      insecure (the recommended behavior), or treat the responses as
+      bogus.  If the validator chooses the latter, this will both
+      violate the expectation of the zone owner and defeat the purpose
+      of the above rule.  However, with local policy, it is within the
+      right of a validator to refuse to trust certain zones based on
+      any criteria, including the use of unknown signing
+      algorithms.</t>
+
+      <t>Because we are talking about experiments, it is RECOMMENDED
+      that private algorithm numbers be used (see <xref
+      target="RFC4034">RFC 4034</xref>, Appendix A.1.1.  Note that
+      secure handling of private algorithms requires special handing
+      by the validator logic.  See <xref
+      target="I-D.ietf-dnsext-dnssec-bis-updates">"Clarifications and Implementation Notes for DNSSECbis"</xref> for further details.)
+      Normally, instead of actually inventing new signing algorithms,
+      the recommended path is to create alternate algorithm
+      identifiers that are aliases for the existing, known algorithms.
+      While, strictly speaking, it is only necessary to create an
+      alternate identifier for the mandatory algorithms, it is
+      suggested that all optional defined algorithms be aliased as
+      well.</t>
+
+      <t>It is RECOMMENDED that for a particular DNSSEC experiment, a
+      particular domain name base is chosen for all new algorithms,
+      then the algorithm number (or name) is prepended to it.  For
+      example, for experiment A, the base name of <spanx
+      style="verb">dnssec-experiment-a.example.com</spanx> is chosen.
+      Then, aliases for algorithms 3 (DSA) and 5 (RSASHA1) are defined
+      to be <spanx
+      style="verb">3.dnssec-experiment-a.example.com</spanx> and
+      <spanx style="verb">5.dnssec-experiment-a.example.com</spanx>.
+      However, any unique identifier will suffice.</t>
+
+      <t>Using this method, resolvers (or, more specifically, DNSSEC
+      validators) essentially indicate their ability to understand the
+      DNSSEC experiment's semantics by understanding what the new
+      algorithm identifiers signify.</t>
+
+      <t>This method creates two classes of security-aware servers and
+      resolvers: servers and resolvers that are aware of the
+      experiment (and thus recognize the experiment's algorithm
+      identifiers and experimental semantics), and servers and
+      resolvers that are unaware of the experiment.</t>
+
+      <t>This method also precludes any zone from being both in an
+      experiment and in a classic DNSSEC island of security.  That is,
+      a zone is either in an experiment and only possible to validate
+      experimentally, or it is not.</t>
+
+    </section>
+
+    <section anchor="defining" title="Defining an Experiment">
+
+      <t>The DNSSEC experiment MUST define the particular set of
+      (previously unknown) algorithm identifiers that identify the
+      experiment and define what each unknown algorithm identifier
+      means.  Typically, unless the experiment is actually
+      experimenting with a new DNSSEC algorithm, this will be a
+      mapping of private algorithm identifiers to existing, known
+      algorithms.</t>
+
+      <t>Normally the experiment will choose a DNS name as the
+      algorithm identifier base.  This DNS name SHOULD be under the
+      control of the authors of the experiment.  Then the experiment
+      will define a mapping between known mandatory and optional
+      algorithms into this private algorithm identifier space.
+      Alternately, the experiment MAY use the Object Identifier (OID) private algorithm
+      space instead (using algorithm number 254), or MAY choose
+      non-private algorithm numbers, although this would require an
+      IANA allocation.</t>
+
+      <t>For example, an experiment might specify in its description
+      the DNS name <spanx
+      style="verb">dnssec-experiment-a.example.com</spanx> as the base
+      name, and declare that <spanx
+      style="verb">3.dnssec-experiment-a.example.com</spanx> is an
+      alias of DNSSEC algorithm 3 (DSA), and that <spanx
+      style="verb">5.dnssec-experiment-a.example.com</spanx> is an
+      alias of DNSSEC algorithm 5 (RSASHA1).</t>
+
+      <t>Resolvers MUST only recognize the experiment's semantics when
+      present in a zone signed by one or more of these algorithm
+      identifiers.  This is necessary to isolate the semantics of one
+      experiment from any others that the resolver might
+      understand.</t>
+      
+      <t>In general, resolvers involved in the experiment are expected
+      to understand both standard DNSSEC and the defined experimental
+      DNSSEC protocol, although this isn't required.</t>
+      
+    </section>
+
+    <section anchor="considerations" title="Considerations">
+
+      <t>There are a number of considerations with using this
+      methodology.</t>
+
+      <t>
+        <list style="numbers">
+
+  <t>If an unaware validator does not correctly follow the
+  rules laid out in RFC 4035 (e.g., the validator interprets a
+  DNSSEC record prior to validating it), or if the experiment
+  is broader in scope that just modifying the DNSSEC
+  semantics, the experiment may not be sufficiently masked by
+  this technique.  This may cause unintended resolution
+  failures.</t>
+
+  <t>It will not be possible for security-aware resolvers
+          unaware of the experiment to build a chain of trust through
+          an experimental zone.</t>
+
+        </list>
+      </t>
+      
+    </section>
+
+    <section title="Use in Non-Experiments">
+     
+      <t>This general methodology MAY be used for non-backwards
+      compatible DNSSEC protocol changes that start out as or become
+      standards.  In this case:</t>
+      
+      <t>
+        <list style="symbols">
+
+          <t>The protocol change SHOULD use public IANA allocated
+          algorithm identifiers instead of private algorithm
+          identifiers.  This will help identify the protocol change as
+          a standard, rather than an experiment.</t>
+
+          <t>Resolvers MAY recognize the protocol change in zones not
+          signed (or not solely signed) using the new algorithm
+          identifiers.</t>
+
+        </list>
+      </t>
+   
+    </section>
+
+    <section anchor="security" title="Security Considerations">
+
+      <t>Zones using this methodology will be considered insecure by
+      all resolvers except those aware of the experiment.  It is not
+      generally possible to create a secure delegation from an
+      experimental zone that will be followed by resolvers unaware of
+      the experiment.</t>
+
+      <t>Implementers should take into account any security issues
+      that may result from environments being configured to trust both
+      experimental and non-experimental zones. If the experimental
+      zone is more vulnerable to attacks, it could, for example, be
+      used to promote trust in zones not part of the experiment, possibly
+      under the control of an attacker.</t>
+
+    </section>
+
+  </middle>
+  <back>
+    <references title="Normative References">
+
+      <reference anchor='RFC2119'>
+
+        <front>
+          <title abbrev='RFC Key Words'>
+            Key words for use in RFCs to Indicate Requirement Levels
+          </title>
+          <author initials='S.' surname='Bradner' fullname='Scott Bradner'>
+            <organization>Harvard University</organization>
+            <address>
+              <postal>
+                <street>1350 Mass. Ave.</street>
+                <street>Cambridge</street>
+              <street>MA 02138</street></postal>
+              <phone>- +1 617 495 3864</phone>
+          <email>-</email></address></author>
+          <date month='March' year='1997'></date>
+          <area>General</area>
+          <keyword>keyword</keyword>
+          <abstract>
+            <t>
+              In many standards track documents several words are used
+              to signify the requirements in the specification.  These
+              words are often capitalized.  This document defines
+              these words as they should be interpreted in IETF
+              documents.  Authors who follow these guidelines should
+              incorporate this phrase near the beginning of their
+              document:
+
+              <list>
+                <t> The key words &quot;MUST&quot;, &quot;MUST
+                NOT&quot;, &quot;REQUIRED&quot;, &quot;SHALL&quot;,
+                &quot;SHALL NOT&quot;, &quot;SHOULD&quot;,
+                &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;,
+                &quot;MAY&quot;, and &quot;OPTIONAL&quot; in this
+                document are to be interpreted as described in RFC
+                2119.  </t></list></t>
+                <t>
+                  Note that the force of these words is modified by
+                  the requirement level of the document in which they
+                  are used.  </t>
+          </abstract>
+        </front>
+
+        <seriesInfo name='BCP' value='14' />
+        <seriesInfo name='RFC' value='2119' />
+      </reference>
+
+      <reference anchor='RFC4033'>
+        <front>
+          <title>DNS Security Introduction and Requirements</title>
+          <author initials='R.' surname='Arends' fullname='R. Arends'>
+            <organization />
+          </author>
+          <author initials='R.' surname='Austein' fullname='R. Austein'>
+            <organization />
+          </author>
+          <author initials='M.' surname='Larson' fullname='M. Larson'>
+            <organization />
+          </author>
+          <author initials='D.' surname='Massey' fullname='D. Massey'>
+            <organization />
+          </author>
+          <author initials='S.' surname='Rose' fullname='S. Rose'>
+            <organization />
+          </author>
+          <date year='2005' month='March' />
+        </front>
+        <seriesInfo name='RFC' value='4033' />
+        <format type='TXT' octets='52445' 
+                target='ftp://ftp.isi.edu/in-notes/rfc4033.txt' />
+      </reference>
+
+      <reference anchor='RFC4034'>
+
+        <front>
+          <title>Resource Records for the DNS Security Extensions</title>
+          <author initials='R.' surname='Arends' fullname='R. Arends'>
+            <organization />
+          </author>
+          <author initials='R.' surname='Austein' fullname='R. Austein'>
+            <organization />
+          </author>
+          <author initials='M.' surname='Larson' fullname='M. Larson'>
+            <organization />
+          </author>
+          <author initials='D.' surname='Massey' fullname='D. Massey'>
+            <organization />
+          </author>
+          <author initials='S.' surname='Rose' fullname='S. Rose'>
+            <organization />
+          </author>
+          <date year='2005' month='March' />
+        </front>
+
+        <seriesInfo name='RFC' value='4034' />
+        <format type='TXT' octets='63879' 
+                target='ftp://ftp.isi.edu/in-notes/rfc4034.txt' />
+      </reference>
+
+      <reference anchor='RFC4035'>
+        <front>
+          <title>Protocol Modifications for the DNS Security Extensions</title>
+          <author initials='R.' surname='Arends' fullname='R. Arends'>
+            <organization />
+          </author>
+          <author initials='R.' surname='Austein' fullname='R. Austein'>
+            <organization />
+          </author>
+          <author initials='M.' surname='Larson' fullname='M. Larson'>
+            <organization />
+          </author>
+          <author initials='D.' surname='Massey' fullname='D. Massey'>
+            <organization />
+          </author>
+          <author initials='S.' surname='Rose' fullname='S. Rose'>
+            <organization />
+          </author>
+          <date year='2005' month='March' />
+        </front>
+
+        <seriesInfo name='RFC' value='4035' />
+        <format type='TXT' octets='130589' 
+                target='ftp://ftp.isi.edu/in-notes/rfc4035.txt' />
+      </reference>
+
+    </references>
+
+    <references title="Informative References">
+
+      <reference anchor='RFC1035'>
+
+        <front>
+          <title abbrev='Domain Implementation and Specification'>
+            Domain names - implementation and specification
+          </title>
+          <author initials='P.' surname='Mockapetris' 
+                  fullname='P. Mockapetris'>
+            <organization>USC/ISI</organization>
+            <address>
+              <postal>
+                <street>4676 Admiralty Way</street>
+                <city>Marina del Rey</city>
+                <region>CA</region>
+                <code>90291</code>
+              <country>US</country></postal>
+              <phone>+1 213 822 1511</phone>
+          <email></email></address></author>
+        <date month='November' year='1987'></date></front>
+
+        <seriesInfo name='STD' value='13' />
+        <seriesInfo name='RFC' value='1035' />
+      </reference>
+
+
+      <reference anchor='I-D.ietf-dnsext-dnssec-bis-updates'>
+        <front>
+          <title>Clarifications and Implementation Notes for DNSSECbis</title>
+
+
+          <author initials='S' surname='Weiler' fullname='Samuel  Weiler'>
+            <organization />
+          </author>
+
+          <author initials='R' surname='Austein' fullname='Rob Austein'>
+            <organization />
+          </author>
+
+          <date month='March' day='4' year='2007' />
+
+          <abstract>
+            <t>This document is a collection of minor technical
+            clarifications to the DNSSECbis document set. It is meant
+            to serve as a resource to implementors as well as an
+            interim repository of possible DNSSECbis errata.</t>
+          </abstract>
+
+        </front>
+
+        <seriesInfo name='Work in' 
+                    value='Progress' />
+        <format type='TXT'
+                target='http://www.ietf.org/internet-drafts/draft-ietf-dnsext-dnssec-bis-updates-05.txt' />
+      </reference>
+
+    </references>
+  </back>
+
+</rfc>

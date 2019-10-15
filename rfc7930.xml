@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc2119 PUBLIC '' 'http://xml2rfc.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml'>
+]>
+
+<rfc number="7930"
+     updates="6613" 
+     category="exp" 
+     ipr="trust200902" 
+     submissionType="IETF"
+     consensus="yes"
+     xml:lang="en">
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+  <front>
+    <title abbrev="RADIUS Large Packets">Larger Packets for RADIUS over TCP</title>
+    <author initials="S." surname="Hartman" fullname="Sam Hartman">
+      <organization>Painless Security</organization>
+
+      <address>
+	<email>hartmans-ietf@mit.edu</email>
+      </address>
+    </author>
+    <date month="July" year="2016"/>
+
+    <abstract>
+      <t>The RADIUS-over-TLS experiment described
+      in RFC 6614 has opened RADIUS to new use cases where the 4096-octet
+      maximum size limit of a RADIUS packet proves problematic.  This
+      specification extends the RADIUS-over-TCP experiment (RFC 6613) to
+      permit larger RADIUS packets.  This specification compliments other
+      ongoing work to permit fragmentation of RADIUS authorization
+      information.  This document registers a new RADIUS code, an action that required IESG approval.</t>
+    </abstract>
+  </front>
+  <middle>
+    <section title="Introduction">
+      <t>The experiment with 
+Remote Authentication Dial-In User Service (RADIUS) over
+Transport Layer Security (TLS)
+      <xref target="RFC6614"></xref> provides strong
+      confidentiality and integrity for RADIUS <xref target="RFC2865"></xref>.  
+      This enhanced security has opened new
+      opportunities for using RADIUS to convey additional
+      authorization information.  As an example, <xref
+      target="RFC7833"></xref> describes a mechanism
+      for using RADIUS to carry Security Assertion Markup Language
+      (SAML) messages in RADIUS.  Many attributes carried in these
+      SAML messages will require confidentiality or integrity such as
+      that provided by TLS.</t>
+      <t>These new use cases involve carrying additional information
+      in RADIUS packets.  The maximum packet length of 4096 octets is
+      proving insufficient for some SAML messages and for other
+      structures that may be carried in RADIUS.</t>
+      <t>One approach is to fragment a RADIUS message across multiple
+      packets at the RADIUS layer. RADIUS fragmentation <xref
+      target="RFC7499"></xref> provides a
+      mechanism to split authorization information across multiple
+      RADIUS messages.  That mechanism is necessary in order to split
+      authorization information across existing unmodified
+      proxies.</t>
+      <t>However, there are some significant disadvantages to RADIUS
+      fragmentation.  First, RADIUS is a lock-step protocol, and only
+      one fragment can be in transit at a time as part of a given
+      request.  Also, there is no current mechanism to discover the
+      Path Maximum Transmission Unit (PMTU) across the entire path that
+      the fragment will travel.  As a result, fragmentation is likely
+      both at the RADIUS layer and at the transport layer.  When TCP
+      is used, much better transport characteristics can be achieved
+      by fragmentation only at the TCP layer.  This specification provides a mechanism to achieve these better transport characteristics when TCP is used.  As part of this specification, a new RADIUS code is registered.</t>
+<t>This specification is published as an Experimental specification because the TCP extensions to RADIUS are currently experimental.  The need for this specification arises from operational experience with the TCP extensions.  However, this specification introduces no new experimental evaluation criteria beyond those in the base TCP specification; this specification can be evaluated along with that one for advancement on the Standards Track.</t>
+
+        <section title="Requirements Notation">
+            <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+            "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY",
+            and "OPTIONAL" in this document are to be interpreted as
+            described in <xref target="RFC2119"/>.</t>
+        </section>    
+    </section>
+    <section title="Changes to Packet Processing">
+      <t>The maximum length of a RADIUS message is increased from 4096
+      to 65535.  A RADIUS Server implementing this specification MUST
+      be able to receive a RADIUS packet of maximum length.  Servers
+      MAY have a maximum size over which they choose to return an
+      error, as discussed in <xref target="toobig"></xref>, rather than
+      processing a received packet; this size MUST be at least 4096
+      octets.</t>
+      <t>Clients implementing this specification MUST be able to
+      receive a RADIUS packet of maximum length; that is, clients MUST NOT
+      close a TCP connection simply because a large packet is sent
+      over it.  Clients MAY include the
+      Response-Length attribute defined in <xref
+      target="IANA"></xref> to indicate the maximum size of
+      a packet that they can successfully process.  Clients MAY
+      silently discard a packet greater than some configured size;
+      this size MUST be at least 4096 octets.  Clients MUST NOT
+      retransmit an unmodified request whose response is larger than
+      the client can process, as subsequent responses will likely
+      continue to be too large.  </t>
+      <t>Proxies MUST be able to receive a RADIUS packet of maximum length without closing the TCP connection.  Proxies SHOULD be able to process and forward packets of
+      maximum length.  When a proxy receives a request over a transport with a 4096-octet maximum length and the proxy forwards that request over a transport with a larger maximum length, the proxy MUST include the Response-Length attribute with a value of 4096.</t>
+      <section anchor="status" title="Status-Server Considerations">
+	<t>This section extends processing of Status-Server messages as described in Sections 4.1 and 4.2 of <xref target="RFC5997"></xref>.</t>
+	<t>Clients implementing this specification SHOULD include the
+	Response-Length attribute in Status-Server requests.  Servers are
+	already required to ignore unknown attributes received in this
+	message.  By including the attribute, the client indicates how large
+	of a response it can process to its Status-Server request.  It is very
+	unlikely that a response to Status-Server is greater than 4096 octets.
+	However, the client also indicates support for this specification,
+	which triggers the server behavior below.</t>
+	<t>If a server implementing this specification receives a Response-Length attribute in a Status-Server request, it MUST include a Response-Length attribute indicating the maximum size request it can process in its response to the Status-Server request.</t>
+
+      </section>
+    </section>
+    <section title="Forward and Backward Compatibility">
+      <t>An implementation of <xref target="RFC6613"></xref> will silently discard any
+      RADIUS packet larger than 4096 octets and will close the TCP
+      connection.  This section provides guidelines for
+      interoperability with these implementations.  These guidelines
+      are stated at the SHOULD level.  In some environments, support
+      for large packets will be important enough that roaming or other
+      agreements will mandate their support.  In these environments,
+      all implementations might be required to support this
+      specification, thus removing the need for interoperability with RFC
+      6613.  It is likely that these guidelines will be relaxed to the
+      MAY level and support for this specification made a requirement
+      if RADIUS over TLS and TCP are moved to the Standards Track in
+      the future.</t>
+      <t>Clients SHOULD provide configuration for the maximum size of
+      a request sent to each server.  Servers SHOULD provide
+      configuration for the maximum size of a response sent to each
+      client.  If dynamic discovery mechanisms are supported,
+      configuration SHOULD be provided for the default maximum size of RADIUS packets sent to clients and servers.  If an implementation provides more granular configuration for some classes of dynamic resources, then the implementation SHOULD also provide configuration of default maximum packet sizes at the same granularity.  As an example, an implementation that provided granular configuration for resources using a particular trust anchor or belonging to a particular roaming consortium SHOULD provide default packet size configuration at the same granularity.</t>
+      <t>If a client sends a request larger than 4096 octets and the
+      TCP connection is closed without a response, the client SHOULD
+      treat the request as if a "Request Too Big" error (<xref
+      target="toobig"></xref>) specifying a maximum size of 4096 is
+      received. Clients or proxies sending multiple requests over a single TCP connection without waiting for responses SHOULD implement capability discovery as discussed in <xref target="discovery"></xref>.</t>
+      <t>By default, a server SHOULD NOT generate a response larger
+      than 4096 octets.  The Response-Length attribute MAY be included
+      in a request to indicate that larger responses are acceptable.
+      Other attributes or configurations MAY be used as an indicator
+      that large responses are likely to be acceptable.</t>
+
+      <t>A proxy that implements both this specification and RADIUS
+      fragmentation <xref
+      target="RFC7499"></xref> SHOULD use RADIUS
+      fragmentation when the following conditions are met:
+<list style="numbers">
+	  <t>A RADIUS packet is being forwarded towards a next hop whose
+	  configuration does not support a packet that
+	  large.<vspace /></t>
+	  <t>RADIUS fragmentation can be used for the packet in question.</t>
+	</list>
+</t>
+      <section title="Rationale">
+	<t>The interoperability challenge appears at first
+	significant.  This specification proposes to introduce
+	behavior where new implementations will fail to function with
+	existing implementations.</t>
+	<t>However, these capabilities are introduced to support new
+	use cases.  If an implementation has 10000 octets of attributes
+	to send, it cannot, in general, trim down the response to
+	something that can be sent.  Under this specification, a large
+	packet would be generated that will be silently discarded by
+	an existing implementation.  Without this specification, no
+	packet is generated because the required attributes cannot be
+	sent.</t>
+	<t>The biggest risk to interoperability would be if requests
+	and responses are expanded to include additional information
+	that is not strictly necessary.  So, avoiding creating
+	situations where large packets are sent to existing
+	implementations is mostly an operational matter.
+	Interoperability is most impacted when the size of packets in
+	existing use cases is significantly increased and least
+	impacted when large packets are used for new use cases where
+	the deployment is likely to require updated RADIUS
+	implementations.</t>
+	<t>There is a special challenge for proxies or clients with a high
+	request volume.  When an implementation of RFC 6613 receives a packet
+	that is too large, it closes the connection and does not respond to
+	any requests in process.  Such a client would lose requests and might
+	find it difficult to distinguish "Request Too Big" situations from
+	other failures.  In these cases, the discovery mechanism described 
+	in <xref target="discovery"></xref> can be used.</t>
+	<t>Also, RFC 6613 is an experiment.  Part of running that
+	experiment is to evaluate whether additional changes are
+	required to RADIUS.  A lower bar for interoperability should
+	apply to changes to Experimental protocols than Standard
+	protocols.</t>
+	<t>This specification provides good facilities to enable
+	implementations to understand packet size when proxying
+	to/from Standards Track UDP RADIUS.</t>
+
+      </section>
+      <section anchor="discovery" title="Discovery">
+	<t>As discussed in <xref target="status"></xref>, a client MAY send a Status-Server message to discover whether an authentication or accounting server supports this specification.  The client includes a Response-Length attribute; this signals the server to include a Response-Length attribute indicating the maximum packet size the server can process.  In this one instance, Response-Length indicates the size of a request that can be processed rather than a response.</t>
+      </section>
+    </section>
+    <section title="Protocol-Error Code">
+      <t>This document defines a new RADIUS code, 52, called
+Protocol-Error.  This packet code may be used in response to any
+request packet, such as Access-Request, Accounting-Request,
+CoA-Request, or Disconnect-Request.  It is a response packet sent by a
+server to a client.  The packet indicates to the client that the
+server is unable to process the request for some reason.</t>
+      <t>A Protocol-Error packet MUST contain an Original-Packet-Code attribute,
+along with an Error-Cause attribute.  Other attributes MAY be
+included if desired.  The Original-Packet-Code contains the code from the request that generated the protocol error so that clients can disambiguate requests with different codes and the same ID.  Regardless of the original packet code, the RADIUS Server calculates the Message-Authenticator attribute as if the original packet were an Access-Request packet.  The identifier is copied from the original request.</t>
+      <t>Clients processing Protocol-Error MUST ignore unknown or unexpected attributes.</t>
+      <t>This RADIUS code is hop by hop.  Proxies MUST NOT forward a Protocol-Error packet they receive.</t>
+    </section>
+    <section anchor="toobig" title="Too Big Response">
+      <t>When a RADIUS Server receives a request that is larger than can be processed, it generates a Protocol-Error response as follows:<list>
+<t>The code is Protocol-Error.</t>
+<t>The Response-Length attribute MUST be included and its value is the maximum size of request that will be processed.</t>
+	  <t>The Error-Cause attribute is included with a value of 601.</t>
+	  <t>The Original-Packet-Code attribute is copied from the request.</t>
+
+</list></t>
+
+      <t>Clients will not typically be able to adjust and resend
+      requests when this error is received.  In some cases, the client
+      can fall back to RADIUS fragmentation.  In other cases, this code
+      will provide for better client error reporting and will avoid
+      retransmitting requests guaranteed to fail.</t>
+    </section>
+    <section anchor="IANA" title="IANA Considerations">
+
+<t >A new RADIUS Packet Type Code is registered in the "RADIUS Packet Type Codes" registry discussed in Section 2.1 of RFC 3575 <xref target="RFC3575"></xref>.  The name is "Protocol-Error" and the code is 52.</t>
+      <t>The following RADIUS attribute Type values <xref target="RFC3575"></xref> are assigned. The assignment rules in Section 10.3 of <xref target="RFC6929"></xref> are used.</t>
+
+<?rfc compact="no" ?>
+	<texttable>
+	  <ttcol>Name</ttcol>
+	  <ttcol>Attribute</ttcol>
+	  <ttcol>Description</ttcol>
+	<c>Response-Length</c> <c>241.3</c> <c>An attribute of type "integer"
+	per Section 5 of RFC 2865 containing maximum response length.
+</c>
+	<c>Original-Packet-Code</c> <c>241.4</c> <c>An integer attribute containing the code from a packet resulting in a Protocol-Error response.</c>
+      </texttable>
+<?rfc compact="yes" ?>
+
+      <t>The Response-Length attribute MAY be included in any RADIUS request.  In this context, it indicates the maximum length of a response the client is prepared to receive.  Values are between 4096 and 65535.  The attribute MAY also be included in a response to a Status-Server message.  In this case, the attribute indicates the maximum size RADIUS request that is permitted.</t>
+      <t>
+A new Error-Cause value is registered in the "Values for RADIUS Attribute 101,
+Error-Cause Attribute" registry at
+      &lt;http://www.iana.org/assignments/radius-types&gt; for "Response Too
+      Big" with value 601. The range of valid values for the Error-Cause
+      attribute in the "Values for RADIUS Attribute 101, Error-Cause
+      Attribute" registry originally defined in RFC 5176 are extended.  Two
+      new ranges are defined:<list>
+    <t>6xx fatal errors committed by a RADIUS server</t>
+    <t>7xx  fatal errors committed by a RADIUS client</t>
+  </list></t>
+
+    </section>
+    <section title="Security Considerations">
+      <t>This specification updates <xref target="RFC6613"></xref> and will be used with
+      <xref target="RFC6614"></xref>.  When used over plain TCP, this
+      specification creates new opportunities for an on-path attacker to
+      impact availability.  These attacks can be entirely mitigated by
+      using TLS.  If these attacks are acceptable, then this specification can be used over TCP without TLS.</t>
+    </section>
+  </middle>
+  <back>
+    <references title="Normative References">
+&rfc2119;
+<?rfc include="reference.RFC.2865"?>
+<?rfc include="reference.RFC.3575"?>
+<?rfc include="reference.RFC.5997"?>
+<?rfc include="reference.RFC.6613"?>
+<?rfc include="reference.RFC.6614"?>
+<?rfc include="reference.RFC.6929"?>
+
+   </references>
+    <references title="Informative References">
+
+<?rfc include="reference.RFC.7499"?>
+<?rfc include="reference.RFC.7833"?>
+    </references>
+<section title="Acknowledgements" numbered="no">
+<t>Sam Hartman's time on this document was funded by JANET as part of Project
+Moonshot.</t>
+<t>Alan DeKok provided valuable review and text for the Protocol-Error packet
+code.</t>
+<t>Alejandro Perez Mendez provided valuable review comments.</t>
+</section>
+
+
+  </back>
+</rfc>

@@ -1,0 +1,1014 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc rfcedstyle="yes" ?> 
+<?rfc toc="yes" ?> 
+<?rfc comments="yes" ?> 
+<?rfc subcompact="no" ?> 
+<?rfc symrefs="no" ?> 
+ 
+<rfc number="4956" category="exp"> 
+  <front> 
+    <title>DNS Security (DNSSEC) Opt-In</title> 
+ 
+    <author initials="R" surname="Arends" fullname="Roy Arends"> 
+      <organization>Nominet</organization> 
+      <address> 
+        <postal> 
+          <street>Sandford Gate</street> 
+          <street>Sandy Lane West</street> 
+          <city>Oxford</city> 
+          <code>OX4 6LB</code> 
+          <country>UNITED KINGDOM</country> 
+        </postal> 
+        <phone>+44 1865 332211</phone> 
+        <email>roy@nominet.org.uk</email> 
+      </address> 
+    </author> 
+ 
+    <author initials="M" surname="Kosters" fullname="Mark Kosters"> 
+      <organization>VeriSign, Inc.</organization> 
+      <address> 
+        <postal> 
+          <street>21355 Ridgetop Circle</street> 
+          <city>Dulles</city> <region>VA</region> <code>20166</code> 
+          <country>US</country> 
+        </postal> 
+        <phone>+1 703 948 3200</phone> 
+        <email>mkosters@verisign.com</email> 
+        <uri>http://www.verisignlabs.com</uri> 
+      </address> 
+    </author> 
+ 
+    <author initials="D" surname="Blacka" fullname="David Blacka"> 
+      <organization>VeriSign, Inc.</organization> 
+      <address> 
+        <postal> 
+          <street>21355 Ridgetop Circle</street> 
+          <city>Dulles</city> <region>VA</region> <code>20166</code> 
+          <country>US</country> 
+        </postal> 
+        <phone>+1 703 948 3200</phone> 
+        <email>davidb@verisign.com</email> 
+        <uri>http://www.verisignlabs.com</uri> 
+      </address> 
+    </author> 
+ 
+    <date month="July" year="2007" />  
+    <area>Internet</area> 
+    <workgroup>DNSEXT</workgroup> 
+ 
+<!-- [rfced] Please insert any keywords (beyond those that appear in 
+the title) for use on http://www.rfc-editor.org/search.html. --> 
+<keyword>example</keyword> 
+ 
+    <abstract> 
+ 
+      <t>In the DNS security (DNSSEC) extensions, delegations to 
+      unsigned subzones are cryptographically secured.  Maintaining 
+      this cryptography is not always practical or necessary.  This 
+      document describes an experimental "Opt-In" model that allows 
+      administrators to omit this cryptography and manage the cost of 
+      adopting DNSSEC with large zones.</t> 
+ 
+    </abstract> 
+ 
+  </front> 
+ 
+  <middle> 
+ 
+    <section title="Overview"> 
+ 
+      <t>The cost to cryptographically secure delegations to unsigned 
+      zones is high for large delegation-centric zones and zones where 
+      insecure delegations will be updated rapidly.  For these zones, 
+      the costs of maintaining the NextSECure (NSEC) record chain may 
+      be extremely high relative to the gain of cryptographically 
+      authenticating existence of unsecured zones.</t> 
+ 
+      <t>This document describes an experimental method of eliminating 
+      the superfluous cryptography present in secure delegations to 
+      unsigned zones.  Using "Opt-In", a zone administrator can choose 
+      to remove insecure delegations from the NSEC chain.  This is 
+      accomplished by extending the semantics of the NSEC record by 
+      using a redundant bit in the type map.</t> 
+ 
+    </section> 
+ 
+    <section title="Definitions and Terminology"> 
+ 
+      <t>Throughout this document, familiarity with the DNS system 
+      (<xref target="RFC1035">RFC 1035</xref>), DNS security 
+      extensions (<xref target="RFC4033" />, <xref target="RFC4034" 
+      />, and <xref target="RFC4035" />, referred to in this document 
+      as "standard DNSSEC"), and DNSSEC terminology (<xref 
+      target="RFC3090">RFC 3090</xref>) is assumed.</t> 
+ 
+      <t>The following abbreviations and terms are used in this 
+      document:</t> 
+       
+      <t> 
+        <list style="hanging"> 
+ 
+          <t hangText="RR:"> is used to refer to a DNS resource 
+          record.</t> 
+ 
+          <t hangText="RRset:"> refers to a Resource Record Set, as 
+          defined by <xref target="RFC2181" />.  In this document, the 
+          RRset is also defined to include the covering RRSIG records, 
+          if any exist.</t> 
+ 
+          <t hangText="signed name:"> refers to a DNS name that has, 
+          at minimum, a (signed) NSEC record.</t> 
+ 
+          <t hangText="unsigned name:"> refers to a DNS name that does 
+          not (at least) have an NSEC record.</t> 
+ 
+          <t hangText="covering NSEC record/RRset:"> is the NSEC 
+          record used to prove (non)existence of a particular name or 
+          RRset.  This means that for a RRset or name 'N', the 
+          covering NSEC record has the name 'N', or has an owner name 
+          less than 'N' and "next" name greater than 'N'.</t> 
+ 
+          <t hangText="delegation:"> refers to an NS RRset with a name 
+          different from the current zone apex (non-zone-apex), 
+          signifying a delegation to a subzone.</t> 
+ 
+          <t hangText="secure delegation:"> refers to a signed name 
+          containing a delegation (NS RRset), and a signed DS RRset, 
+          signifying a delegation to a signed subzone.</t> 
+ 
+          <t hangText="insecure delegation:"> refers to a signed name 
+          containing a delegation (NS RRset), but lacking a DS RRset, 
+          signifying a delegation to an unsigned subzone.</t> 
+ 
+          <t hangText="Opt-In insecure delegation:"> refers to an 
+          unsigned name containing only a delegation NS RRset.  The 
+          covering NSEC record uses the Opt-In methodology described 
+          in this document.</t> 
+ 
+          </list> 
+      </t> 
+ 
+      <t>The key words "MUST, "MUST NOT", "REQUIRED", "SHALL", "SHALL 
+      NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY, and 
+      "OPTIONAL" in this document are to be interpreted as described 
+      in <xref target="RFC2119">RFC 2119</xref>.</t> 
+    </section> 
+ 
+    <section title="Experimental Status"> 
+      <t>This document describes an EXPERIMENTAL extension to DNSSEC. 
+      It interoperates with non-experimental DNSSEC using the 
+      technique described in <xref 
+      target="RFC4955" />.  This 
+      experiment is identified with the following private algorithms 
+      (using algorithm 253):</t> 
+ 
+      <t> 
+        <list style="hanging"> 
+          <t hangText='"3.optin.verisignlabs.com":'> 
+          is an alias for DNSSEC algorithm 3, DSA, and</t> 
+          <t hangText='"5.optin.verisignlabs.com":'> 
+          is an alias for DNSSEC algorithm 5, RSASHA1.</t> 
+        </list> 
+      </t> 
+ 
+      <t>Servers wishing to sign and serve zones that utilize Opt-In 
+      MUST sign the zone with only one or more of these private 
+      algorithms and MUST NOT use any other algorithms.</t> 
+ 
+      <t>Resolvers MUST NOT apply the Opt-In validation rules 
+      described in this document unless a zone is signed using one or 
+      more of these private algorithms.</t> 
+ 
+      <t>This experimental protocol relaxes the restriction that 
+      validators MUST ignore the setting of the NSEC bit in the type 
+      map as specified in <xref target="RFC4035">RFC 4035</xref> 
+      Section 5.4.</t> 
+ 
+      <t>The remainder of this document assumes that the servers and 
+      resolvers involved are aware of and are involved in this 
+      experiment.</t> 
+       
+    </section> 
+ 
+<?rfc needLines="10"?> 
+    <section title="Protocol Additions"> 
+ 
+      <t>In DNSSEC, delegation NS RRsets are not signed, but are 
+      instead accompanied by an NSEC RRset of the same name and 
+      (possibly) a DS record.  The security status of the subzone is 
+      determined by the presence or absence of the DS RRset, 
+      cryptographically proven by the NSEC record.  Opt-In expands 
+      this definition by allowing insecure delegations to exist within 
+      an otherwise signed zone without the corresponding NSEC record 
+      at the delegation's owner name.  These insecure delegations are 
+      proven insecure by using a covering NSEC record.</t> 
+ 
+      <t>Since this represents a change of the interpretation of NSEC 
+      records, resolvers must be able to distinguish between RFC 
+      standard DNSSEC NSEC records and Opt-In NSEC records.  This is 
+      accomplished by "tagging" the NSEC records that cover (or 
+      potentially cover) insecure delegation nodes.  This tag is 
+      indicated by the absence of the NSEC bit in the type map.  Since 
+      the NSEC bit in the type map merely indicates the existence of 
+      the record itself, this bit is redundant and safe for use as a 
+      tag.</t> 
+ 
+      <t>An Opt-In tagged NSEC record does not assert the 
+      (non)existence of the delegations that it covers (except for a 
+      delegation with the same name).  This allows for the addition or 
+      removal of these delegations without recalculating or resigning 
+      records in the NSEC chain.  However, Opt-In tagged NSEC records 
+      do assert the (non)existence of other RRsets.</t> 
+ 
+      <t>An Opt-In NSEC record MAY have the same name as an insecure 
+      delegation.  In this case, the delegation is proven insecure by 
+      the lack of a DS bit in the type map, and the signed NSEC record 
+      does assert the existence of the delegation.</t> 
+ 
+      <t>Zones using Opt-In MAY contain a mixture of Opt-In tagged 
+      NSEC records and standard DNSSEC NSEC records.  If an NSEC record 
+      is not Opt-In, there MUST NOT be any insecure delegations (or 
+      any other records) between it and the RRsets indicated by the 
+      'next domain name' in the NSEC RDATA.  If it is Opt-In, there 
+      MUST only be insecure delegations between it and the next node 
+      indicated by the 'next domain name' in the NSEC RDATA.</t> 
+ 
+      <t>In summary,</t> 
+ 
+      <t> 
+         <list style="symbols"> 
+ 
+           <t>An Opt-In NSEC type is identified by a zero-valued (or 
+           not-specified) NSEC bit in the type bit map of the NSEC 
+           record.</t> 
+ 
+<?rfc needLines="10"?> 
+           <t>A standard DNSSEC NSEC type is identified by a 
+           one-valued NSEC bit in the type bit map of the NSEC 
+           record.</t> 
+ 
+         </list> 
+      </t> 
+ 
+      <t>and</t> 
+ 
+      <t> 
+         <list style="symbols"> 
+ 
+           <t>An Opt-In NSEC record does not assert the non-existence 
+           of a name between its owner name and "next" name, although 
+           it does assert that any name in this span MUST be an 
+           insecure delegation.</t> 
+ 
+           <t>An Opt-In NSEC record does assert the (non)existence of 
+           RRsets with the same owner name.</t> 
+ 
+         </list> 
+      </t> 
+ 
+      <section title="Server Considerations" anchor="server"> 
+ 
+        <t>Opt-In imposes some new requirements on authoritative DNS 
+        servers.</t> 
+ 
+        <section title="Delegations Only"> 
+ 
+          <t>This specification dictates that only insecure 
+          delegations may exist between the owner and "next" names of 
+          an Opt-In tagged NSEC record.  Signing tools MUST NOT 
+          generate signed zones that violate this restriction. 
+          Servers MUST refuse to load and/or serve zones that violate 
+          this restriction.  Servers also MUST reject AXFR or IXFR 
+          responses that violate this restriction.</t> 
+ 
+        </section> 
+ 
+        <section title="Insecure Delegation Responses"> 
+ 
+          <t>When returning an Opt-In insecure delegation, the server 
+          MUST return the covering NSEC RRset in the Authority 
+          section.</t> 
+ 
+          <t>In standard DNSSEC, NSEC records already must be returned 
+          along with the insecure delegation.  The primary difference 
+          that this proposal introduces is that the Opt-In tagged NSEC 
+          record will have a different owner name from the delegation 
+          RRset.  This may require implementations to search for the 
+          covering NSEC RRset.</t> 
+ 
+        </section> 
+ 
+        <section title="Dynamic Update"> 
+ 
+          <t>Opt-In changes the semantics of Secure DNS Dynamic Update 
+          <xref target="RFC3007"/>.  In particular, it introduces the 
+          need for rules that describe when to add or remove a 
+          delegation name from the NSEC chain.  This document does not 
+          attempt to define these rules.  Until these rules are 
+          defined, servers MUST NOT process DNS Dynamic Update 
+          requests against zones that use Opt-In NSEC records. 
+          Servers SHOULD return responses to update requests with 
+          RCODE=REFUSED.</t> 
+ 
+        </section> 
+ 
+      </section> 
+ 
+      <section title="Client Considerations"> 
+ 
+        <t>Opt-In imposes some new requirements on security-aware 
+        resolvers (caching or otherwise).</t> 
+ 
+        <section title="Delegations Only"> 
+ 
+          <t>As stated in <xref target="server" /> above, this 
+          specification restricts the namespace covered by Opt-In 
+          tagged NSEC records to insecure delegations only.  Clients 
+          are not expected to take any special measures to enforce 
+          this restriction; instead, it forms an underlying assumption 
+          that clients may rely on.</t> 
+ 
+        </section> 
+ 
+        <section title="Validation Process Changes"> 
+ 
+          <t>This specification does not change the resolver's 
+          resolution algorithm.  However, it does change the DNSSEC 
+          validation process.</t> 
+ 
+          <section title="Referrals"> 
+ 
+            <t>Resolvers MUST be able to use Opt-In tagged NSEC 
+            records to cryptographically prove the validity and 
+            security status (as insecure) of a referral.  Resolvers 
+            determine the security status of the referred-to zone as 
+            follows:</t> 
+ 
+            <t> 
+              <list style="symbols"> 
+ 
+                <t>In standard DNSSEC, the security status is proven 
+                by the existence or absence of a DS RRset at the same 
+                name as the delegation.  The existence of the DS RRset 
+                indicates that the referred-to zone is signed. The 
+                absence of the DS RRset is proven using a verified 
+                NSEC record of the same name that does not have the DS 
+                bit set in the type map.  This NSEC record MAY also be 
+                tagged as Opt-In.</t> 
+ 
+                <t>Using Opt-In, the security status is proven by the 
+                existence of a DS record (for signed) or the presence 
+                of a verified Opt-In tagged NSEC record that covers 
+                the delegation name.  That is, the NSEC record does 
+                not have the NSEC bit set in the type map, and the 
+                delegation name falls between the NSEC's owner and 
+                "next" name.</t> 
+ 
+              </list> 
+            </t> 
+           
+            <t>Using Opt-In does not substantially change the nature 
+            of following referrals within DNSSEC.  At every delegation 
+            point, the resolver will have cryptographic proof that the 
+            referred-to subzone is signed or unsigned.</t> 
+ 
+          </section> 
+ 
+          <section title="Queries for DS Resource Records"> 
+ 
+            <t>Since queries for DS records are directed to the parent 
+            side of a zone cut (see <xref target="RFC4034"/>, Section 
+            5), negative responses to these queries may be covered by 
+            an Opt-In flagged NSEC record.</t> 
+ 
+            <t>Resolvers MUST be able to use Opt-In tagged NSEC 
+            records to cryptographically prove the validity and 
+            security status of negative responses to queries for DS 
+            records.  In particular, a NOERROR/NODATA (i.e., RCODE=3, 
+            but the answer section is empty) response to a DS query 
+            may be proven by an Opt-In flagged covering NSEC record, 
+            rather than an NSEC record matching the query name.</t> 
+ 
+          </section> 
+ 
+        </section> 
+ 
+        <section title="NSEC Record Caching"> 
+ 
+          <t>Caching resolvers MUST be able to retrieve the 
+          appropriate covering Opt-In NSEC record when returning 
+          referrals that need them.  This requirement differs from 
+          standard DNSSEC in that the covering NSEC will not have the 
+          same owner name as the delegation.  Some implementations may 
+          have to use new methods for finding these NSEC records.</t> 
+ 
+        </section> 
+ 
+        <section title="Use of the AD bit"> 
+ 
+          <t>The AD bit, as defined by <xref target="RFC3655" /> and 
+          <xref target="RFC4035" />, MUST NOT be set when:</t> 
+ 
+          <t> 
+            <list style="symbols"> 
+ 
+              <t>sending a Name Error (RCODE=3) response where the 
+              covering NSEC is tagged as Opt-In.</t> 
+ 
+              <t>sending an Opt-In insecure delegation response, 
+              unless the covering (Opt-In) NSEC record's owner name 
+              equals the delegation name.</t> 
+ 
+              <t>sending a NOERROR/NODATA response when query type is 
+              DS and the covering NSEC is tagged as Opt-In, unless 
+              NSEC record's owner name matches the query name.</t> 
+ 
+            </list> 
+          </t> 
+ 
+          <t>This rule is based on what the Opt-In NSEC record 
+          actually proves: for names that exist between the Opt-In 
+          NSEC record's owner and "next" names, the Opt-In NSEC record 
+          cannot prove the non-existence or existence of the name.  As 
+          such, not all data in the response has been 
+          cryptographically verified, so the AD bit cannot be set.</t> 
+ 
+        </section> 
+ 
+      </section> 
+ 
+    </section> 
+ 
+    <section title="Benefits"> 
+ 
+      <t>Using Opt-In allows administrators of large and/or changing 
+      delegation-centric zones to minimize the overhead involved in 
+      maintaining the security of the zone.</t> 
+ 
+      <t>Opt-In accomplishes this by eliminating the need for NSEC 
+      records for insecure delegations.  This, in a zone with a large 
+      number of delegations to unsigned subzones, can lead to 
+      substantial space savings (both in memory and on disk). 
+      Additionally, Opt-In allows for the addition or removal of 
+      insecure delegations without modifying the NSEC record chain. 
+      Zones that are frequently updating insecure delegations (e.g., 
+      Top-Level Domains (TLDs)) can avoid the substantial overhead of modifying and 
+      resigning the affected NSEC records.</t> 
+ 
+    </section> 
+ 
+    <section title="Example"> 
+ 
+     <t>Consider the zone EXAMPLE shown below.  This is a zone where 
+     all of the NSEC records are tagged as Opt-In.</t> 
+ 
+      <figure title="Example A."> 
+        <preamble>Example A: Fully Opt-In Zone.</preamble> 
+ 
+        <artwork> 
+      EXAMPLE.               SOA    ... 
+      EXAMPLE.               RRSIG  SOA ... 
+      EXAMPLE.               NS     FIRST-SECURE.EXAMPLE. 
+      EXAMPLE.               RRSIG  NS ... 
+      EXAMPLE.               DNSKEY ... 
+      EXAMPLE.               RRSIG  DNSKEY ... 
+      EXAMPLE.               NSEC   FIRST-SECURE.EXAMPLE. ( 
+                                    SOA NS RRSIG DNSKEY ) 
+      EXAMPLE.               RRSIG  NSEC ... 
+ 
+      FIRST-SECURE.EXAMPLE.  A      ... 
+      FIRST-SECURE.EXAMPLE.  RRSIG  A ... 
+      FIRST-SECURE.EXAMPLE.  NSEC   NOT-SECURE-2.EXAMPLE. A RRSIG 
+      FIRST-SECURE.EXAMPLE.  RRSIG  NSEC ... 
+ 
+      NOT-SECURE.EXAMPLE.    NS     NS.NOT-SECURE.EXAMPLE. 
+      NS.NOT-SECURE.EXAMPLE. A      ... 
+ 
+      NOT-SECURE-2.EXAMPLE.  NS     NS.NOT-SECURE.EXAMPLE. 
+      NOT-SECURE-2.EXAMPLE   NSEC   SECOND-SECURE.EXAMPLE NS RRSIG 
+      NOT-SECURE-2.EXAMPLE   RRSIG  NSEC ... 
+ 
+      SECOND-SECURE.EXAMPLE. NS     NS.ELSEWHERE. 
+      SECOND-SECURE.EXAMPLE. DS     ... 
+      SECOND-SECURE.EXAMPLE. RRSIG  DS ... 
+      SECOND-SECURE.EXAMPLE. NSEC   EXAMPLE. NS RRSIG DNSKEY 
+      SECOND-SECURE.EXAMPLE. RRSIG  NSEC ... 
+ 
+      UNSIGNED.EXAMPLE.      NS     NS.UNSIGNED.EXAMPLE. 
+      NS.UNSIGNED.EXAMPLE.   A      ... 
+ 
+        </artwork> 
+      </figure> 
+<?rfc needLines="5" ?> 
+      <t>In this example, a query for a signed RRset (e.g., 
+      "FIRST-SECURE.EXAMPLE A") or a secure delegation 
+      ("WWW.SECOND-SECURE.EXAMPLE A") will result in a standard DNSSEC 
+      response.</t> 
+ 
+      <t>A query for a nonexistent RRset will result in a response 
+      that differs from standard DNSSEC by the following: the NSEC record will be tagged 
+      as Opt-In, there may be no NSEC record proving the non-existence 
+      of a matching wildcard record, and the AD bit will not be 
+      set.</t> 
+ 
+      <t>A query for an insecure delegation RRset (or a referral) will 
+      return both the answer (in the Authority section) and the 
+      corresponding Opt-In NSEC record to prove that it is not 
+      secure.</t> 
+ 
+      <figure title="Example A.1"> 
+        <preamble>Example A.1: Response to query for 
+        WWW.UNSIGNED.EXAMPLE. A</preamble> 
+         <artwork> 
+ 
+      RCODE=NOERROR, AD=0 
+ 
+      Answer Section: 
+ 
+      Authority Section: 
+      UNSIGNED.EXAMPLE.      NS     NS.UNSIGNED.EXAMPLE 
+      SECOND-SECURE.EXAMPLE. NSEC   EXAMPLE. NS RRSIG DS 
+      SECOND-SECURE.EXAMPLE. RRSIG  NSEC ... 
+ 
+      Additional Section: 
+      NS.UNSIGNED.EXAMPLE.   A      ... 
+        </artwork> 
+      </figure> 
+ 
+      <t>In the Example A.1 zone, the EXAMPLE. node MAY use either style 
+      of NSEC record, because there are no insecure delegations that 
+      occur between it and the next node, FIRST-SECURE.EXAMPLE. In 
+      other words, Example A would still be a valid zone if the NSEC 
+      record for EXAMPLE. was changed to the following RR:</t> 
+ 
+      <figure> 
+        <artwork> 
+      EXAMPLE.               NSEC   FIRST-SECURE.EXAMPLE. (SOA NS  
+                                    RRSIG DNSKEY NSEC ) 
+        </artwork> 
+      </figure> 
+ 
+      <t>However, the other NSEC records (FIRST-SECURE.EXAMPLE. and 
+      SECOND-SECURE.EXAMPLE.) MUST be tagged as Opt-In because there 
+      are insecure delegations in the range they 
+      define. (NOT-SECURE.EXAMPLE. and UNSIGNED.EXAMPLE., 
+      respectively).</t> 
+ 
+      <t>NOT-SECURE-2.EXAMPLE. is an example of an insecure delegation 
+      that is part of the NSEC chain and also covered by an Opt-In 
+      tagged NSEC record.  Because NOT-SECURE-2.EXAMPLE. is a signed 
+      name, it cannot be 
+<?rfc needLines="10"?> 
+      removed from the zone without modifying and 
+      resigning the prior NSEC record.  Delegations with names that 
+      fall between NOT-SECURE-2.EXAMPLE. and 
+      SECOND-SECURE.EXAMPLE. may be added or removed without resigning 
+      any NSEC records. </t> 
+ 
+    </section> 
+ 
+    <section title="Transition Issues"> 
+ 
+      <t>Opt-In is not backwards compatible with standard DNSSEC and 
+      is considered experimental.  Standard DNSSEC-compliant 
+      implementations would not recognize Opt-In tagged NSEC records 
+      as different from standard NSEC records.  Because of this, 
+      standard DNSSEC implementations, if they were to validate Opt-In 
+      style responses, would reject all Opt-In insecure delegations 
+      within a zone as invalid.  However, by only signing with private 
+      algorithms, standard DNSSEC implementations will treat Opt-In 
+      responses as unsigned.</t> 
+ 
+      <t>It should be noted that all elements in the resolution path 
+      between (and including) the validator and the authoritative name 
+      server must be aware of the Opt-In experiment and implement the 
+      Opt-In semantics for successful validation to be possible.  In 
+      particular, this includes any caching middleboxes between the 
+      validator and authoritative name server.</t> 
+ 
+    </section> 
+ 
+    <section title="Security Considerations"> 
+ 
+      <t>Opt-In allows for unsigned names, in the form of delegations 
+      to unsigned subzones, to exist within an otherwise signed zone. 
+      All unsigned names are, by definition, insecure, and their 
+      validity or existence cannot be cryptographically proven.</t> 
+ 
+      <t>In general:</t> 
+  
+      <t> 
+        <list style="symbols"> 
+ 
+          <t>Records with unsigned names (whether or not existing) 
+          suffer from the same vulnerabilities as records in an 
+          unsigned zone.  These vulnerabilities are described in more 
+          detail in <xref target="RFC3833"/> (note 
+          in particular Sections 2.3, "Name Games" and 2.6, 
+          "Authenticated Denial").</t> 
+ 
+          <t>Records with signed names have the same security whether 
+          or not Opt-In is used.</t> 
+ 
+        </list> 
+      </t> 
+ 
+      <t>Note that with or without Opt-In, an insecure delegation may 
+      have its contents undetectably altered by an attacker.  Because 
+      of this, the primary difference in security that Opt-In 
+      introduces is the loss of the ability to prove the existence or 
+      nonexistence of an insecure delegation within the span of an 
+      Opt-In NSEC record.</t> 
+<?rfc needLines="5"?> 
+      <t>In particular, this means that a malicious entity may be able 
+      to insert or delete records with unsigned names.  These records 
+      are normally NS records, but this also includes signed wildcard 
+      expansions (while the wildcard record itself is signed, its 
+      expanded name is an unsigned name), which can be undetectably 
+      removed or used to replace an existing unsigned delegation.</t> 
+ 
+      <t>For example, if a resolver received the following response 
+      from the example zone above:</t> 
+ 
+      <figure title="Attacker has forged a name"> 
+        <preamble>Example S.1: Response to query for 
+        WWW.DOES-NOT-EXIST.EXAMPLE. A</preamble> 
+        <artwork> 
+      RCODE=NOERROR 
+ 
+      Answer Section: 
+ 
+      Authority Section: 
+      DOES-NOT-EXIST.EXAMPLE. NS     NS.FORGED. 
+      EXAMPLE.                NSEC   FIRST-SECURE.EXAMPLE. SOA NS \ 
+                                     RRSIG DNSKEY 
+      EXAMPLE.                RRSIG  NSEC ... 
+ 
+      Additional Section: 
+ 
+        </artwork> 
+      </figure> 
+ 
+      <t>The resolver would have no choice but to believe that the 
+      referral to NS.FORGED. is valid.  If a wildcard existed that 
+      would have been expanded to cover "WWW.DOES-NOT-EXIST.EXAMPLE.", 
+      an attacker could have undetectably removed it and replaced it 
+      with the forged delegation.</t> 
+ 
+      <t>Note that being able to add a delegation is functionally 
+      equivalent to being able to add any record type: an attacker 
+      merely has to forge a delegation to the nameserver under his/her 
+      control and place whatever records are needed at the subzone 
+      apex.</t> 
+ 
+      <t>While in particular cases, this issue may not present a 
+      significant security problem, in general it should not be 
+      lightly dismissed.  Therefore, it is strongly RECOMMENDED that 
+      Opt-In be used sparingly.  In particular, zone signing tools 
+      SHOULD NOT default to Opt-In, and MAY choose not to support 
+      Opt-In at all.</t> 
+ 
+    </section> 
+ 
+    <section title="Acknowledgments"> 
+ 
+      <t>The contributions, suggestions, and remarks of the following persons 
+      (in alphabetic order) to this document are acknowledged:</t> 
+ 
+      <t> 
+        <list style="empty"> 
+          <t>Mats Dufberg, Miek Gieben, Olafur Gudmundsson, Bob 
+          Halley, Olaf Kolkman, Edward Lewis, Ted Lindgreen, Rip 
+          Loomis, Bill Manning, Dan Massey, Scott Rose, Mike 
+          Schiraldi, Jakob Schlyter, Brian Wellington.</t> 
+        </list> 
+      </t> 
+ 
+    </section> 
+ 
+  </middle> 
+  <back> 
+    <references title="Normative References"> 
+ 
+      <reference anchor='RFC1035'> 
+ 
+        <front> 
+          <title abbrev='Domain Implementation and Specification'> 
+            Domain names - implementation and specification 
+          </title> 
+          <author initials='P.' surname='Mockapetris'  
+                  fullname='P. Mockapetris'> 
+            <organization>USC/ISI</organization> 
+            <address> 
+              <postal> 
+                <street>4676 Admiralty Way</street> 
+                <city>Marina del Rey</city> 
+                <region>CA</region> 
+                <code>90291</code> 
+              <country>US</country></postal> 
+              <phone>+1 213 822 1511</phone> 
+          <email></email></address></author> 
+        <date month='November' year='1987'></date></front> 
+ 
+        <seriesInfo name='STD' value='13' /> 
+        <seriesInfo name='RFC' value='1035' /> 
+      </reference> 
+ 
+      <reference anchor='RFC2119'> 
+ 
+        <front> 
+          <title abbrev='RFC Key Words'> 
+            Key words for use in RFCs to Indicate Requirement Levels 
+          </title> 
+          <author initials='S.' surname='Bradner' fullname='Scott Bradner'> 
+            <organization>Harvard University</organization> 
+            <address> 
+              <postal> 
+                <street>1350 Mass. Ave.</street> 
+                <street>Cambridge</street> 
+              <street>MA 02138</street></postal> 
+              <phone>- +1 617 495 3864</phone> 
+          <email>-</email></address></author> 
+          <date month='March' year='1997'></date> 
+          <area>General</area> 
+          <keyword>keyword</keyword> 
+          <abstract> 
+            <t> 
+              In many standards track documents several words are used 
+              to signify the requirements in the specification.  These 
+              words are often capitalized.  This document defines 
+              these words as they should be interpreted in IETF 
+              documents.  Authors who follow these guidelines should 
+              incorporate this phrase near the beginning of their 
+              document: 
+              <list> 
+                <t> The key words &quot;MUST&quot;, &quot;MUST 
+                NOT&quot;, &quot;REQUIRED&quot;, &quot;SHALL&quot;, 
+                &quot;SHALL NOT&quot;, &quot;SHOULD&quot;, 
+                &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;, 
+                &quot;MAY&quot;, and &quot;OPTIONAL&quot; in this 
+                document are to be interpreted as described in RFC 
+                2119.  </t></list></t> 
+                <t> 
+                  Note that the force of these words is modified by 
+                  the requirement level of the document in which they 
+                  are used.  </t></abstract></front> 
+ 
+                  <seriesInfo name='BCP' value='14' /> 
+                  <seriesInfo name='RFC' value='2119' /> 
+      </reference> 
+ 
+ 
+      <reference anchor='RFC3655'> 
+ 
+        <front> 
+          <title>Redefinition of DNS Authenticated Data (AD) bit</title> 
+          <author initials='B.' surname='Wellington' fullname='B. Wellington'> 
+          <organization /></author> 
+          <author initials='O.' surname='Gudmundsson'  
+                  fullname='O. Gudmundsson'> 
+          <organization /></author> 
+        <date month='November' year='2003' /></front> 
+ 
+        <seriesInfo name='RFC' value='3655' /> 
+        <format type='TXT' octets='15646'  
+                target='ftp://ftp.isi.edu/in-notes/rfc3655.txt' /> 
+      </reference> 
+ 
+      <reference anchor='RFC4033'> 
+ 
+        <front> 
+          <title>DNS Security Introduction and Requirements</title> 
+          <author initials='R.' surname='Arends' fullname='R. Arends'> 
+          <organization /></author> 
+          <author initials='R.' surname='Austein' fullname='R. Austein'> 
+          <organization /></author> 
+          <author initials='M.' surname='Larson' fullname='M. Larson'> 
+          <organization /></author> 
+          <author initials='D.' surname='Massey' fullname='D. Massey'> 
+          <organization /></author> 
+          <author initials='S.' surname='Rose' fullname='S. Rose'> 
+          <organization /></author> 
+        <date year='2005' month='March' /></front> 
+ 
+        <seriesInfo name='RFC' value='4033' /> 
+        <format type='TXT' octets='52445'  
+                target='ftp://ftp.isi.edu/in-notes/rfc4033.txt' /> 
+      </reference> 
+       
+      <reference anchor='RFC4034'> 
+ 
+        <front> 
+          <title>Resource Records for the DNS Security Extensions</title> 
+          <author initials='R.' surname='Arends' fullname='R. Arends'> 
+          <organization /></author> 
+          <author initials='R.' surname='Austein' fullname='R. Austein'> 
+          <organization /></author> 
+          <author initials='M.' surname='Larson' fullname='M. Larson'> 
+          <organization /></author> 
+          <author initials='D.' surname='Massey' fullname='D. Massey'> 
+          <organization /></author> 
+          <author initials='S.' surname='Rose' fullname='S. Rose'> 
+          <organization /></author> 
+        <date year='2005' month='March' /></front> 
+ 
+        <seriesInfo name='RFC' value='4034' /> 
+        <format type='TXT' octets='63879'  
+                target='ftp://ftp.isi.edu/in-notes/rfc4034.txt' /> 
+      </reference> 
+ 
+      <reference anchor='RFC4035'> 
+ 
+        <front> 
+          <title>Protocol Modifications for the DNS Security Extensions</title> 
+          <author initials='R.' surname='Arends' fullname='R. Arends'> 
+          <organization /></author> 
+          <author initials='R.' surname='Austein' fullname='R. Austein'> 
+          <organization /></author> 
+          <author initials='M.' surname='Larson' fullname='M. Larson'> 
+          <organization /></author> 
+          <author initials='D.' surname='Massey' fullname='D. Massey'> 
+          <organization /></author> 
+          <author initials='S.' surname='Rose' fullname='S. Rose'> 
+          <organization /></author> 
+        <date year='2005' month='March' /></front> 
+ 
+        <seriesInfo name='RFC' value='4035' /> 
+        <format type='TXT' octets='130589'  
+                target='ftp://ftp.isi.edu/in-notes/rfc4035.txt' /> 
+      </reference> 
+ 
+<!-- I-D.ietf-dnsext-dnssec-experiments will be RFC 4955 --> 
+ <reference anchor='RFC4955'> 
+        <front> 
+          <title>DNSSEC Experiments</title> 
+ 
+          <author initials='D' surname='Blacka' fullname='David Blacka'> 
+            <organization /> 
+          </author> 
+ 
+          <date month='July' year='2007' /> 
+ 
+        </front> 
+ 
+        <seriesInfo name='RFC' 
+                    value='4955'/> 
+      </reference> 
+ 
+    </references> 
+ 
+    <references title="Informative References"> 
+ 
+      <reference anchor='RFC2181'> 
+ 
+        <front> 
+          <title abbrev='DNS Clarifications'> 
+            Clarifications to the DNS Specification 
+          </title> 
+          <author initials='R.' surname='Elz' fullname='Robert Elz'> 
+            <organization>Computer Science</organization> 
+            <address> 
+              <postal> 
+                <street>Parkville</street> 
+                <street>Victoria</street> 
+                <street>3052</street> 
+              <street>Australia.</street></postal> 
+              <email>kre@munnari.OZ.AU</email> 
+          <uri>e</uri></address></author> 
+          <author initials='R.' surname='Bush' fullname='Randy Bush'> 
+            <organization>RGnet, Inc.</organization> 
+            <address> 
+              <postal> 
+                <street>5147 Crystal Springs Drive</street> 
+                <street>Bainbridge Island</street> 
+                <street>Washington</street> 
+                <street>98110</street> 
+                <street>United States.</street> 
+              <country>NE</country></postal> 
+          <email>randy@psg.com</email></address></author> 
+          <date month='July' year='1997'></date> 
+          <area>Applications</area> 
+          <keyword>DNS</keyword> 
+        <keyword>domain name system</keyword></front> 
+ 
+        <seriesInfo name='RFC' value='2181' /> 
+      </reference> 
+ 
+ 
+      <?rfc include="reference.RFC.3007" ?> 
+ 
+ 
+      <reference anchor='RFC3090'> 
+ 
+        <front> 
+          <title>DNS Security Extension Clarification on Zone Status</title> 
+          <author initials='E.' surname='Lewis' fullname='E. Lewis'> 
+          <organization></organization></author> 
+        <date month='March' year='2001'></date></front> 
+ 
+        <seriesInfo name='RFC' value='3090' /> 
+      </reference> 
+ 
+ 
+      <reference anchor='RFC3225'> 
+ 
+        <front> 
+          <title>Indicating Resolver Support of DNSSEC</title> 
+          <author initials='D.' surname='Conrad' fullname='D. Conrad'> 
+          <organization></organization></author> 
+        <date month='December' year='2001'></date></front> 
+ 
+        <seriesInfo name='RFC' value='3225' /> 
+      </reference> 
+ 
+      <reference anchor='RFC3833'> 
+ 
+        <front> 
+          <title>Threat Analysis of the Domain Name System (DNS)</title> 
+          <author initials='D.' surname='Atkins' fullname='D. Atkins'> 
+          <organization /></author> 
+          <author initials='R.' surname='Austein' fullname='R. Austein'> 
+          <organization /></author> 
+        <date year='2004' month='August' /></front> 
+ 
+        <seriesInfo name='RFC' value='3833' /> 
+        <format type='TXT' octets='39303'  
+                target='ftp://ftp.isi.edu/in-notes/rfc3833.txt' /> 
+      </reference> 
+ 
+ 
+    </references> 
+<?rfc needLines="48"?> 
+    <section title='Implementing Opt-In Using "Views"'> 
+ 
+      <t>In many cases, it may be convenient to implement an Opt-In 
+      zone by combining two separately maintained "views" of a zone at 
+      request time.  In this context, "view" refers to a particular 
+      version of a zone, not to any specific DNS implementation 
+      feature.</t> 
+ 
+      <t>In this scenario, one view is the secure view, the other is 
+      the insecure (or legacy) view.  The secure view consists of an 
+      entirely signed zone using Opt-In tagged NSEC records.  The 
+      insecure view contains no DNSSEC information.  It is helpful, 
+      although not necessary, for the secure view to be a subset 
+      (minus DNSSEC records) of the insecure view.</t> 
+ 
+      <t>In addition, the only RRsets that may solely exist in the 
+      insecure view are non-zone-apex NS RRsets. That is, all non-NS 
+      RRsets (and the zone apex NS RRset) MUST be signed and in the 
+      secure view.</t> 
+ 
+      <t>These two views may be combined at request time to provide a 
+      virtual, single Opt-In zone.  The following algorithm is used 
+      when responding to each query: 
+ 
+        <list style="empty"> 
+          <t>V_A is the secure view as described above.</t> 
+ 
+          <t>V_B is the insecure view as described above.</t> 
+ 
+          <t>R_A is a response generated from V_A, following standard 
+          DNSSEC.</t> 
+ 
+          <t>R_B is a response generated from V_B, following DNS 
+          resolution as per <xref target="RFC1035">RFC 
+          1035</xref>.</t> 
+ 
+          <t>R_C is the response generated by combining R_A with R_B, 
+          as described below.</t> 
+ 
+          <t>A query is DNSSEC-aware if it either has the <xref 
+          target="RFC3225">DO bit</xref> turned on or is for a 
+          DNSSEC-specific record type.</t> 
+ 
+      </list> 
+ 
+      <list style="numbers"> 
+ 
+        <t>If V_A is a subset of V_B and the query is not 
+        DNSSEC-aware, generate and return R_B, otherwise</t> 
+ 
+        <t>Generate R_A.</t> 
+     
+        <t>If R_A's RCODE != NXDOMAIN, return R_A, otherwise</t> 
+  <?rfc needLines="10" ?>   
+        <t>Generate R_B and combine it with R_A to form R_C: 
+     
+        <list style="empty"> 
+          <t>For each section (ANSWER, AUTHORITY, ADDITIONAL), copy 
+          the records from R_A into R_B, EXCEPT the AUTHORITY section 
+          SOA record, if R_B's RCODE = NOERROR.</t> 
+        </list> 
+        </t> 
+           
+        <t>Return R_C.</t> 
+ 
+      </list></t> 
+ 
+    </section> 
+ 
+  </back> 
+ 
+</rfc>

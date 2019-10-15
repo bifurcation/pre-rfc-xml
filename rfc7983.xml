@@ -1,0 +1,364 @@
+<?xml version='1.0' encoding='US-ASCII'?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc tocindent="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="7983"
+     ipr="pre5378Trust200902" 
+     category="std" 
+     updates="5764" 
+     submissionType="IETF" 
+     consensus="yes"
+     xml:lang="en">
+
+  <front>
+
+    <title abbrev="Multiplexing Scheme Updates for RFC 5764">Multiplexing Scheme Updates for&nbsp;Secure&nbsp;Real&nbhy;time&nbsp;Transport&nbsp;Protocol&nbsp;(SRTP) Extension for&nbsp;Datagram&nbsp;Transport&nbsp;Layer&nbsp;Security&nbsp;(DTLS)</title>
+
+    <author initials="M." surname="Petit-Huguenin" fullname="Marc Petit-Huguenin">
+      <organization>Impedance Mismatch</organization>
+      <address>
+        <email>marc@petit-huguenin.org</email>
+      </address>
+    </author>
+
+    <author initials="G." surname="Salgueiro" fullname="Gonzalo Salgueiro">
+      <organization>Cisco Systems</organization>
+      <address>
+        <postal>
+          <street>7200-12 Kit Creek Road</street>
+          <city>Research Triangle Park</city>
+          <region>NC</region>
+          <code>27709</code>
+          <country>United States of America</country>
+        </postal>
+        <email>gsalguei@cisco.com</email>
+      </address>
+    </author>
+
+    <date month="September" year="2016"/>
+    <area>RAI</area>
+    <workgroup>AVTCORE</workgroup>
+
+    <abstract>
+      <t>This document defines how Datagram Transport Layer Security (DTLS), Real-time Transport Protocol (RTP), RTP Control Protocol (RTCP), Session Traversal Utilities for NAT (STUN), Traversal Using Relays around NAT (TURN), and ZRTP packets are multiplexed on a single receiving socket.  It overrides the guidance from RFC 5764 ("SRTP Extension for DTLS"), which suffered from four issues described and fixed in this document.</t>
+<t>This document updates RFC 5764.</t>
+    </abstract>
+  </front>
+  <middle>
+    <section anchor="section.intro" title="Introduction" toc="default">      
+    
+    <t>Section 5.1.2 of <xref target="RFC5764">"Datagram Transport Layer
+    Security (DTLS) Extension to Establish Keys
+           for the Secure Real-time Transport Protocol (SRTP)"</xref>
+    defines a scheme for a Real-time Transport
+   Protocol (RTP) <xref target="RFC3550"/> receiver to
+    demultiplex <xref target="RFC6347">DTLS</xref>,
+    <xref target="RFC5389">Session Traversal Utilities for NAT
+   (STUN)</xref>,
+    and Secure Real-time Transport Protocol (SRTP) / Secure Real-time Transport Control Protocol (SRTCP) <xref target="RFC3711"/> packets that are arriving on the
+    RTP port.  Unfortunately, this demultiplexing scheme has created problematic issues: </t>
+
+      <t><list style="numbers"><t>It implicitly allocated codepoints for new
+      STUN methods without an IANA registry reflecting these new
+      allocations.</t>
+<t>It did not take into account the fact that ZRTP <xref target="RFC6189"/>
+also needs to be demultiplexed with the other packet types explicitly
+mentioned in Section 5.1.2 of RFC 5764.</t>
+<t>It implicitly allocated codepoints for new Transport Layer
+       Security (TLS) ContentTypes 
+without an IANA registry reflecting these new allocations.</t>
+<t>It did not take into account the fact that the Traversal Using
+       Relays around NAT (TURN) usage of STUN can create TURN channels that also need to be
+demultiplexed with the other packet types explicitly mentioned in Section
+      5.1.2 of RFC 5764.</t></list> </t>
+
+<t>Having overlapping ranges between different IANA registries becomes an
+issue when a new codepoint is allocated in one of these registries without
+carefully analyzing the impact it could have on the other registries when that
+codepoint is demultiplexed.  Among other downsides of the bad design of the
+demultiplexing algorithm detailed in <xref target="RFC5764" />, it creates a
+requirement for coordination between codepoint assignments where none should
+exist, and that is organizationally and socially undesirable.  However, RFC 5764 has been widely deployed, so there must be an awareness of this issue and how it must be dealt with.  Thus, even if the feature related to a codepoint is not initially thought to be useful in the context of demultiplexing, the respective IANA registry expert should at least raise a flag when the allocated codepoint irrevocably prevents multiplexing.</t>
+      <t>The first goal of this document is to make sure that future allocations in any of the affected protocols are done with the full knowledge of their impact on multiplexing.  This is achieved by updating <xref target="RFC5764"/>, which includes modifying the IANA registries with instructions for coordination between the protocols at risk.</t>
+      <t>A second goal is to permit the addition of new protocols to the list of existing multiplexed protocols in a manner that does not break existing implementations.  </t>
+      <t>At the time of this writing, the flaws in the demultiplexing scheme were unavoidably inherited by other documents, such as <xref target="RFC7345"/> and <xref target="SDP-BUNDLE" pageno="false" format="default"/>.  So in addition, these and any other affected documents will need to be corrected with the updates this document provides.  </t>
+      </section>
+      
+    <section anchor="section.terminology" title="Terminology" toc="default">
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in <xref target="RFC2119" />. </t>
+    </section>
+
+      <section anchor="section.intro.stun" title="Implicit Allocation of Codepoints for New STUN Methods" toc="default">
+
+        <t>The demultiplexing scheme in <xref target="RFC5764"/> states that the receiver can identify the packet
+	type by looking at the first byte.  If the value of this first byte is
+	0 or 1, the packet is identified to be STUN.  
+
+
+   The problem with this implicit allocation is
+   that it restricts the codepoints for STUN methods (as described in
+   Section 18.1 of <xref target="RFC5389"/>) to values between 0x000 and 0x07F, which
+   in turn reduces the number of possible STUN method codepoints
+   assigned by IETF Review (i.e., the range 0x000 - 0x7FF) from
+   2048 to only 128 and eliminates the possibility of having STUN
+   method codepoints assigned by Designated Expert (i.e., the range
+   0x800 - 0xFFF).</t>
+
+        <t>To preserve the Designated Expert range, this document allocates the values 2 and 3 to also identify STUN methods.</t>
+        <t>The IANA Registry for STUN methods has been modified to mark the codepoints from 0x100 to 0xFFF as Reserved.  These codepoints can still be allocated, but require IETF Review with a document that will properly evaluate the risk of an assignment overlapping with other registries.  </t>
+        <t>In addition, this document also updates the IANA registry such that
+	the STUN method codepoints assigned in the 0x080-0x0FF range are also
+	assigned via Designated Expert.  The "STUN Methods" registry has been
+	changed as follows: </t>
+        <t>OLD:</t>
+        <figure title="" suppress-title="false" align="left" alt="" width="" height="">
+          <artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+0x000-0x7FF     IETF Review
+0x800-0xFFF     Designated Expert</artwork>
+        </figure>
+        <t>NEW:</t>
+        <figure title="" suppress-title="false" align="left" alt="" width="" height="">
+          <artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+0x000-0x07F     IETF Review
+0x080-0x0FF     Designated Expert
+0x100-0xFFF     Reserved</artwork>
+        </figure>
+      </section>
+      
+      <section anchor="section.intro.zrtp" title="Multiplexing of ZRTP" toc="default">
+      
+      <t><xref target="RFC6189">ZRTP</xref> is a protocol for media path Diffie-Hellman
+   exchange to agree on a session key and parameters for establishing
+   unicast SRTP sessions for Voice
+   over IP (VoIP) applications.  The ZRTP protocol is media path keying
+   because it is multiplexed on the same port as RTP and does not
+   require support in the signaling protocol.</t>
+   
+      <t>In order to prevent future documents from assigning values from the unused range to a new protocol, this document modifies the <xref target="RFC5764"/> demultiplexing algorithm to properly account for ZRTP <xref target="RFC6189"/> by allocating the values from 16 to 19 for this purpose.</t>
+      
+      </section>
+      
+      <section anchor="section.intro.dtls" title="Implicit Allocation of New Codepoints for TLS	ContentTypes" toc="default">
+
+        <t>The demultiplexing scheme in <xref target="RFC5764" /> dictates that if the value of the first byte is between 20 and 63 (inclusive), then the packet is identified to be DTLS.  For DTLS 1.0  <xref target="RFC4347"/> and DTLS 1.2 <xref target="RFC6347"/>, that first byte corresponds to the TLS ContentType field.  Considerations must be taken into account when assigning additional ContentTypes in the codepoint ranges 0 to 19 and 64 to 255, so this does not prevent demultiplexing when this functionality is desirable.  Note that <xref target="RFC5764"/> describes a narrow use of DTLS that works as long as the specific DTLS version used abides by the restrictions on the demultiplexing byte (the ones that this document imposes on the "TLS ContentType Registry").  Any extension or revision to DTLS that causes it to no longer meet these constraints should consider what values may occur in the first byte of the DTLS message and what impact it would have on the multiplexing that <xref target="RFC5764"/> describes.</t>
+        
+<t>With respect to TLS packet identification, this document explicitly adds a
+warning to the codepoints from 0 to 19 and from 64 to 255 indicating that
+allocations in these ranges require coordination, as described in this
+document.  The "TLS ContentType Registry" has been changed as follows: </t>
+        <t>OLD:</t>
+        <figure title="" suppress-title="false" align="left" alt="" width="" height="">
+          <artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+0-19    Unassigned
+20      change_cipher_spec
+21      alert
+22      handshake
+23      application_data
+24      heartbeat
+25-255  Unassigned</artwork>
+        </figure>
+        <t>NEW:</t>
+        <figure title="" suppress-title="false" align="left" alt="" width="" height="">
+          <artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+0-19    Unassigned (Requires coordination; see RFC 7983)
+20      change_cipher_spec
+21      alert
+22      handshake
+23      application_data
+24      heartbeat
+25-63   Unassigned
+64-255  Unassigned (Requires coordination; see RFC 7983)</artwork>
+        </figure>
+      </section>
+      <section anchor="section.intro.turn" title="Multiplexing of TURN Channels" toc="default">
+
+        <t>When used with <xref target="RFC5245">Interactive Connectivity
+	Establishment (ICE)</xref>, an implementation of RFC 5764 can receive
+	packets on the same socket from three different paths, as shown in
+	<xref target="figure.turn"/>: <list style="numbers"><t>Directly from
+	the source</t><t>Through a NAT</t><t>Relayed by a TURN
+	server</t></list> 
+<figure anchor="figure.turn" title="Packet Reception by an Implementation of RFC 5764" suppress-title="false" align="left" alt="" width="" height="">
+<artwork xml:space="preserve" name="" type="" align="left" alt="" width=""
+	 height="">
+    +------+
+    | TURN |&lt;------------------------+
+    +------+                         |
+       |                             |
+       | +-------------------------+ |
+       | |                         | |
+       v v                         | |
+NAT -----------                    | |
+       | | +---------------------+ | |
+       | | |                     | | |
+       v v v                     | | |
+   +----------+              +----------+
+   | RFC 5764 |              | RFC 5764 |
+   +----------+              +----------+</artwork></figure> Even if the ICE algorithm succeeded in selecting a non-relayed path, it is still possible to receive data from the TURN server.  For instance, when ICE is used with aggressive nomination, the media path can quickly change until it stabilizes.  Also, freeing ICE candidates is optional, so the TURN server can restart forwarding STUN connectivity checks during an ICE restart.  </t>
+        <t>TURN channels are an optimization where data packets are exchanged
+	with a 4-byte prefix instead of the standard 36-byte STUN overhead
+	(see Section 2.5 of <xref target="RFC5766"/>).  The problem is that
+	the RFC 5764 demultiplexing scheme does not define what to do with
+	packets received over a TURN channel since these packets will start
+	with a first byte whose value will be between 64 and 127 (inclusive).
+	If the TURN server was instructed to send data over a TURN channel,
+	then the demultiplexing scheme specified in RFC 5764 will reject these packets.  Current implementations violate RFC 5764 for values 64 to 127 (inclusive) and they instead parse packets with such values as TURN.  </t>
+        <t>In order to prevent future documents from assigning values from the
+	unused range to a new protocol, this document modifies the
+	demultiplexing algorithm in RFC 5764 to properly account for TURN channels by allocating the values from 64 to 79 for this purpose.  This modification restricts the TURN channel space to a more limited set of possible channels when the TURN client does the channel binding request in combination with the demultiplexing scheme described in <xref target="RFC5764"/>.</t>
+      </section>
+
+
+    <section anchor="section.modifications" title="Updates to RFC 5764" toc="default">
+      <t>This document updates the text in Section 5.1.2 of <xref target="RFC5764"/> as follows:</t>
+      <t>OLD TEXT</t>
+      <t>The process for demultiplexing a packet is as follows.  The receiver looks at the first byte of the packet.  If the value of this byte is 0 or 1, then the packet is STUN.  If the value is in between 128 and 191 (inclusive), then the packet is RTP (or RTCP, if both RTCP and RTP are being multiplexed over the same destination port).  If the value is between 20 and 63 (inclusive), the packet is DTLS.  This process is summarized in Figure 3.</t>
+      <figure title="" suppress-title="false" align="left" alt="" width="" height="">
+        <artwork><![CDATA[
+                   +----------------+
+                   | 127 < B < 192 -+--> forward to RTP
+                   |                |
+       packet -->  |  19 < B < 64  -+--> forward to DTLS
+                   |                |
+                   |       B < 2   -+--> forward to STUN
+                   +----------------+
+
+    Figure 3: The DTLS-SRTP receiver's packet demultiplexing algorithm.
+         Here the field B denotes the leading byte of the packet.
+]]></artwork></figure>
+      <t>END OLD TEXT</t>
+
+<!-- [rfced] It appears that Errata ID 3913 
+(https://www.rfc-editor.org/errata_search.php?eid=3913)
+is regarding the "OLD TEXT" from RFC 5.1.2 of RFC 5764.
+Please review whether the correction provided in that 
+erratum has been taken into account when writing the 
+"NEW TEXT" in this document. Please let us know if any
+updates are needed.
+-->
+
+      <t>NEW TEXT</t>
+      <t>The process for demultiplexing a packet is as follows.  The receiver looks at the first byte of the packet.  If the value of this byte is in between 0 and 3 (inclusive), then the packet is STUN.  If the value is between 16 and 19 (inclusive), then the packet is ZRTP.  If the value is between 20 and 63 (inclusive), then the packet is DTLS.  If the value is between 64 and 79 (inclusive), then the packet is TURN Channel.  If the value is in between 128 and 191 (inclusive), then the packet is RTP (or RTCP, if both RTCP and RTP are being multiplexed over the same destination port).  If the value does not match any known range, then the packet MUST be dropped and an alert MAY be logged.  This process is summarized in Figure 3.</t>
+      <figure title="" suppress-title="false" align="left" alt="" width="" height="">
+        <artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+                   +----------------+
+                   |        [0..3] -+--&gt; forward to STUN
+                   |                |
+                   |      [16..19] -+--&gt; forward to ZRTP
+                   |                |
+       packet --&gt;  |      [20..63] -+--&gt; forward to DTLS
+                   |                |
+                   |      [64..79] -+--&gt; forward to TURN Channel
+                   |                |
+                   |    [128..191] -+--&gt; forward to RTP/RTCP
+                   +----------------+
+
+    Figure 3: The DTLS-SRTP receiver's packet demultiplexing algorithm.</artwork>
+      </figure>
+      <t>END NEW TEXT</t>
+    </section>
+
+    <section anchor="section.security" title="Security Considerations" toc="default">
+      <t>This document updates existing IANA registries and adds a new range for TURN channels in the demultiplexing algorithm.</t>
+      <t>These modifications do not introduce any specific security considerations beyond those detailed in <xref target="RFC5764"/>.</t>
+    </section>
+
+
+    <section anchor="section.iana" title="IANA Considerations" toc="default">
+      <section anchor="section.iana.stun-methods" title="STUN Methods" toc="default">
+        <t>This specification contains the registration information for reserved STUN Methods codepoints, as explained in <xref target="section.intro.stun" pageno="false" format="default"/> and in accordance with the procedures defined in Section 18.1 of <xref target="RFC5389"/>.</t>
+
+
+
+
+        <t><list style="hanging"><t hangText="Value: ">0x100-0xFFF</t><t
+	hangText="Name: ">Reserved (For
+	DTLS-SRTP multiplexing collision avoidance, see RFC 7983. Cannot be
+	made available for assignment without IETF Review.)</t><t
+	hangText="Reference: ">RFC 5764, RFC 7983</t></list> </t>
+        <t>This specification also reassigns the ranges in the STUN Methods Registry as follows:</t>
+        <t><list style="hanging"><t hangText="Range: ">0x000-0x07F</t><t hangText="Registration Procedures: ">IETF Review</t></list> <list style="hanging"><t hangText="Range: ">0x080-0x0FF</t><t hangText="Registration Procedures: ">Designated Expert</t></list> </t>
+      </section>
+ 
+      <section anchor="section.iana.tls-contenttype" title="TLS ContentType" toc="default">
+        <t>This specification contains the registration information for reserved TLS ContentType codepoints, as explained in <xref target="section.intro.dtls" pageno="false" format="default"/> and in accordance with the procedures defined in Section 12 of <xref target="RFC5246"/>.</t>
+        <t><list style="hanging"><t hangText="Value: ">0-19</t><t
+	hangText="Description: ">Unassigned (Requires coordination; see RFC
+	7983)</t><t hangText="DTLS-OK: ">N/A</t><t hangText="Reference: ">RFC 5764, RFC 7983</t></list> </t>
+        <t><list style="hanging"><t hangText="Value: ">64-255</t><t
+	hangText="Description: ">Unassigned (Requires coordination; see RFC
+	7983)</t><t hangText="DTLS-OK: ">N/A</t><t hangText="Reference: ">RFC
+	5764, RFC 7983</t></list> </t>
+      </section>
+
+      <section anchor="section.iana.turn-channels" title="Traversal Using Relays around NAT (TURN) Channel Numbers" toc="default">
+        <t>This specification contains the registration information for
+	reserved codepoints in the "Traversal Using Relays around NAT (TURN)
+	Channel Numbers" registry, as explained in <xref target="section.intro.turn" pageno="false" format="default"/> and in accordance with the procedures defined in Section 18 of <xref target="RFC5766"/>.</t>
+        <t><list style="hanging"><t hangText="Value: ">0x5000-0xFFFF</t><t hangText="Name: ">Reserved (For DTLS-SRTP multiplexing collision avoidance, see RFC 7983.)</t><t hangText="Reference: ">RFC 7983</t></list> </t>
+      </section>
+    </section>
+    
+  </middle>
+  <back>
+    <references title="Normative References">
+      
+      <?rfc include="reference.RFC.2119" ?>
+      <?rfc include="reference.RFC.3550" ?>
+      <?rfc include="reference.RFC.3711" ?>
+      <?rfc include="reference.RFC.5245" ?>
+      <?rfc include="reference.RFC.5246" ?>
+      <?rfc include="reference.RFC.5389" ?>
+      <?rfc include="reference.RFC.5764" ?>
+      <?rfc include="reference.RFC.5766" ?>
+      <?rfc include="reference.RFC.6347" ?>
+    </references>
+
+    <references title="Informative References">
+      
+      <?rfc include="reference.RFC.4347" ?>
+      <?rfc include="reference.RFC.6189" ?>
+      <?rfc include="reference.RFC.7345" ?>
+
+<!--draft-ietf-mmusic-sdp-bundle-negotiation-32: I-D Exists-->
+
+<reference anchor='SDP-BUNDLE'>
+<front>
+<title>Negotiating Media Multiplexing Using the Session Description Protocol (SDP)</title>
+<author initials='C' surname='Holmberg' fullname='Christer Holmberg'>
+    <organization />
+</author>
+<author initials='H' surname='Alvestrand' fullname='Harald T. Alvestrand'>
+    <organization />
+</author>
+<author initials='C' surname='Jennings' fullname='Cullen Jennings'>
+    <organization />
+</author>
+<date month='August' year='2016' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-mmusic-sdp-bundle-negotiation-32' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-mmusic-sdp-bundle-negotiation-32.txt' />
+</reference>
+
+    </references>
+<section title="Acknowledgements" numbered="no">
+<t>The implicit STUN Method codepoint allocations problem was first
+reported by Martin Thomson in the RTCWEB mailing list and discussed
+further with Magnus Westerlund.</t>
+
+<t>Thanks to Simon Perreault, Colton Shields, Cullen Jennings, Colin
+Perkins, Magnus Westerlund, Paul Jones, Jonathan Lennox, Varun Singh,
+Justin Uberti, Joseph Salowey, Martin Thomson, Ben Campbell, Stephen
+Farrell, Alan Johnston, Mehmet Ersue, Matt Miller, Spencer Dawkins, Joel
+Halpern, and Paul Kyzivat for the comments, suggestions, and
+questions that helped improve this document.</t>
+</section>
+  </back>
+</rfc>

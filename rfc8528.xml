@@ -1,0 +1,1576 @@
+<?xml version="1.0" encoding="US-ASCII" ?>
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt"?>
+<!DOCTYPE rfc SYSTEM 'rfc2629.dtd'>
+
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc toc="yes"?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+
+<rfc number="8528" ipr="trust200902" category="std" submissionType="IETF" consensus="yes" >
+    <front>
+    <title abbrev="YANG Schema Mount">YANG Schema Mount</title>
+
+    <author initials="M" surname="Bjorklund" fullname='Martin Bjorklund' >
+      <organization>Tail-f Systems</organization>
+      <address>
+        <email>mbj@tail-f.com</email>
+      </address>
+    </author>
+    <author initials="L" surname="Lhotka" fullname='Ladislav Lhotka' >
+      <organization>CZ.NIC</organization>
+      <address>
+        <email>lhotka@nic.cz</email>
+      </address>
+    </author>
+	<date month="March" year="2019" />
+
+
+    <abstract>
+
+
+	<t>
+   This document defines a mechanism that adds the schema trees defined by
+   a set of YANG modules onto a mount point defined in the schema tree
+   in another YANG module.
+
+	</t>
+</abstract>
+</front>
+<middle>
+<section title="Introduction" anchor="intro">
+    <t>
+Modularity and extensibility are among the leading design principles
+of the YANG data modeling language. As a result, the same YANG module
+can be combined with various sets of other modules to form a
+data model that is tailored to meet the requirements of a specific use
+case. Server implementors are only required to specify all YANG
+modules comprising the data model (together with their revisions and
+other optional choices) in the YANG library data (<xref target="RFC7895"/>,
+<xref target="RFC8525"/>, and Section 5.6.4 of <xref target="RFC7950"/>)
+implemented by the server.  Such YANG modules appear in the data model
+&quot;side by side&quot;, i.e., top-level data nodes of each module (if there
+are any) are also top-level nodes of the overall data model.
+    </t>
+    <t>
+YANG has two mechanisms for contributing a schema
+hierarchy defined elsewhere to the contents of an internal node of the
+schema tree. These mechanisms are realized through the following YANG
+statements:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+The &quot;uses&quot; statement explicitly incorporates the contents of a
+grouping defined in the same or another module. See Section 4.2.6
+of <xref target="RFC7950"/> for more details.
+ </t>
+ <t>
+The &quot;augment&quot; statement explicitly adds contents to a target node
+defined in the same or another module. See Section 4.2.8 of
+<xref target="RFC7950"/> for more details.
+ </t>
+ </list>
+</t>
+    <t>
+With both mechanisms, the YANG module with the &quot;uses&quot; or &quot;augment&quot;
+statement explicitly defines the exact location in the schema tree
+where the new nodes are placed.
+    </t>
+    <t>
+In some cases, these mechanisms are not sufficient; it is sometimes
+necessary for an existing module (or a set of modules) to be added to
+the data model starting at locations other than the root. For example,
+YANG modules such as &quot;ietf&nbhy;interfaces&quot; <xref target="RFC8343"/> are defined so
+as to be used in a data model of a physical device.  
+Now suppose we
+want to model a device that supports multiple logical devices
+<xref target="RFC8530"/>, each of which has its own instantiation of
+&quot;ietf&nbhy;interfaces&quot;, and possibly other modules; at the same time,
+we want to be able to manage all these logical devices from the master
+device.  Hence, we would like to have a schema tree like this:
+    </t>
+	<figure>
+    <artwork><![CDATA[
+  +--rw interfaces
+  |  +--rw interface* [name]
+  |     ...
+  +--rw logical-network-element* [name]
+     +--rw name
+     |   ...
+     +--rw interfaces
+       +--rw interface* [name]
+          ...
+    ]]></artwork>
+	</figure>
+    <t>
+With the &quot;uses&quot; approach, the complete schema tree of
+&quot;ietf&nbhy;interfaces&quot; would have to be wrapped in a grouping, and then
+this grouping would have to be used at the top level (for the master
+device) and then also in the &quot;logical&nbhy;network&nbhy;element&quot; list (for the
+logical devices).  This approach has several disadvantages:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+It is not scalable because every time there is a new YANG module
+that needs to be added to the logical device model, we have to
+update the model for logical devices with another &quot;uses&quot; statement
+pulling in contents of the new module.
+ </t>
+ <t>
+Absolute references to nodes defined inside a grouping may break
+if the grouping is used in different locations.
+ </t>
+ <t>
+Nodes defined inside a grouping belong to the namespace of
+the module where it is used, which makes references to such nodes
+from other modules difficult or even impossible.
+ </t>
+ <t>
+It would be difficult for vendors to add proprietary modules when
+the &quot;uses&quot; statements are defined in a standard module.
+ </t>
+ </list>
+</t>
+    <t>
+With the &quot;augment&quot; approach, &quot;ietf&nbhy;interfaces&quot; would have to augment the
+&quot;logical&nbhy;network&nbhy;element&quot; list with all its nodes and, at the same time, define
+all its nodes at the top level. The same hierarchy of nodes would thus
+have to be defined twice, which is clearly not scalable either.
+    </t>
+    <t>
+This document introduces a new mechanism, denoted as "schema
+mount", that allows for mounting one data model consisting of any
+number of YANG modules at a specified location of another (parent)
+schema. Unlike the &quot;uses&quot; and &quot;augment&quot; approaches discussed above,
+the mounted modules needn&apos;t be specially prepared for mounting;
+consequently, existing modules such as &quot;ietf&nbhy;interfaces&quot; can be
+mounted without any modifications.
+    </t>
+    <t>
+The basic idea of schema mount is to label a data node in the parent
+schema as the mount point and then define a complete data model to be
+attached to the mount point so that the labeled data node effectively
+becomes the root node of the mounted data model.
+    </t>
+    <t>
+In principle, the mounted schema can be specified at three different
+phases of the data model life cycle:
+    </t>
+<t>
+
+
+ <list style="numbers">
+ <t>
+Design time: The mounted schema is defined along with the mount
+point in the parent YANG module. In this case, the mounted schema has to
+be the same for every implementation of the parent module.
+ </t>
+ <t>
+Implementation time: The mounted schema is defined by a server
+implementor and is as stable as the YANG library information of the
+server.
+ </t>
+ <t>
+Run time: The mounted schema is defined by instance data that is
+part of the mounted data model. If there are multiple instances of
+the same mount point (e.g., in multiple entries of a list), the
+mounted data model may be different for each instance.
+ </t>
+ </list>
+</t>
+    <t>
+The schema mount mechanism defined in this document provides support
+only for the latter two cases. Design-time mounts are outside
+the scope of this document and could be possibly dealt with in a
+future revision of the YANG data modeling language.
+    </t>
+    <t>
+Schema mount applies to the data model and specifically does not
+assume anything about the source of instance data for the mounted
+schemas. It may be implemented using the same instrumentation as the
+rest of the system, or it may be implemented by querying some other
+system.  Future specifications may define mechanisms to control or
+monitor the implementation of specific mount points.
+    </t>
+    <t>
+How and when specific mount points are instantiated by the server is
+out of scope for this document.  Such mechanisms may be defined in
+future specifications.
+    </t>
+    <t>
+This document allows mounting of complete data models only.  Other
+specifications may extend this model by defining additional
+mechanisms such as mounting sub-hierarchies of a module.
+    </t>
+    <t>
+The YANG modules in this document conform to the Network Management
+Datastore Architecture (NMDA) <xref target="RFC8342"/>.
+    </t>
+</section>
+<section title="Terminology and Notation" anchor="terminology-and-notation">
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+    <t>
+The following terms are defined in <xref target="RFC7950"/> and are not redefined
+here:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+action
+ </t>
+ <t>
+container
+ </t>
+ <t>
+data node
+ </t>
+ <t>
+list
+ </t>
+ <t>
+RPC operation
+ </t>
+ <t>
+schema node
+ </t>
+ <t>
+schema tree
+ </t>
+ </list>
+</t>
+    <t>
+The following terms are defined in <xref target="RFC8342"/> and are not redefined
+here:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+client
+ </t>
+ <t>
+notification
+ </t>
+ <t>
+operational state
+ </t>
+ <t>
+server
+ </t>
+ </list>
+</t>
+    <t>
+The following term is defined in <xref target="RFC8343"/> and is not redefined
+here:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+system-controlled interface
+ </t>
+ </list>
+</t>
+    <t>
+The following term is defined in <xref target="RFC8525"/> and is
+not redefined here:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+YANG library content identifier
+ </t>
+ </list>
+</t>
+    <t>
+The following additional terms are used in this document:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+mount point: A container or a list node whose definition contains
+the &quot;mount&nbhy;point&quot; extension statement. The argument of the
+&quot;mount&nbhy;point&quot; extension statement defines a label for the mount point.
+ </t>
+ <t>
+schema: A collection of schema trees with a common root.
+ </t>
+ <t>
+top-level schema: A schema rooted at the root node.
+ </t>
+ <t>
+mounted schema: A schema rooted at a mount point.
+ </t>
+ <t>
+parent schema (of a mounted schema): A schema containing the mount
+point.
+ </t>
+ <t>
+schema mount: The mechanism to combine data models defined in this
+document.
+ </t>
+ </list>
+</t>
+<section title="Tree Diagrams" anchor="tree-diagrams">
+    <t>
+Tree diagrams used in this document follow the notation defined in
+<xref target="RFC8340"/>.
+    </t>
+</section>
+<section title="Namespace Prefixes" anchor="namespace-prefixes">
+
+    <t>
+   In this document, names of data nodes, YANG extensions, actions, and
+   other data model objects are often used without a prefix when 
+   the YANG module in which they are defined is clear from the context.
+Otherwise, names are prefixed using the standard prefix
+associated with the corresponding YANG module, as shown in
+<xref target="prefixtab"/>.
+    </t>
+<?rfc compact="yes"?>
+<texttable anchor="prefixtab" title="Namespace Prefixes">
+<ttcol align='left'>Prefix</ttcol>
+<ttcol align='left'>YANG module</ttcol>
+<ttcol align='left'>Reference</ttcol>
+<c>yangmnt</c>
+<c>ietf-yang-schema-mount</c>
+<c><xref target="yangmod"/></c>
+<c>inet</c>
+<c>ietf-inet-types</c>
+<c><xref target="RFC6991"/></c>
+<c>yang</c>
+<c>ietf-yang-types</c>
+<c><xref target="RFC6991"/></c>
+<c>yanglib</c>
+<c>ietf-yang-library</c>
+<c><xref target="RFC7895"/>, <xref target="RFC8525"/></c>
+</texttable>
+<?rfc compact="no"?>
+</section>
+</section>
+<section title="Schema Mount" anchor="schema-mount">
+
+
+    <t>
+The schema mount mechanism defined in this document provides a new
+extensibility mechanism for use with YANG 1.1 <xref target="RFC7950"/>. In contrast to the
+existing mechanisms described in <xref target="intro"/>, schema mount defines the
+relationship between the source and target YANG modules outside these
+modules. 
+    </t>
+<section title="Mount Point Definition" anchor="mount-point-definition">
+    <t>
+A container or list node becomes a mount point if the
+&quot;mount&nbhy;point&quot; extension statement (defined in the &quot;ietf&nbhy;yang&nbhy;schema&nbhy;mount&quot;
+module) is used in its definition. This extension can appear only as a
+substatement of &quot;container&quot; and &quot;list&quot; statements.
+    </t>
+    <t>
+The argument of the &quot;mount&nbhy;point&quot; extension statement is a YANG identifier that
+defines a label for the mount point. A module MAY contain multiple
+&quot;mount&nbhy;point&quot; extension statements having the same argument.
+    </t>
+    <t>
+It is therefore up to the designer of the parent schema to decide
+about the placement of mount points. A mount point can also be made
+conditional by placing &quot;if&nbhy;feature&quot; and/or &quot;when&quot; as substatements of
+the &quot;container&quot; or &quot;list&quot; statement that represents the mount point.
+    </t>
+
+    <t>
+   The "mount-point" extension statement MUST NOT be used in a YANG version 1
+   module <xref target="RFC6020"/>.  
+   If used in a YANG version 1 module, it would
+   not be possible to invoke mounted RPC operations and receive
+   mounted notifications.
+See <xref target="rpcnot"/> for details.  Note, however, that modules
+written in any YANG version, including version 1, can be mounted under
+a mount point.
+    </t>
+    <t>
+Note that the &quot;mount&nbhy;point&quot; extension statement does not define a new data node.
+    </t>
+</section>
+<section title="Data Model" anchor="data-model">
+    <t>
+This document defines the YANG 1.1 module <xref target="RFC7950"/>
+&quot;ietf&nbhy;yang&nbhy;schema&nbhy;mount&quot;, which has the following structure:
+    </t>
+	<figure>
+    <artwork><![CDATA[
+module: ietf-yang-schema-mount
+  +--ro schema-mounts
+     +--ro namespace* [prefix]
+     |  +--ro prefix    yang:yang-identifier
+     |  +--ro uri?      inet:uri
+     +--ro mount-point* [module label]
+        +--ro module                 yang:yang-identifier
+        +--ro label                  yang:yang-identifier
+        +--ro config?                boolean
+        +--ro (schema-ref)
+           +--:(inline)
+           |  +--ro inline!
+           +--:(shared-schema)
+              +--ro shared-schema!
+                 +--ro parent-reference*   yang:xpath1.0
+    ]]></artwork>
+	</figure>
+</section>
+<section title="Specification of the Mounted Schema" anchor="specification-of-the-mounted-schema">
+    <t>
+Mounted schemas for all mount points in the parent schema are
+determined from state data in the &quot;/schema&nbhy;mounts&quot;
+container.
+    </t>
+    <t>
+Generally, the modules that are mounted under a mount point have no
+relation to the modules in the parent schema; specifically, if a
+module is mounted, it may or may not be present in the parent schema;
+if present, its data will generally have no relationship to the
+data of the parent.  
+
+   Exceptions are possible and need to be
+   defined in the model itself.
+For example,
+<xref target="RFC8530"/> defines a mechanism to bind interfaces to
+mounted logical network elements.
+    </t>
+    <t>
+The &quot;/schema&nbhy;mounts&quot; container has the
+&quot;mount&nbhy;point&quot; list as one of its
+children. Every entry of this list refers (through its key) to a mount
+point and specifies the mounted schema.
+    </t>
+    <t>
+If a mount point is defined in the parent schema but does not have an
+entry in the &quot;mount&nbhy;point&quot; list, then the mounted schema is void,
+i.e., instances of that mount point MUST NOT contain any data except
+those that are defined in the parent schema.
+    </t>
+    <t>
+If multiple mount points with the same name are defined in the same
+module -- either directly or because the mount point is defined in a
+grouping and the grouping is used multiple times -- then the
+corresponding &quot;mount&nbhy;point&quot; entry applies equally to all such mount
+points.
+    </t>
+    <t>
+The &quot;config&quot; property of mounted schema nodes is overridden and all
+nodes in the mounted schema are read-only (&quot;config false&quot;) if at least
+one of the following conditions is satisfied for a mount point:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+The mount point is itself defined as &quot;config false&quot;.
+ </t>
+ <t>
+The &quot;config&quot; leaf in the corresponding entry of the &quot;mount&nbhy;point&quot;
+list is set to &quot;false&quot;.
+ </t>
+ </list>
+</t>
+    <t>
+An entry of the &quot;mount&nbhy;point&quot; list can specify the mounted schema in
+two different ways: &quot;inline&quot; or &quot;shared&nbhy;schema&quot;.
+    </t>
+
+    <t>
+   The mounted schema is determined at run time: every instance of the
+   mount point that exists in the operational state MUST contain a copy
+   of YANG library data that defines the mounted schema in exactly the same
+   way as a top-level schema. 
+
+A client is expected to retrieve this data from the
+instance tree.  In the &quot;inline&quot; case, instances of the same mount
+point MAY use different mounted schemas, whereas in the
+&quot;shared&nbhy;schema&quot; case, all instances MUST use the same mounted schema.
+
+
+
+This means that in the &quot;shared&nbhy;schema&quot; case, all instances of the same
+mount point MUST have the same YANG library content identifier.  In
+the &quot;inline&quot; case, if two instances have the same YANG library content
+identifier, it is not guaranteed that the YANG library contents are
+equal for these instances.
+    </t>
+    <t>
+Examples of &quot;inline&quot; and &quot;shared&nbhy;schema&quot; can be found in <xref target="exlne"/> and
+<xref target="exni"/>, respectively.
+    </t>
+</section>
+<section title="Multiple Levels of Schema Mount" anchor="multiple-levels-of-schema-mount">
+    <t>
+YANG modules in a mounted schema MAY again contain mount points under
+which other schemas can be mounted.  Consequently, it is possible to
+construct data models with an arbitrary number of mounted schemas.  
+
+A schema for a mount point contained in a mounted module can be 
+specified by implementing the
+&quot;ietf&nbhy;yang&nbhy;library&quot; and
+&quot;ietf&nbhy;yang&nbhy;schema&nbhy;mount&quot; 
+modules in the mounted schema and
+specifying the schemas in exactly the same way as the top-level
+schema. 
+    </t>
+</section>
+</section>
+<section title="Referring to Data Nodes in the Parent Schema" anchor="parref">
+    <t>
+A fundamental design principle of schema mount is that the mounted
+schema works exactly as a top-level schema, i.e., it is
+confined to the &quot;mount jail&quot;. This means that all paths in the mounted
+schema (in leafrefs, instance-identifiers, XPath <xref target="XPATH"/> expressions, and
+target nodes of "augment" statements) are interpreted with the mount point as the
+root node. YANG modules of the mounted schema as well as corresponding
+instance data thus cannot refer to schema nodes or instance data
+outside the "mount jail".
+    </t>
+    <t>
+However, this restriction is sometimes too severe. A typical example
+is network instances (NIs) <xref target="RFC8529"/> in which each NI has
+its own routing engine but the list of interfaces is global and shared
+by all NIs. If we want to model this organization with the NI schema
+mounted using schema mount, the overall schema tree would look
+schematically as follows:
+    </t>
+	<figure>
+    <artwork><![CDATA[
+  +--rw interfaces
+  |  +--rw interface* [name]
+  |     ...
+  +--rw network-instances
+     +--rw network-instance* [name]
+        +--rw name
+        +--mp root
+           +--rw routing
+              ...
+    ]]></artwork>
+	</figure>
+    <t>
+Here, the "root" container is the mount point for the NI schema. Routing
+configuration inside an NI often needs to refer to interfaces (at
+least those that are assigned to the NI), which is impossible unless
+such a reference can point to a node in the parent schema (interface
+name).
+    </t>
+    <t>
+Therefore, schema mount also allows for such references. For every
+mount point in the &quot;shared&nbhy;schema&quot; case, it is possible to specify a
+leaf-list named &quot;parent&nbhy;reference&quot; that contains zero or more XPath
+1.0 expressions. Each expression is evaluated with the node in the
+parent data tree where the mount point is defined as the context
+node. The result of this evaluation MUST be a node-set (see the
+description of the "parent&nbhy;reference" node for a complete definition
+of the evaluation context). For the purposes of evaluating XPath
+expressions within the mounted data tree, the union of all such
+node-sets is added to the accessible data tree.
+    </t>
+
+    <t>
+It is worth emphasizing that the nodes specified in the &quot;parent&nbhy;reference&quot;
+leaf-list are available in the mounted schema only for XPath
+evaluations. 
+In particular, they cannot be accessed in the mounted schema via network
+management protocols such as NETCONF
+<xref target="RFC6241"/> or RESTCONF <xref target="RFC8040"/>.
+    </t>
+</section>
+<section title="RPC Operations and Notifications" anchor="rpcnot">
+    <t>
+If a mounted YANG module defines an RPC operation, clients can invoke
+this operation as if it were defined as an action for the
+corresponding mount point; see Section 7.15 of <xref target="RFC7950"/>.  An example
+of this is given in <xref target="invoke-rpc"/>.
+    </t>
+    <t>
+Similarly, if the server emits a notification defined at the top level
+of any mounted module, it MUST be represented as if the
+notification was connected to the mount point; see Section 7.16 of
+<xref target="RFC7950"/>.
+    </t>
+    <t>
+Note that inline actions and notifications will not work when they are
+contained within a list node without a &quot;key&quot; statement (see Sections 7.15
+and 7.16 of <xref target="RFC7950"/>).  Therefore, to be useful, mount points that
+contain modules with RPCs, actions, and notifications SHOULD NOT have any
+ancestor node that is a list node without a &quot;key&quot; statement.  This
+requirement applies to the definition of modules using the &quot;mount&nbhy;point&quot;
+extension statement.
+    </t>
+</section>
+<section title="NMDA Considerations" anchor="network-management-datastore-architecture-nmda-considerations">
+    <t>
+The schema mount solution presented in this document is designed to
+work with both servers that implement the NMDA <xref target="RFC8342"/> and old
+servers that don&apos;t implement the NMDA.
+    </t>
+
+    <t>
+Specifically, a server that doesn&apos;t support the NMDA MAY implement
+revision 2016-06-21 of &quot;ietf&nbhy;yang&nbhy;library&quot; <xref target="RFC7895"/> under a mount
+point.  A server that supports the NMDA MUST implement at least
+revision 2019-01-04 of &quot;ietf&nbhy;yang&nbhy;library&quot;
+<xref target="RFC8525"/> under a mount point.
+    </t>
+</section>
+<section title="Interaction with NACM" anchor="nacm">
+
+    <t>
+If the Network Configuration Access Control Model (NACM) <xref target="RFC8341"/> is implemented on a server, it is used to
+control access to nodes defined by the mounted schema in the same way
+as for nodes defined by the top-level schema.
+    </t>
+    <t>
+For example, suppose the module &quot;ietf&nbhy;interfaces&quot; is mounted in the
+&quot;root&quot; container in the &quot;logical&nbhy;network&nbhy;element&quot; list defined in
+<xref target="RFC8530"/>.  Then, the following NACM path can be used
+to control access to the &quot;interfaces&quot; container (where the character
+&apos;\&apos; is used where a line break has been inserted for formatting
+reasons):
+    </t>
+	<figure>
+    <artwork><![CDATA[
+  <path xmlns:lne=
+          "urn:ietf:params:xml:ns:yang:ietf-logical-network-element"
+        xmlns:if="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+    /lne:logical-network-elements\
+      /lne:logical-network-element/lne:root/if:interfaces
+  </path>
+    ]]></artwork>
+	</figure>
+</section>
+<section title="Implementation Notes" anchor="implementation-notes">
+    <t>
+Network management of devices that use a data model with schema mount
+can be implemented in different ways. However, the following
+implementation options are envisioned as typical:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+shared management: Instance data of both parent and mounted schemas
+are accessible within the same management session.
+ </t>
+
+
+<t>
+split management: One (master) management session has access to
+instance data of both parent and mounted schemas; in addition,
+an extra session that has access only to the mounted data tree exists
+for every instance of the mount point.
+ </t>
+ </list>
+</t>
+</section>
+<section title="Schema Mount YANG Module" anchor="yangmod">
+
+
+
+
+
+
+    <t>
+This module references <xref target="RFC6991"/> and <xref target="RFC7950"/>.
+    </t>
+
+<t>&lt;CODE BEGINS> file "ietf-yang-schema-mount@2019-01-14.yang"</t>
+	<figure>
+    <artwork><![CDATA[
+module ietf-yang-schema-mount {
+  yang-version 1.1;
+  namespace "urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount";
+  prefix yangmnt;
+
+  import ietf-inet-types {
+    prefix inet;
+    reference
+      "RFC 6991: Common YANG Data Types";
+  }
+
+  import ietf-yang-types {
+    prefix yang;
+    reference
+      "RFC 6991: Common YANG Data Types";
+  }
+
+  organization
+    "IETF NETMOD (NETCONF Data Modeling Language) Working Group";
+
+  contact
+    "WG Web:   <https://datatracker.ietf.org/wg/netmod/>
+     WG List:  <mailto:netmod@ietf.org>
+
+     Editor:   Martin Bjorklund
+               <mailto:mbj@tail-f.com>
+
+     Editor:   Ladislav Lhotka
+               <mailto:lhotka@nic.cz>";
+
+  description
+    "This module defines a YANG extension statement that can be used
+     to incorporate data models defined in other YANG modules in a
+     module.  It also defines operational state data that specify the
+     overall structure of the data model.
+
+     The key words 'MUST', 'MUST NOT', 'REQUIRED', 'SHALL', 'SHALL
+     NOT', 'SHOULD', 'SHOULD NOT', 'RECOMMENDED', 'NOT RECOMMENDED',
+     'MAY', and 'OPTIONAL' in this document are to be interpreted as
+     described in BCP 14 (RFC 2119) (RFC 8174) when, and only when, 
+     they appear in all capitals, as shown here.
+
+     Copyright (c) 2019 IETF Trust and the persons identified as
+     authors of the code.  All rights reserved.
+
+     Redistribution and use in source and binary forms, with or
+     without modification, is permitted pursuant to, and subject to
+     the license terms contained in, the Simplified BSD License set
+     forth in Section 4.c of the IETF Trust's Legal Provisions
+     Relating to IETF Documents
+     (https://trustee.ietf.org/license-info).
+
+     This version of this YANG module is part of RFC 8528;
+     see the RFC itself for full legal notices.";
+
+  revision 2019-01-14 {
+    description
+      "Initial revision.";
+    reference
+      "RFC 8528: YANG Schema Mount";
+  }
+
+  /*
+   * Extensions
+   */
+
+  extension mount-point {
+    argument label;
+    description
+      "The argument 'label' is a YANG identifier, i.e., it is of the
+       type 'yang:yang-identifier'.
+
+       The 'mount-point' statement MUST NOT be used in a YANG
+       version 1 module, neither explicitly nor via a 'uses'
+       statement.
+
+       The 'mount-point' statement MAY be present as a substatement
+       of 'container' and 'list' and MUST NOT be present elsewhere.
+       There MUST NOT be more than one 'mount-point' statement in a
+       given 'container' or 'list' statement.
+
+       If a mount point is defined within a grouping, its label is
+       bound to the module where the grouping is used.
+
+       A mount point defines a place in the node hierarchy where
+       other data models may be attached.  A server that implements a
+       module with a mount point populates the
+       '/schema-mounts/mount-point' list with detailed information on
+       which data models are mounted at each mount point.
+
+       Note that the 'mount-point' statement does not define a new
+       data node.";
+  }
+
+  /*
+   * State data nodes
+   */
+
+  container schema-mounts {
+    config false;
+    description
+      "Contains information about the structure of the overall
+       mounted data model implemented in the server.";
+    list namespace {
+      key "prefix";
+      description
+        "This list provides a mapping of namespace prefixes that are
+         used in XPath expressions of 'parent-reference' leafs to the
+         corresponding namespace URI references.";
+      leaf prefix {
+        type yang:yang-identifier;
+        description
+          "Namespace prefix.";
+      }
+      leaf uri {
+        type inet:uri;
+        description
+          "Namespace URI reference.";
+      }
+    }
+    list mount-point {
+      key "module label";
+      description
+        "Each entry of this list specifies a schema for a particular
+         mount point.
+
+         Each mount point MUST be defined using the 'mount-point'
+         extension in one of the modules listed in the server's
+         YANG library instance with conformance type 'implement'.";
+      leaf module {
+        type yang:yang-identifier;
+        description
+          "Name of a module containing the mount point.";
+      }
+      leaf label {
+        type yang:yang-identifier;
+        description
+          "Label of the mount point defined using the 'mount-point'
+           extension.";
+      }
+      leaf config {
+        type boolean;
+        default "true";
+        description
+          "If this leaf is set to 'false', then all data nodes in the
+           mounted schema are read-only ('config false'), regardless 
+           of their 'config' property.";
+      }
+      choice schema-ref {
+        mandatory true;
+        description
+          "Alternatives for specifying the schema.";
+        container inline {
+          presence
+            "A complete self-contained schema is mounted at the
+             mount point.";
+          description
+            "This node indicates that the server has mounted at least
+             the module 'ietf-yang-library' at the mount point, and
+             its instantiation provides the information about the
+             mounted schema.
+
+             Different instances of the mount point may have
+             different schemas mounted.";
+        }
+        container shared-schema {
+          presence
+            "The mounted schema together with the 'parent-reference'
+             make up the schema for this mount point.";
+          description
+            "This node indicates that the server has mounted at least
+             the module 'ietf-yang-library' at the mount point, and
+             its instantiation provides the information about the
+             mounted schema.  When XPath expressions in the mounted
+             schema are evaluated, the 'parent-reference' leaf-list
+             is taken into account.
+
+             Different instances of the mount point MUST have the
+             same schema mounted.";
+          leaf-list parent-reference {
+            type yang:xpath1.0;
+            description
+              "Entries of this leaf-list are XPath 1.0 expressions
+               that are evaluated in the following context:
+
+               - The context node is the node in the parent data tree
+                 where the mount-point is defined.
+
+               - The accessible tree is the parent data tree
+                 *without* any nodes defined in modules that are
+                 mounted inside the parent schema.
+
+               - The context position and context size are both equal
+                 to 1.
+
+               - The set of variable bindings is empty.
+
+               - The function library is the core function library
+                 defined in the W3C XPath 1.0 document 
+                 (http://www.w3.org/TR/1999/REC-xpath-19991116) and 
+                 the functions defined in Section 10 of RFC 7950.
+
+               - The set of namespace declarations is defined by the
+                 'namespace' list under 'schema-mounts'.
+
+               Each XPath expression MUST evaluate to a node-set
+               (possibly empty).  For the purposes of evaluating 
+               XPath expressions whose context nodes are defined in 
+               the mounted schema, the union of all these node-sets
+               together with ancestor nodes are added to the
+               accessible data tree.
+
+               Note that in the case 'ietf-yang-schema-mount' is
+               itself mounted, a 'parent-reference' in the mounted
+               module may refer to nodes that were brought into the
+               accessible tree through a 'parent-reference' in the
+               parent schema.";
+          }
+        }
+      }
+    }
+  }
+}
+    ]]></artwork>
+	</figure>
+<t>&lt;CODE ENDS></t>
+</section>
+<section title="IANA Considerations" anchor="iana">
+    <t>
+This document registers a URI in the "IETF XML Registry"
+<xref target="RFC3688"/>. 
+    </t>
+	<figure>
+    <artwork><![CDATA[
+     URI: urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount
+     Registrant Contact: The IESG.
+     XML: N/A, the requested URI is an XML namespace.
+    ]]></artwork>
+	</figure>
+    <t>
+This document registers a YANG module in the "YANG Module Names"
+registry <xref target="RFC6020"/>.
+    </t>
+	<figure>
+    <artwork><![CDATA[
+  name:        ietf-yang-schema-mount
+  namespace:   urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount
+  prefix:      yangmnt
+  reference:   RFC 8528
+    ]]></artwork>
+	</figure>
+</section>
+<section title="Security Considerations" anchor="security-considerations">
+
+
+<!-- BEGIN DNE-->
+
+    <t>
+The YANG module specified in this document defines a schema for data that is
+designed to be accessed via network management protocols such as NETCONF 
+<xref target="RFC6241"/> or RESTCONF
+<xref target="RFC8040"/>. 
+The lowest NETCONF layer is the secure transport layer, and the
+mandatory-to-implement secure transport is Secure Shell (SSH)
+<xref target="RFC6242"/>. The lowest RESTCONF layer is HTTPS, and the
+mandatory-to-implement secure transport is TLS <xref target="RFC8446"/>.
+    </t>
+    <t>
+The Network Configuration Access Control Model (NACM) <xref target="RFC8341"/> provides the
+means to restrict access for particular NETCONF or RESTCONF users to a
+preconfigured subset of all available NETCONF or RESTCONF protocol operations
+and content. 
+    </t>
+
+    <t>
+Some of the readable data nodes in this YANG module may be considered
+sensitive or vulnerable in some network environments. It is thus important to
+control read access (e.g., via get, get-config, or notification) to these data
+nodes. These are the subtrees and data nodes and their
+sensitivity/vulnerability: 
+    </t>
+
+<!-- END DNE -->
+
+<t>
+ <list style="symbols">
+ <t>
+/schema-mounts: The schema defined by this state data provides
+detailed information about a server implementation that may help an
+attacker identify the server capabilities and server
+implementations with known bugs. Server vulnerabilities may be
+specific to particular modules included in the schema, module
+revisions, module features, or even module deviations. For example,
+if a particular operation on a particular data node is known to
+cause a server to crash or significantly degrade device
+performance, then the schema information will help an attacker
+identify server implementations with such a defect, in order to
+launch a denial-of-service attack on the device.
+ </t>
+ </list>
+</t>
+
+    <t>
+   It is important to take into account the security considerations  
+   for all nodes in the mounted schemas and to control access to these
+   nodes by using the mechanism described in <xref target="nacm"/>.
+    </t>
+    <t>
+Care must be taken when the &quot;parent&nbhy;reference&quot; XPath expressions are
+constructed, since the result of the evaluation of these expressions
+is added to the accessible tree for any XPath expression found in the
+mounted schema.
+    </t>
+</section>
+</middle>
+<back>
+
+
+<references title="Normative References">
+
+<?rfc include="reference.RFC.2119"?>
+<?rfc include="reference.RFC.3688"?>
+<?rfc include="reference.RFC.6020"?>
+<?rfc include="reference.RFC.6242"?>
+<?rfc include="reference.RFC.6991"?>
+<?rfc include="reference.RFC.7895"?>
+<?rfc include="reference.RFC.7950"?>
+<?rfc include="reference.RFC.8174"?>
+<?rfc include="reference.RFC.8341"?>
+<?rfc include="reference.RFC.8342"?>
+<?rfc include="reference.RFC.6241"?>
+<?rfc include="reference.RFC.8446"?>
+<?rfc include="reference.RFC.8040"?>
+
+
+<!-- I-D.ietf-netconf-rfc7895bis -->
+
+<reference anchor="RFC8525" target="https://www.rfc-editor.org/info/rfc8525">
+<front>
+<title>YANG Library</title>
+
+    <author initials="A" surname="Bierman" fullname="Andy Bierman">
+      <organization/>
+    </author>
+    <author initials="M" surname="Bjorklund" fullname="Martin Bjorklund">
+      <organization/>
+    </author>
+    <author initials="J" surname="Schoenwaelder" fullname="Juergen Schoenwaelder">
+      <organization/>
+    </author>
+    <author initials="K" surname="Watsen" fullname="Kent Watsen">
+      <organization/>
+    </author>
+    <author initials="R" surname="Wilton" fullname="Robert Wilton">
+      <organization/>
+    </author>
+
+<date month='March' year='2019'/>
+</front>
+<seriesInfo name="RFC" value="8525"/>
+<seriesInfo name="DOI" value="10.17487/RFC8525"/>
+</reference>
+
+
+
+<reference anchor="XPATH" target="http://www.w3.org/TR/1999/REC-xpath-19991116">
+  <front>
+    <title>XML Path Language (XPath) Version 1.0</title>
+    <author initials="J." surname="Clark" fullname="James Clark">
+      <organization/>
+    </author>
+    <author initials="S." surname="DeRose" fullname="Steven DeRose">
+      <organization/>
+    </author>
+    <date month="November" day="16" year="1999"/>
+  </front>
+  <seriesInfo name="World Wide Web Consortium Recommendation" value="REC-xpath-19991116"/>
+  <format type="HTML" target="http://www.w3.org/TR/1999/REC-xpath-19991116"/>
+</reference>
+
+</references>
+
+<references title="Informative References">
+
+
+<?rfc include="reference.RFC.8340"?>
+<?rfc include="reference.RFC.8343"?>
+
+<!-- I-D.ietf-rtgwg-device-model Expired -->
+<reference anchor="DEVICE-YANG">
+  <front>
+    <title>Network Device YANG Logical Organization</title>
+    <author initials="A" surname="Lindem" fullname="Acee Lindem" role="editor">
+      <organization/>
+    </author>
+    <author initials="L" surname="Berger" fullname="Lou Berger" role="editor">
+      <organization/>
+    </author>
+    <author initials="D" surname="Bogdanovic" fullname="Dean Bogdanovic">
+      <organization/>
+    </author>
+    <author initials="C" surname="Hopps" fullname="Christian Hopps">
+      <organization/>
+    </author>
+    <date month="March" day="13" year="2017"/>
+  </front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-rtgwg-device-model-02'/>
+</reference>
+
+
+<!-- I-D.ietf-rtgwg-lne-model in AUTH48-DONE -->
+<reference anchor="RFC8530" target="https://www.rfc-editor.org/info/rfc8530">
+  <front>
+    <title>YANG Model for Logical Network Elements</title>
+    <author initials="L" surname="Berger" fullname="Lou Berger">
+      <organization/>
+    </author>
+    <author initials="C" surname="Hopps" fullname="Christian Hopps">
+      <organization/>
+    </author>
+    <author initials="A" surname="Lindem" fullname="Acee Lindem">
+      <organization/>
+    </author>
+    <author initials="D" surname="Bogdanovic" fullname="Dean Bogdanovic">
+      <organization/>
+    </author>
+    <author initials="X" surname="Liu" fullname="Xufeng Liu">
+      <organization/>
+    </author>
+    <date month="March" year="2019"/>
+  </front>
+
+<seriesInfo name="RFC" value="8530"/>
+<seriesInfo name="DOI" value="10.17487/RFC8530"/>
+</reference>
+
+
+<!-- I-D.ietf-rtgwg-ni-model AUTH48-DONE as RFC 8529-->
+<reference anchor="RFC8529" target="https://www.rfc-editor.org/info/rfc8529">
+  <front>
+    <title>YANG Data Model for Network Instances</title>
+    <author initials="L" surname="Berger" fullname="Lou Berger">
+      <organization/>
+    </author>
+    <author initials="C" surname="Hopps" fullname="Christian Hopps">
+      <organization/>
+    </author>
+    <author initials="A" surname="Lindem" fullname="Acee Lindem">
+      <organization/>
+    </author>
+    <author initials="D" surname="Bogdanovic" fullname="Dean Bogdanovic">
+      <organization/>
+    </author>
+    <author initials="X" surname="Liu" fullname="Xufeng Liu">
+      <organization/>
+    </author>
+    <date month="March" year="2019"/>
+  </front>
+<seriesInfo name="RFC" value="8529"/>
+<seriesInfo name="DOI" value="10.17487/RFC8529"/>
+</reference>
+
+
+<!-- I-D.ietf-isis-yang-isis-cfg I-D Exists -->
+<reference anchor="IS-IS-YANG">
+  <front>
+    <title>YANG Data Model for IS-IS protocol</title>
+    <author initials="S" surname="Litkowski" fullname="Stephane Litkowski">
+      <organization/>
+    </author>
+    <author initials="D" surname="Yeung" fullname="Derek Yeung">
+      <organization/>
+    </author>
+    <author initials="A" surname="Lindem" fullname="Acee Lindem">
+      <organization/>
+    </author>
+    <author initials="J" surname="Zhang" fullname="Jeffrey Zhang">
+      <organization/>
+    </author>
+    <author initials="L" surname="Lhotka" fullname="Ladislav Lhotka">
+      <organization/>
+    </author>
+    <date month="January" year="2019"/>
+  </front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-isis-yang-isis-cfg-34'/>
+</reference>
+
+
+<!-- I-D.clemm-netmod-mount Expired -->
+<reference anchor="YANG-MOUNT">
+  <front>
+    <title>Mounting YANG-Defined Information from Remote Datastores</title>
+    <author initials="A" surname="Clemm" fullname="Alexander Clemm">
+      <organization/>
+    </author>
+    <author initials="E" surname="Voit" fullname="Eric Voit">
+      <organization/>
+    </author>
+    <author initials="J" surname="Medved" fullname="Jan Medved">
+      <organization/>
+    </author>
+    <date month="March" day="29" year="2017"/>
+  </front>
+<seriesInfo name='Work in Progress,' value='draft-clemm-netmod-mount-06'/>
+</reference>
+
+</references>
+
+<section title="Example: Device Model with LNEs and NIs" anchor="example-device-model-with-lnes-and-nis">
+    <t>
+This non-normative example demonstrates an implementation of the
+device model as specified in Section 2 of
+<xref target="DEVICE-YANG"/>, using both logical network elements
+(LNEs) and network instances (NIs).
+    </t>
+    <t>
+In these examples, the character &apos;\&apos; is used where a line break has
+been inserted for formatting reasons.
+    </t>
+<section title="Physical Device" anchor="physical-device">
+    <t>
+The data model for the physical device may be described by this YANG
+library content, assuming the server supports the NMDA:
+    </t>
+	<figure>
+	    <artwork><![CDATA[
+{
+   "ietf-yang-library:yang-library": {
+     "content-id": "14e2ab5dc325f6d86f743e8d3ade233f1a61a899",
+     "module-set": [
+       {
+         "name": "physical-device-modules",
+         "module": [
+           {
+             "name": "ietf-datastores",
+             "revision": "2018-02-14",
+             "namespace":
+               "urn:ietf:params:xml:ns:yang:ietf-datastores"
+           },
+           {
+             "name": "iana-if-type",
+             "revision": "2015-06-12",
+             "namespace": "urn:ietf:params:xml:ns:yang:iana-if-type"
+           },
+           {
+             "name": "ietf-interfaces",
+             "revision": "2018-02-20",
+             "feature": ["arbitrary-names", "pre-provisioning" ],
+             "namespace":
+               "urn:ietf:params:xml:ns:yang:ietf-interfaces"
+           },
+           {
+             "name": "ietf-ip",
+             "revision": "2018-02-22",
+             "namespace": "urn:ietf:params:xml:ns:yang:ietf-ip"
+           },
+           {
+             "name": "ietf-logical-network-element",
+             "revision": "2018-03-20",
+             "feature": [ "bind-lne-name" ],
+             "namespace":
+               "urn:ietf:params:xml:ns:yang:\
+               ietf-logical-network-element"
+           },
+           {
+             "name": "ietf-yang-library",
+             "revision": "2019-01-04",
+             "namespace":
+               "urn:ietf:params:xml:ns:yang:ietf-yang-library"
+           },
+           {
+             "name": "ietf-yang-schema-mount",
+             "revision": "2019-01-14",
+             "namespace":
+               "urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount"
+           }
+         ],
+         "import-only-module": [
+           {
+             "name": "ietf-inet-types",
+             "revision": "2013-07-15",
+             "namespace":
+               "urn:ietf:params:xml:ns:yang:ietf-inet-types"
+           },
+           {
+             "name": "ietf-yang-types",
+             "revision": "2013-07-15",
+             "namespace":
+               "urn:ietf:params:xml:ns:yang:ietf-yang-types"
+           }
+         ]
+       }
+     ],
+     "schema": [
+       {
+         "name": "physical-device-schema",
+         "module-set": [ "physical-device-modules" ]
+       }
+     ],
+     "datastore": [
+       {
+         "name": "ietf-datastores:running",
+         "schema": "physical-device-schema"
+       },
+       {
+         "name": "ietf-datastores:operational",
+         "schema": "physical-device-schema"
+       }
+     ]
+   }
+}
+    ]]></artwork>
+	</figure>
+</section>
+<section title="Logical Network Elements" anchor="exlne">
+
+
+    <t>
+   Each LNE can have a specific data model that is determined at run
+   time, so it is appropriate to mount it using the "inline" method.
+   Hence, the following
+&quot;schema&nbhy;mounts&quot; data is used:
+    </t>
+	<figure>
+	    <artwork><![CDATA[
+{
+  "ietf-yang-schema-mount:schema-mounts": {
+    "mount-point": [
+      {
+        "module": "ietf-logical-network-element",
+        "label": "root",
+        "inline": {}
+      }
+    ]
+  }
+}
+    ]]></artwork>
+	</figure>
+    <t>
+An administrator of the host device has to configure an entry for each
+LNE instance, for example:
+    </t>
+	<figure>
+    <artwork><![CDATA[
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {
+        "name": "eth0",
+        "type": "iana-if-type:ethernetCsmacd",
+        "enabled": true,
+        "ietf-logical-network-element:bind-lne-name": "eth0"
+      }
+    ]
+  },
+  "ietf-logical-network-element:logical-network-elements": {
+    "logical-network-element": [
+      {
+        "name": "lne-1",
+        "managed": true,
+        "description": "LNE with NIs",
+        "root": {
+          ...
+        }
+      }
+      ...
+    ]
+  }
+}
+    ]]></artwork>
+	</figure>
+    <t>
+and then also place necessary state data as the contents of the &quot;root&quot;
+instance, which should include at least:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+YANG library data specifying the LNE&apos;s data model, for example,
+assuming the server does not implement the NMDA:
+ </t>
+ </list>
+</t>
+	<figure>
+    <artwork><![CDATA[
+{
+  "ietf-yang-library:modules-state": {
+    "module-set-id": "9358e11874068c8be06562089e94a89e0a392019",
+    "module": [
+      {
+        "name": "iana-if-type",
+        "revision": "2014-05-08",
+        "namespace": "urn:ietf:params:xml:ns:yang:iana-if-type",
+        "conformance-type": "implement"
+      },
+      {
+        "name": "ietf-inet-types",
+        "revision": "2013-07-15",
+        "namespace": "urn:ietf:params:xml:ns:yang:ietf-inet-types",
+        "conformance-type": "import"
+      },
+      {
+        "name": "ietf-interfaces",
+        "revision": "2014-05-08",
+        "feature": [
+          "arbitrary-names",
+          "pre-provisioning"
+        ],
+        "namespace": "urn:ietf:params:xml:ns:yang:ietf-interfaces",
+        "conformance-type": "implement"
+      },
+      {
+        "name": "ietf-ip",
+        "revision": "2014-06-16",
+        "feature": [
+          "ipv6-privacy-autoconf"
+        ],
+        "namespace": "urn:ietf:params:xml:ns:yang:ietf-ip",
+        "conformance-type": "implement"
+      },
+      {
+        "name": "ietf-network-instance",
+        "revision": "2018-03-20",
+        "feature": [
+          "bind-network-instance-name"
+        ],
+        "namespace":
+          "urn:ietf:params:xml:ns:yang:ietf-network-instance",
+        "conformance-type": "implement"
+      },
+      {
+        "name": "ietf-yang-library",
+        "revision": "2016-06-21",
+        "namespace": "urn:ietf:params:xml:ns:yang:ietf-yang-library",
+        "conformance-type": "implement"
+      },
+      {
+        "name": "ietf-yang-schema-mount",
+        "revision": "2019-01-14",
+        "namespace":
+          "urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount",
+        "conformance-type": "implement"
+      },
+      {
+        "name": "ietf-yang-types",
+        "revision": "2013-07-15",
+        "namespace": "urn:ietf:params:xml:ns:yang:ietf-yang-types",
+        "conformance-type": "import"
+      }
+    ]
+  }
+}
+    ]]></artwork>
+	</figure>
+<t>
+ <list style="symbols">
+ <t>
+state data for interfaces assigned to the LNE instance (that
+effectively become system-controlled interfaces for the LNE), for
+example:
+ </t>
+ </list>
+</t>
+	<figure>
+    <artwork><![CDATA[
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {
+        "name": "eth0",
+        "type": "iana-if-type:ethernetCsmacd",
+        "oper-status": "up",
+        "statistics": {
+          "discontinuity-time": "2016-12-16T17:11:27+02:00"
+        },
+        "ietf-ip:ipv6": {
+          "address": [
+            {
+              "ip": "fe80::42a8:f0ff:fea8:24fe",
+              "origin": "link-layer",
+              "prefix-length": 64
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+    ]]></artwork>
+	</figure>
+</section>
+<section title="Network Instances" anchor="exni">
+    <t>
+Assuming that network instances share the same data model, it can be
+mounted using the &quot;shared&nbhy;schema&quot; method as follows:
+    </t>
+	<figure>
+    <artwork><![CDATA[
+{
+  "ietf-yang-schema-mount:schema-mounts": {
+    "namespace": [
+      {
+          "prefix": "if",
+          "uri": "urn:ietf:params:xml:ns:yang:ietf-interfaces"
+      },
+      {
+          "prefix": "ni",
+          "uri": "urn:ietf:params:xml:ns:yang:ietf-network-instance"
+      }
+    ],
+    "mount-point": [
+      {
+        "module": "ietf-network-instance",
+        "label": "root",
+          "shared-schema": {
+            "parent-reference": [
+              "/if:interfaces/if:interface[\
+              ni:bind-network-instance-name = current()/../ni:name]"
+            ]
+          }
+      }
+    ]
+  }
+}
+    ]]></artwork>
+	</figure>
+    <t>
+Note also that the &quot;ietf&nbhy;interfaces&quot; module appears in the
+&quot;parent&nbhy;reference&quot; leaf-list for the mounted NI schema. This means
+that references to LNE interfaces, such as &quot;outgoing&nbhy;interface&quot; in
+static routes, are valid despite the fact that &quot;ietf&nbhy;interfaces&quot; isn&apos;t
+part of the NI schema.
+    </t>
+</section>
+<section title="Invoking an RPC Operation" anchor="invoke-rpc">
+    <t>
+Assume that the mounted NI data model also implements the &quot;ietf&nbhy;isis&quot;
+module <xref target="IS-IS-YANG"/>. An RPC operation defined in this
+module, such as &quot;clear&nbhy;adjacency&quot;, can be invoked by a client session
+of an LNE&apos;s RESTCONF server as an action tied to the mount point of a
+particular network instance using a request URI like this (all on one
+line):
+    </t>
+	<figure>
+    <artwork><![CDATA[
+  POST /restconf/data/ietf-network-instance:network-instances/
+      network-instance=rtrA/root/ietf-isis:clear-adjacency HTTP/1.1
+    ]]></artwork>
+	</figure>
+</section>
+</section>
+
+<section title="Contributors" anchor="contributors" numbered="no">
+
+    <t>
+  The idea of having some way to combine schemas from different YANG 
+  modules into one has been proposed independently by others:
+    
+
+ <list style="symbols">
+
+<t>Authors of <xref target="YANG-MOUNT"/>:
+ <list style="symbols">
+ <t>
+Lou Berger, LabN Consulting, L.L.C., &lt;lberger@labn.net&gt;
+ </t>
+ <t>
+Alexander Clemm, Huawei, &lt;alexander.clemm@huawei.com&gt;
+ </t>
+ <t>
+Christian Hopps, Deutsche Telekom, &lt;chopps@chopps.org&gt;
+ </t>
+
+ </list>
+</t>
+ <t>
+Jan Medved, Cisco, &lt;jmedved@cisco.com&gt;
+ </t>
+ <t>
+Eric Voit, Cisco, &lt;evoit@cisco.com&gt;
+ </t>
+ </list>
+
+</t>
+</section>
+
+</back></rfc>

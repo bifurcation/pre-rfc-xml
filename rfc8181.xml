@@ -1,0 +1,1130 @@
+<?xml version="1.0" encoding="US-ASCII" ?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+
+]>
+
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc editing="no" ?>
+<?rfc sortrefs="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc toc="yes" ?>
+
+<rfc category="std" ipr="trust200902" number="8181" submissionType="IETF" consensus="yes">
+
+  <front>
+    <title abbrev="RPKI Publication Protocol">
+      A Publication Protocol for the Resource Public Key Infrastructure (RPKI)
+    </title>
+
+    <author initials="S." surname="Weiler" fullname="Samuel Weiler">
+      <organization>W3C / MIT</organization>
+      <address>
+        <email>weiler@csail.mit.edu</email>
+      </address>
+    </author>
+
+    <author initials="A." surname="Sonalker" fullname="Anuja Sonalker">
+      <organization abbrev="STEER Tech">STEER Tech</organization>
+      <address>
+        <email>anuja@steer-tech.com</email>
+      </address>
+    </author>
+
+    <author initials="R." surname="Austein" fullname="Rob Austein">
+      <organization>Dragon Research Labs</organization>
+      <address>
+        <email>sra@hactrn.net</email>
+      </address>
+    </author>
+
+    <date month="July" year="2017"/>
+    <keyword>SIDR</keyword>
+
+    <abstract>
+      <t>
+        This document defines a protocol for publishing Resource
+        Public Key Infrastructure (RPKI) objects.  Even though the
+        RPKI will have many participants issuing certificates and
+        creating other objects, it is operationally useful to
+        consolidate the publication of those objects.  Even in cases
+        where a certificate issuer runs its own publication
+        repository, it can be useful to run the certificate engine
+        itself on a different machine from the publication repository.
+        This document defines a protocol which addresses these needs.
+      </t>
+    </abstract>
+
+  </front>
+
+  <middle>
+
+    <section title="Introduction" toc="default">
+
+      <t>
+        This document assumes a working knowledge of the Resource
+        Public Key Infrastructure (RPKI), which is intended to support
+        improved routing security on the Internet.
+        See <xref target="RFC6480" pageno="false" format="default"/> for an overview of the RPKI.
+      </t>
+
+      <t>
+        In order to make participation in the RPKI easier, it is
+        helpful to have a few consolidated repositories for RPKI
+        objects, thus saving every participant from the cost of
+        maintaining a new service.  Similarly, relying parties using
+        the RPKI objects will find it faster and more reliable to
+        retrieve the necessary set from a smaller number of
+        repositories.
+      </t>
+
+      <t>
+        These consolidated RPKI object repositories will in many cases
+        be outside the administrative scope of the organization
+        issuing a given RPKI object.  In some cases, outsourcing
+        operation of the repository will be an explicit goal: some
+        resource holders who strongly wish to control their own RPKI
+        private keys may lack the resources to operate a 24x7
+        repository or may simply not wish to do so.
+      </t>
+
+      <t>
+        The operator of an RPKI publication repository may well be an
+        Internet registry which issues certificates to its customers,
+        but it need not be; conceptually, operation of an RPKI
+        publication repository is separate from operation of an RPKI Certification Authority (CA).
+      </t>
+
+      <t>
+        Even in cases where a resource holder operates both a
+        certificate engine and a publication repository, it can be
+        useful to separate the two functions, as they have somewhat
+        different operational and security requirements.
+      </t>
+
+      <t>
+        This document defines an RPKI publication protocol which
+        allows publication either within or across organizational
+        boundaries and which makes fairly minimal demands on both
+        the CA engine and the publication service.
+      </t>
+
+      <t>
+        The authentication and message integrity architecture of the
+        publication protocol is essentially identical to the
+        architecture used in <xref target="RFC6492" pageno="false" format="default"/> because the
+        participants in this protocol are the same CA engines as in
+        RFC 6492; this allows reuse of the same "Business PKI"
+        (BPKI) (see <xref target="terminology" pageno="false" format="default"/>) infrastructure
+        used to support RFC 6492.  As in RFC 6492, authorization is a
+        matter of external configuration: we assume that any given
+        publication repository has some kind of policy controlling
+        which certificate engines are allowed to publish, modify, or
+        withdraw particular RPKI objects, most likely following the
+        recommendation in <xref target="RFC6480" pageno="false" format="default"/>, Section 4.4; the
+        details of this policy are a private matter between the
+        operator of a certificate engine and the operator of the
+        chosen publication repository.
+      </t>
+
+      <t>
+        The following diagram attempts to convey where this
+        publication protocol fits into the overall data flow between
+        the certificate issuers and relying parties:
+      </t>
+
+     <figure><artwork>
+       +------+    +------+    +------+
+       |  CA  |    |  CA  |    |  CA  |
+       +------+    +------+    +------+
+           |           |           |    Publication protocol
+           |           |           |    business relationship
+           +-------+   |  +--------+      perhaps set up by
+                   |   |  |                    RFC 8183
+              +----v---v--v-----+
+              |                 |
+              |   Publication   |
+              |   Repository    |
+              |                 |
+              +-----------------+     Distribution protocols
+                       |                   rsync or RRDP
+        +--------------+----------------+
+        |              |                |
++-------v-----+ +------v------+  +------v------+
+|   Relying   | |   Relying   |  |   Relying   |
+|    Party    | |    Party    |  |    Party    |
++-------------+ +-------------+  +-------------+
+</artwork></figure>
+
+      <t>
+        The publication protocol itself is not visible to relying
+        parties: a relying party sees the public interface of the
+        publication server, which is an rsync or RPKI Repository Delta Protocol (RRDP)
+        <xref target="RFC8182" pageno="false" format="default"/> server.
+      </t>
+
+      <t>
+        Operators of certificate engines and publication repositories
+        may find <xref target="RFC8183" pageno="false" format="default"/> a
+        useful tool in setting up the pairwise relationships between
+        these servers, but they are not required to use it.
+      </t>
+
+
+      <section title="Historical Note" toc="default">
+
+        <t>
+          This protocol started out as an informal collaboration
+          between several of the early RPKI implementers, and while it
+          was always the designers' intention that the resulting
+          protocol end up on the IETF Standards Track, it took a few
+          years to get there because standardization of other pieces
+          of the overall RPKI protocol space was more urgent.  The
+          Standards Track version of this publication protocol
+          preserves the original XML namespace and protocol version
+          scheme in order to maintain backwards compatibility with
+          running code implemented against older versions of the
+          specification.
+        </t>
+
+      </section>
+
+      <section title="Terminology" anchor="terminology" toc="default">
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP 14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+        <t>
+          "Publication engine" and "publication server" are used
+          interchangeably to refer to the server providing the service
+          described in this document.
+        </t>
+
+        <t>
+          "Business Public Key Infrastructure" ("Business PKI" or
+          "BPKI") refers to a PKI, separate from the RPKI, used to
+          authenticate clients to the publication engine.  We use the
+          term "Business PKI" here because an Internet registry might
+          already have a PKI for authenticating its clients and might
+          wish to reuse that PKI for this protocol.  There is,
+          however, no requirement to reuse such a PKI.
+        </t>
+
+      </section>
+
+    </section>
+
+    <section title="Protocol Specification" toc="default">
+
+      <t>
+        The publication protocol uses XML <xref target="XML" pageno="false" format="default"/>
+        messages wrapped in signed Cryptographic Message Syntax (CMS) messages, carried over HTTP
+        transport <xref target="RFC7230" pageno="false" format="default"/>.  The CMS encapsulation
+        is identical to that used in Section 3.1 (and subsections) of RFC 6492 <xref target="RFC6492" pageno="false" format="default"/>.
+      </t>
+
+      <t>
+        The publication protocol uses a simple request/response
+        interaction.  The client passes a request to the server, and
+        the server generates a corresponding response.
+      </t>
+
+      <t>
+        A message exchange commences with the client initiating an
+        HTTP POST with a content type of "application/rpki&nbhy;publication",
+        with the message object as the body.  The server's response
+        will similarly be the body of the response with a content type
+        of "application/rpki&nbhy;publication".
+      </t>
+
+      <t>
+        The content of the POST and the server's response will be a
+        well-formed CMS
+        <xref target="RFC5652" pageno="false" format="default"/> object with OID =
+        1.2.840.113549.1.7.2 as described in Section 3.1 of
+        <xref target="RFC6492" pageno="false" format="default"/>.
+      </t>
+
+      <t>
+        The CMS signatures are used to protect the integrity of the
+        protocol messages and to authenticate the client and server to
+        each other.  Authorization to perform particular operations is
+        a local matter, perhaps determined by contractual agreements
+        between the operators of any particular client-server pair,
+        but in any case is beyond the scope of this specification.
+      </t>
+
+      <section title="Common XML Message Format" toc="default">
+
+        <t>
+          The XML schema for this protocol is below in
+          <xref target="schema" pageno="false" format="default"/>.  The basic XML message format looks
+          like this:
+        </t>
+
+  <figure><artwork>
+&lt;msg
+    type="query"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;!-- Zero or more PDUs --&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      <figure><artwork>
+&lt;msg
+    type="reply"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;!-- Zero or more PDUs --&gt;
+&lt;/msg&gt;
+</artwork></figure>
+
+	<t>
+	  As noted above, the outermost XML element is encapsulated in
+	  a signed CMS message.  Query messages are signed by the
+	  client, and reply messages are signed by the server.
+	</t>
+
+        <t>
+          Common attributes:
+        </t>
+
+        <t>
+          <list style="hanging">
+            <t hangText="version:">
+              The value of this attribute is the version of this protocol.  
+              This document describes version 4.
+            </t>
+
+            <t hangText="type:">
+              The possible values of this attribute are "reply" and "query".  
+            </t>
+          </list>
+        </t>
+
+        <t>
+          A query PDU may be one of three types: &lt;publish/&gt;,
+          &lt;withdraw/&gt;, or &lt;list/&gt;.
+        </t>
+
+        <t>
+          A reply PDU may be one of three types: &lt;success/&gt;,
+          &lt;list/&gt;, or &lt;report_error/&gt;.
+        </t>
+
+        <t>
+          The &lt;publish/&gt; and &lt;withdraw/&gt; PDUs include a
+          "tag" attribute to facilitate bulk operation.  
+          When performing bulk operations, a CA engine will probably
+          find it useful to specify a distinct tag value for each
+          &lt;publish/&gt; or &lt;withdraw/&gt; PDU, to simplify
+          matching an error with the PDU which triggered it.  The tag
+          attribute is mandatory, to simplify parsing, but a CA engine
+          which has no particular use for tagging MAY use any
+          syntactically legal value, including simply using the empty
+          string for all tag fields.
+        </t>
+
+	<t>
+	  This document describes version 4 of this protocol.  An
+	  implementation which understands only this version of the
+	  protocol MUST reject messages with a different protocol
+	  version attribute, signaling the error as described in
+	  <xref target="errors" pageno="false" format="default"/>.  Since "4" is currently the only
+	  value allowed for the version attribute in the schema
+	  (<xref target="schema" pageno="false" format="default"/>), an incorrect protocol version can
+	  be detected either by checking the version attribute
+	  directly or as a schema validation error.  Any future update
+	  to this protocol which is either syntactically or
+	  semantically incompatible with the current version will need
+	  to increment the protocol version number.
+	</t>
+
+      </section>
+
+      <section title="Publication and Withdrawal" anchor="publish-and-withdraw" toc="default">
+
+        <t>
+          The publication protocol uses a common message format to
+          request publication of any RPKI object.  This format was
+          chosen specifically to allow this protocol to accommodate
+          new types of RPKI objects without needing changes to this
+          protocol.
+        </t>
+
+        <t>
+          Both the &lt;publish/&gt; and &lt;withdraw/&gt; PDUs have a
+          payload of a tag and an rsync URI <xref target="RFC3986" pageno="false" format="default"/>
+          <xref target="RFC5781" pageno="false" format="default"/>.  The &lt;publish/&gt; query also
+          contains the DER object to be published, encoded in Base64
+          (<xref target="RFC4648" pageno="false" format="default"/>, Section 4, with line breaks within
+          the Base64 text permitted but not required).
+        </t>
+
+        <t>
+          Both the &lt;publish/&gt; and &lt;withdraw/&gt; PDUs also
+          have a "hash" attribute, which carries a hash of an existing
+          object at the specified repository URI, encoded as a
+          hexadecimal string.  For
+          &lt;withdraw/&gt; PDUs, the hash MUST be present, as this
+          operation makes no sense if there is no existing object to
+          withdraw.  For &lt;publish/&gt; PDUs, the hash MUST be
+          present if the publication operation is overwriting an
+          existing object, and it MUST NOT be present if this publication
+          operation is writing to a new URI where no prior object
+          exists.  Presence of an object when no "hash" attribute has
+          been specified is an error, as is absence of an object or an
+          incorrect hash value when a "hash" attribute has been
+          specified.  Any such errors MUST be reported using the
+          &lt;report_error/&gt; PDU.
+        </t>
+
+        <t>
+          The hash algorithm is SHA-256 <xref target="SHS" pageno="false" format="default"/>, to
+          simplify comparison of publication protocol hashes with RPKI
+          manifest hashes.
+        </t>
+
+        <t>
+          The intent behind the "hash" attribute is to allow the client
+          and server to detect any disagreements about the effect that
+          a &lt;publish/&gt; or &lt;withdraw/&gt; PDU will have on
+          the repository.
+        </t>
+
+        <t>
+          Note that every publish and withdraw action requires a new
+          manifest, thus every publish or withdraw action will involve
+          at least two objects.
+        </t>
+
+        <t>
+          Processing of a query message is handled atomically: either
+          the entire query succeeds or none of it does.  When a query
+          message contains multiple PDUs, failure of any PDU may
+          require the server to roll back actions triggered by earlier
+          PDUs.
+          </t>
+
+        <t>
+          When a query message containing &lt;publish/&gt; or
+          &lt;withdraw/&gt; PDUs succeeds, the server returns a single
+          &lt;success/&gt; reply.
+        </t>
+
+        <t>
+          When a query fails, the server returns one or more
+          &lt;report_error/&gt; reply PDUs.  Typically, a server will
+          only generate one &lt;report_error/&gt; corresponding to the
+          first query PDU that failed, but servers MAY
+          return multiple &lt;report_error/&gt; PDUs at the
+          implementer's discretion.
+        </t>
+
+      </section>
+    
+      <section title="Listing the Repository" anchor="list" toc="default">
+
+        <t>
+          The &lt;list/&gt; operation allows the client to ask the server
+          for a complete listing of objects which the server believes
+          the client has published.  This is intended primarily to
+          allow the client to recover upon detecting (probably via use
+          of the "hash" attribute; see
+          <xref target="publish-and-withdraw" pageno="false" format="default"/>) that they have
+          somehow lost synchronization.
+        </t>
+
+        <t>
+          The &lt;list/&gt; query consists of a single PDU.  A
+          &lt;list/&gt; query MUST be the only PDU in a query -- it may
+          not be combined with any &lt;publish/&gt; or
+          &lt;withdraw/&gt; queries.
+        </t>
+
+        <t>
+          The &lt;list/&gt; reply consists of zero or more PDUs,
+          one per object published in this repository by this client,
+          each PDU conveying the URI and hash of one published object.
+        </t>
+
+      </section>
+
+      <section title="Error Handling" anchor="errors" toc="default">
+
+        <t>
+          Errors are handled at two levels.
+        </t>
+
+        <t>
+          Errors that make it impossible to decode a query or encode a
+          response are handled at the HTTP layer.  4xx and 5xx HTTP
+          response codes indicate that something bad happened.
+        </t>
+
+        <t>
+          In all other cases, errors result in an XML
+          &lt;report_error/&gt; PDU.  Like the rest of this
+          protocol, &lt;report_error/&gt; PDUs are CMS-signed XML
+          messages and thus can be archived to provide an audit trail.
+        </t>
+
+        <t>
+          &lt;report_error/&gt; PDUs only appear in replies,
+          never in queries.
+        </t>
+
+        <t>
+          The "tag" attribute of the &lt;report_error/&gt; PDU associated
+          with a &lt;publish/&gt; or &lt;withdraw/&gt; PDU MUST be
+          set to the same value as the "tag" attribute in the PDU
+          which generated the error.  A client can use the "tag"
+          attribute to determine which PDU caused processing of an
+          update to fail.
+        </t>
+
+        <t>
+          The error itself is conveyed in the "error_code"
+          attribute. The value of this attribute is a token indicating
+          the specific error that occurred.
+        </t>
+
+        <t>
+          The body of the &lt;report_error/&gt; element contains two
+          sub-elements:
+        </t>
+
+        <t>
+          <list style="numbers">
+
+            <t>
+              An optional text element &lt;error_text/&gt;, which, if
+              present, contains a text string with debugging
+              information intended for human consumption.
+            </t>
+
+            <t>
+              An optional element &lt;failed_pdu/&gt;, which, if
+              present, contains a verbatim copy of the query PDU whose
+              failure triggered the &lt;report_error/&gt; PDU.  The
+              quoted element must be syntactically valid.
+            </t>
+
+          </list>
+        </t>
+
+        <t>
+          See <xref target="multi-element" pageno="false" format="default"/> for examples of a
+          multi-element query and responses.
+        </t>
+
+      </section>
+
+      <section title="Error Codes" anchor="errorcodes" toc="default">
+
+        <t>
+          These are the defined error codes as well as some discussion
+          of each.  Text similar to these descriptions may be sent in an
+          &lt;error_text/&gt; element to help explain the error encountered.
+        </t>
+
+        <t>
+          <list style="hanging">
+
+            <t hangText="xml_error:">
+              Encountered an XML problem.  Note that some XML errors may
+              be severe enough to require error reporting at the HTTP
+              layer, instead.  Implementations MAY choose to report
+              any or all XML errors at the HTTP layer.
+            </t>
+
+            <t hangText="permission_failure:">
+              Client does not have permission to update this URI.
+            </t>
+
+            <t hangText="bad_cms_signature:">
+              Bad CMS signature.
+            </t>
+
+            <t hangText="object_already_present:">
+              An object is already present at this URI, yet a "hash"
+              attribute was not specified.  A "hash" attribute must be
+              specified when overwriting or deleting an object.
+              Perhaps client and server are out of sync?
+            </t>
+
+            <t hangText="no_object_present:">
+              There is no object present at this URI, yet a "hash"
+              attribute was specified.  Perhaps client and server are
+              out of sync?
+            </t>
+
+            <t hangText="no_object_matching_hash:">
+              The "hash" attribute supplied does not match the "hash"
+              attribute of the object at this URI.  Perhaps client and
+              server are out of sync?
+            </t>
+
+            <t hangText="consistency_problem:">
+              Server detected an update that looks like it will cause
+              a consistency problem (e.g., an object was deleted, but
+              the manifest was not updated).  Note that a server is not
+              required to make such checks.  Indeed, it may be unwise for
+              a server to do so.  This error code just provides a way for
+              the server to explain its (in-)action.
+            </t>
+
+            <t hangText="other_error:">
+              A meteor fell on the server.
+            </t>
+
+          </list>
+
+        </t>
+
+      </section>
+
+      <section title="XML Schema" anchor="schema" toc="default">
+
+        <t>
+          The following is a <xref target="RELAX-NG" pageno="false" format="default"/> compact form
+          schema describing the publication protocol.
+        </t>
+
+	<t>
+          This schema is normative: in the event of a disagreement
+          between this schema and the document text above, this schema
+          is authoritative.
+	</t>
+
+
+
+     <figure><artwork># RELAX NG schema for RPKI publication protocol.
+
+default namespace =
+    "http://www.hactrn.net/uris/rpki/publication-spec/"
+
+# This is version 4 of the protocol.
+
+version = "4"
+
+# Top-level PDU is either a query or a reply.
+
+start |= element msg {
+  attribute version { version },
+  attribute type    { "query" },
+  query_elt
+}
+
+start |= element msg {
+  attribute version { version },
+  attribute type    { "reply" },
+  reply_elt
+}
+
+# Tag attributes for bulk operations.
+
+tag = attribute tag { xsd:token { maxLength="1024" } }
+
+# Base64-encoded DER stuff.
+
+base64 = xsd:base64Binary
+
+# Publication URIs.
+
+uri = attribute uri { xsd:anyURI { maxLength="4096" } }
+
+# Digest of an existing object (hexadecimal).
+
+hash = attribute hash { xsd:string { pattern = "[0-9a-fA-F]+" } }
+
+# Error codes.
+
+error |= "xml_error"
+error |= "permission_failure"
+error |= "bad_cms_signature"
+error |= "object_already_present"
+error |= "no_object_present"
+error |= "no_object_matching_hash"
+error |= "consistency_problem"
+error |= "other_error"
+
+# &lt;publish/&gt; and &lt;withdraw/&gt; query elements
+
+query_elt |= ( 
+  element publish  { tag, uri, hash?, base64 } |
+  element withdraw { tag, uri, hash          } 
+)*
+
+# &lt;success/&gt; reply
+
+reply_elt |= element success { empty }
+
+# &lt;list/&gt; query and reply
+
+query_elt |= element list { empty }
+reply_elt |= element list { uri, hash }*
+
+# &lt;report_error/&gt; reply
+
+reply_elt |= element report_error {
+  tag?,
+  attribute error_code { error },
+  element   error_text { xsd:string { maxLength="512000" }}?,
+  element   failed_pdu { query_elt }?
+}*
+</artwork></figure>
+
+      </section>
+
+    </section>
+
+    <section title="Examples" toc="default">
+
+      <t>
+        Following are examples of various queries and the
+        corresponding replies for the RPKI publication protocol.
+      </t>
+
+      <t>
+        Note that the authors have taken liberties with the Base64, hash,
+        and URI text in these examples in the interest of making the
+        examples fit nicely into RFC text format.  Similarly, these
+        examples do not show the CMS signature wrapper around the XML,
+        just the XML payload.
+      </t>
+
+      <section title="&lt;publish/&gt; Query, No Existing Object" toc="default">
+   <figure><artwork>
+&lt;msg
+    type="query"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;!-- body is base64(new-object) --&gt;
+  &lt;publish
+      tag=""
+      uri="rsync://wombat.example/Alice/01a97a70ac477f06.cer"&gt;
+      SGVsbG8sIG15IG5hbWUgaXMgQWxpY2U=
+    &lt;/publish&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      </section>
+
+      <section title="&lt;publish/&gt; Query, Overwriting Existing Object" toc="default">
+       <figure><artwork>
+&lt;msg
+    type="query"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;!-- hash is hex(SHA-256(old-object)) --&gt;
+  &lt;!-- body is base64(new-object) --&gt;
+  &lt;publish
+      hash="01a97a70ac477f06"
+      tag="foo"
+      uri="rsync://wombat.example/Alice/01a97a70ac477f06.cer"&gt;
+      SGVsbG8sIG15IG5hbWUgaXMgQWxpY2U=
+    &lt;/publish&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      </section>
+
+      <section title="&lt;withdraw/&gt; Query" toc="default">
+        <figure><artwork>
+&lt;msg
+    type="query"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;!-- hash is hex(SHA-256(old-object)) --&gt;
+  &lt;withdraw
+      hash="01a97a70ac477f06"
+      tag="foo"
+      uri="rsync://wombat.example/Alice/01a97a70ac477f06.cer"/&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      </section>
+
+      <section title="&lt;success/&gt; Reply" toc="default">
+      <figure><artwork>
+&lt;msg
+    type="reply"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;success/&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      </section>
+
+      <section title="&lt;report_error/&gt; with Optional Elements" toc="default">
+       <figure><artwork>
+&lt;msg
+    type="reply"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;report_error
+      error_code="no_object_matching_hash"
+      tag="foo"&gt;
+    &lt;error_text&gt;
+      Can't delete an object I don't have
+    &lt;/error_text&gt;
+    &lt;failed_pdu&gt;
+      &lt;publish
+          hash="01a97a70ac477f06"
+          tag="foo"
+          uri="rsync://wombat.example/Alice/01a97a70ac477f06.cer"&gt;
+      SGVsbG8sIG15IG5hbWUgaXMgQWxpY2U=
+    &lt;/publish&gt;
+    &lt;/failed_pdu&gt;
+  &lt;/report_error&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      </section>
+
+      <section title="&lt;report_error/&gt; without Optional Elements" toc="default">
+    <figure><artwork>
+&lt;msg
+    type="reply"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;report_error
+      error_code="object_already_present"
+      tag="foo"/&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      </section>
+
+      <section title="Error Handling with Multi-Element Queries" anchor="multi-element" toc="default">
+
+        <section title="Multi-Element Query" toc="default">
+        <figure><artwork>
+&lt;msg
+    type="query"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;publish
+      tag="Alice"
+      uri="rsync://wombat.example/Alice/01a97a70ac477f06.cer"&gt;
+      SGVsbG8sIG15IG5hbWUgaXMgQWxpY2U=
+    &lt;/publish&gt;
+  &lt;withdraw
+      hash="f46a4198efa3070e"
+      tag="Bob"
+      uri="rsync://wombat.example/Bob/f46a4198efa3070e.cer"/&gt;
+  &lt;publish
+      tag="Carol"
+      uri="rsync://wombat.example/Carol/32e0544eeb510ec0.cer"&gt;
+      SGVsbG8sIG15IG5hbWUgaXMgQ2Fyb2w=
+    &lt;/publish&gt;
+  &lt;withdraw
+      hash="421ee4ac65732d72"
+      tag="Dave"
+      uri="rsync://wombat.example/Dave/421ee4ac65732d72.cer"/&gt;
+  &lt;publish
+      tag="Eve"
+      uri="rsync://wombat.example/Eve/9dd859b01e5c2ebd.cer"&gt;
+      SGVsbG8sIG15IG5hbWUgaXMgRXZl
+    &lt;/publish&gt;
+&lt;/msg&gt;
+</artwork></figure>
+        </section>
+
+        <section title="Successful Multi-Element Response" toc="default">
+         <figure><artwork>
+&lt;msg
+    type="reply"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;success/&gt;
+&lt;/msg&gt;
+</artwork></figure>
+        </section>
+
+        <section title="Failure Multi-Element Response, First Error Only" toc="default">
+       <figure><artwork>
+&lt;msg
+    type="reply"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;report_error
+      error_code="no_object_matching_hash"
+      tag="Dave"&gt;
+    &lt;failed_pdu&gt;
+      &lt;withdraw
+          hash="421ee4ac65732d72"
+          tag="Dave"
+          uri="rsync://wombat.example/Dave/421ee4ac65732d72.cer"/&gt;
+    &lt;/failed_pdu&gt;
+  &lt;/report_error&gt;
+&lt;/msg&gt;
+</artwork></figure>
+        </section>
+        
+        <section title="Failure Multi-Element Response, All Errors" toc="default">
+         <figure><artwork>
+&lt;msg
+    type="reply"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;report_error
+      error_code="no_object_matching_hash"
+      tag="Dave"&gt;
+    &lt;failed_pdu&gt;
+      &lt;withdraw
+          hash="421ee4ac65732d72"
+          tag="Dave"
+          uri="rsync://wombat.example/Dave/421ee4ac65732d72.cer"/&gt;
+    &lt;/failed_pdu&gt;
+  &lt;/report_error&gt;
+  &lt;report_error
+      error_code="object_already_present"
+      tag="Eve"&gt;
+    &lt;failed_pdu&gt;
+      &lt;publish
+          tag="Eve"
+          uri="rsync://wombat.example/Eve/9dd859b01e5c2ebd.cer"&gt;
+      SGVsbG8sIG15IG5hbWUgaXMgRXZl
+    &lt;/publish&gt;
+    &lt;/failed_pdu&gt;
+  &lt;/report_error&gt;
+&lt;/msg&gt;
+</artwork></figure>
+        </section>
+        
+      </section>
+
+      <section title="&lt;list/&gt; Query" toc="default">
+       <figure><artwork>
+&lt;msg
+    type="query"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;list/&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      </section>
+
+      <section title="&lt;list/&gt; Reply" toc="default">
+       <figure><artwork>
+&lt;msg
+    type="reply"
+    version="4"
+    xmlns="http://www.hactrn.net/uris/rpki/publication-spec/"&gt;
+  &lt;list
+      hash="eb719b72f0648cf4"
+      uri="rsync://wombat.example/Fee/eb719b72f0648cf4.cer"/&gt;
+  &lt;list
+      hash="c7c50a68b7aa50bf"
+      uri="rsync://wombat.example/Fie/c7c50a68b7aa50bf.cer"/&gt;
+  &lt;list
+      hash="f222481ded47445d"
+      uri="rsync://wombat.example/Foe/f222481ded47445d.cer"/&gt;
+  &lt;list
+      hash="15b94e08713275bc"
+      uri="rsync://wombat.example/Fum/15b94e08713275bc.cer"/&gt;
+&lt;/msg&gt;
+</artwork></figure>
+      </section>
+
+    </section>
+
+    <section title="IANA Considerations" toc="default">
+
+      <t>
+        IANA has registered the "application/rpki-publication"
+        MIME media type as follows:
+      </t>
+
+  <figure><artwork>
+   MIME media type name:  application
+   MIME subtype name:  rpki-publication
+   Required parameters:  None
+   Optional parameters:  None
+   Encoding considerations:  binary
+   Security considerations:  Carries an RPKI publication protocol
+      message, as defined in RFC 8181.
+   Interoperability considerations:  None
+   Published specification:  RFC 8181
+   Applications which use this media type: HTTP
+   Additional information:
+      Magic number(s):  None
+      File extension(s):  None
+      Macintosh File Type Code(s):  None
+   Person &amp; email address to contact for further information:
+      Rob Austein &lt;sra@hactrn.net&gt;
+   Intended usage:  COMMON
+   Author/Change controller: IETF
+</artwork></figure>
+
+    </section>
+
+    <section title="Security Considerations" anchor="security" toc="default">
+
+      <t>
+        The RPKI publication protocol and the data it publishes use
+        entirely separate PKIs for authentication.  The published data
+        is authenticated within the RPKI, and this protocol has
+        nothing to do with that authentication, nor does it require
+        that the published objects be valid in the RPKI.  The
+        publication protocol uses a separate BPKI to
+        authenticate its messages.
+      </t>
+
+      <t>
+        Each RPKI publication protocol message is wrapped in a signed
+        CMS message, which provides message integrity protection and
+        an auditable form of message authentication.  Because of these
+        protections at the application layer, and because all the data
+        being published are intended to be public information in any
+        case, this protocol does not, strictly speaking, require the
+        use of HTTPS or other transport security mechanisms.  There
+        may, however, be circumstances in which a particular
+        publication operator may prefer HTTPS over HTTP anyway, as a
+        matter of (BPKI) CA policy.  Use of HTTP versus HTTPS here is,
+        essentially, a private matter between the repository operator
+        and its clients.  Note, however, that even if a client/server
+        pair uses HTTPS for this protocol, message authentication for
+        this protocol is still based on the CMS signatures, not HTTPS.
+      </t>
+
+      <t>
+        Although the hashes used in the &lt;publish/&gt; and
+        &lt;withdraw/&gt; PDUs are cryptographically strong, the
+        digest algorithm was selected for convenience in comparing
+        these hashes with the hashes that appear in RPKI manifests.
+        The hashes used in the &lt;publish/&gt; and &lt;withdraw/&gt;
+        PDUs are not particularly security sensitive because these
+        PDUs are protected by the CMS signatures.  Because of this,
+        the most likely reason for a change to this digest algorithm
+        would be to track a corresponding change in the digest
+        algorithm used in RPKI manifests.  If and when such a change
+        happens, it will require incrementing the version number of
+        this publication protocol, but given that the most likely
+        implementation of a publication server uses these hashes as
+        lookup keys in a database, bumping the protocol version number
+        would be a relatively minor portion of the effort of changing
+        the algorithm.
+      </t>
+
+      <t>
+        Compromise of a publication server, perhaps through
+        mismanagement of BPKI private keys, could lead to a
+        denial-of-service attack on the RPKI.  An attacker gaining
+        access to BPKI private keys could use this protocol to delete
+        (withdraw) RPKI objects, leading to routing changes or
+        failures.  Accordingly, as in most PKIs, good key management
+        practices are important.
+      </t>
+
+    </section>
+  </middle>
+
+  <back>
+    <references title="Normative References">
+
+<?rfc include="reference.RFC.2119" ?>
+<?rfc include="reference.RFC.8174" ?>
+<?rfc include="reference.RFC.6492" ?>
+<?rfc include="reference.RFC.7230" ?>
+<?rfc include="reference.RFC.5652" ?>
+<?rfc include="reference.RFC.4648" ?>
+<?rfc include="reference.RFC.5781" ?>      
+<?rfc include="reference.RFC.3986" ?>     
+ 
+      <reference anchor="SHS" target="http://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf">
+        <front>
+          <title>Secure Hash Standard (SHS)</title>
+          <author>
+            <organization>National Institute of Standards and Technology</organization>
+          </author>
+          <date month="August" year="2015"/>
+        </front>
+        <seriesInfo name="FIPS PUB" value="180-4"/>
+        <seriesInfo name="DOI" value="10.6028/NIST.FIPS.180-4"/>
+      </reference>
+
+      <reference anchor="RELAX-NG" target="https://www.oasis&nbhy;open.org/committees/relax-ng/compact-20021121.html">
+        <front>
+          <title>RELAX NG Compact Syntax</title>
+          <author initials="J." surname="Clark" fullname="James Clark">
+            <address><email>jjc@jclark.com</email></address>
+          </author>
+          <date month="November" year="2002"/>
+        </front>
+       <seriesInfo name="OASIS" value="Committee Specification" />
+      </reference>
+
+      <reference anchor="XML" target="http://www.w3.org/TR/2002/CR-xml11-20021015">
+        <front>
+          <title>Extensible Markup Language (XML) 1.1</title>
+          <author initials="J" surname="Cowan" fullname="John Cowan"/>
+          <date month="October" year="2002"/>
+        </front>
+        <seriesInfo name="W3C Consortium Recommendation" value="REC-xml11-20060816"/>
+      </reference>
+    </references>
+
+    <references title="Informative References">
+
+<?rfc include="reference.RFC.6480" ?>
+
+<reference anchor='RFC8182' target='http://www.rfc-editor.org/info/rfc8182'>
+<front>
+<title>The RPKI Repository Delta Protocol (RRDP)</title>
+<author initials='T' surname='Bruijnzeels' fullname='Tim Bruijnzeels'>
+    <organization />
+</author>
+<author initials='O' surname='Muravskiy' fullname='Oleg Muravskiy'>
+    <organization />
+</author>
+<author initials='B' surname='Weber' fullname='Bryan Weber'>
+    <organization />
+</author>
+<author initials='R' surname='Austein' fullname='Rob Austein'>
+    <organization />
+</author>
+<date month='July' year='2017' />
+</front>
+<seriesInfo name='RFC' value='8182' />
+<seriesInfo name='DOI' value='10.17487/RFC8182' />
+</reference>
+
+<reference anchor='RFC8183' target='http://www.rfc-editor.org/info/rfc8183'>
+<front>
+<title>An Out-Of-Band Setup Protocol for Resource Public Key Infrastructure (RPKI) Production Services</title>
+<author initials='R' surname='Austein' fullname='Rob Austein'>
+    <organization />
+</author>
+<date month='July' year='2017' />
+</front>
+<seriesInfo name='RFC' value='8183' />
+<seriesInfo name='DOI' value='10.17487/RFC8183' />
+</reference>
+    </references>
+
+   <section title="Acknowledgements" numbered="no">
+
+      <t>
+        The authors would like to thank:
+        Geoff Huston,
+        George Michaelson,
+        Oleg Muravskiy,
+        Paul Wouters,
+        Randy Bush,
+        Rob Loomans,
+        Robert Kisteleki,
+        Tim Bruijnzeels,
+        Tom Petch,
+        and anybody else who helped along the way but whose name(s)
+        the authors have temporarily forgotten.
+      </t>
+
+    </section>
+
+  </back>
+
+</rfc>

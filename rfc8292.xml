@@ -1,0 +1,717 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt" ?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+
+<?rfc toc="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="8292" ipr="trust200902" category="std" submissionType="IETF"
+     consensus="yes">
+
+  <front>
+    <title abbrev="VAPID for Web Push">Voluntary Application Server
+    Identification (VAPID) for Web Push</title>
+
+    <author initials="M." surname="Thomson" fullname="Martin Thomson">
+      <organization>Mozilla</organization>
+      <address>
+        <email>martin.thomson@gmail.com</email>
+      </address>
+    </author>
+    <author initials="P." surname="Beverloo" fullname="Peter Beverloo">
+      <organization>Google</organization>
+      <address>
+        <email>beverloo@google.com</email>
+      </address>
+    </author>
+
+    <date year="2017" month="November"/>
+
+    <keyword>authentication</keyword>
+    <keyword>restricted</keyword>
+    <keyword>restriction</keyword>
+    <keyword>signature</keyword>
+
+    <abstract>
+
+<t>An application server can use the Voluntary Application Server
+Identification (VAPID) method described in this document to voluntarily
+identify
+itself to a push service.  The "vapid" authentication scheme allows a client
+to
+include its identity in a signed token with requests that it makes.  The
+signature can be used by the push service to attribute requests that are made
+by the same application server to a single entity.  The identification
+information can allow the operator of a push service to contact the operator
+of
+the application server.  The signature can be used to restrict the use of a
+push message subscription to a single application server.</t>
+
+    </abstract>
+
+  </front>
+
+  <middle>
+
+
+<section anchor="introduction" title="Introduction">
+
+<t>The Web Push protocol <xref target="RFC8030"/> describes how an application
+server is able to request that a push service deliver a push message to a user
+agent.</t>
+
+<t>As a consequence of the expected deployment architecture, there is no basis
+for
+an application server to be known to a push service prior to requesting
+delivery
+of a push message.  Requiring that the push service be able to authenticate
+application servers places an unwanted constraint on the interactions between
+user agents and application servers, who are the ultimate users of a push
+service.  That constraint would also degrade the privacy-preserving properties
+the protocol provides.  For these reasons, <xref target="RFC8030"/> does not
+define a mandatory system for authentication of application servers.</t>
+
+<t>An unfortunate consequence of the design of <xref target="RFC8030"/> is
+that a push service
+is exposed to a greater risk of denial-of-service attacks.  While requests
+from
+application servers can be indirectly attributed to user agents, this is not
+always efficient or even sufficient.  Providing more information about the
+application server directly to a push service allows the push service to
+better
+distinguish between legitimate and bogus requests.</t>
+
+<t>Additionally, the design of <xref target="RFC8030"/> relies on maintaining
+the secrecy of push message
+subscription URIs.  Any application server in possession of a push message
+subscription
+URI is able to send messages to the user agent.  If use of a subscription
+could
+be limited to a single application server, this would reduce the impact of the
+push message subscription URI being learned by an unauthorized party.</t>
+
+<section anchor="voluntary-identification" title="Voluntary Identification">
+
+<t>This document describes a system whereby an application server can
+volunteer
+information about itself to a push service.  At a minimum, this provides a
+stable identity for the application server, though this could also include
+contact information, such as an email address.</t>
+
+<t>A consistent identity can be used by a push service to establish behavioral
+expectations for an application server.  Significant deviations from an
+established norm can then be used to trigger exception-handling
+procedures.</t>
+
+<t>Voluntarily provided contact information can be used to contact an
+application
+server operator in the case of exceptional situations.</t>
+
+<t>Experience with push service deployment has shown that software errors or
+unusual circumstances can cause large increases in push message volume.
+Contacting the operator of the application server has proven to be
+valuable.</t>
+
+<t>Even in the absence of usable contact information, an application server
+that
+has a well-established reputation might be given preference over an
+unidentified
+application server when choosing whether to discard a push message.</t>
+
+</section>
+<section anchor="notational-conventions" title="Notational Conventions">
+
+<t>    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP 14
+    <xref target="RFC2119"/> <xref target="RFC8174"/>
+    when, and only when, they
+    appear in all capitals, as shown here.
+</t>
+
+<t>The terms "push message", "push service", "push message subscription",
+"application
+server", and "user agent" are used as defined in <xref target="RFC8030"/>.</t>
+
+</section>
+</section>
+<section anchor="jwt" title="Application Server Self-Identification">
+
+<t>Application servers that wish to self-identify generate and maintain a
+signing
+key pair.
+
+This key pair MUST be usable with the Elliptic Curve Digital Signature
+Algorithm
+(ECDSA) over the P-256 curve <xref target="FIPS186"/>.  Use of this key when
+sending push
+messages establishes an identity for the application server that is consistent
+across multiple messages.</t>
+
+<t>When requesting delivery of a push message, the application includes a JSON
+Web
+Token (JWT) <xref target="RFC7519"/>, signed using its signing key.  The token
+includes a
+number of claims as follows:</t>
+
+<t><list style="symbols">
+  <t>An "aud" (Audience) claim in the token MUST include the Unicode
+  serialization
+of the origin (Section 6.1 of <xref target="RFC6454"/>) of the push resource
+URL.  This
+binds the token to a specific push service and ensures that the token is
+reusable for all push resource URLs that share the same origin.</t>
+
+  <t>An "exp" (Expiry) claim MUST be included with the time after which the
+  token
+expires.  This limits the time over which a token is valid.  An "exp" claim
+MUST NOT be more than 24 hours from the time of the request.  Limiting this
+to 24 hours balances the need for reuse against the potential cost and
+likelihood of theft of a valid token.</t>
+</list></t>
+
+<t>This JWT is included in an Authorization header field, using an
+authentication scheme of
+"vapid".  A push service MAY reject a request with a 403 (Forbidden) status
+code <xref target="RFC7231"/> if the JWT signature or its claims are invalid.
+A push
+service MUST NOT use information from an invalid token.</t>
+
+<t>The JWT MUST use a JSON Web Signature (JWS) <xref target="RFC7515"/>.  The
+signature MUST
+use ECDSA on the NIST P-256 curve <xref target="FIPS186"/>, which is
+identified as "ES256"
+<xref target="RFC7518"/>.</t>
+
+<section anchor="application-server-contact-information" title="Application Server Contact Information">
+
+<t>If the application server wishes to provide contact details, it MAY include
+a
+"sub" (Subject) claim in the JWT.  The "sub" claim SHOULD include a contact
+URI
+for the application server as either a "mailto:" (email) <xref
+target="RFC6068"/> or an
+"https:" <xref target="RFC2818"/> URI.</t>
+
+</section>
+<section anchor="additional-claims" title="Additional Claims">
+
+<t>An application server MAY include additional claims using public or private
+names (see Sections 4.2 and 4.3 of <xref target="RFC7519"/>).  Since the JWT
+is in a header
+field, the size of additional claims SHOULD be kept as small as possible.</t>
+
+</section>
+<section anchor="cryptographic-agility" title="Cryptographic Agility">
+
+<t>The "vapid" HTTP authentication scheme (<xref target="auth"/>) is used to
+identify the
+specific profile of JWT defined in this document.  A different authentication
+scheme is needed to update the signature algorithm or other parameters.  This
+ensures that existing mechanisms for negotiating authentication schemes can be
+used rather than defining new parameter negotiation mechanisms.</t>
+
+</section>
+<section anchor="example" title="Example">
+
+<t>An application server requests the delivery of a push message as described
+in
+<xref target="RFC8030"/>.  If the application server wishes to self-identify,
+it includes an Authorization header field with credentials that use the
+"vapid" authentication scheme.</t>
+
+<figure title="Requesting Push Message Delivery with JWT"
+	anchor="ex-push"><artwork><![CDATA[
+POST /p/JzLQ3raZJfFBR0aqvOMsLrt54w4rJUsV HTTP/1.1
+Host: push.example.net
+TTL: 30
+Content-Length: 136
+Content-Encoding: aes128gcm
+Authorization: vapid
+   t=eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJodHRwczovL3
+     B1c2guZXhhbXBsZS5uZXQiLCJleHAiOjE0NTM1MjM3NjgsInN1YiI6Im1ha
+     Wx0bzpwdXNoQGV4YW1wbGUuY29tIn0.i3CYb7t4xfxCDquptFOepC9GAu_H
+     LGkMlMuCGSK2rpiUfnK9ojFwDXb1JrErtmysazNjjvW2L9OkSSHzvoD1oA,
+   k=BA1Hxzyi1RUM1b5wjxsn7nGxAszw2u61m164i3MrAIxHF6YK5h4SDYic-dR
+     uU_RCPCfA5aq9ojSwk5Y2EmClBPs
+{ encrypted push message }
+]]></artwork></figure>
+
+<t>Note that the example header fields in this document include extra line
+wrapping
+to meet formatting constraints.</t>
+
+<t>The <spanx style="verb">t</spanx> parameter of the Authorization header
+field contains a JWT; the <spanx style="verb">k</spanx>
+parameter includes the base64url-encoded key that signed that token.  The JWT
+input values and the JSON Web Key (JWK) <xref target="RFC7517"/> corresponding
+to the signing key are shown
+in <xref target="ex-decoded"/> with additional whitespace added for
+readability purposes.  This
+JWT would be valid until 2016-01-23T04:36:08Z.</t>
+
+<figure title="Decoded Example Values" anchor="ex-decoded"><artwork><![CDATA[
+JWT header = { "typ": "JWT", "alg": "ES256" }
+JWT body = { "aud": "https://push.example.net",
+             "exp": 1453523768,
+             "sub": "mailto:push@example.com" }
+JWK = { "crv":"P-256",
+        "kty":"EC",
+        "x":"DUfHPKLVFQzVvnCPGyfucbECzPDa7rWbXriLcysAjEc",
+        "y":"F6YK5h4SDYic-dRuU_RCPCfA5aq9ojSwk5Y2EmClBPs" }
+]]></artwork></figure>
+
+</section>
+</section>
+<section anchor="auth" title="VAPID Authentication Scheme">
+
+<t>This document defines a new HTTP authentication scheme <xref
+target="RFC7235"/> named "vapid". This
+authentication scheme carries a signed JWT, as described in <xref
+target="jwt"/>, plus the
+key that signed that JWT.</t>
+
+<t>This authentication scheme is for origin-server authentication only.
+Therefore,
+this authentication scheme MUST NOT be used with the Proxy-Authenticate or
+Proxy-Authorization header fields.</t>
+
+<t>The challenge for the "vapid" authentication scheme contains only the
+<spanx style="verb">auth-scheme</spanx> production.  No parameters are
+currently defined.</t>
+
+<t>Two parameters are defined for this authentication scheme: <spanx
+style="verb">t</spanx> and <spanx style="verb">k</spanx>.  All
+unknown or unsupported parameters to "vapid" authentication credentials MUST
+be ignored.  The <spanx style="verb">realm</spanx> parameter is ignored for
+this authentication scheme.</t>
+
+<t>This authentication scheme is intended for use by an application server
+when
+using the Web Push protocol <xref target="RFC8030"/>.</t>
+
+<section anchor="token" title="Token Parameter (&quot;t&quot;)">
+
+<t>The <spanx style="verb">t</spanx> parameter of the "vapid" authentication
+scheme carries a JWT as
+described in <xref target="jwt"/>.</t>
+
+</section>
+<section anchor="key" title="Public Key Parameter (&quot;k&quot;)">
+
+<t>In order for the push service to be able to validate the JWT, it needs to
+learn
+the public key of the application server.  A <spanx style="verb">k</spanx>
+parameter is defined for the
+"vapid" authentication scheme to carry this information.</t>
+
+<t>The <spanx style="verb">k</spanx> parameter includes an ECDSA
+public key <xref target="FIPS186"/> in uncompressed form <xref
+target="X9.62"/> that is encoded using
+base64url encoding <xref target="RFC7515"/>.</t>
+
+<t><list style="hanging">
+  <t hangText='Note:'>
+  X9.62 encoding is used over JWK <xref target="RFC7517"/> for two reasons.  A
+  JWK does not
+have a canonical form, so X9.62 encoding makes it easier for the push service
+to handle comparison of keys from different sources.  Secondarily, the X9.62
+encoding is also considerably smaller.</t>
+</list></t>
+
+<t>Some elliptic curve implementations permit the same P-256 key to be used
+for
+signing and key exchange.  An application server MUST select a different
+private key for the key exchange
+<xref target="RFC8291"/> and signing the
+authentication token.  Though a push service is not obligated to check either
+parameter for every push message, a push service SHOULD reject push messages
+that have identical values for these parameters with a 400 (Bad Request)
+status
+code.</t>
+
+</section>
+</section>
+<section anchor="restrict" title="Subscription Restriction">
+
+<t>The public key of the application server serves as a stable identifier for
+the
+server.  This key can be used to restrict a push message subscription to a
+specific
+application server.</t>
+
+<t>Subscription restriction reduces the reliance on endpoint secrecy by
+requiring
+that an application server provide a signed token when requesting delivery of
+a
+push message.  This provides an additional level of protection against leaking
+of the details of the push message subscription.</t>
+
+<section anchor="creating-a-restricted-push-subscription" title="Creating a Restricted Push Message Subscription">
+
+<t>A user agent that wishes to create a restricted subscription includes the
+public
+key of the application server when requesting the creation of a push message
+subscription.  This restricts use of the resulting subscription to application
+servers that are able to provide a valid JWT signed by the corresponding
+private
+key.</t>
+
+<t>The user agent then adds the public key to the request to create a push message
+subscription.  The push message subscription request is extended to include a
+body.  The
+body of the request is a JSON object as described in <xref
+target="RFC7159"/>.  The user
+agent adds a "vapid" member to this JSON object that contains a public key on
+the P-256 curve, encoded in the uncompressed form <xref target="X9.62"/> and
+base64url
+encoded <xref target="RFC7515"/>.  The media type of the body is set to
+"application/webpush-options+json" (see <xref target="mime"/> for registration
+of this media
+type).</t>
+
+<t>A push service MUST ignore the body of a request that uses a different
+media
+type.  For the "application/webpush-options+json" media type, a push service
+MUST ignore any members on this object that it does not understand.</t>
+
+<t>The example in <xref target="ex-restrict"/> shows a restriction to the key
+used in
+<xref target="ex-push"/>.  Extra whitespace is added to meet formatting
+constraints.</t>
+
+<figure title="Example Subscribe Request"
+	anchor="ex-restrict"><artwork><![CDATA[
+POST /subscribe/ HTTP/1.1
+Host: push.example.net
+Content-Type: application/webpush-options+json
+Content-Length: 104
+{ "vapid": "BA1Hxzyi1RUM1b5wjxsn7nGxAszw2u61m164i3MrAIxH
+            F6YK5h4SDYic-dRuU_RCPCfA5aq9ojSwk5Y2EmClBPs" }
+]]></artwork></figure>
+
+<t>An application might use the Push API <xref target="API"/> to provide
+the user agent with
+a public key.</t>
+
+</section>
+<section anchor="using-restricted-subscriptions" title="Using Restricted Subscriptions">
+
+<t>When a push message subscription has been restricted to an application
+server, the
+request for push message delivery MUST include a JWT signed by the private key
+that corresponds to the public key used when creating the subscription.</t>
+
+<t>A push service MUST reject a message sent to a restricted push message
+subscription if
+that message includes no "vapid" authentication or invalid "vapid"
+authentication.  A 401 (Unauthorized) status code might be used if the
+authentication is absent; a 403 (Forbidden) status code might be used if
+authentication is invalid.</t>
+
+<t>"vapid" authentication is invalid if:</t>
+
+<t><list style="symbols">
+  <t>either the authentication token or public key is not included in the
+  request,</t>
+  <t>the signature on the JWT cannot be successfully verified using the
+  included
+public key,</t>
+  <t>the current time is later than the time identified in the "exp" (Expiry)
+claim or more than 24 hours before the expiry time,</t>
+  <t>the origin of the push resource is not included in the "aud" (Audience)
+  claim,
+or</t>
+  <t>the public key used to sign the JWT doesn't match the one that was
+  included in
+the creation of the push message subscription.</t>
+</list></t>
+
+<t>A push service MUST NOT forward the JWT or public key to the user agent
+when
+delivering the push message.</t>
+
+<t>An application server that needs to replace its signing key needs
+to request the creation of a new subscription by the user agent
+that is restricted to the updated key.  Application servers need to remember
+the key that was used when requesting the creation of a subscription.</t>
+
+</section>
+</section>
+<section anchor="security" title="Security Considerations">
+
+<t>This authentication scheme is vulnerable to replay attacks if an attacker
+can
+acquire a valid JWT.  Sending requests using HTTPS as required by <xref
+target="RFC8030"/>
+provides confidentiality.  Additionally, applying narrow limits to the period
+over which a replayable token can be reused limits the potential value of a
+stolen token to an attacker and can increase the difficulty of stealing a
+token.</t>
+
+<t>An application server might offer falsified contact information.  The
+application server asserts its email address or contact URI without any
+evidence to support the claim.  A push service operator cannot use the
+presence
+of unvalidated contact information as input to any security-critical
+decision-making process.</t>
+
+<t>Validation of a signature on the JWT requires a non-trivial amount of
+computation.  For something that might be used to identify legitimate requests
+under denial-of-service attack conditions, this is not ideal.  Application
+servers are therefore encouraged to reuse tokens, which permits the push
+service
+to cache the results of signature validation.</t>
+
+<t>An application server that changes its signing key breaks linkability
+between
+push messages that it sends under different keys.  A push service that
+relies on a consistent identity for application servers might categorize
+requests made with new keys differently.  Gradual migration to a new signing
+key
+reduces the chances that requests that use the new key will be categorized as
+abusive.</t>
+
+</section>
+<section anchor="iana" title="IANA Considerations">
+
+<t>This document registers a new authentication scheme, a registry for
+parameters
+of that scheme, and a media type for push options.</t>
+
+<section anchor="vapid-authentication-scheme-registration" title="VAPID Authentication Scheme Registration">
+
+<t>This document registers the "vapid" authentication scheme in the "Hypertext
+Transfer Protocol (HTTP) Authentication Scheme Registry" established by
+<xref target="RFC7235"/>.</t>
+
+<t><list style="hanging">
+  <t hangText='Authentication Scheme Name:'>
+  vapid</t>
+  <t hangText='Pointer to specification text:'>
+  <xref target="auth"/> of this document</t>
+</list></t>
+
+</section>
+<section anchor="vapid-authentication-scheme-parameters" title="VAPID Authentication Scheme Parameters">
+
+<t>This document creates a "VAPID Authentication Scheme Parameters" registry
+for
+parameters to the "vapid" authentication scheme.  These parameters are defined
+for use in requests (in the Authorization header field) and for challenges (in
+the WWW-Authenticate header field).  This registry is under the "Web Push
+Parameters" grouping.  The registry operates on the "Specification Required"
+policy <xref target="RFC8126"/>.</t>
+
+<t>Registrations MUST include the following information:</t>
+
+<t><list style="hanging">
+  <t hangText='Parameter Name:'>
+  A name for the parameter, which conforms to the <spanx
+  style="verb">token</spanx> grammar <xref target="RFC7230"/></t>
+  <t hangText='Purpose (optional):'>
+  Brief text identifying the purpose of the parameter</t>
+  <t hangText='Header Field(s):'>
+  The header field(s) in which the parameter can be used</t>
+  <t hangText='Specification:'>
+  A link to the specification that defines the format and semantics of the
+parameter</t>
+</list></t>
+
+<t>This registry initially contains the following entries:</t>
+
+<?rfc compact="no"?>
+<texttable>
+      <ttcol align='left'>Parameter Name</ttcol>
+      <ttcol align='left'>Purpose</ttcol>
+      <ttcol align='left'>Header Field(s)</ttcol>
+      <ttcol align='left'>Specification</ttcol>
+      <c>t</c>
+      <c>JWT authentication token</c>
+      <c>Authorization</c>
+      <c>[RFC8292], <xref target="token"/></c>
+      <c>k</c>
+      <c>signing key</c>
+      <c>Authorization</c>
+      <c>[RFC8292], <xref target="key"/></c>
+</texttable>
+<?rfc compact="yes"?>
+
+</section>
+<section anchor="mime" title="application/webpush-options+json Media Type Registration">
+
+<t>This document registers the "application/webpush-options+json" media type
+in the
+"Media Types" registry following the process described in <xref
+target="RFC6838"/>.</t>
+
+<t><list style="hanging">
+  <t hangText='Type name:'>
+  application</t>
+  <t hangText='Subtype name:'>
+  webpush-options+json</t>
+  <t hangText='Required parameters:'>
+  none</t>
+  <t hangText='Optional parameters:'>
+  none</t>
+  <t hangText='Encoding considerations:'>
+  binary (JSON is UTF-8-encoded text)</t>
+  <t hangText='Security considerations:'>
+  See <xref target="RFC7159"/> for security considerations specific to
+  JSON.</t>
+  <t hangText='Interoperability considerations:'>
+  See <xref target="RFC7159"/> for interoperability considerations specific to
+  JSON.</t>
+  <t hangText='Published specification:'>
+  [RFC8292]</t>
+  <t hangText='Applications that use this media type:'>
+  Web browsers, via the Web Push protocol <xref target="RFC8030"/></t>
+  <t hangText='Fragment identifier considerations:'>
+  none</t>
+  <t hangText='Additional information:'>
+        <list style="hanging">
+        <t hangText='Deprecated alias names for this type:'>
+        n/a</t>
+        <t hangText='Magic number(s):'>
+        n/a</t>
+        <t hangText='File extension(s):'>
+        .json</t>
+        <t hangText='Macintosh file type code(s):'>
+        TEXT</t>
+	</list>
+  </t>
+  <t hangText='Person &amp; email address to contact for further information:'>
+  Martin Thomson (martin.thomson@gmail.com)</t>
+  <t hangText='Intended usage:'>
+  LIMITED USE</t>
+  <t hangText='Restrictions on usage:'>
+  For use with the Web Push protocol <xref target="RFC8030"/></t>
+  <t hangText='Author:'>
+  See "Authors' Addresses" section of [RFC8292].</t>
+  <t hangText='Change controller:'>
+  Internet Engineering Task Force</t>
+</list></t>
+
+</section>
+</section>
+
+
+
+</middle>
+
+  <back>
+
+    <references title='Normative References'>
+
+<reference anchor="FIPS186" >
+  <front>
+    <title>Digital Signature Standard (DSS)</title>
+    <author >
+      <organization>National Institute of Standards and Technology
+      (NIST)</organization>
+    </author>
+    <date year="2013" month="July"/>
+  </front>
+  <seriesInfo name="FIPS PUB" value="186-4"/>
+<seriesInfo name='DOI' value='10.6028/NIST.FIPS.186-4' />
+</reference>
+
+
+<reference anchor="X9.62" >
+  <front>
+    <title>Public Key Cryptography for the Financial Services Industry: the
+    Elliptic Curve Digital Signature Algorithm (ECDSA)</title>
+    <author >
+      <organization>ANSI</organization>
+    </author>
+    <date year="2005"/>
+  </front>
+  <seriesInfo name="ANSI" value="X9.62"/>
+</reference>
+
+<?rfc include="reference.RFC.8030"?>
+<?rfc include="reference.RFC.2119"?>
+<?rfc include="reference.RFC.8174"?>
+<?rfc include="reference.RFC.7519"?>
+<?rfc include="reference.RFC.6454"?>
+<?rfc include="reference.RFC.7231"?>
+<?rfc include="reference.RFC.7235"?>
+<?rfc include="reference.RFC.7515"?>
+<?rfc include="reference.RFC.7518"?>
+<?rfc include="reference.RFC.6068"?>
+<?rfc include="reference.RFC.2818"?>
+<?rfc include="reference.RFC.7159"?>
+<?rfc include="reference.RFC.8126"?>
+<?rfc include="reference.RFC.7230"?>
+<?rfc include="reference.RFC.6838"?>
+
+
+<reference anchor="RFC8291" target="http://www.rfc-editor.org/info/rfc8291">
+
+<front>
+<title>Message Encryption for Web Push</title>
+
+<author initials='M' surname='Thomson' fullname='Martin Thomson'>
+    <organization />
+</author>
+
+<date month='November' year='2017' />
+
+</front>
+<seriesInfo name="RFC" value="8291"/>
+<seriesInfo name="DOI" value="10.17487/RFC8291"/>
+</reference>
+
+
+    </references>
+
+    <references title='Informative References'>
+
+
+<reference anchor="API" target="https://www.w3.org/TR/push-api/">
+  <front>
+    <title>Push API</title>
+    <author initials="P." surname="Beverloo">
+      <organization></organization>
+    </author>
+    <author initials="M." surname="Thomson">
+      <organization></organization>
+    </author>
+    <author initials="M." surname="van Ouwerkerk">
+      <organization></organization>
+    </author>
+    <author initials="B." surname="Sullivan">
+      <organization></organization>
+    </author>
+    <author initials="E." surname="Fullea">
+      <organization></organization>
+    </author>
+    <date year="2017" month="October"/>
+  </front>
+</reference>
+
+
+<?rfc include="reference.RFC.7517"?>
+
+    </references>
+
+<section anchor="ack" title="Acknowledgements" numbered="no">
+
+<t>This document would have been much worse than it is if not for the
+contributions
+of Benjamin Bangert, JR Conlin, Chris Karlof, Costin Manolache, Adam Roach,
+and
+others.</t>
+
+</section>
+
+  </back>
+
+</rfc>

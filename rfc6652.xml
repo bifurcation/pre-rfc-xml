@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="US-ASCII?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<rfc ipr="trust200902" category="std"
+        number="6652" updates="4408" submissionType="IETF" consensus="yes">
+
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc rfcedstyle="yes"?>
+
+<front>
+        <title abbrev="SPF Auth Failure Reporting">
+                Sender Policy Framework (SPF) Authentication Failure Reporting Using&nbsp;the&nbsp;Abuse&nbsp;Reporting&nbsp;Format
+        </title>
+
+        <author initials="S." surname="Kitterman"
+                fullname="Scott Kitterman">
+                <organization>Agari</organization>
+
+                <address>
+                        <postal>
+                                <street>3611 Scheel Dr.</street>
+                                <city>Ellicott City</city>
+                                <region>MD</region>
+                                <code>21042</code>
+                                <country>US</country>
+                        </postal>
+
+                        <phone>+1 301 325 5475</phone>
+                        <email>scott@kitterman.com</email>
+                </address>
+        </author>
+
+        <date month="June" year="2012" />
+
+        <area>Applications</area>
+        <workgroup>MARF Working Group</workgroup>
+        <keyword>fraud</keyword>
+        <keyword>phishing</keyword>
+        <keyword>spoofing</keyword>
+
+        <abstract>
+                <t> This memo presents extensions to the Abuse Reporting
+                    Format (ARF) and Sender Policy Framework (SPF)
+                    specifications to allow for detailed reporting of message
+                    authentication failures in an on-demand fashion. </t>
+                <t> This memo updates RFC 4408 by providing an IANA registry
+                    for SPF modifiers.</t>
+        </abstract>
+</front>
+
+<middle>
+        <section anchor="intro" title="Introduction">
+                <t> The Abuse Reporting Format <xref target="ARF"/> defines a
+                    message format for sending reports of abuse in the
+                    messaging infrastructure, with an eye toward automating
+                    both the generation and consumption of those reports. </t>
+
+                <t> The Sender Policy Framework <xref target="SPF"/> is one
+                    mechanism for message sender authentication; it is
+                    "path-based", meaning it authenticates the route that a
+                    message took from origin to destination.  The output is a
+                    verified domain name that can then be subjected to some
+                    sort of evaluation process (e.g., comparison to a
+                    known-good list, submission to a reputation service,
+                    etc.). </t>
+
+                <t> This document extends <xref target="SPF"/> to add an
+                    optional reporting address and other parameters.
+                    Extension of <xref target="ARF"/> to add features required
+                    for the reporting of these incidents is covered in <xref
+                    target="ARF-AUTHFAIL"/> and <xref
+                    target="ARF-AS"/>.</t>
+
+                <t> This document additionally creates a an IANA registry of
+                    <xref target="SPF"/> record modifiers to avoid modifier
+                    namespace collisions.</t>
+        </section>
+
+        <section anchor="definitions" title="Definitions">
+                <section anchor="keywords" title="Key Words">
+                           <t> The key words "MUST", "MUST NOT", "REQUIRED",
+                            "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
+                            "RECOMMENDED", "MAY", and "OPTIONAL" in this
+                            document are to be interpreted as described
+                            in <xref target="KEYWORDS"/>. </t>
+                </section>
+
+                <section anchor="imports" title="Imported Definitions">
+                        <t> The <xref target="ABNF"/> token
+                            "qp-section" is defined in
+                            <xref target="MIME"/>. </t>
+
+                        <t> "local-part" is defined in <xref target="MAIL"/>. </t>
+
+                        <t> "addr-spec" is defined in <xref target="MAIL"/>. </t>
+                </section>
+        </section>
+
+        <section anchor="spf-update"
+         title="Optional Reporting Address for SPF">
+                <t> There exist cases in which an ADministrative Management
+                    Domain (ADMD) (see <xref target="EMAIL-ARCH"/>) employing
+                     <xref target="SPF"/> for announcing sending practices may
+                     want to know when messages are received via unauthorized
+                    routing.  Currently, there is no such method defined in
+                    conjunction with standardized approaches such as
+                    <xref target="ARF"/>. Similar information can be gathered
+                    using a specially crafted <xref target="SPF"/> record and
+                    a special DNS server to track <xref target="SPF"/> record
+                    lookups.</t>
+
+                <t> This document defines the following optional "modifier"
+                    (as defined in Section 4.6.1 of <xref target="SPF"/>) to
+                    SPF records, using the form defined in that specification:
+
+                <list style="hanging">
+                        <t hangText="ra="> Reporting Address (plain-text;
+                        OPTIONAL; no default).  MUST be a local-part (see 
+                        Section 3.4.1 of <xref target="MAIL"/>) specifying an 
+                        e-mail address to which a report SHOULD be sent when
+                        mail claiming to be from this domain (see Section 2.4 
+                        of <xref target="SPF"/> for a description of how domains
+                        are identified for SPF checks) has failed the evaluation
+                        algorithm described in <xref target="SPF"/>, in
+                        particular because a message arrived via an unauthorized
+                        route. To generate a complete address to which the
+                        report is sent, the Verifier simply appends to this
+                        value an "@" followed by the SPF-compliant domain per
+                        Section 4.1 of <xref target="SPF"/>. &nbsp;ra= modifiers
+                        in a record that was reached by following an
+                        "include" mechanism (defined in Section 5.2
+                        of <xref target="SPF"/>) MUST be ignored.</t>
+
+                        <t> ABNF: </t>
+                        <t> spf-report-tag = "ra=" qp-section </t>
+
+                        <t hangText="rp="> Requested Report Percentage
+                        (plain-text; OPTIONAL; default is "100").  The value is
+                        an integer from 0 to 100 inclusive that indicates what
+                        percentage of incidents of SPF failures, selected at
+                        random, are to cause reports to be generated.  The
+                        report generator SHOULD NOT issue reports for more than
+                        the requested percentage of incidents.  An exception to
+                        this might be some out-of-band arrangement between two
+                        parties to override it with some mutually agreed
+                        value.
+                        Report generators MAY make use of the "Incidents:"
+                        field in <xref target="ARF"/> to indicate that
+                        there are more
+                        reportable incidents than there are reports.</t>
+
+                        <t> ABNF: </t>
+                        <t> spf-rp-tag = "rp=" 1*12DIGIT "/" 1*12DIGIT </t>
+
+                        <t hangText="rr="> Requested Reports
+                        (plain-text; OPTIONAL; default is "all").  The value
+                        MUST be a colon-separated list of tokens representing
+                        those conditions under which a report is desired.
+                        See <xref target="requests-spf"/> for a list of
+                        valid tags. </t>
+
+                        <t> ABNF: </t>
+                        <t> spf-rr-type = ( "all" / "e" / "f" / "s" / "n" )</t>
+                        <t> spf-rr-tag = "rr=" spf-rr-type *( ":" spf-rr-type )</t>
+                </list> </t>
+                <t> In the absence of an "ra=" tag in the SPF record, the
+                    "rp=" and "rr=" tags MUST be ignored, and the report
+                    generator MUST NOT issue a report.</t>
+        </section>
+
+        <section anchor="requests" title="Requested Reports">
+                <t> This memo also includes, as the "rr" tokens defined
+                    above, the means by which the sender can request
+                    reports for specific circumstances of interest.  Verifiers
+                    MUST NOT generate reports for incidents that do not
+                    match a requested report and MUST ignore requests for
+                    reports not included in this list. </t>
+
+                <section anchor="requests-spf"
+                         title="Requested Reports for SPF Failures">
+                        <t> The following report requests are defined
+                            for SPF results:
+
+                            <list style="hanging">
+                                <t hangText="all"> All reports are
+                                        requested. </t>
+                                <t hangText="e"> Reports are requested for
+                                        messages that produced an SPF
+                                        result of "TempError" or "PermError". </t>
+                                <t hangText="f"> Reports are requested for
+                                        messages that produced an SPF
+                                        result of "Fail". </t>
+                                <t hangText="s"> Reports are requested for
+                                        messages that produced an SPF
+                                        result of "SoftFail". </t>
+                                <t hangText="n"> Reports are requested for
+                                        messages that produced an SPF
+                                        result of "Neutral" or "None". </t>
+                            </list> </t>
+                </section>
+        </section>
+
+        <section anchor="iana" title="IANA Considerations">
+                <t> As required by <xref target="IANA-CONS"/>,
+                    this section contains registry information for the new
+                    <xref target="SPF"/> modifiers.  </t>
+
+                <section anchor="iana-spf-tags"
+                         title="SPF Modifier Registration">
+                        <t> IANA has created the Modifier Names registry under
+Sender Policy Framework Parameters, to include
+                            a list of
+                            all registered SPF modifier names and their
+                            defining documents. </t>
+
+                        <t> New registrations or updates are to be published
+                            in accordance with the "Specification Required"
+                            guidelines as described in
+                            <xref target="IANA-CONS"/>.  New
+                            registrations and updates MUST contain the
+                            following information:
+
+                            <list style="numbers">
+                                <t> Name of the modifier being registered or
+                                    updated </t>
+                                <t> The document in which the specification
+                                    of the modifier is published </t>
+                                <t> New or updated status, which MUST be one
+                                    of the following:
+                                    <list style="hanging">
+                                        <t hangText="Current:"> The field
+                                                is in current use </t>
+
+                                        <t hangText="Deprecated:"> The field
+                                                might be in current use but
+                                                its use is discouraged </t>
+
+                                        <t hangText="Historic:"> The field
+                                                is no longer in current
+                                                use </t>
+                                    </list> </t>
+                            </list> </t>
+
+                        <t> An update may make a notation on an existing
+                            registration indicating that a registered field
+                            is historic or deprecated if appropriate. </t>
+
+                        <figure><artwork>
+              +------------+-----------------+---------+
+              | MODIFIER   | REFERENCE       | STATUS  |
+              +------------+-----------------+---------+
+              | exp        | RFC 4408        | Current |
+              | redirect   | RFC 4408        | Current |
+              | ra         | (this document) | Current |
+              | rp         | (this document) | Current |
+              | rr         | (this document) | Current |
+              +------------+-----------------+---------+
+                         </artwork></figure>
+                 </section>
+         </section>
+
+         <section anchor="security" title="Security Considerations">
+                 <t> Inherited considerations: implementers are advised to
+                     consider the Security Considerations sections of
+                     <xref target="SPF"/>, <xref target="ARF"/>,
+                     <xref target="ARF-AS"/>, and
+                     <xref target="ARF-AUTHFAIL"/>. </t>
+
+                 <t> In addition to the advice in the Security Considerations
+                     section of <xref target="ARF-AS"/>, these
+                     additional considerations apply to the generation of
+                     <xref target="SPF"/> authentication failure reports:</t>
+                 <section anchor="identity" title="Identity Selection">
+                     <t> Preventing an <xref target="SPF"/> failure for SPF
+                         authentication failure reports is essential to
+                         mitigate the risk of data loops.</t>
+                     <t><list style="hanging">
+                         <t> If the <xref target="SMTP"/> return address to be used
+                             will not be the NULL return address, i.e.,
+                             "MAIL FROM:&#0060;>", then the selected return address MUST
+                             be selected such that it will pass
+                             <xref target="SPF"/> MAIL FROM checks upon initial
+                             receipt.</t>
+                         <t> If the report is passed to the Message Submission Agent
+                             (MSA) (MSA is described in <xref target="EMAIL-ARCH"/>
+                             using <xref target="SMTP"/>), the HELO/EHLO command
+                             parameter SHOULD also be selected so that it will pass
+                             <xref target="SPF"/> HELO checks.</t>
+                     </list></t>
+                 </section>
+
+                 <section anchor="volume" title="Report Volume">
+                     <t> It is impossible to predict the volume of reports
+                         this facility will generate when enabled by a
+                         report receiver. An implementer ought to
+                         anticipate substantial volume, since the amount
+                         of abuse occurring at receivers cannot be known
+                         ahead of time, and may vary rapidly and
+                         unpredictably. </t>
+                 </section>
+
+         </section>
+ </middle>
+
+ <back>
+     <?rfc rfcedstyle="no"?>
+        <references title="Normative References">
+
+<reference anchor='ABNF'>
+<front>
+<title>Augmented BNF for Syntax Specifications: ABNF</title>
+<author initials='D.' surname='Crocker' fullname='D. Crocker' role="editor">
+<organization /></author>
+<author initials='P.' surname='Overell' fullname='P. Overell'>
+<organization /></author>
+<date year='2008' month='January' />
+</front>
+<seriesInfo name='STD' value='68' />
+<seriesInfo name='RFC' value='5234' />
+</reference>
+
+<!-- RFC 6591 (was draft-ietf-marf-authfailure-report) -->
+<reference anchor='ARF-AUTHFAIL'>
+<front>
+<title>Authentication Failure Reporting Using the Abuse Reporting Format</title>
+<author initials='H.' surname='Fontana' fullname='H. Fontana'>
+<organization /></author>
+<date year='2012' month='April' />
+</front>
+<seriesInfo name='RFC' value='6591' />
+</reference>
+
+<!-- draft-ietf-marf-as (companion doc.) -->
+                <reference anchor="ARF-AS">
+                        <front>
+                                <title>
+                                        Creation and Use of Email Feedback
+                                        Reports: An Applicability Statement
+                                        for the Abuse Reporting Format (ARF)
+                                </title>
+                                <author initials="J." surname="Falk"
+                                        fullname="J. Falk">
+                                </author>
+                                <author initials="M." surname="Kucherawy, Ed."
+					 fullname="M. Kucherawy, Ed.">
+				 </author>
+				 <date month="June" year="2012" />
+			 </front>
+			 <seriesInfo
+				 name="RFC" value="6650"/>
+		 </reference>
+
+		 <reference anchor="ARF">
+			 <front>
+				 <title>
+					 An Extensible Format for Email
+					 Feedback Reports
+				 </title>
+				 <author initials="Y." surname="Shafranovich"
+					 fullname="Y. Shafranovich">
+				 </author>
+				 <author initials="J." surname="Levine"
+					 fullname="J. Levine">
+				 </author>
+				 <author initials="M." surname="Kucherawy"
+					 fullname="M. Kucherawy">
+				 </author>
+				 <date month="August" year="2010" />
+			 </front>
+			 <seriesInfo name="RFC" value="5965"/>
+		 </reference>
+
+<reference anchor='IANA-CONS'>
+<front>
+<title>Guidelines for Writing an IANA Considerations Section in RFCs</title>
+<author initials='T.' surname='Narten' fullname='T. Narten'>
+<organization /></author>
+<author initials='H.' surname='Alvestrand' fullname='H. Alvestrand'>
+<organization /></author>
+<date year='2008' month='May' />
+</front>
+<seriesInfo name='BCP' value='26' />
+<seriesInfo name='RFC' value='5226' />
+</reference>
+
+<reference anchor='KEYWORDS'>
+<front>
+<title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+<author initials='S.' surname='Bradner' fullname='Scott Bradner'/>
+<date year='1997' month='March' />
+</front>
+<seriesInfo name='BCP' value='14' />
+<seriesInfo name='RFC' value='2119' />
+</reference>
+
+                <reference anchor="MAIL">
+                        <front>
+                                <title> Internet Message Format </title>
+                                <author initials="P." surname="Resnick"
+                                        fullname="P. Resnick" role="editor">
+                                </author>
+                                <date month="October" year="2008" />
+                        </front>
+                        <seriesInfo name="RFC" value="5322" />
+                </reference>
+
+                <reference anchor="MIME">
+                        <front>
+                                <title> Multipurpose Internet Mail
+                                        Extensions (MIME) Part One: Format of
+                                        Internet Message Bodies </title>
+                                <author initials="N." surname="Freed"
+                                        fullname="N. Freed">
+                                </author>
+                                <author initials="N." surname="Borenstein"
+                                        fullname="N. Borenstein">
+                                </author>
+                                <date month="November" year="1996" />
+                        </front>
+                        <seriesInfo name="RFC" value="2045" />
+                </reference>
+
+                <reference anchor="SPF">
+                        <front>
+                                <title>
+                                        Sender Policy Framework (SPF) for
+                                        Authorizing Use of Domains in E-Mail,
+                                        Version 1
+                                </title>
+                                <author initials="M." surname="Wong"
+                                        fullname="M. Wong">
+                                </author>
+                                <author initials="W." surname="Schlitt"
+                                        fullname="W. Schlitt">
+                                </author>
+                                <date year="2006" month="April"/>
+                        </front>
+                        <seriesInfo name="RFC" value="4408"/>
+                </reference>
+
+                <reference anchor="SMTP">
+                        <front>
+                                <title>Simple Mail Transfer Protocol</title>
+                                <author
+                                        fullname="J. Klensin"
+                                        initials="J."
+                                        surname="Klensin">
+                                </author>
+                                <date month="October" year="2008" />
+                        </front>
+                        <seriesInfo name="RFC" value="5321" />
+                </reference>
+
+        </references>
+        <references title="Informative References">
+
+<reference anchor='EMAIL-ARCH'>
+<front>
+<title>Internet Mail Architecture</title>
+<author initials='D.' surname='Crocker' fullname='D. Crocker'>
+<organization /></author>
+<date year='2009' month='July' />
+</front>
+<seriesInfo name='RFC' value='5598' />
+</reference>
+
+        </references>
+
+        <section anchor="thanks" title="Acknowledgements">
+                   <t> The author wishes to acknowledge the following for their
+                    review and constructive criticism of this proposal:
+                    Murray Kucherawy, Tim Draegen, Julian Mehnle, and John
+                    Levine. </t>
+        </section>
+
+        <section anchor="examples" title="Examples">
+                <section anchor="spf-nomail"
+                         title="SPF DNS Record for Domain That Sends No Mail but
+                         Requests Reports">
+                        <figure>
+                                <artwork>
+v=spf1 ra=postmaster -all
+                                </artwork>
+                        </figure>
+                </section>
+                <section anchor="spf-basic"
+                         title="Minimal SPF DNS Record Change to Add a Reporting
+                         Address">
+                        <figure>
+                                <artwork>
+v=spf1 mx:example.org ra=postmaster -all
+                                </artwork>
+                        </figure>
+                </section>
+                <section anchor="spf-full"
+                         title="SPF DNS Record with Reporting Address, Report
+                         Percentage, and Requested Report Type">
+                        <figure>
+                                <artwork>
+v=spf1 mx:example.org -all ra=postmaster rp=10 rr=e
+                                </artwork>
+                        </figure>
+                </section>
+
+        </section>
+  <?rfc rfcedstyle="yes"?>
+</back>
+
+</rfc>

@@ -1,0 +1,2810 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<?xml-stylesheet type='text/xsl' href='include/rfc2629.xslt' ?>
+
+<?rfc symrefs="yes"?>
+<?rfc toc="yes"?>
+<?rfc tocdepth="8"?>
+
+
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc rfcedstyle="yes"?>
+
+<!DOCTYPE rfc SYSTEM "include/rfc2629.dtd">
+
+<rfc submissionType="independent" category="info" consensus="no" ipr="noModificationTrust200902" number="7425">
+
+<front>
+	<title abbrev="Adobe RTMFP for Flash Communication">Adobe's RTMFP Profile for&nbsp;Flash&nbsp;Communication</title>
+
+
+
+	<author initials="M.C." surname="Thornburgh" fullname="Michael C. Thornburgh">
+		<organization abbrev="Adobe">Adobe Systems Incorporated</organization>
+		<address>
+			<postal>
+				<street>345 Park Avenue</street>
+				<city>San Jose</city>
+				<region>CA</region>
+				<code>95110-2704</code>
+				<country>United States</country>
+			</postal>
+			<phone>+1 408 536 6000</phone>
+			<email>mthornbu@adobe.com</email>
+			<uri>http://www.adobe.com/</uri>
+		</address>
+	</author>
+
+	<date month="December" year="2014"/>
+	<area>Real-time Applications and Infrastructure</area>
+
+
+
+
+
+
+
+
+	<abstract>
+		<t>This memo describes how to use Adobe's Secure Real-Time Media
+		Flow Protocol (RTMFP) to transport the video, audio, and data
+		messages of Adobe Flash platform communications.  Aspects of this
+		application profile include cryptographic methods and data
+		formats, flow metadata formats, and protocol details for
+		client-server and peer-to-peer communication.
+		</t>
+	</abstract>
+</front>
+
+<middle>
+
+<section title="Introduction">
+
+<t>Adobe's <xref target="RFC7016">Secure Real-Time Media Flow Protocol
+(RTMFP)</xref> is a general-purpose transport service for real-time media and
+bulk data in IP networks, and it is suited to client-server and peer-to-peer
+(P2P) communication. RTMFP provides a generalized framework for securing its
+communications according to the needs of its application.</t>
+
+<t>The Flash platform comprises the Flash runtime (including Flash Player)
+from Adobe Systems Incorporated, communication servers such as Adobe Media
+Server, and interoperable clients and servers provided by other parties.</t>
+
+<t>Real-time streaming network communication for the Flash platform of video,
+audio, and data typically uses Adobe's <xref target="RTMP">Real-Time Messaging
+Protocol (RTMP)</xref> messages.  RTMP messages were originally designed to
+be transported over <xref target="RTMP">RTMP Chunk Stream in TCP</xref>;
+however, other transports (such as the one described in this memo) are
+possible.</t>
+
+
+<t>This memo specifies the syntax and semantics for transporting RTMP messages
+over RTMFP, and it extends Flash communication semantics to include direct P2P
+communication. This memo further specifies a concrete Cryptography Profile
+for RTMFP tailored to the application and cryptographic needs of Flash platform
+client-server and P2P communications.</t>
+
+<t>These protocols and profiles were developed by Adobe Systems Incorporated
+and are not the product of an IETF activity.</t>
+
+</section>
+
+<section title="Terminology">
+
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this
+document are to be interpreted as described in <xref target="RFC2119"/>.</t>
+
+
+<t>"HMAC" means the <xref target="RFC2104">Keyed-Hash Message Authentication
+Code (HMAC) algorithm</xref>.</t>
+
+<t>"HMAC-SHA256" means HMAC using the SHA-256 Secure Hash Algorithm
+<xref target="SHA256"/> <xref target="RFC6234"/>.</t>
+
+<t>"HMAC-SHA256(K, M)" means the calculation of the HMAC-SHA256 of message M using
+key K.</t>
+
+</section>
+
+<section title="Common Syntax Elements">
+
+<t>Definitions of types and structures in this specification use traditional
+text diagrams paired with procedural descriptions using a C-like syntax. The
+C-like procedural descriptions SHALL be construed as definitive.</t>
+
+<t>Structures are packed to take only as many bytes as explicitly indicated.
+There is no 32-bit alignment constraint, and fields are not padded for alignment
+unless explicitly indicated or described. Text diagrams may include a bit
+ruler across the top; this is a convenience for counting bits in individual
+fields and does not necessarily imply field alignment on a multiple of the
+ruler width.</t>
+
+<t>Unless specified otherwise, reserved fields SHOULD be set to 0 by a sender
+and MUST be ignored by a receiver.</t>
+
+<t>The procedural syntax of this specification defines correct and error-free
+encoded inputs to a parser. The procedural syntax does not describe a fully
+featured parser, including error detection and handling. Implementations MUST
+include means to identify error circumstances, including truncations causing
+elementary or composed types not to fit inside containing structures, fields,
+or elements.  Unless specified otherwise, an error circumstance SHALL abort
+the parsing and processing of an element and its enclosing elements.</t>
+
+<t>This memo uses the elementary and composed types described in Section 2.1
+of RFC 7016.  The definitions of that section are incorporated by reference
+as though fully set forth here.</t>
+
+</section>
+
+<section title="Cryptography Profile" anchor="crypto_profile">
+
+<t>RTMFP defines a general security framework but delegates specifics, such
+as packet encryption ciphers and key agreement algorithms, to an application-defined
+Cryptography Profile.</t>
+
+<t>This section defines the RTMFP Cryptography Profile for Flash platform
+communication.</t>
+
+<section title="Default Session Key">
+
+<t>RTMFP uses a Default Session Key and associated default cipher configuration
+during session startup handshaking, where session-specific keys and ciphers
+are negotiated.</t>
+
+<t>The default cipher is the <xref target="AES">Advanced Encryption Standard</xref>
+with 128-bit keys operating in <xref target="CBC">Cipher Block Chaining </xref> mode, as described in <xref target="crypto_cipher"/>. The Default
+Session Key is the 16 bytes of the string "Adobe Systems 02" encoded in UTF-8 <xref target="RFC3629"></xref>:</t>
+
+<figure align="center">
+<artwork align="center"><![CDATA[
+Hex: 41 64 6F 62 65 20 53 79 73 74 65 6D 73 20 30 32
+]]></artwork>
+</figure>
+
+<t><xref target="packet_verification">The Default Session Key uses checksum
+mode for packet verification and does not use session sequence numbers</xref>.</t>
+
+</section>
+
+<section title="Diffie-Hellman Groups">
+
+<t>Implementations conforming to this profile MUST support
+<xref target="DH">Diffie-Hellman</xref> modular exponentiation (MODP) group 2 (1024 bits) as defined
+in <xref target="RFC7296"/>, and SHOULD support Diffie-Hellman MODP group 5
+(1536 bits) and group 14 (2048 bits) as defined in <xref target="RFC3526"/>.
+Implementations MAY support additional groups.</t>
+
+</section>
+
+<section title="Certificates" anchor="certificates">
+
+<t>This section defines the certificate format for this Cryptography Profile,
+and the mapping to the abstract properties and semantics for RTMFP endpoint
+identities.</t>
+
+<section title="Format">
+
+<t>A certificate in this profile is encoded as a sequence of zero or more
+RTMFP Options and Markers (Section 2.1.3 of RFC 7016).  The first marker (if
+any) in the certificate separates the canonical section of the certificate
+from the remainder. Some options are ignored if they occur outside of the
+canonical section (that is, after the first marker).</t>
+
+<figure align="left">
+<artwork><![CDATA[
++~~~/~~~/~~~+   +~~~/~~~/~~~+~~~~~+~~~/~~~/~~~+   +~~~/~~~/~~~+
+| L \ T \ V |...| L \ T \ V |  0  | L \ T \ V |...| L \ T \ V |
++~~~/~~~/~~~+   +~~~/~~~/~~~+~~~~~+~~~/~~~/~~~+   +~~~/~~~/~~~+
+^                           ^  ^  ^                           ^
+|  Zero or more non-empty   |  |  |   Zero or more Options    |
+|         Options           |  |  +------  or Markers  -------+
+|                           |  |
++---  Canonical Section  ---+  +---- First Marker
+                                     (if present)
+
+struct certificate_t
+{
+    canonicalStart = remainder();
+    canonicalEnd = remainder();
+    markerFound = false;
+
+    while(remainder() > 0)
+    {
+        option_t option :variable*8;
+
+        if(0 == option.length)
+            markerFound = true;
+        else if(!markerFound)
+            canonicalEnd = remainder();
+    };
+
+    canonicalSectionLength = canonicalStart - canonicalEnd;
+} :variable*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Fingerprint" anchor="cert_fingerprint">
+
+<t>A certificate's fingerprint is the <xref target="SHA256">SHA-256 hash</xref>
+of the canonical section of the certificate (that is, the hash of the first
+canonicalSectionLength bytes of the certificate).</t>
+
+<t>The certificate's fingerprint is also called the "peer ID".</t>
+
+</section>
+
+<section title="Options" anchor="certificate_options">
+
+<t>This section lists options that can appear in a certificate. The following
+option type codes are defined:
+<list style="hanging" hangIndent="9">
+	<t hangText="0x00:"><xref target="cert_option_hostname">Hostname
+	(must be in canonical section)</xref></t>
+
+	<t hangText="0x0a:"><xref target="cert_option_ancillary">Accepts
+	Ancillary Data (must be in canonical section)</xref></t>
+
+	<t hangText="0x0e:"><xref target="cert_option_extra_randomness">Extra
+	Randomness</xref></t>
+
+	<t hangText="0x15:"><xref target="cert_option_dh_group">Supported
+	Ephemeral Diffie-Hellman Group (must be in canonical section)</xref></t>
+
+	<t hangText="0x1d:"><xref target="cert_option_dh_key">Static
+	Diffie-Hellman Public Key (must be in canonical section)</xref></t>
+
+</list>
+</t>
+
+<t>An implementation MUST ignore a certificate option type that is not
+understood.</t>
+
+<section title="Hostname" anchor="cert_option_hostname">
+
+<t>This option gives an optional hostname for the endpoint. This option MUST
+be ignored if is not in the canonical section. This option MUST NOT occur
+more than once in a certificate.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+|   length    \ |     0x00    \ |         hostname              |
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/
+
+struct hostnameCertOptionValue_t
+{
+    uint8_t hostname[remainder()];
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Accepts Ancillary Data" anchor="cert_option_ancillary">
+
+<t>This option indicates that the endpoint will accept an Endpoint Discriminator
+encoding an <xref target="epd_option_ancillary">Ancillary Data option</xref>.
+This option MUST be ignored if it is not in the canonical section.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+
+|   length    \ |     0x0a    \ |
++-------------/-+-------------/-+
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+
+</section>
+
+<section title="Extra Randomness" anchor="cert_option_extra_randomness">
+
+<t>This option can be used to add extra entropy or randomness to a certificate
+that doesn't have any other cryptographic pseudorandom members (such as a
+public key). This option is typically used so that endpoints using ephemeral
+Diffie-Hellman keying can have a unique certificate fingerprint.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+|   length    \ |     0x0e    \ |       extra randomness        |
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/
+
+struct extraRandomnessCertOptionValue_t
+{
+    uint_t extraRandomness[remainder()];
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Supported Ephemeral Diffie-Hellman Group" anchor="cert_option_dh_group">
+
+<t>This option specifies a Diffie-Hellman group ID that is supported for
+ephemeral keying. This option MUST be ignored if it is not in the canonical
+section.  This option may occur more than once in the certificate; each
+instance indicates an additional group that is supported for key agreement.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+-------------/-+
+|   length    \ |     0x15    \ |   group ID  \ |
++-------------/-+-------------/-+-------------/-+
+
+struct ephemeralDHGroupCertOptionValue_t
+{
+    vlu_t groupID :variable*8;
+} :variable*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>The presence of this option means that the certificate uses ephemeral
+Diffie-Hellman public keys only. The certificate MUST NOT contain a
+<xref target="cert_option_dh_key">Static Diffie-Hellman public key</xref>.</t>
+
+</section>
+
+<section title="Static Diffie-Hellman Public Key" anchor="cert_option_dh_key">
+
+<t>This option specifies a Diffie-Hellman group ID and static public key in
+that group.  This option MUST be ignored if it is not in the canonical section.
+This option MAY occur more than once in the certificate; however, this option
+SHOULD NOT occur more than once for each group ID. The behavior for specifying
+more than one public key per group ID is not defined.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+-------------/-+
+|   length    \ |     0x1d    \ |   group ID  \ |
++-------------/-+-------------/-+-------------/-+
++------------------------------------------------------------------+
+|                  Diffie-Hellman Public Key                       |
++------------------------------------------------------------------/
+
+struct staticDHPublicKeyCertOptionValue_t
+{
+    vlu_t   groupID :variable*8;
+    uintn_t publicKey :remainder()*8; // network byte order
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>The presence of this option means that the certificate uses static
+Diffie-Hellman public keys only. The certificate MUST NOT contain any
+<xref target="cert_option_dh_group">Supported Ephemeral Diffie-Hellman Group
+options</xref>.</t>
+
+</section>
+
+</section> <!-- Crypto Certificates Options -->
+
+<section title="Authenticity">
+
+<t>This profile does not use a public key infrastructure, nor are there signing
+keys present in certificates. Therefore, any properly encoded certificate is
+considered authentic according to Section 3.2 of RFC 7016.</t>
+
+<t>A certificate containing a static public key can only be used successfully
+for session communication if the holder of the certificate actually holds the
+private key associated with the public key. Authenticity of an identity and
+its <xref target="cert_fingerprint">peer ID</xref> having a certificate
+containing a static public key is implied by successful
+<xref target="key_computation">encrypted communication with the associated
+endpoint</xref>.</t>
+
+<t>See <xref target="security_considerations"/> for further discussion of
+security issues related to identities.</t>
+
+</section>
+
+<section title="Signing and Verifying Messages">
+
+<t>RTMFP Initiator Initial Keying and Responder Initial Keying messages have
+a field for the sender's digital signature of the keying parameters (Sections
+2.3.7 and 2.3.8 of RFC 7016). In this profile, the signature field of those
+messages is encoded as a sequence of zero or more RTMFP Options.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++~~~/~~~/~~~~~~~+               +~~~/~~~/~~~~~~~+
+| L \ T \   V   |...............| L \ T \   V   |
++~~~/~~~/~~~~~~~+               +~~~/~~~/~~~~~~~+
+^                                               ^
++-------------  Zero or more Options  ----------+
+
+struct initialKeyingSignature_t
+{
+    while(remainder() > 0)
+        option_t option :variable*8;
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>If a signer has no signature options to send, it MAY encode a signature
+as a UTF-8 capital "X" (hex 58) or as empty. A verifier MUST interpret a
+malformed signature field or a signature field consisting only of a UTF-8
+capital "X" as though it was empty.</t>
+
+<t>If a verifier does not require a signature, it SHALL consider any signature
+field (including an empty or malformed one) to be valid. A verifier MAY require
+a signature comprising one or more non-empty options that are valid according
+to their respective types.</t>
+
+<t>This profile does not use a public key infrastructure, nor are there signing
+keys present in certificates. <xref target="sig_option_simple_password"/>
+defines a simple ID/password credential system.</t>
+
+<section title="Options">
+
+<t>This section lists options that can appear in an RTMFP Initial Keying
+signature field. The following option type code is defined:
+<list style="hanging">
+	<t hangText="0x1d:"><xref target="sig_option_simple_password">Simple Password</xref></t>
+</list>
+</t>
+
+<t>Future or derived profiles may define additional signature field options
+and semantics; therefore, a verifier SHOULD ignore option types that are not
+understood.</t>
+
+<section title="Simple Password" anchor="sig_option_simple_password">
+
+<t>This option encodes a password identifier (such as a user name, or an
+application-specific or implementation-specific selector) and an HMAC over
+the signed parameters using the identified password as the HMAC key. This
+option can occur more than once (for example, to allow interoperation between
+a current and a previous version of an implementation using implementation-specific
+passwords).</t>
+
+<t>To support the versioning use case, a verifier SHOULD ignore a Simple
+Password option encoding an unrecognized password identifier. A verifier
+SHOULD treat the entire signature as invalid if any Simple Password option
+encodes a recognized password identifier with an invalid password HMAC.</t>
+
+
+<figure align="left">
+<artwork><![CDATA[
+ 0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7
++-------------/-+-------------/-+
+|   length    \ |     0x1d    \ |
++-------------/-+-------------/-+
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                           hmacSHA256                          |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
++~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+|                           passwordID                          |
++~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/
+
+struct simplePasswordSignatureOptionValue_t
+{
+    uint8_t hmacSHA256[32];
+    uint8_t passwordID[remainder()];
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="hmacSHA256:">HMAC-SHA256(K, M), where K is the password associated
+		with passwordID, and M is the signed parameters.</t>
+	<t hangText="passwordID:">The identifier (such as a user name) for the password used
+		as the HMAC key.</t>
+</list></t>
+
+</section> <!-- Simple Credential -->
+
+</section> <!-- Signature Options -->
+
+</section> <!-- Signatures -->
+
+<section title="Glare Resolution">
+
+<t>Glare occurs when two endpoints initiate a session each to the other
+concurrently.</t>
+
+<t>Compare the near end's certificate to the far end's with a binary lexicographic
+comparison, one byte at a time, up to the length of the shorter certificate.
+At the first corresponding byte from each certificate that is different, the
+certificate having the differing byte (treated as an unsigned 8-bit integer)
+with the lower value is ordered before the other certificate.  If the
+certificates are not the same length and they are identical up to the length
+of the shorter certificate, then the shorter certificate is ordered before
+the longer.</t>
+
+<t>The near end prevails as the Initiator in case of glare if its certificate
+is ordered before, or is identical to, the certificate of the far end. Otherwise,
+the near end's certificate is ordered after the far end's certificate, and
+the near end assumes the role of Responder.</t>
+
+</section>
+
+<section title="Session Override">
+
+<t>A new incoming session overrides an existing session only if the certificate
+for the new session is identical to the certificate for the existing session.</t>
+
+</section>
+
+</section> <!-- Crypto Certificates -->
+
+<section title="Endpoint Discriminators">
+
+<t>This section describes the Endpoint Discriminator (EPD) (Section 3.2 of
+RFC 7016) format and semantics for this Cryptography Profile, and the mapping
+to RTMFP's abstract certificate and identity selection semantics.</t>
+
+<section title="Format">
+
+<t>An EPD in this profile is encoded as a sequence of zero or more RTMFP
+Options.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++~~~/~~~/~~~~~~~+               +~~~/~~~/~~~~~~~+
+| L \ T \   V   |...............| L \ T \   V   |
++~~~/~~~/~~~~~~~+               +~~~/~~~/~~~~~~~+
+^                                               ^
++-------------  Zero or more Options  ----------+
+
+struct endpointDiscriminator_t
+{
+    while(remainder() > 0)
+        option_t option :variable*8;
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Options" anchor="epd_options">
+
+<t>This section lists options that can appear in an EPD. The following option
+type codes are defined:
+<list style="hanging">
+	<t hangText="0x00:"><xref target="epd_option_hostname">Required
+	Hostname</xref></t>
+
+	<t hangText="0x0a:"><xref target="epd_option_ancillary">Ancillary
+	Data</xref></t>
+
+	<t hangText="0x0f:"><xref target="epd_option_fingerprint">Fingerprint
+	</xref></t>
+
+</list>
+</t>
+
+<t>The use of these options for selecting certificates is described in
+<xref target="cert_selection"/>.</t>
+
+<t>An implementation MUST ignore EPD option types that are not understood.</t>
+
+<section title="Required Hostname" anchor="epd_option_hostname">
+
+<t>This option indicates the hostname to match against the certificate's
+<xref target="cert_option_hostname">Hostname option</xref>.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+|   length    \ |     0x00    \ |         hostname              |
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/
+
+struct hostnameEPDOptionValue_t
+{
+    uint8_t hostname[remainder()];
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>This option MUST NOT occur more than once in an EPD.</t>
+
+</section>
+
+<section title="Ancillary Data" anchor="epd_option_ancillary">
+
+<t>In this profile, this option indicates the server
+<xref target="RFC3986">Uniform Resource Identifier (URI)</xref> encoded in UTF-8
+to which a client is connecting on this session, for example,
+"rtmfp://server.example.com/app/instance".</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+|   length    \ |     0x0a    \ |       ancillary data          |
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/
+
+struct ancillaryDataEPDOptionValue_t
+{
+    uint8_t ancillaryData[remainder()];
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>This option MUST NOT occur more than once in an EPD.</t>
+
+</section>
+
+<section title="Fingerprint" anchor="epd_option_fingerprint">
+
+<t>This option indicates the 256-bit (32-byte)
+<xref target="cert_fingerprint">fingerprint</xref> of a certificate.</t>
+
+<figure align="left">
+<artwork><![CDATA[
+ 0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7
++-------------/-+-------------/-+
+|   length    \ |     0x0f    \ |
++-------------/-+-------------/-+
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                          fingerprint                          |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+struct fingerprintEPDOptionValue_t
+{
+    uint8_t fingerprint[32];
+} :256;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>This option MUST NOT occur more than once in an EPD.</t>
+
+</section>
+
+</section> <!-- Crypto EPDs Options -->
+
+<section title="Certificate Selection" anchor="cert_selection">
+
+<t>This section describes the REQUIRED method of determining whether an EPD
+selects a certificate.</t>
+
+<t>An EPD MUST contain at least one of Fingerprint, Required Hostname, or
+Ancillary Data options to select any certificate.</t>
+
+<t>A Fingerprint EPD option selects or rejects a certificate no matter what
+other options are present.</t>
+
+<t>Without a Fingerprint option, a Required Hostname EPD option, if present,
+REQUIRES an identical Hostname option in the certificate.</t>
+
+<t>Without a Fingerprint option, an Ancillary Data EPD option, if present,
+REQUIRES that the certificate has an Accepts Ancillary Data option.</t>
+
+<figure align="left" title="Algorithm to Test Whether an EPD Selects a Certificate" anchor="fig.epd_selection">
+<artwork><![CDATA[
+if EPD contains a Fingerprint option:
+    if certificate.fingerprint == option.fingerprint:
+        certificate is selected. stop.
+    else:
+        certificate is not selected. stop.
+else:
+    if EPD contains a Required Hostname option:
+        if certificate contains a Hostname option:
+            if certificate.hostname != option.hostname:
+                certificate is not selected. stop.
+        else:
+            certificate is not selected. stop.
+    if EPD contains an Ancillary Data option:
+        if certificate doesn't have an Accepts Ancillary Data option:
+            certificate is not selected. stop.
+    else if EPD does not contain a Required Hostname option:
+        certificate is not selected. stop.
+    certificate is selected. stop.
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Canonical Endpoint Discriminator">
+
+<t>In this profile, a Canonical Endpoint Discriminator (Section 3.2 of RFC
+7016) contains only a <xref target="epd_option_fingerprint">Fingerprint
+option</xref> and no other options.  The option length and type code MUST be
+encoded as 1-byte VLUs, even though VLU encoding allows those fields to be
+encoded in an arbitrary number of bytes.  That is, the Canonical Endpoint Discriminator
+MUST be exactly 34 bytes long, with a length field of 0x21 encoded as one
+byte, a type code of 0x0f encoded as one byte, and 32 bytes of fingerprint.</t>
+
+
+
+<figure align="left">
+<artwork><![CDATA[
+ 0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|     0x21      |     0x0f      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                          fingerprint                          |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++ - - - - - - - + - - - - - - - + - - - - - - - + - - - - - - - +
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+struct canonicalEndpointDiscriminator_t
+{
+    uint8_t length = 0x21;
+    uint8_t type = 0x0f;
+    uint8_t fingerprint[32];
+} :272;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+</section> <!-- Crypto EPDs -->
+
+<section title="Session Keying Components">
+
+<t>This section describes the format of the Session Key Initiator Component
+of the Initiator Initial Keying RTMFP chunk and the Session Key Responder
+Component of the Responder Initial Keying RTMFP chunk (Sections 2.3.7 and
+2.3.8 of RFC 7016). The Initiator and Responder Session Keying Components
+have the same format.</t>
+
+<section title="Format">
+
+<t>A Session Keying Component in this profile is encoded as a sequence of
+zero or more RTMFP Options.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++~~~/~~~/~~~~~~~+               +~~~/~~~/~~~~~~~+
+| L \ T \   V   |...............| L \ T \   V   |
++~~~/~~~/~~~~~~~+               +~~~/~~~/~~~~~~~+
+^                                               ^
++-------------  Zero or more Options  ----------+
+
+struct sessionKeyingComponent_t
+{
+    while(remainder() > 0)
+        option_t option :variable*8;
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Options" anchor="keying_options">
+
+<t>This section lists options that can appear in a Session Keying Component.
+The following option type codes are defined:
+<list style="hanging">
+	<t hangText="0x0d:"><xref target="keying_option_dh_key">Ephemeral
+	Diffie-Hellman Public Key</xref></t>
+
+	<t hangText="0x0e:"><xref target="keying_option_extra_randomness">Extra
+	Randomness</xref></t>
+
+	<t hangText="0x1d:"><xref target="keying_option_dh_group">Diffie-Hellman
+	Group Select</xref></t>
+
+	<t hangText="0x1a:"><xref target="keying_option_hmac">HMAC
+	Negotiation</xref></t>
+
+	<t hangText="0x1e:"><xref target="keying_option_sseq">Session Sequence
+	Number Negotiation</xref></t>
+
+</list>
+</t>
+
+<t>An implementation MUST ignore a session keying component option type that
+is not understood.</t>
+
+<section title="Ephemeral Diffie-Hellman Public Key" anchor="keying_option_dh_key">
+
+<t>This option specifies a Diffie-Hellman group ID and public key in that
+group. This option MUST NOT be sent if the sender's certificate has a static
+Diffie-Hellman public key. This option MUST be sent if the sender's certificate
+does not have a static Diffie-Hellman public key. This option MUST NOT be
+sent more than once.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+-------------/-+
+|   length    \ |     0x0d    \ |   group ID  \ |
++-------------/-+-------------/-+-------------/-+
++------------------------------------------------------------------+
+|                  Diffie-Hellman Public Key                       |
++------------------------------------------------------------------/
+
+struct ephemeralDHPublicKeyKeyingOptionValue_t
+{
+    vlu_t   groupID :variable*8;
+    uintn_t publicKey :remainder()*8; // network byte order
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Extra Randomness" anchor="keying_option_extra_randomness">
+
+<t>This option can be used to add extra entropy or randomness to a keying
+component, particularly when the sender uses a static public key. When used
+for that purpose, the extra randomness SHOULD be cryptographically strong
+pseudorandom bytes not less than 16 bytes (for cryptographically significant
+entropy) and not more than 64 bytes (the length of a SHA-256 input block) in
+length.  The extra randomness serves as a salt when
+<xref target="key_computation">computing the session keys</xref>.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+|   length    \ |     0x0e    \ |       extra randomness        |
++-------------/-+-------------/-+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/
+
+struct extraRandomnessKeyingOptionValue_t
+{
+    uint_t extraRandomness[remainder()];
+} :remainder()*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Diffie-Hellman Group Select" anchor="keying_option_dh_group">
+
+<t>This option is sent by the Initiator to specify which Diffie-Hellman group
+to use for key agreement. The Initiator MUST send this option when it advertises
+a static Diffie-Hellman public key in its certificate and MUST NOT send this
+option if it sends an ephemeral Diffie-Hellman public key.  This option MUST
+NOT be sent more than once.</t>
+
+<figure align="left">
+<artwork><![CDATA[
++-------------/-+-------------/-+-------------/-+
+|   length    \ |     0x1d    \ |   group ID  \ |
++-------------/-+-------------/-+-------------/-+
+
+struct staticDHGroupSelectKeyingOptionValue_t
+{
+    vlu_t   groupID :variable*8;
+} :variable*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="HMAC Negotiation" anchor="keying_option_hmac">
+
+<t>This option is used to negotiate sending and receiving of an HMAC field
+for packet verification.</t>
+
+<figure align="left">
+<artwork><![CDATA[
+                                |0 1 2 3 4 5 6 7|
++-------------/-+-------------/-+-+-+-+-+-+-+-+-+-------------/-+
+|             \ |             \ |         |S|S|R|             \ |
+|   length    / |     0x1a    / |   rsv   |N|O|E|  hmacLength / |
+|             \ |             \ |         |D|R|Q|             \ |
++-------------/-+-------------/-+-+-+-+-+-+-+-+-+-------------/-+
+
+struct hmacNegotiationKeyingOptionValue_t
+{
+    uintn_t reserved :5;          // rsv
+    bool_t  willSendAlways :1;    // SND
+    bool_t  willSendOnRequest :1; // SOR
+    bool_t  request :1;           // REQ
+    vlu_t   hmacLength :variable*8;
+} :variable*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="willSendAlways:">If set, the sender will send an HMAC
+	on packets in this session.</t>
+
+	<t hangText="willSendOnRequest:">If set, the sender will send an
+	HMAC on packets in this session if the other end sets the request
+	flag in its HMAC Negotiation.</t>
+
+	<t hangText="request:">If set, the sender would very much like the
+	receiver to send an HMAC on its packets. If the other end doesn't
+	send an HMAC on its packets, the session can fail.</t>
+
+	<t hangText="hmacLength:">If the sender negotiates to send an HMAC
+	on its packets, the HMAC field will be this many bytes long. This
+	value MUST be between 4 and 32 inclusive, or 0 if and only if
+	willSendAlways and willSendOnRequest are clear.</t>
+
+</list></t>
+
+<t>The handshake operational semantics for this option are described
+in <xref target="packet_hmac_keying"/>.</t>
+
+</section>
+
+<section title="Session Sequence Number Negotiation" anchor="keying_option_sseq">
+
+<t>This option is used to negotiate sending and receiving of the Session
+Sequence Number field for packet verification.</t>
+
+<figure align="left">
+<artwork><![CDATA[
+                                |0 1 2 3 4 5 6 7|
++-------------/-+-------------/-+-+-+-+-+-+-+-+-+
+|             \ |             \ |         |S|S|R|
+|   length    / |     0x1e    / |   rsv   |N|O|E|
+|             \ |             \ |         |D|R|Q|
++-------------/-+-------------/-+-+-+-+-+-+-+-+-+
+
+struct sseqNegotiationKeyingOptionValue_t
+{
+    uintn_t reserved :5;          // rsv
+    bool_t  willSendAlways :1;    // SND
+    bool_t  willSendOnRequest :1; // SOR
+    bool_t  request :1;           // REQ
+} :8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="willSendAlways:">If set, the sender will send a session
+	sequence number in packets in this session.</t>
+
+	<t hangText="willSendOnRequest:">If set, the sender will send a
+	session sequence number in packets in this session if the other end
+	sets the request flag in its Session Sequence Number Negotiation.</t>
+
+	<t hangText="request:">If set, the sender would very much like the
+	receiver to send a session sequence number in its packets. If the
+	other end doesn't send a session sequence number in its packets, the
+	session can fail.</t>
+
+</list></t>
+
+<t>The handshake operational semantics for this option are described
+in <xref target="packet_sseq_keying"/>.</t>
+
+</section>
+
+</section> <!-- Crypto KeyingComponents Options -->
+</section> <!-- Crypto KeyingComponents -->
+
+<section title="Session Key Computation" anchor="key_computation">
+
+<t>This section describes how to compute the cryptographic keys and other
+settings for packet encryption and verification.</t>
+
+<t>The Session Key Near Component (SKNC) means the keying component sent by
+the near end of the session; that is, it is the Session Key Initiator Component
+at the Initiator and the Session Key Responder Component at the Responder.</t>
+
+<t>The Session Key Far Component (SKFC) means the keying component sent by
+the far end of the session; that is, it is the Session Key Responder Component
+at the Initiator and the Session Key Initiator Component at the Responder.</t>
+
+<section title="Public Key Selection">
+
+<t>This section enumerates the public key selection methods for all possible
+combinations of static or ephemeral public key modes for each endpoint according
+to their <xref target="certificate_options">certificate options</xref>.</t>
+
+<section title="Initiator and Responder Ephemeral">
+
+<t>The Initiator and Responder list one or more
+<xref target="cert_option_dh_group">Supported Ephemeral Diffie-Hellman Group
+options</xref> in their certificates.  The Initiator sends exactly one
+<xref target="keying_option_dh_key">Ephemeral Diffie-Hellman Public Key
+option</xref> in its Session Key Initiator Component, which selects one group
+from among those supported by the Responder and Initiator.  Responder sends
+exactly one Ephemeral Diffie-Hellman Public Key option in its Session Key
+Responder Component, in the same group as indicated by the Initiator.</t>
+
+</section>
+
+<section title="Initiator Ephemeral and Responder Static">
+
+<t>The Responder lists one or more <xref target="cert_option_dh_key">Static
+Diffie-Hellman Public Key options</xref> in its certificate. The Initiator
+lists one or more Supported Ephemeral Diffie-Hellman Group options in its
+certificate. The Initiator sends exactly one Ephemeral Diffie-Hellman Public
+Key option in its Session Key Initiator Component, which selects one group
+from among those supported by the Responder and Initiator and the corresponding
+public key for the Responder. Responder uses its public key from the indicated
+group, and sends only an <xref target="keying_option_extra_randomness">Extra
+Randomness option</xref> in its Session Key Responder Component to salt the
+session keys.</t>
+
+</section>
+
+<section title="Initiator Static and Responder Ephemeral">
+
+<t>The Responder lists one or more Supported Ephemeral Diffie-Hellman Group
+options in its certificate. The Initiator lists one or more Static Diffie-Hellman
+Public Key options in its certificate. The Initiator sends exactly one
+<xref target="keying_option_dh_group">Diffie-Hellman Group Select option</xref>
+in its Session Key Initiator Component, which selects one group from among
+those supported by the Responder and Initiator and the corresponding public
+key for the Initiator, plus an Extra Randomness option to salt the session
+keys. The Responder sends an Ephemeral Diffie-Hellman Public Key option in
+its Session Key Responder Component in the same group as indicated by the
+Initiator.</t>
+
+</section>
+
+<section title="Initiator and Responder Static">
+
+<t>The Initiator and Responder each list one or more Static Diffie-Hellman
+Public Key options in their certificates. The Initiator sends exactly one
+Diffie-Hellman Group Select option in its Session Key Initiator Component,
+which selects one group and corresponding public keys from among those supported
+by the Responder and Initiator, and an Extra Randomness option to salt the
+session keys. The Responder sends an Extra Randomness option in its Session
+Key Responder Component to add its own salt to the session keys.</t>
+
+</section>
+
+</section> <!-- Crypto SessionKeyComputation PublicKeySelection -->
+
+<section title="Diffie-Hellman Shared Secret">
+
+<t>To be acceptable, a Diffie-Hellman public key MUST have all of the following
+properties:
+<list style="symbols">
+	<t>Be at least 16777216 (2^24);</t>
+
+	<t>Be at most the group's prime modulus minus 16777216;</t>
+
+	<t>Have at least 16 "1" bits;</t>
+
+	<t>Have at least 16 "0" bits, not including leading zeros.</t>
+</list>
+</t>
+
+<t>An endpoint MUST NOT complete to an S_OPEN session with a far endpoint
+using a public key that is not acceptable according to these criteria.</t>
+
+<t>Once the group and corresponding public key of the far end is determined,
+the far end's public key and the near end's private key are combined according
+to <xref target="DH">Diffie-Hellman</xref> to compute the Diffie-Hellman
+Shared Secret, an integer.</t>
+
+<t>In the following sections, DH_SECRET means the Diffie-Hellman Shared Secret
+encoded as a byte-aligned unsigned integer in network byte order with no
+leading zero bytes. For example, if the shared secret is 4886718345, DH_SECRET
+would be the five bytes:</t>
+
+<figure align="center">
+<artwork align="center"><![CDATA[
+Hex: 01 23 45 67 89
+]]></artwork></figure>
+
+</section>
+
+<section title="Packet Encrypt/Decrypt Keys">
+
+<t>Packets are encrypted using a symmetric cipher, such as the
+<xref target="AES">Advanced Encryption Standard</xref>. Distinct keys are
+used for sending and receiving packets. Each end's sending (encrypt) key is
+the other end's receiving (decrypt) key.</t>
+
+<t>The raw keys computed in this section for encryption and decryption are
+transformed in a manner specific to the cipher with which they are to be used.
+In this profile, AES-128 is the only currently defined cipher. For this cipher,
+the first 128 bits (16 bytes) of the 256-bit output of the calculation are
+taken to be the AES-128 key.</t>
+
+<t><list style="empty">
+	<t>Set ENCRYPT_KEY = HMAC-SHA256(DH_SECRET, HMAC-SHA256(SKFC, SKNC));</t>
+
+	<t>Set DECRYPT_KEY = HMAC-SHA256(DH_SECRET, HMAC-SHA256(SKNC, SKFC));</t>
+</list></t>
+
+<t>The full 256 bits of ENCRYPT_KEY and DECRYPT_KEY are used in the computations
+in the following sections.</t>
+
+</section>
+
+<section title="Packet HMAC Send/Receive Keys" anchor="packet_hmac_keying">
+
+<t>Packets can be verified that they were not corrupted or modified by appending
+an HMAC to the packet. Whether to use an HMAC
+or a simple checksum is determined during the initial keying phase using the
+<xref target="keying_option_hmac">HMAC Negotiation option</xref>. Distinct
+HMAC keys are used for sending and receiving packets. Each end's sending key
+is the other end's receiving key, and vice versa.</t>
+
+<t><list style="empty">
+	<t>Set HMAC_SEND_KEY = HMAC_SHA256(DH_SECRET, ENCRYPT_KEY);</t>
+
+	<t>Set HMAC_RECV_KEY = HMAC_SHA256(DH_SECRET, DECRYPT_KEY);</t>
+</list></t>
+
+<t>If an endpoint sets the willSendAlways flag in its HMAC Negotiation option,
+then it MUST send an HMAC on packets it sends with this session key.</t>
+
+<t>If an endpoint's willSendAlways flag is clear but its willSendOnRequest
+flag is set, then it MUST send an HMAC on packets it sends with this session
+key if and only if the other endpoint's request flag is set.</t>
+
+<t>If a sending endpoint's willSendAlways and willSendOnRequest flags are
+clear, then the receiving endpoint SHOULD reject that keying component if the
+receiving endpoint is configured to require the sending endpoint to send
+HMAC.</t>
+
+<t>If HMAC is negotiated to be used, the corresponding hmacLength MUST be
+between 4 and 32 inclusive.</t>
+
+<t>If HMAC is negotiated not to be used, a simple checksum is used for packet
+verification.</t>
+
+<t>The Default Session Key uses the simple checksum and does not use HMAC.</t>
+
+</section>
+
+<section title="Session Nonces" anchor="session_nonces">
+
+<t>Session nonces are per-session, cryptographically strong secret values
+known only to the two endpoints of the session. They can be used for
+application-layer cryptographic challenges (such as signing or password
+verification). These nonces are a convenience being pre-shared and pre-agreed-upon
+in a secure manner during the initial keying handshake.</t>
+
+<t>Each end's near nonce is the other end's far nonce, and vice versa.</t>
+
+<t><list style="empty">
+	<t>Set NEAR_NONCE = HMAC_SHA256(DH_SECRET, SKNC);</t>
+
+	<t>Set FAR_NONCE = HMAC_SHA256(DH_SECRET, SKFC);</t>
+</list></t>
+
+</section>
+
+<section title="Session Sequence Number" anchor="packet_sseq_keying">
+
+
+<t>Duplicate packets can be detected and rejected by
+using an optional session sequence number inside the encrypted packets. The
+session sequence number is a monotonically increasing unbounded integer and
+does not wrap. Session sequence numbers SHOULD start at zero and SHOULD
+increment by one for each packet sent using that session key. Implementations
+MUST handle session sequence numbers with no less than 64 bits of range.</t>
+
+<t>If an endpoint's willSendAlways flag in its
+<xref target="keying_option_sseq">Session Sequence Number Negotiation
+option</xref> is set, then it MUST send a session sequence number in packets
+it sends with this session key.</t>
+
+<t>If an endpoint's willSendAlways flag is clear but its willSendOnRequest
+flag is set, then it MUST send a session sequence number on packets it sends
+with this session key if and only if the other endpoint's request flag is
+set.</t>
+
+<t>If a sending endpoint's willSendAlways and willSendOnRequest flags are
+clear, then the receiving endpoint SHOULD reject that keying component if the
+receiving endpoint is configured to require the sending endpoint to send
+session sequence numbers.</t>
+
+<t>The Default Session Key does not use session sequence numbers.</t>
+
+</section>
+
+</section> <!-- Crypto SessionKeyComputation -->
+
+<section title="Packet Encryption">
+
+<t>This section describes the concrete syntax and operational semantics of
+RTMFP packet encryption for this Cryptography Profile.</t>
+
+<section title="Cipher" anchor="crypto_cipher">
+
+<t>This profile defines <xref target="AES">AES-128</xref> in
+<xref target="CBC">CBC</xref> mode as the only cipher.
+Extensions to this profile can specify and negotiate additional ciphers and
+modes by defining certificate and keying component options and associated
+semantics.</t>
+
+<t>For AES-128-CBC, the initialization vector (IV) for each packet is 16 zero
+bytes. The IV is not included in the packet.</t>
+
+</section>
+
+<section title="Format" anchor="packet_format">
+
+<t>The Encrypted Packet is the encryptedPacket field of an
+RTMFP Multiplex packet (Section 2.2.2 of RFC 7016);
+that is, the portion of the Multiplex packet following the scrambled session
+ID.  The Encrypted Packet has the following format:</t>
+
+<figure align="left">
+<artwork><![CDATA[
++----------------+     +----------------+~~~~~~~~~~~~~~~~~~~~~~~+
+|  CBC Block 1   | ... |  CBC Block N   |     truncatedHMAC     |
++----------------+     +----------------+~~~~~~~~~~~~~~~~~~~~~~~+
+^                                       ^                       ^
+|     Zero or more AES-128 chained      | hmacLength bytes long |
++--------    cipher blocks   -----------+---  (may be zero)  ---+
+
+struct flashProfileEncryptedPacket_t
+{
+    if(HMAC is being used)
+        hmacLength = negotiated length;
+    else
+        hmacLength = 0;
+
+    struct
+    {
+        iv[16 bytes] = { 0 };
+        blockCount = 0;
+        while((remainder() > hmacLength) && (remainder() >= 16))
+        {
+            uint8_t cbcBlock[16];
+            blockCount++;
+        }
+    } chainedCipherBlocks :variable*16*8;
+
+    if(HMAC is being used)
+    {
+        if(remainder() == hmacLength)
+            uint8_t truncatedHMAC[hmacLength];
+        else
+            packetVerificationFailed();
+    }
+    else if(remainder() > 0)
+        packetVerificationFailed();
+} :encryptedPacket.length*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="cbcBlock:">The next AES-128-CBC block.</t>
+
+	<t hangText="chainedCipherBlocks:">The concatenation of every
+	cipher block in the packet (over which the HMAC is computed).</t>
+
+
+
+	<t hangText="truncatedHMAC:"><xref target="keying_option_hmac">If
+	HMAC was negotiated to be used</xref>, this field is set to the first
+	negotiated hmacLength bytes of the HMAC of the chainedCipherBlocks.</t>
+
+</list></t>
+
+<t>The plaintext data before encryption or after decryption has the following
+format:</t>
+
+<figure align="left">
+<artwork><![CDATA[
+ 0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7
++~~~~~~~~~~~~~/~+
+| SSEQ (opt.) \ |
++~~~~~~~~~~~~~/~+
++~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+
+|        Checksum (opt.)        |
++~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+~+
++~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+|                        Plain RTMFP Packet                     |
++~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/
+
+struct flashProfilePlainPacket_t
+{
+    if(session sequence numbers being used)
+        vlu_t sessionSequenceNumber :variable*8; // SSEQ
+    if(HMAC not being used)
+        uint16_t checksum;
+    packet_t plainRTMFPPacket :variable*8;
+} :chainedCipherBlocks.blockCount*16*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="sessionSequenceNumber:"><xref target="packet_sseq_keying">
+	If session sequence numbers were negotiated to be used</xref>, this
+	field is present and is the VLU session sequence number of this
+	packet.</t>
+
+	<t hangText="checksum:">If HMAC was not negotiated to be used, this
+	field is present and is the <xref target="packet_format_checksum">simple
+	checksum</xref> of the remaining bytes of this structure.</t>
+
+	<t hangText="plainRTMFPPacket:">The (plain, unencrypted)
+    RTMFP Packet (Section 2.2.4 of RFC 7016) plus any necessary padding.</t>
+
+</list></t>
+
+<t>When assembling this structure and prior to calculating the checksum (if
+present), if the structure's total length is not an integer multiple of 16
+bytes (the AES cipher block size), pad the end of plainRTMFPPacket with as many
+bytes having a value of 0xff as are needed to bring the structure's total length to
+an integer multiple of 16 bytes. The receiver's RTMFP Packet parser (Section
+2.2.4 of RFC 7016) will consume this padding.</t>
+
+</section>
+
+<section title="Verification" anchor="packet_verification">
+
+<t>In RTMFP, the Cryptography Profile is responsible for packet verification.
+In this profile, packets are verified with an HMAC or a simple checksum,
+depending on the configuration of the endpoints, and optionally verified
+against replay or duplication using session sequence numbers. The simple
+checksum is inside the encrypted packet, so it becomes essentially a 16-bit
+cryptographic checksum.</t>
+
+<section title="Simple Checksum" anchor="packet_format_checksum">
+
+<t>The simple checksum is the 16-bit ones' complement of the 16-bit ones'
+complement sum of all 16-bit (2 bytes in network byte order) words to be
+checked. If there are an odd number of bytes to be checked, then for purposes
+of this checksum, treat the last byte as the lower 8 bits of a 16-bit word
+whose upper 8 bits are 0. This is also known as the <xref target="RFC1071">"Internet
+Checksum"</xref>.</t>
+
+<t>When present, the checksum is calculated over all bytes of the plaintext
+packet starting after the checksum field through the end of the plain packet.
+It cannot be calculated until the plain packet is padded, if necessary, to
+bring its length to an integer multiple of 16 bytes (the AES cipher block
+size).  The session sequence number field, if present, and the checksum field
+itself are not included in the checksum.</t>
+
+
+<t>On receiving a packet being verified with a checksum: calculate the checksum
+over all the bytes of the plaintext packet following the checksum field and
+compare the checksum to the value in the checksum field. If they match, the
+packet is verified; if they do not match, the packet is corrupt and MUST be
+discarded as though it was never received.</t>
+
+</section>
+
+<section title="HMAC" anchor="packet_format_hmac">
+
+<t>When present, the HMAC field is the last hmacLength bytes of the packet
+and is calculated over all of the encrypted cipher blocks of the packet
+preceding the HMAC field. The value of the HMAC field is the first hmacLength
+bytes of the HMAC-SHA256 of the checked data, using the
+<xref target="packet_hmac_keying">computed HMAC keys</xref> and
+<xref target="keying_option_hmac">negotiated hmacLength</xref>.  Note each
+endpoint independently specifies the length of the HMAC it will send via its
+hmacLength field.</t>
+
+<t>When an endpoint has negotiated to send an HMAC, it encrypts the data
+blocks, computes the HMAC over the encrypted data blocks using its
+HMAC_SEND_KEY, and appends the first hmacLength bytes of that hash after the
+final encrypted data block.</t>
+
+<t>When an endpoint has negotiated to receive an HMAC, the endpoint computes
+the HMAC over the encrypted data blocks using its HMAC_RECV_KEY and then
+compares the first receive hmacLength bytes of the computed HMAC to the HMAC
+field in the packet. If they are identical, the packet is verified; if they are
+not identical, the packet is corrupt and MUST be discarded as though it was
+never received.</t>
+
+
+
+<t>HMAC and simple checksum verification are mutually exclusive.</t>
+
+</section>
+
+<section title="Session Sequence Number" anchor="packet_sseq">
+
+<t>Session sequence numbers are used to detect and reject a packet that was
+duplicated in the network or replayed by an attacker and to ensure the first
+chained cipher block of every packet is unique, in lieu of a full-block
+initialization vector. Sequence numbers start at zero, increase by one for
+each packet sent in the session, do not wrap, and do not repeat.</t>
+
+<t>When session sequence numbers are negotiated to be used, the receiver MUST
+allow for packets to be reordered in the network by up to at least 32 sequence
+numbers; note, however, that reordering by more than three packets can trigger
+loss detection and retransmission by negative acknowledgement, just as with
+TCP, and is therefore not likely to occur in the real Internet.</t>
+
+<t><xref target="RFC4302"/>, <xref target="RFC4303"/>, and <xref target="RFC6479"/>
+describe Anti-Replay Window methods that can be employed to detect duplicate
+sequence numbers. Other methods are possible.</t>
+
+<t>Any packet received having a session sequence number that was already seen
+in that session, either directly or by being less than the lowest sequence
+number in the Anti-Replay Window, is a duplicate and MUST be discarded as
+though never received.</t>
+
+
+</section>
+
+</section> <!-- Crypto PacketEncryption Verification -->
+</section> <!-- Crypto PacketEncryption -->
+</section> <!-- Cryptography Profile -->
+
+
+<section title="Flash Communication">
+
+<t>The Flash platform uses <xref target="RTMP">RTMP</xref>
+messages for media streaming and communication. This section describes how
+to transport RTMP messages over RTMFP flows and additional messages and
+semantics unique to this transport.</t>
+
+<section title="RTMP Messages" anchor="rtmp_messages">
+
+<t>An RTMP message comprises a virtual header and a payload. The virtual
+header comprises a Message Type, a Payload Length, a Timestamp, and a Stream
+ID. The format of the payload is dependent on the type of message.</t>
+
+<t>An RTMP message is mapped onto a lower transport layer, such as
+<xref target="RTMP">RTMP Chunk Stream</xref> or RTMFP. RTMP messages were
+initially designed along with, and for transport on, RTMP Chunk Stream.  This
+design constrains the possible values of RTMP message header fields. In
+particular:
+
+
+<list style="empty">
+	<t>Message Type is 8 bits wide, and is therefore constrained to values
+	from 0 to 255 inclusive;</t>
+
+	<t>Payload Length is 24 bits wide, so messages can be at most 16777215
+	bytes long;</t>
+
+	<t>Timestamp is 32 bits wide, so timestamps range from 0 to 4294967295
+	and wrap around;</t>
+
+	<t>Stream ID is 24 bits wide, and is therefore constrained to values
+	from 0 to 16777215 inclusive.</t>
+
+</list>
+</t>
+
+<t>RTMP Chunk Stream Protocol Control messages (message types 1, 2, 3, 5, and
+6) are not used when transporting RTMP messages in RTMFP flows. Messages of
+those types SHOULD NOT be sent and MUST be ignored.</t>
+
+
+<section title="Flow Metadata" anchor="tc_metadata">
+
+<t>All messages in RTMFP are transported in flows. In this profile, an RTMFP
+flow for RTMP messages carries the messages for exactly one RTMP Stream ID.
+Multiple flows can carry messages for the same Stream ID; for example, the
+video and audio messages of a stream could be sent on separate flows, allowing
+the audio to be given higher transmission priority.</t>
+
+<t>The User Metadata for flows in this profile begins with a distinct signature
+to distinguish among different kinds of flows. The User Metadata for a flow
+used for RTMP messages begins with the two-character signature "TC".</t>
+
+<t>The Stream ID is encoded in the flow's User Metadata so that it doesn't
+need to be sent with each message.</t>
+
+<t>The sender can have a priori knowledge about the kind of media it intends
+to send on a flow and its intended use and can give the receiver a hint as
+to whether messages should be delivered as soon as possible or in their
+original queuing order. For example, the sender might be sending real-time,
+delay-sensitive audio messages on a flow, and hint that the receiver should
+take delivery of the messages on that flow as soon as they arrive in the
+network, to reduce the end-to-end latency of the audio.</t>
+
+<t>The receiver can choose to take delivery of messages on flows as soon as
+they arrive in the network or in the messages' original queuing order.  A
+receiver that chooses to take delivery of messages as soon as they arrive in
+the network MUST be prepared for the messages to arrive out-of-order. For
+example, a receiver may choose not to render a newly received audio message
+having a timestamp earlier than the most recently rendered audio timestamp.</t>
+
+<t>The sender can choose to abandon a message that it has queued in a flow
+before the message has been delivered to the receiver. For example, the sender
+may abandon a real-time, delay-sensitive audio message that has not been
+delivered within one second, to avoid spending transmission resources on stale
+media that is no longer relevant. </t>
+
+<t>Note: A gap will cause a delay at the
+receiver of at least one round-trip time if the receiver is taking delivery
+of messages in original queuing order.</t>
+
+
+<figure align="left">
+<artwork><![CDATA[
+ 0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+~~~~~~~~~~~~~/~+
+|               |               |         |S|r|R|             \ |
+|   0x54  'T'   |   0x43  'C'   |   rsv   |I|s|X|   streamID  / |
+|               |               |         |D|v|I|             \ |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+~~~~~~~~~~~~~/~+
+
+struct RTMPMetadata_t
+{
+    uint8_t signature[2] == { 'T', 'C' };
+    uintn_t reserved1       :5; // rsv
+    bool_t  streamIDPresent :1; // SID
+    uintn_t reserved2       :1; // rsv
+    uintn_t receiveIntent   :1; // RXI
+        // 0: original queuing order, 1: network arrival order
+    if(streamIDPresent)
+        vlu_t   streamID        :variable*8;
+} :variable*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="signature:">Metadata signature for RTMP message flows,
+	being the two UTF-8 coded characters "TC".</t>
+
+	<t hangText="streamIDPresent:">A boolean flag indicating whether the
+	streamID field is present. In this profile, this flag MUST be set.</t>
+
+	<t hangText="receiveIntent:">A hint by the sender as to the best order
+	in which to take delivery of messages from the flow. A value of zero
+	indicates a hint that the flow's messages should be received in the
+	order they were originally queued by the sender (that is, in ascending
+	sequence number order); a value of one indicates a hint that the
+	flow's messages should be received in the order they arrive in the
+	network, even if there are sequence number gaps or reordering. Network
+	arrival order is typically hinted for live, delay-sensitive flows,
+	such as for audio media. To take delivery of a message as soon as it
+	arrives in the network: receive it from the receiving flow's RECV_BUFFER
+	as soon as it becomes complete (Section 3.6.3.3 of RFC 7016), and
+	remove it from the RECV_BUFFER. Section 3.6.3.3 of RFC 7016 describes
+	how to take delivery of messages in original queuing order.</t>
+
+	<t hangText="streamID:">If the streamIDPresent flag is set, this
+	field is present and is the RTMP stream ID to which the messages in
+	this flow belong. In this profile, this field MUST be present.</t>
+
+</list></t>
+
+<t>A receiver SHOULD reject an RTMP message flow if its streamIDPresent flag
+is clear. This profile doesn't define a stream mapping for this case.</t>
+
+<t>Derived or composed profiles can define additional flow types and corresponding
+metadata signatures.  A receiver SHOULD reject a flow having an unrecognized
+metadata signature.</t>
+
+</section>
+
+<section title="Message Mapping">
+
+<t>This section describes the format of an <xref target="rtmp_messages">RTMP
+message</xref> in an RTMFP flow.</t>
+
+
+
+<figure align="left">
+<artwork><![CDATA[
+ 0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7
++-+-+-+-+-+-+-+-+
+|  messageType  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                         messagePayload                        |
++~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/
+
+struct RTMPMessage_t
+{
+    uint8_t  messageType;
+    uint32_t timestamp;
+    uint8_t  messagePayload[remainder()];
+} :flowMessageLength*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="messageType:">The RTMP Message Type;</t>
+
+	<t hangText="timestamp:">The RTMP Timestamp, in network byte order;</t>
+
+	<t hangText="messagePayload:">The payload of the RTMP message;</t>
+
+	<t hangText="payload length:">The RTMP message payload length is
+	inferred from the length of the RTMFP message;</t>
+
+	<t hangText="Stream ID:">The Stream ID for this message is taken
+	from the metadata of the flow on which this message was received.</t>
+
+</list></t>
+
+</section>
+
+</section> <!-- Flash RTMPMessages -->
+
+<section title="Flow Synchronization" anchor="flow_sync">
+
+<t>RTMFP flows are independent and have no inter-flow ordering guarantee.
+RTMP was designed for transport over a single, reliable, strictly ordered
+byte stream. Some RTMP message semantics take advantage of this ordering;
+for example, a Stream EOF User Control event must not be processed until after
+all media messages for the corresponding stream have been received. Flow
+Synchronization messages provide a barrier to align message delivery across
+flows when required by RTMP semantics.</t>
+
+<t>A Flow Synchronization message is coded as a User Control event message
+(Type 4) having Event Type 34. Message timestamps are ignored and MAY be set
+to 0.</t>
+
+<figure align="left">
+<artwork><![CDATA[
+ 0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7
++-+-+-+-+-+-+-+-+
+|       4       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|         eventType = 34        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                             syncID                            |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                             count                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+struct flowSyncUserControlMessagePayload_t
+{
+    uint16_t eventType = 34;
+    uint32_t syncID;
+    uint32_t count;
+} :10*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="eventType:">The RTMP User Control Message Event Type.
+	Flow Synchronization messages have type 34 (0x22);</t>
+
+	<t hangText="syncID:">The identifier for this barrier;</t>
+
+	<t hangText="count:">The number of flows being synchronized by syncID.
+	This field MUST be at least 1 and SHOULD be at least 2.</t>
+
+</list></t>
+
+<t>On receipt of a Flow Synchronization message, a receiver SHOULD suspend
+receipt of further messages on that flow until count Flow Synchronization
+messages (including this one) with the same syncID have been received on flows
+in the same flow association tree.</t>
+
+<t>Example: Consider flows F1 and F2 in the same NetConnection carrying
+messages M, and let Sync(syncID,count) denote a Flow Synchronization message.</t>
+
+<figure align="center" anchor="fig.flow_sync" title="Example Flow Synchronization Barriers">
+<artwork align="center"><![CDATA[
+                          |                |
+F1: M1  M2  M4  Sync(8,2) | Sync(13,2).....| M7
+                          |                |
+F2:   M3  Sync(8,2).......| M5  Sync(13,2) | M6
+                          |                |
+                      Barrier 8        Barrier 13
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>Flow Synchronization messages form a delivery barrier to impart at least
+a partial message ordering across flows. In this example, message M5 comes
+after M1..4 and before M6..7; however, M3 could be delivered before or after
+any of M1, M2, or M4, and M6 could come before or after M7.</t>
+
+<t>Flow Synchronization can cause a priority inversion; therefore, it SHOULD
+NOT be used except when necessary to preserve RTMP ordering semantics.</t>
+
+</section>
+
+<section title="Client-to-Server Connection" anchor="client_to_server_connection">
+
+<t>The client connects to a server. The connection comprises one main control
+flow in each direction from client to server and from server to client for
+NetConnection messages, and zero or more flows in each direction for NetStream
+media messages. NetStream flows may come and go naturally over time according
+to media transport needs. An exception on a NetConnection control sending
+flow indicates the closure by the other end of the NetConnection and all
+associated NetStreams.</t>
+
+<t>The client MUST NOT use the same client certificate for more than one
+server connection; that is, a client's peer ID MUST NOT be reused.</t>
+
+<section title="Connecting" anchor="connecting">
+
+<t>The client desires a connection to a server having an RTMFP URI, for example,
+"rtmfp://server.example.com/app/instance". The client gathers one or more
+initial candidate addresses for the server named in the URI (for example, by
+using the <xref target="RFC1035">Domain Name System (DNS)</xref>). The client
+creates an EPD having an <xref target="epd_option_ancillary">Ancillary Data
+option</xref> encoding the URI. The client initiates an RTMFP session to the
+one or more candidate addresses using the EPD.</t>
+
+<t>When the session transitions to the S_OPEN state, the client opens a new
+flow in that session for Stream ID 0 and Receive Intent 0 "original queuing
+order". This is the client's NetConnection main control flow.  The client
+sends an RTMP "connect" command on the flow and waits for a response or
+exception.</t>
+
+</section>
+
+<section title="Server-to-Client Return Control Flow">
+
+<t>The server, on accepting the client's NetConnection control flow, and
+receiving and accepting the "connect" command, opens one or more return flows
+to the client having Stream ID 0 and associated to the control flow from the
+client. Flows for Stream ID 0 are the server's NetConnection control flows.
+The server sends a "_result" or "_error" transaction response for the client's
+connect command.</t>
+
+<t>When the client receives the first return flow from the server for Stream
+ID 0 and associated to the client's NetConnection control flow, the client
+assumes that flow is the canonical return NetConnection control flow from the
+server, to which all new client-to-server flows should be associated.</t>
+
+<t>On receipt of a "_result" transaction response on Stream ID 0 for the
+client's connect command, the connection is up.</t>
+
+<t>The client MAY open additional return control flows to the server on Stream
+ID 0, associated to the server's canonical NetConnection control flow.</t>
+
+</section>
+
+<section title="setPeerInfo Command">
+
+<t>The "setPeerInfo" command is sent by the client to the server over the
+NetConnection control flow to inform the server of candidate socket addresses
+through which the client might be reachable. This list SHOULD include all
+directly connected interface addresses and proxy addresses except as provided
+below. The list MAY be empty. The list need not include the address of the
+server, even if the server is to act as an introducer for the client.  The
+list SHOULD NOT include link-local or loopback addresses.</t>
+
+<t>This command is sent as a regular RTMP NetConnection command; that is, as
+an RTMP Type 20 Command Message or an RTMP Type 17 Command Extended Message
+on Stream ID 0. A Type 20 Command Message SHOULD be used if the object encoding
+negotiated during the "connect" and "_result" handshake is
+<xref target="AMF0">AMF0</xref>, and a Type 17 Command Extended Message SHOULD
+be used if the negotiated object encoding is <xref target="AMF3">AMF3</xref>.</t>
+
+<t>Note: A Type 20 Command Message payload is a sequence of AMF objects encoded
+in AMF0.</t>
+
+<t>Note: A Type 17 Command Extended Message payload begins with a format
+selector byte, followed by a sequence of objects in a format-specific encoding.
+At the time of writing, only format 0 is defined; therefore, the format
+selector byte MUST be 0. Format 0 is a sequence of AMF objects, each encoded
+in AMF0 by default; AMF3 encoding for an object can be selected by prefixing
+it with an "avmplus-object-marker" (0x11) as defined in <xref target="AMF0"/>.</t>
+
+<t>To complete the RTMFP NetConnection handshake, an RTMFP client MUST send
+a setPeerInfo command to the server after receiving a successful response to
+the "connect" command.</t>
+
+<figure align="left">
+<artwork><![CDATA[
+(
+    "setPeerInfo", // AMF String, command name
+    0.0,  // AMF Number, transaction ID
+    NULL, // AMF Null, no command object
+    ...   // zero or more AMF Strings, each an address
+)
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>Each listed socket address includes an IPv4 or IPv6 address in presentation
+format and a UDP port number in decimal, separated by a colon. Since the IPv6
+address presentation format uses colons, <xref target="RFC3986">IPv6 addresses
+are enclosed in square brackets</xref>.</t>
+
+<figure align="center" anchor="fig.setPeerInfo" title="Example setPeerInfo Command">
+<artwork align="center"><![CDATA[
+(
+    "setPeerInfo",
+    0.0,
+    NULL,
+    "192.0.2.129:50001",
+    "[2001:db8:1::2]:50002"
+)
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t>A server SHOULD assume that the client is behind a Network Address Translator
+(NAT) if and only if the observed far endpoint address of the session for
+the flow on which this command was received does not appear in the setPeerInfo
+address list.</t>
+
+</section>
+
+<section title="Set Keepalive Timers Command">
+
+<t>The server can advise the client to set or change the client's session
+keepalive timer periods for its connection to the server and for its P2P
+connections.  The server MAY choose keepalive periods based on static
+configuration, application- or deployment-specific circumstances, whether the
+client appears to be behind a NAT, or for any
+other reason.</t>
+
+<t>The Set Keepalive Timers command is sent by the server to the client on
+Stream ID 0 as a User Control event message (Type 4) having Event Type 41.
+Message timestamps are ignored and MAY be set to 0.</t>
+
+<figure align="left">
+<artwork><![CDATA[
+ 0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7|0 1 2 3 4 5 6 7
++-+-+-+-+-+-+-+-+
+|       4       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|         eventType = 41        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    serverKeepalivePeriodMsec                  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                     peerKeepalivePeriodMsec                   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+struct setKeepaliveUserControlMessagePayload_t
+{
+    uint16_t eventType = 41;
+    uint32_t serverKeepalivePeriodMsec;
+    uint32_t peerKeepalivePeriodMsec;
+} :10*8;
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<t><list style="hanging">
+	<t hangText="eventType:">The RTMP User Control Message Event Type.
+	Set Keepalive Timers messages have type 41 (0x29);</t>
+
+	<t hangText="serverKeepalivePeriodMsec:">The keepalive period, in
+	milliseconds, that the client is advised to set on its RTMFP session
+	with the server;</t>
+
+	<t hangText="peerKeepalivePeriodMsec:">The keepalive period, in
+	milliseconds, that the client is advised to use on its RTMFP sessions
+	with any peer that is not the server.</t>
+
+</list></t>
+
+<t>The client MUST define minimum values for these keepalive periods, below
+which it will not set them, regardless of the values in this message. The
+minimum keepalive timer periods SHOULD be at least five seconds. The client
+MAY define maximum values for these keepalive periods, above which it will
+not set them.</t>
+
+<t>On receipt of this message from the server, a client SHOULD set its RTMFP
+server and peer keepalive timer periods to the indicated values subject to
+the client's minimum and maximum values.  The server MAY send this message
+more than once, particularly if conditions that it uses to determine the timer
+periods change.</t>
+
+</section>
+
+<section title="Additional Flows for Streams">
+
+<t>The client or server opens additional flows to the other side to carry
+messages for any stream. Additional flows are associated to the canonical
+NetConnection control flow from the other side.</t>
+
+<figure align="center" anchor="fig.netconnection_flows" title="Schematic Flow Association Tree for a NetConnection">
+<artwork align="center"><![CDATA[
+Client                                            Server
+------>--C2S-Control-Flow------------------------->--+
+                                                     |
+   +--<------------------------S2C-Control-Flow---<--+
+   |                                                 |
+   |  <------------------------S2C-Stream-Flow-1--<--+
+   |                                  :              |
+   |  <------------------------S2C-Stream-Flow-M--<--+
+   |                                                  
+   +-->--C2S-Stream-Flow-1------------------------>   
+   |               :                                  
+   +-->--C2S-Stream-Flow-N------------------------>   
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+<section title="To Server">
+
+<t>Additional flows from the client to the server for stream messages are
+opened with the Stream ID for that stream and associated in return to the
+server's canonical NetConnection control flow.</t>
+
+<t>The client MAY create as many flows as desired for any Stream ID (including
+Stream ID 0) at any time.</t>
+
+</section>
+
+<section title="From Server">
+
+<t>Additional flows from the server to the client for stream messages are
+opened with the Stream ID for that stream, and associated in return to the
+client's NetConnection control flow.</t>
+
+<t>The server MAY create as many flows as desired for any Stream ID (including
+Stream ID 0) at any time.</t>
+
+</section>
+
+<section title="Closing Stream Flows">
+
+<t>Either end MAY close a sending flow that is not for Stream ID 0 at any
+time with no semantic meaning for the stream.</t>
+
+<t>At any time, either end MAY reject a receiving flow that is not one of the
+other end's NetConnection control flows. No flow exception codes are defined
+by this profile, so the receiving end SHOULD use exception code 0 when rejecting
+the flow. The sending end, on notification of any exception for a stream flow,
+SHOULD NOT open a new flow to take the rejected flow's place for transport
+of messages for that stream.  If an end rejects any flow for a stream, it
+SHOULD reject all the flows for that stream, otherwise <xref target="flow_sync">Flow
+Synchronization messages</xref> that were in flight could be discarded and
+some flows might become or remain stuck in a suspended state.</t>
+
+</section>
+
+</section> <!-- Flash ClientServer Flows -->
+
+<section title="Closing the Connection">
+
+<t>The client or server can signal an orderly close of the connection by
+closing its NetConnection control sending flows and all stream sending flows.
+The other end, on receiving a close/complete notification for the canonical
+NetConnection control receiving flow, closes its sending flows. When both
+ends observe all receiving flows have closed and completed, the connection
+has cleanly terminated.</t>
+
+<t>Either end can abruptly terminate the connection by rejecting the NetConnection
+control receiving flows or by closing the underlying RTMFP session. On
+notification of any exception on a NetConnection control sending flow, the
+end seeing the exception knows the other end has terminated abruptly, and can
+immediately close all sending and receiving flows for that connection.</t>
+
+</section>
+
+<section title="Example">
+
+<figure align="left" anchor="fig.session_example" title="Example NetConnection Message Exchange">
+<artwork><![CDATA[
+              Client                    Server
+                |IHello (EPD:anc=URI)     |
+            -+- |------------------------>|
+             |  |                         |
+             |  |       RHello (RCert:anc)|
+       RTMFP |  |<------------------------|
+      Session|  |                         |
+       Hand- |  |IIKeying                 |
+       shake |  |------------------------>|
+             |  |                         |
+             |  |                 RIKeying|
+            -+- |<------------------------|
+                |                         |
+            -+- |"connect" command        |
+      (Str.ID=0)|-CFlow-0---------------->|
+             |  |                         |
+             |  |       "_result" response|
+       RTMP  |  |<----------------SFlow-0-|(Str.ID=0,
+      Connect|  |                         | Assoc=CFlow-0)
+       Hand- |  |"setPeerInfo" command    |
+       shake |  |-CFlow-0---------------->|
+            -+- |                         |
+                |"createStream" command   |
+            -+- |-CFlow-0---------------->|
+             |  |                         |
+             |  |     "_result" (str.ID=5)|
+             |  |<----------------SFlow-0-|
+             |  |                         |
+             |  |"play" command           |
+      (Str.ID=5,|-CFlow-1---------------->|
+  Assoc=SFlow-0)|                         |
+             |  | StreamBegin User Control|          
+             |  |<----------------SFlow-1-|(Str.ID=5,
+             |  |                         | Assoc=CFlow-0)
+             |  |  (RTMP stream events)   |
+  Streaming  |  |<----------------SFlow-1-|
+             |  |                         |
+             |  |        Audio Data       |
+             |  |<----------------SFlow-2-|(Str.ID=5,
+             |  |                         | Assoc=CFlow-0)
+             |  |        Video Data       |
+             |  |<----------------SFlow-3-|(Str.ID=5,
+             |  |            :            | Assoc=CFlow-0)
+                |            :            |
+]]></artwork>
+</figure>
+
+</section>
+
+</section> <!-- Flash ClientServer -->
+
+<section title="Direct Peer-to-Peer Streams">
+
+<t>Clients can connect directly to other clients for P2P
+streaming and data exchange. A client MAY have multiple separate P2P NetStreams
+with a peer in one RTMFP session, each a separate logical connection. P2P
+NetStreams are unidirectional, initiated by a subscriber (the side issuing
+the "play" command) to a publisher. The subscribing peer has a control flow
+to the publisher. The publisher has zero or more return flows to the subscriber
+associated to the subscriber's control flow, for the stream media and data.</t>
+
+<section title="Connecting">
+
+<t>A client desires to subscribe directly to a stream being published in P2P
+mode by a publishing peer. The client learns the peer ID of the publisher
+and the stream name through application-specific means.</t>
+
+<t>If the client does not already have an RTMFP session with that peer ID,
+it initiates a new session, creating an EPD containing a
+<xref target="epd_option_fingerprint">Fingerprint option</xref> for the
+publisher's peer ID and using the server session's DESTADDR as the initial
+candidate address for the session to the peer. The server acts as an Introducer
+(Section 3.5.1.6 of RFC 7016), using forward and redirect messages to help
+the client and the peer establish a session.</t>
+
+<t>When an S_OPEN session exists to the desired peer, the client creates a new
+independent flow to that peer. The flow MUST have a non-zero Stream ID.  The
+client sends an RTMP "play" command over the flow, giving the name of the
+desired stream at the publisher.  This flow is the subscriber's control
+flow.</t>
+
+</section>
+
+<section title="Return Flows for Stream">
+
+<t>The publisher, on accepting a new flow not indicating a return association
+with any of its sending flows and having a non-zero Stream ID, receives and
+processes the "play" command. If and when the request is acceptable to the
+publisher, it opens one or more return flows to the subscribing peer, associated
+to the subscriber's control flow and having the same Stream ID.  The publisher
+sends a StreamBegin User Control message, appropriate RTMP status events, and
+the stream media over the one or more return flows.</t>
+
+<t>The subscriber uses the return association of the media flows to the
+subscriber control flow to determine  the stream to which the media belongs.</t>
+
+<t>The publisher MAY open any number of media flows for the stream and close
+them at any time. The opening and closing of media flows has no semantic
+meaning for the stream, except that the opening of at least one flow and the
+reception of at least one media message or a StreamBegin User Control message
+indicates that the publisher is publishing the requested stream to the
+subscriber.</t>
+
+<figure align="center" anchor="fig.p2p_flow_tree" title="Schematic Flow Association Tree for a P2P Direct Connection">
+<artwork align="center"><![CDATA[
+Subscriber                                     Publisher
+------>--Subscriber-Control-Flow------------------>--+
+                                                     |
+      <------------------Publisher-Stream-Flow-1--<--+
+                                     :               |
+      <------------------Publisher-Stream-Flow-N--<--+
+]]></artwork>
+<postamble></postamble>
+</figure>
+
+</section>
+
+<section title="Closing the Connection">
+
+<t>Either end can close the stream by closing or rejecting the subscriber's
+control flow. The publisher SHOULD close and unpublish to the subscriber on
+receipt of a close/complete of the control flow. The subscriber SHOULD consider
+the stream closed on notification of any exception on the control flow.</t>
+
+</section>
+
+</section> <!-- Flash P2P -->
+</section> <!-- Flash -->
+
+
+<section title="IANA Considerations">
+
+<t>This memo specifies option type code values for
+<xref target="certificate_options">Certificate fields</xref>,
+<xref target="epd_options">Endpoint Discriminator fields</xref>, and
+<xref target="keying_options">Session Keying Component fields</xref>. It also specifies a <xref target="tc_metadata">flow metadata signature</xref>.  The
+type code values and signatures for this profile are assigned and maintained
+by Adobe, and therefore require no action from IANA.</t>
+
+<section title="RTMFP URI Scheme Registration">
+<t>This memo describes use of an RTMFP URI scheme
+(<xref target="epd_option_ancillary"/>, <xref target="connecting"/>,
+<xref target="fig.session_example"/>). Per this section,
+the "rtmfp" URI scheme has been registered by IANA.</t>
+
+<t>The syntax and semantics of this URI scheme are described using
+the <xref target="RFC5234">Augmented Backus-Naur Form (ABNF)</xref>
+rules from RFC 3986.</t>
+
+<t><list style="hanging">
+	<t hangText="URI scheme name:">rtmfp</t>
+
+	<t hangText="Status:">provisional</t>
+
+	<t hangText="URI scheme syntax:">
+	<figure align="left"><artwork align="left"><![CDATA[
+   rtmfp-uri-scheme = "rtmfp:"
+                    / "rtmfp://" host [ ":" port ] path-abempty
+]]></artwork></figure>
+	</t>
+
+	<t hangText="URI scheme semantics:">The first form is used in the APIs
+	    of some implementations to indicate instantiation of an RTMFP client
+	    according to this memo, but without connecting to a server.  Such
+	    an instantiation might be used for pure peer-to-peer communication.
+
+		<vspace/><vspace/>The second form provides location information
+		for the server to which to connect and optional additional
+		information to pass to the server.  The only operation for
+		this URI form is to connect to a server (initial candidate
+		address(es) for which are named by host and port) according to
+		<xref target="client_to_server_connection"/>. The UDP port
+		for initial candidate addresses, if not specified,
+		is 1935. If the host is a reg-name, the
+		initial candidate address set SHOULD comprise all IPv4 and
+		IPv6 addresses to which reg-name resolves. The semantics of
+		path-abempty are specific to the server.  Connections are
+		made using RTMFP as specified by this memo.</t>
+
+	<t hangText="Encoding considerations:">The path-abempty component
+		represents textual data consisting of characters from the
+		Universal Character Set. &nbsp;This component SHOULD be encoded
+		according to Section 2.5 of RFC 3986.</t>
+
+	<t hangText="Applications/protocols that use this URI scheme name:">The
+		Flash runtime (including Flash Player) from Adobe Systems Incorporated,
+		communication servers such as Adobe Media Server, and interoperable
+		clients and servers provided by other parties, using RTMFP according
+		to this memo.</t>
+
+	<t hangText="Interoperability considerations:">This scheme requires use of
+		RTMFP as defined by RFC 7016 in the manner described by this memo.</t>
+
+	<t hangText="Security considerations:">See <xref target="security_considerations">Security
+		Considerations</xref> in this memo.</t>
+
+	<t hangText="Contact:">Michael Thornburgh, Adobe Systems Incorporated, &lt;mthornbu@adobe.com&gt;.</t>
+
+	<t hangText="Author/Change controller:">Michael Thornburgh, Adobe Systems Incorporated, &lt;mthornbu@adobe.com&gt;.</t>
+
+	<t hangText="References:"><vspace/>Thornburgh, M., "Adobe's Secure Real-Time Media Flow Protocol", RFC 7016, November 2013.
+<vspace/><vspace/>This memo.</t>
+</list></t>
+
+
+
+</section>
+
+</section>
+
+<section title="Security Considerations" anchor="security_considerations">
+
+<t><xref target="crypto_profile"/> details the cryptographic aspects of this
+profile.</t>
+
+<t>This profile does not define or use a Public Key Infrastructure (PKI).
+Clients SHOULD use <xref target="cert_option_dh_key">static Diffie-Hellman
+keys in their certificates</xref>. Clients
+<xref target="client_to_server_connection">MUST create a new certificate with
+a distinct fingerprint for each new NetConnection</xref>. These constraints
+make client identities ephemeral but unable to be forged. A man-in-the-middle
+cannot successfully interpose itself in a connection to a target client
+addressed by its fingerprint/peer ID if the target client uses a static
+Diffie-Hellman public key.</t>
+
+<t>Servers can have long-lived RTMFP instances, so they SHOULD use ephemeral
+Diffie-Hellman public keys for forward secrecy. This allows server peer IDs
+to be forged; however, clients do not connect to servers by peer ID, so this
+is irrelevant.</t>
+
+<t>When a client connects to a server, the client will accept the response
+of any endpoint claiming to be "a server". It is assumed that an attacker
+that can passively observe traffic on a network segment can also inject its
+own packets with any source or destination and any payload. An attacker can
+trick a client into connecting to a rogue server or man-in-the-middle, either
+by observing Initiator Hello packets from the client and responding earliest
+with a matching Responder Hello or by using tricks such as DNS spoofing or
+poisoning to direct a client to connect directly to the rogue. A TCP-based
+transport would be vulnerable to similar attacks.  Since there is no PKI,
+this profile gives no guarantee that the client has actually connected to the
+desired server, versus a rogue or man-in-the-middle. In circumstances where
+assurance is required that the connection is directly to the desired server,
+the client can use the <xref target="session_nonces">Session Nonces</xref>
+to challenge the server, for example, over a different channel having acceptable
+security properties (such as an HTTPS) to transitively establish the server's
+identity and verify that the end-to-end communication is private and
+authentic.</t>
+
+<t>When <xref target="packet_sseq">session sequence numbers</xref> are not
+used, it is possible for an attacker to use traffic analysis techniques and
+record encrypted packets containing the start of a new flow, and later to
+replay those packets after the flow has closed, which can look to the receiver
+like a brand new flow. In circumstances where this can be detrimental, session
+sequence numbers SHOULD be used.  Replay of packets for existing flows is not
+detrimental as the receiver detects and discards duplicate flow sequence
+numbers, and flow sequence numbers do not wrap or otherwise repeat.</t>
+
+<t>Packet encryption uses CBC with the same (null) initialization vector for
+each packet. This can reveal to an observer whether two packets contain
+identical plaintext. However, the maximum-length RTMFP common header and User
+Data or Data Acknowledgement header, including flow sequence number, always
+fit within the first 16-byte cipher block, so each initial cipher block for
+most packets will already be unique even if timestamps are suppressed.  Sending
+identical messages in a flow uses unique flow sequence numbers, so cipher
+blocks will be unique in this case.  Keepalive pings and retransmission of
+lost data can result in identical cipher blocks; however, traffic analysis
+can also reveal likely keepalives or retransmissions, and retransmission only
+occurs as a result of observable network loss, so this is usually irrelevant.
+In circumstances where any identical cipher block is unacceptable, session
+sequence numbers SHOULD be used as they guarantee each initial cipher block
+will be unique.</t>
+
+<t>Packet verification can use a <xref target="packet_format_checksum">16-bit
+simple checksum</xref>. The checksum is inside the encrypted packet, so for
+external packet modifications the checksum is equivalent to a 16-bit cryptographic
+digest. In circumstances where this is insufficient,
+<xref target="packet_format_hmac">HMAC verification</xref> SHOULD be used.</t>
+
+</section>
+
+</middle>
+
+<back>
+
+<references title="Normative References">
+
+
+
+			<reference anchor="AES" target="http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf"><front><title>Advanced
+Encryption Standard (AES)</title><author><organization>National Institute of
+Standards and Technology</organization></author><date month="November"
+						  year="2001"/></front><seriesInfo
+									 name="FIPS"
+									 value="PUB 197"/></reference>
+
+
+
+
+
+
+	<reference anchor="AMF0" target="http://www.adobe.com/go/spec_amf0">
+		<front>
+			<title>Action Message Format -- AMF 0</title>
+			<author><organization>Adobe Systems Incorporated</organization></author>
+			<date month="December" year="2007"/>
+		</front>
+	</reference>
+
+	<reference anchor="AMF3" target="http://www.adobe.com/go/spec_amf3">
+		<front>
+			<title>Action Message Format -- AMF 3</title>
+			<author><organization>Adobe Systems Incorporated</organization></author>
+			<date month="January" year="2013"/>
+		</front>
+	</reference>
+
+	<reference anchor="CBC" target="http://csrc.nist.gov/publications/nistpubs/800-38a/sp800-38a.pdf">
+		<front>
+			<title>Recommendation for Block Cipher Modes of Operation</title>
+			<author initials="M." surname="Dworkin" fullname="M. Dworkin">
+				<organization>United States of America, National Institute of Standards and Technology</organization>
+			</author>
+			<date month="December" year="2001"/>
+		</front>
+		<seriesInfo name="NIST Special Publication" value="800-38A"/>
+	</reference>
+
+	<reference anchor="DH">
+		<front>
+			<title>New Directions in Cryptography</title>
+			<author initials="W." surname="Diffie" fullname="W. Diffie"/>
+			<author initials="M." surname="Hellman" fullname="M. Hellman"/>
+			<date month="June" year="1977"/>
+		</front>
+		<seriesInfo name="IEEE Transactions on Information Theory," value="V. IT-22, n. 6"/>
+	</reference>
+
+	
+
+
+
+<reference anchor='RFC2104' target="http://www.rfc-editor.org/info/rfc2104">
+
+<front>
+<title abbrev='HMAC'>HMAC: Keyed-Hashing for Message Authentication</title>
+<author initials='H.' surname='Krawczyk' fullname='Hugo Krawczyk'>
+<organization>IBM, T.J. Watson Research Center</organization>
+<address>
+<postal>
+<street>P.O.Box 704</street>
+<city>Yorktown Heights</city>
+<region>NY</region>
+<code>10598</code>
+<country>US</country></postal>
+<email>hugo@watson.ibm.com</email></address></author>
+<author initials='M.' surname='Bellare' fullname='Mihir Bellare'>
+<organization>University of California at San Diego, Dept of Computer Science and Engineering</organization>
+<address>
+<postal>
+<street>9500 Gilman Drive</street>
+<street>Mail Code 0114</street>
+<city>La Jolla</city>
+<region>CA</region>
+<code>92093</code>
+<country>US</country></postal>
+<email>mihir@cs.ucsd.edu</email></address></author>
+<author initials='R.' surname='Canetti' fullname='Ran Canetti'>
+<organization>IBM T.J. Watson Research Center</organization>
+<address>
+<postal>
+<street>P.O.Box 704</street>
+<city>Yorktown Heights</city>
+<region>NY</region>
+<code>10598</code>
+<country>US</country></postal>
+<email>canetti@watson.ibm.com</email></address></author>
+<date year='1997' month='February' />
+<abstract>
+<t>This document describes HMAC, a mechanism for message authentication using cryptographic hash functions. HMAC can be used with any iterative cryptographic hash function, e.g., MD5, SHA-1, in combination with a secret shared key.  The cryptographic strength of HMAC depends on the properties of the underlying hash function.</t></abstract></front>
+
+<seriesInfo name='RFC' value='2104' />
+<format type='TXT' octets='22297' target='http://www.rfc-editor.org/rfc/rfc2104.txt' />
+</reference>
+
+	
+
+
+
+<reference anchor='RFC2119' target='http://www.rfc-editor.org/info/rfc2119'>
+
+<front>
+<title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+<author initials='S.' surname='Bradner' fullname='Scott Bradner'>
+<organization>Harvard University</organization>
+<address>
+<postal>
+<street>1350 Mass. Ave.</street>
+<street>Cambridge</street>
+<street>MA 02138</street></postal>
+<phone>- +1 617 495 3864</phone>
+<email>sob@harvard.edu</email></address></author>
+<date year='1997' month='March' />
+<area>General</area>
+<keyword>keyword</keyword>
+<abstract>
+<t>
+   In many standards track documents several words are used to signify
+   the requirements in the specification.  These words are often
+   capitalized.  This document defines these words as they should be
+   interpreted in IETF documents.  Authors who follow these guidelines
+   should incorporate this phrase near the beginning of their document:
+
+<list>
+<t>
+      The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+      NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
+      "OPTIONAL" in this document are to be interpreted as described in
+      RFC 2119.
+</t></list></t>
+<t>
+   Note that the force of these words is modified by the requirement
+   level of the document in which they are used.
+</t></abstract></front>
+
+<seriesInfo name='BCP' value='14' />
+<seriesInfo name='RFC' value='2119' />
+<format type='TXT' octets='4723' target='http://www.rfc-editor.org/rfc/rfc2119.txt' />
+<format type='HTML' octets='17970' target='http://xml.resource.org/public/rfc/html/rfc2119.html' />
+<format type='XML' octets='5777' target='http://xml.resource.org/public/rfc/xml/rfc2119.xml' />
+</reference>
+
+	
+
+
+<reference anchor='RFC3526' target='http://www.rfc-editor.org/info/rfc3526'>
+
+<front>
+<title>More Modular Exponential (MODP) Diffie-Hellman groups for Internet Key Exchange (IKE)</title>
+<author initials='T.' surname='Kivinen' fullname='T. Kivinen'>
+<organization /></author>
+<author initials='M.' surname='Kojo' fullname='M. Kojo'>
+<organization /></author>
+<date year='2003' month='May' />
+<abstract>
+<t>This document defines new Modular Exponential (MODP) Groups for the Internet Key Exchange (IKE) protocol.  It documents the well known and used 1536 bit group 5, and also defines new 2048, 3072, 4096, 6144, and 8192 bit Diffie-Hellman groups numbered starting at 14.  The selection of the primes for theses groups follows the criteria established by Richard Schroeppel. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='3526' />
+<format type='TXT' octets='19166' target='http://www.rfc-editor.org/rfc/rfc3526.txt' />
+</reference>
+
+	
+
+
+<reference anchor='RFC3629' target='http://www.rfc-editor.org/info/rfc3629'>
+
+<front>
+<title>UTF-8, a transformation format of ISO 10646</title>
+<author initials='F.' surname='Yergeau' fullname='F. Yergeau'>
+<organization /></author>
+<date year='2003' month='November' />
+<abstract>
+<t>ISO/IEC 10646-1 defines a large character set called the Universal Character Set (UCS) which encompasses most of the world's writing systems.  The originally proposed encodings of the UCS, however, were not compatible with many current applications and protocols, and this has led to the development of UTF-8, the object of this memo.  UTF-8 has the characteristic of preserving the full US-ASCII range, providing compatibility with file systems, parsers and other software that rely on US-ASCII values but are transparent to other values.  This memo obsoletes and replaces RFC 2279.</t></abstract></front>
+
+<seriesInfo name='STD' value='63' />
+<seriesInfo name='RFC' value='3629' />
+<format type='TXT' octets='33856' target='http://www.rfc-editor.org/rfc/rfc3629.txt' />
+</reference>
+
+	
+
+
+
+<reference anchor='RFC3986' target='http://www.rfc-editor.org/info/rfc3986'>
+
+<front>
+<title abbrev='URI Generic Syntax'>Uniform Resource Identifier (URI): Generic Syntax</title>
+<author initials='T.' surname='Berners-Lee' fullname='Tim Berners-Lee'>
+<organization abbrev='W3C/MIT'>World Wide Web Consortium</organization>
+<address>
+<postal>
+<street>Massachusetts Institute of Technology</street>
+<street>77 Massachusetts Avenue</street>
+<city>Cambridge</city>
+<region>MA</region>
+<code>02139</code>
+<country>USA</country></postal>
+<phone>+1-617-253-5702</phone>
+<facsimile>+1-617-258-5999</facsimile>
+<email>timbl@w3.org</email>
+<uri>http://www.w3.org/People/Berners-Lee/</uri></address></author>
+<author initials='R.' surname='Fielding' fullname='Roy T. Fielding'>
+<organization abbrev='Day Software'>Day Software</organization>
+<address>
+<postal>
+<street>5251 California Ave., Suite 110</street>
+<city>Irvine</city>
+<region>CA</region>
+<code>92617</code>
+<country>USA</country></postal>
+<phone>+1-949-679-2960</phone>
+<facsimile>+1-949-679-2972</facsimile>
+<email>fielding@gbiv.com</email>
+<uri>http://roy.gbiv.com/</uri></address></author>
+<author initials='L.' surname='Masinter' fullname='Larry Masinter'>
+<organization abbrev='Adobe Systems'>Adobe Systems Incorporated</organization>
+<address>
+<postal>
+<street>345 Park Ave</street>
+<city>San Jose</city>
+<region>CA</region>
+<code>95110</code>
+<country>USA</country></postal>
+<phone>+1-408-536-3024</phone>
+<email>LMM@acm.org</email>
+<uri>http://larry.masinter.net/</uri></address></author>
+<date year='2005' month='January' />
+<area>Applications</area>
+<keyword>uniform resource identifier</keyword>
+<keyword>URI</keyword>
+<keyword>URL</keyword>
+<keyword>URN</keyword>
+<keyword>WWW</keyword>
+<keyword>resource</keyword>
+<abstract>
+<t>
+A Uniform Resource Identifier (URI) is a compact sequence of characters
+that identifies an abstract or physical resource.  This specification
+defines the generic URI syntax and a process for resolving URI references
+that might be in relative form, along with guidelines and security
+considerations for the use of URIs on the Internet.
+The URI syntax defines a grammar that is a superset of all valid URIs,
+allowing an implementation to parse the common components of a URI
+reference without knowing the scheme-specific requirements of every
+possible identifier.  This specification does not define a generative
+grammar for URIs; that task is performed by the individual
+specifications of each URI scheme.
+</t></abstract></front>
+
+<seriesInfo name='STD' value='66' />
+<seriesInfo name='RFC' value='3986' />
+<format type='TXT' octets='141811' target='http://www.rfc-editor.org/rfc/rfc3986.txt' />
+<format type='HTML' octets='214067' target='http://xml.resource.org/public/rfc/html/rfc3986.html' />
+<format type='XML' octets='163534' target='http://xml.resource.org/public/rfc/xml/rfc3986.xml' />
+</reference>
+
+
+	
+
+
+
+<reference anchor='RFC5234' target='http://www.rfc-editor.org/info/rfc5234'>
+
+<front>
+<title>Augmented BNF for Syntax Specifications: ABNF</title>
+<author initials='D.' surname='Crocker' fullname='D. Crocker'>
+<organization /></author>
+<author initials='P.' surname='Overell' fullname='P. Overell'>
+<organization /></author>
+<date year='2008' month='January' />
+<abstract>
+<t>Internet technical specifications often need to define a formal syntax.  Over the years, a modified version of Backus-Naur Form (BNF), called Augmented BNF (ABNF), has been popular among many Internet specifications.  The current specification documents ABNF.  It balances compactness and simplicity with reasonable representational power.  The differences between standard BNF and ABNF involve naming rules, repetition, alternatives, order-independence, and value ranges.  This specification also supplies additional rule definitions and encoding for a core lexical analyzer of the type common to several Internet specifications. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='STD' value='68' />
+<seriesInfo name='RFC' value='5234' />
+<format type='TXT' octets='26359' target='http://www.rfc-editor.org/rfc/rfc5234.txt' />
+</reference>
+
+	
+
+
+	
+
+
+
+<reference anchor='RFC6234' target='http://www.rfc-editor.org/info/rfc6234'>
+
+<front>
+<title>US Secure Hash Algorithms (SHA and SHA-based HMAC and HKDF)</title>
+<author initials='D.' surname='Eastlake' fullname='D. Eastlake'>
+<organization /></author>
+<author initials='T.' surname='Hansen' fullname='T. Hansen'>
+<organization /></author>
+<date year='2011' month='May' />
+<abstract>
+<t>Federal Information Processing Standard, FIPS</t></abstract></front>
+
+<seriesInfo name='RFC' value='6234' />
+<format type='TXT' octets='236573' target='http://www.rfc-editor.org/rfc/rfc6234.txt' />
+</reference>
+
+	
+
+
+
+<reference anchor='RFC7016' target='http://www.rfc-editor.org/info/rfc7016'>
+
+<front>
+<title>Adobe's Secure Real-Time Media Flow Protocol</title>
+<author initials='M.' surname='Thornburgh' fullname='M. Thornburgh'>
+<organization /></author>
+<date year='2013' month='November' />
+<abstract>
+<t>This memo describes Adobe's Secure Real-Time Media Flow Protocol (RTMFP), an endpoint-to-endpoint communication protocol designed to securely transport parallel flows of real-time video, audio, and data messages, as well as bulk data, over IP networks.  RTMFP has features that make it effective for peer-to-peer (P2P) as well as client-server communications, even when Network Address Translators (NATs) are used.</t></abstract></front>
+
+<seriesInfo name='RFC' value='7016' />
+<format type='TXT' octets='236685' target='http://www.rfc-editor.org/rfc/rfc7016.txt' />
+</reference>
+
+
+
+<reference anchor='RFC7296' target='http://www.rfc-editor.org/info/rfc7296'>
+
+<front>
+<title>Internet Key Exchange Protocol Version 2 (IKEv2)</title>
+<author initials='C.' surname='Kaufman' fullname='C. Kaufman'>
+<organization /></author>
+<author initials='P.' surname='Hoffman' fullname='P. Hoffman'>
+<organization /></author>
+<author initials='Y.' surname='Nir' fullname='Y. Nir'>
+<organization /></author>
+<author initials='P.' surname='Eronen' fullname='P. Eronen'>
+<organization /></author>
+<author initials='T.' surname='Kivinen' fullname='T. Kivinen'>
+<organization /></author>
+<date year='2014' month='October' />
+<abstract>
+<t>This document describes version 2 of the Internet Key Exchange (IKE) protocol.  IKE is a component of IPsec used for performing mutual authentication and establishing and maintaining Security Associations (SAs).  This document obsoletes RFC 5996, and includes all of the errata for it.  It advances IKEv2 to be an Internet Standard.</t></abstract></front>
+
+<seriesInfo name='STD' value='79' />
+<seriesInfo name='RFC' value='7296' />
+<format type='TXT' octets='354358' target='http://www.rfc-editor.org/rfc/rfc7296.txt' />
+</reference>
+
+
+	<reference anchor="RTMP" target="http://www.adobe.com/go/spec_rtmp">
+		<front>
+			<title>Real-Time Messaging Protocol (RTMP) specification</title>
+			<author>
+				<organization>Adobe Systems Incorporated</organization>
+			</author>
+			<date month="December" year="2012"/>
+		</front>
+	</reference>
+
+
+
+      <reference anchor="SHA256"
+                 target="http://csrc.nist.gov/publications/fips/fips180-4/fips-180-4.pdf">
+        <front>
+          <title>Secure Hash Standard</title>
+
+          <author>
+            <organization>National Institute of Standards and
+            Technology</organization>
+          </author>
+
+          <date month="March" year="2012" />
+        </front>
+
+        <seriesInfo name="FIPS" value="PUB 180-4" />
+      </reference>
+
+
+
+
+</references>
+
+<references title="Informative References">
+
+
+<reference anchor='RFC1035' target='http://www.rfc-editor.org/info/rfc1035'>
+
+<front>
+<title abbrev='Domain Implementation and Specification'>Domain names - implementation and specification</title>
+<author initials='P.' surname='Mockapetris' fullname='P. Mockapetris'>
+<organization>USC/ISI</organization>
+<address>
+<postal>
+<street>4676 Admiralty Way</street>
+<city>Marina del Rey</city>
+<region>CA</region>
+<code>90291</code>
+<country>US</country></postal>
+<phone>+1 213 822 1511</phone></address></author>
+<date year='1987' day='1' month='November' /></front>
+
+<seriesInfo name='STD' value='13' />
+<seriesInfo name='RFC' value='1035' />
+<format type='TXT' octets='125626' target='http://www.rfc-editor.org/rfc/rfc1035.txt' />
+</reference>
+
+<reference anchor='RFC1071' target='http://www.rfc-editor.org/info/rfc1071'>
+
+<front>
+<title>Computing the Internet checksum</title>
+<author initials='R.' surname='Braden' fullname='R.  Braden'>
+<organization>USC/Information Sciences Institute</organization>
+<address>
+<postal>
+<street>4676 Admiralty Way</street>
+<city>Marina del Rey</city>
+<region>CA</region>
+<code>90291</code>
+<country>US</country></postal>
+<phone>+1 213 822 1511</phone></address></author>
+<author initials='D.' surname='Borman' fullname='D.  Borman'>
+<organization>Cray Research</organization></author>
+<author initials='C.' surname='Partridge' fullname='C. Partridge'>
+<organization>Bolt Baranek and Newman (BBN) Laboratories</organization></author>
+<author initials='W.' surname='Plummer' fullname='William W. Plummer'>
+<organization>Bolt Beranek and Newman, Inc. (BBN)</organization>
+<address>
+<postal>
+<street>50 Moulton Street</street>
+<city>Cambridge</city>
+<region>MA</region>
+<code>02138</code>
+<country>US</country></postal></address></author>
+<date year='1988' day='1' month='September' /></front>
+
+<seriesInfo name='RFC' value='1071' />
+<format type='TXT' octets='54941' target='http://www.rfc-editor.org/rfc/rfc1071.txt' />
+</reference>
+
+	
+
+
+
+<reference anchor='RFC4302' target='http://www.rfc-editor.org/info/rfc4302'>
+
+<front>
+<title>IP Authentication Header</title>
+<author initials='S.' surname='Kent' fullname='S. Kent'>
+<organization /></author>
+<date year='2005' month='December' />
+<abstract>
+<t>This document describes an updated version of the IP Authentication Header (AH), which is designed to provide authentication services in IPv4 and IPv6.  This document obsoletes RFC 2402 (November 1998). [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='4302' />
+<format type='TXT' octets='82328' target='http://www.rfc-editor.org/rfc/rfc4302.txt' />
+</reference>
+
+	
+
+
+
+<reference anchor='RFC4303' target='http://www.rfc-editor.org/info/rfc4303'>
+
+<front>
+<title>IP Encapsulating Security Payload (ESP)</title>
+<author initials='S.' surname='Kent' fullname='S. Kent'>
+<organization /></author>
+<date year='2005' month='December' />
+<abstract>
+<t>This document describes an updated version of the Encapsulating Security Payload (ESP) protocol, which is designed to provide a mix of security services in IPv4 and IPv6.  ESP is used to provide confidentiality, data origin authentication, connectionless integrity, an anti-replay service (a form of partial sequence integrity), and limited traffic flow confidentiality.  This document obsoletes RFC 2406 (November 1998). [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='4303' />
+<format type='TXT' octets='114315' target='http://www.rfc-editor.org/rfc/rfc4303.txt' />
+</reference>
+
+	
+
+
+
+<reference anchor='RFC6479' target='http://www.rfc-editor.org/info/rfc6479'>
+
+<front>
+<title>IPsec Anti-Replay Algorithm without Bit Shifting</title>
+<author initials='X.' surname='Zhang' fullname='X. Zhang'>
+<organization /></author>
+<author initials='T.' surname='Tsou' fullname='T. Tsou'>
+<organization /></author>
+<date year='2012' month='January' />
+<abstract>
+<t>This document presents an alternate method to do the anti-replay checks and updates for IP Authentication Header (AH) and Encapsulating Security Protocol (ESP).  The method defined in this document obviates the need for bit shifting and it reduces the number of times an anti-replay window is adjusted.  This document is not an Internet Standards Track specification; it is published for informational purposes.</t></abstract></front>
+
+<seriesInfo name='RFC' value='6479' />
+<format type='TXT' octets='16619' target='http://www.rfc-editor.org/rfc/rfc6479.txt' />
+</reference>
+
+
+</references>
+
+
+
+<section title="Acknowledgements">
+
+<t>Special thanks go to Glenn Eguchi, Matthew Kaufman, and Adam Lane for their
+contributions to the design of this profile.</t>
+
+<t>Thanks to Philipp Hancke, Kevin Igoe, Paul Kyzivat, and Milos Trboljevac
+for their detailed reviews of this memo.</t>
+
+
+</section>
+
+</back>
+</rfc>

@@ -1,0 +1,811 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc2119 SYSTEM "reference.RFC.2119.xml">
+]>
+<rfc number="8043" submissionType="independent" category="info" ipr="trust200902">
+  <?rfc toc="yes"?>
+  <?rfc symrefs="yes" ?>
+  <?rfc sortrefs="yes"?>
+  <?rfc compact="yes"?>
+  <?rfc subcompact="no"?>
+
+  <front>
+
+<title abbrev="Source-Address-Dependent-Routing">Source-Address-Dependent
+Routing and Source Address Selection for&nbsp;IPv6&nbsp;Hosts: Overview of the Problem Space</title>
+
+    <author fullname="Behcet Sarikaya" initials="B.S." surname="Sarikaya">
+      <organization>Huawei USA</organization>
+
+      <address>
+        <postal>
+          <street>5340 Legacy Dr. Building 175</street>
+
+          <street></street>
+
+          <city>Plano</city>
+
+          <region>TX</region>
+
+          <code>75024</code>
+
+<country>United States of America</country>
+        </postal>
+
+        <phone></phone>
+
+        <email>sarikaya@ieee.org</email>
+      </address>
+    </author>
+
+    <author fullname="Mohamed Boucadair" initials="M" surname="Boucadair">
+      <organization>Orange</organization>
+
+      <address>
+        <postal>
+          <street>Rennes 35000</street>
+
+          <country>France</country>
+        </postal>
+
+        <email>mohamed.boucadair@orange.com</email>
+      </address>
+    </author>
+
+    <date month="January" year="2017" />
+
+    <area>Internet</area>
+
+    <keyword>Neighbor Discovery</keyword>
+
+    <keyword>Duplicate Address Detection</keyword>
+
+    <keyword>ND Relay Agent</keyword>
+
+    <abstract>
+
+
+      <t>This document presents the source-address-dependent routing (SADR)
+      problem space from the host's perspective. Both multihomed hosts and hosts
+      with multiple interfaces are considered. Several network architectures
+      are presented to illustrate why source address selection and next-hop
+      resolution are needed in view of source-address-dependent routing.</t>
+
+      <t>The document is scoped on identifying a set of scenarios for source-address-dependent routing from the host's perspective and analyzing a set of
+      solutions to mitigate encountered issues. The document does not make any
+      solution recommendations.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <section title="Overall Context">
+        <t>BCP 38 recommends ingress traffic filtering to prohibit
+        Denial-of-Service (DoS) attacks. As such, datagrams with source
+        addresses that do not match with the network where the host is
+        attached are discarded <xref target="RFC2827"></xref>. Preventing
+        packets from being dropped due to ingress filtering is difficult,
+        especially in multihomed networks where the host receives more than
+        one prefix from the networks it is connected to, and consequently may
+        have more than one source address. Based on BCP 38, BCP 84
+        introduced recommendations on the routing system for multihomed
+        networks <xref target="RFC3704"></xref>.</t>
+
+        <t>Recommendations on the routing system for ingress filtering such as
+        in BCP 84 inevitably involve source address checks. This leads to 
+        source-address-dependent-routing (SADR). Source-address-dependent
+        routing can be problematic, especially when the host is connected to a
+        multihomed network and is communicating with another host in another
+        multihomed network. In such a case, the communication can be broken in
+        both directions if Network Providers apply ingress filtering and the
+        datagrams contain the wrong source addresses (see <xref
+        target="INGRESS_FIL"></xref> for more details).</t>
+
+        <t>Hosts with simultaneously active interfaces receive multiple
+        prefixes and have multiple source addresses. Datagrams originating
+        from such hosts are likely to be filtered due to ingress filtering
+        policies. The source address selection algorithm needs to carefully avoid ingress filtering on the next-hop router <xref
+        target="RFC6724"></xref>.</t>
+
+        <t>Many use cases have been reported for source/destination routing --
+        see <xref
+        target="SD_RTG"></xref>. These use
+        cases clearly indicate that the multihomed host or Customer Premises
+        Equipment (CPE) router needs to be configured with the correct source
+        prefixes/addresses so that it can forward packets upstream correctly
+        to prevent the ingress filtering applied by an upstream Network Provider from dropping the packets.</t>
+
+        <t>In multihomed networks, there is a need to enforce source-address-based routing if some providers are performing ingress filtering.
+        This requires that the routers consider the source addresses as well as
+        the destination addresses in determining the packet's next hop.</t>
+      </section>
+
+      <section title="Scope">
+        <t>Based on the use cases defined in <xref
+        target="SD_RTG"></xref>, the
+        routers may be informed about the source addresses to use for
+        forwarding using extensions to the routing protocols like IS-IS <xref
+        target="ISO.10589.1992"></xref> <xref
+        target="SD_RTG_ISIS"></xref>, OSPF <xref
+        target="RFC5340"></xref> <xref
+        target="SD_RTG_OSPF"></xref>.</t>
+
+        <t>In this document, we describe the scenarios for source-address-dependent routing from the host's perspective. Two flavors can be
+        considered:<list style="numbers">
+            <t>A host may have a single interface with multiple addresses
+            (from different prefixes or /64s). 
+
+Each prefix is delegated from
+            different exit routers, and this case can be called "multihomed
+	    with multi-prefix" (MHMP). In such case, source address selection is
+            performed by the host while source-dependent routing is 
+            enforced by an upstream router.</t>
+
+            <t>A host may have simultaneously connected multiple interfaces
+            where each interface is connected to a different exit router, and
+            this case can be called "multi-prefix multiple interface" (MPMI).
+            For this case, the host is required to support both source address
+            selection and source-dependent routing to avoid the need for an upstream
+	    router to
+            rewrite the IPv6 prefix. </t>
+          </list></t>
+
+        <t>Several limitations arise in multihoming contexts based on NAT and
+	IPv6-to-IPv6 Network Prefix Translation (NPTv6) <xref target="RFC6296"/>; see, for example, <xref
+        target="RFC4116"></xref>. NPTv6 is out of scope for this
+        document.</t>
+
+        <t>This document was initially written to inform the community about
+        the SADR problem space. It was updated to record the various sets of
+        alternate solutions to address that problem space. The 6man WG consensus
+        is documented in <xref
+        target="RFC8028"></xref>.</t>
+      </section>
+    </section>
+
+    <section anchor="Scenarios"
+             title="Source-Address-Dependent Routing (SADR) Scenarios">
+      <t>This section describes a set of scenarios to illustrate the SADR
+      problem. Scenarios are listed in order of increasing complexity.</t>
+
+      <section anchor="s2" title="Multi-Prefix Multihoming">
+        <t>The scenario shown in <xref target="routepoption2"></xref> is a
+	multi-prefix multihoming use case. 
+
+"rtr" is a CPE router that is
+        connected to two Network Providers, each advertising its own
+        prefixes. In this case, the host may have a single interface, but it
+        receives multiple prefixes from the upstream Network Providers.
+        Assuming that providers apply the ingress filtering policy, the packets for
+        any external communication from the host should follow source-address-dependent routing in order to avoid getting dropped. </t>
+
+        <t>In this scenario, the host does not need to perform
+        source-dependent routing; it only needs to perform source address
+        selection.</t>
+
+        <figure align="center" anchor="routepoption2"
+                title="Multihomed Host with Multiple CPE Routers">
+          <artwork><![CDATA[  
+   +------+                  |         
+   |      |                  |        (Network) 
+   |      |                  |=====|(Provider 1)|=====
+   |      |     +------+     |         
+   |      |     |      |     |         
+   |      |=====| rtr  |=====|                  
+   | host |     |      |     |                  
+   |      |     +------+     |                  
+   |      |                  |          
+   |      |                  |        (Network) 
+   |      |                  |=====|(Provider 2)|=====
+   |      |                  |         
+   +------+                  |          
+]]></artwork>
+        </figure>
+      </section>
+
+      <section anchor="s1" title="Multi-Prefix Multi-Interface">
+        <t>The scenario shown in <xref target="routepoption"></xref> is
+        multi-prefix multi-interface, where "rtr1" and "rtr2" represent CPE
+        routers and there are exit routers in both "network 1" and "network
+        2". If the packets from the host communicating with a remote
+        destination are routed to the wrong exit router, i.e., they carry the wrong
+        source address, they will get dropped due to ingress filtering. </t>
+
+        <t>In order to avoid complications when sending packets and to avoid
+	the need to
+        rewrite the source IPv6 prefix, the host is required to perform both
+        source address selection and source-dependent routing so that
+        the appropriate next hop is selected while taking into account the source
+        address.</t>
+        <figure align="center" anchor="routepoption"
+                title="Multiple Interfaced Host with Two CPE Routers">
+          <artwork><![CDATA[  
+   +------+     +------+       ___________
+   |      |     |      |      /           \
+   |      |-----| rtr1 |=====/   network   \
+   |      |     |      |     \      1      /
+   |      |     +------+      \___________/
+   |      |
+   | host |
+   |      |
+   |      |     +------+       ___________
+   |      |     |      |      /           \
+   |      |=====| rtr2 |=====/   network   \
+   |      |     |      |     \      2      /
+   +------+     +------+      \___________/
+         ]]></artwork>
+        </figure>
+
+        <t>There is a variant of <xref target="routepoption"></xref> that is
+        often referred to as a corporate VPN, i.e., a secure tunnel from the
+        host to a router attached to a corporate network. In this case, "rtr2"
+        provides access directly to the corporate network, and the link from the
+        host to "rtr2" is a secure tunnel (for example, an IPsec tunnel). Therefore,
+        the interface is a virtual interface with its own IP
+        address/prefix assigned by the corporate network.</t>
+
+        <figure align="center" anchor="vpn" title="VPN Case">
+          <artwork><![CDATA[
+      +------+     +------+       ___________
+      |      |-----| rtr1 |      /           \
+      |     ==========\\  |=====/   network   \
+      |      |-----|  ||  |     \      1      /
+      |      |     +--||--+      \___________/
+      |      |        ||
+      | host |        ||
+      |      |        ||
+      |      |     +--||--+       ___________
+      |      |     |      |      / corporate \
+      |      |     | rtr2 |=====/   network   \
+      |      |     |      |     \      2      /
+      +------+     +------+      \___________/
+                        ]]></artwork>
+        </figure>
+
+        <t>There are at least two sub-cases:</t>
+
+        <t><list style="letters">
+            <t>Dedicated forwarding entries are created in the host such that
+            only traffic directed to the corporate network is sent to "rtr2";
+            everything else is sent to "rtr1".</t>
+
+            <t>All traffic is sent to "rtr2" and then routed to the Internet
+            if necessary. This case doesn't need host routes but leads to
+            unnecessary traffic and latency because of the path stretch via
+            "rtr2".</t>
+          </list></t>
+      </section>
+
+      <section anchor="hn" title="Home Network (Homenet)">
+        <t>In the homenet scenario depicted in <xref target="pp"></xref>,
+        representing a simple home network, there is a host connected to a
+        local network that is serviced with two CPEs that are connected to
+        Providers 1 and 2, respectively. Each network delegates a different
+        prefix. Also, each router provides a different prefix to the host. The
+        issue in this scenario is that ingress filtering is used by each
+        provider. This scenario can be considered as a variation of the
+        scenario described in <xref target="s1"></xref>.</t>
+
+        <figure anchor="pp" title="Simple Home Network with Two CPE Routers">
+          <artwork><![CDATA[ 
+   +------+             
+   |      |     +------+      
+   |      |     |      |      (Network) 
+   |      |==+==| rtr1 |====|(Provider 1)|=====     
+   |      |  |  |      |     
+   |      |  |  +------+      
+   | host |  |                
+   |      |  |                
+   |      |  |  +------+      
+   |      |  |  |      |      (Network)      
+   |      |  +==| rtr2 |====|(Provider 2)|=====
+   |      |     |      |    
+   +------+     +------+     
+          ]]></artwork>
+        </figure>
+        <t>The host has to select the source address from the prefixes of
+        Providers 1 or 2 when communicating with other hosts in Provider 1 or
+        2. The next issue is to select the correct next-hop router, "rtr1" or
+        "rtr2" that can reach the correct provider, Network Provider 1 or 2.</t>
+      </section>
+
+      <section anchor="sser" title="Service-Specific Egress Routing">
+        <t>A variation of the scenario in <xref target="s2"></xref> is specialized egress routing. Upstream networks offer different services
+        with specific requirements, e.g., Voice over IP (VoIP) or IPTV. The hosts using this
+        service need to use the service's source and destination addresses. No
+        other service will accept this source address, i.e., those packets
+        will be dropped <xref
+        target="SD_RTG"></xref>. </t>
+
+        <t>Both source address selection and source-dependent routing are
+        required to be performed by the host. </t>
+
+        <figure align="center" anchor="top3"
+                title="Multi-Interfaced Host with Three CPE Routers">
+          <artwork><![CDATA[               
+    ___________                +------+
+   /           \   +------+    |      |
+  /   network   \  |      |    |      |
+  \      1      /--| rtr1 |----|      |                     
+   \___________/   |      |    |      |     +------+       ___________                               
+                   +------+    | host |     |      |      /           \                                  
+                               |      |=====| rtr3 |=====/   network   \                                 
+    ___________                |      |     |      |     \      3      /
+   /           \   +------+    |      |     +------+      \___________/ 
+  /   network   \  |      |    |      |
+  \      2      /--| rtr2 |----|      |
+   \___________/   |      |    |      |
+                   +------+    |      |
+                               +------+
+         ]]></artwork>
+        </figure>
+
+        <t>The scenario shown in <xref target="top3"></xref> is a variation of
+        a multi-prefix multi-interface scenario (<xref target="s1"></xref>).
+        "rtr1", "rtr2", and "rtr3" are CPE routers. The networks apply ingress
+        routing. Source-address-dependent routing should be used to avoid
+	dropping any external communications.</t>
+      </section>
+    </section>
+
+    <section anchor="sadr"
+             title="Analysis of Source-Address-Dependent Routing">
+      <t>SADR can be facilitated at the host with proper source address and
+      next-hop selection. For this, each router connected to different
+      interfaces of the host uses Router Advertisements (RAs) <xref
+      target="RFC4861"></xref> to distribute a default route, the next hop,
+      and the source address/prefix information to the host. As a reminder,
+      while the Prefix Information Option (PIO) is defined in <xref
+      target="RFC4861"></xref>, the Route Information Option (RIO) is defined in
+      <xref target="RFC4191"></xref>.</t>
+
+      <t><xref target="scens"></xref> presents an analysis of the scenarios in
+      <xref target="Scenarios"></xref>, and <xref
+      target="pvd"></xref> discusses the relevance of SADR to the provisioning
+      domains.</t>
+
+      <section anchor="scens" title="Scenarios Analysis">
+        <t>As in <xref target="RFC7157"></xref>, we assume that the routers in
+        <xref target="Scenarios"></xref> use RAs to
+        distribute default route and source address prefixes supported in each
+        next hop to the hosts or that the gateway/CPE router relays this
+        information to the hosts.</t>
+
+        <t>Referring to <xref target="s2"></xref>, source address selection is
+        undertaken by the host while source-dependent routing must be followed
+        by "rtr" to avoid packets being dropped. No particular modification is required
+        for next-hop selection at the host.</t>
+
+        <t>Referring to the scenario in <xref target="routepoption"></xref>,
+        source-address-dependent routing can present a solution to the problem
+        of when the host wishes to reach a destination in network 2 and the host
+        chooses "rtr1" as the default router. The solution assumes that the host
+        is correctly configured. The host should be configured with the
+        prefixes supported in these next hops. This way the host, having
+        received many prefixes, will have the correct information for selecting
+        the right source address and next hop when sending packets to remote
+        destinations.</t>
+
+        <t>Note that similar considerations apply to the scenario in <xref
+        target="top3"></xref>.</t>
+
+        <t>In the configuration of the scenario (<xref
+        target="routepoption2"></xref>), it is also useful to configure the
+        host with the prefixes and source address prefixes they support. This
+        will enable the host to select the right prefix when sending packets
+        to the right next hop and avoid any issues with ingress filtering.</t>
+
+        <t>Let us analyze the scenario in <xref target="hn"></xref>. If a
+        source-address-dependent routing protocol is used, the two routers
+        ("rtr1" and "rtr2") are both able to route traffic correctly, no matter
+        which next-hop router and source address the host selects. In case the
+        host chooses the wrong next-hop router, e.g., "rtr1" is
+        selected for Provider 2, "rtr1" will forward the traffic to "rtr2" to be sent to Network
+        Provider 2 and no ingress filtering will happen.</t>
+
+        <t>Note that home networks are expected to comply with requirements
+        for source-address-dependent routing and that the routers will be
+        configured accordingly no matter which routing protocol is used <xref
+        target="RFC7788"></xref>.</t>
+
+        <t>This would work, but with some issues. The host traffic to Provider 2
+        will have to go over two links instead of one, i.e., the link
+        bandwidth will be halved. Another possibility is that "rtr1" can send an
+        ICMPv6 Redirect message to the host to direct the traffic to "rtr2".
+        The host would then redirect Provider 2 traffic to "rtr2".</t>
+
+        <t>The problem with redirects is that the ICMPv6 Redirect message can only
+        convey two addresses, i.e., in this case the router address, or "rtr2"
+        address and the destination address, or the destination host in
+        Provider 2. That means that the source address will not be communicated. As
+        a result, the host would send packets to the same destination using
+        both source addresses, which causes "rtr2" to send a redirect message to
+        "rtr1", resulting in ping-pong redirects sent by "rtr1" and "rtr2".</t>
+
+        <t>A solution to these issues is to configure the host with the source
+        address prefixes that the next hop supports. In a homenet context,
+        each interface of the host can be configured by its next-hop router,
+        so that all that is needed is to add the information about source address
+        prefixes. This results in the hosts selecting the right router, no
+        matter what.</t>
+
+        <t>Source-address-dependent routing in the use case of specialized
+        egress routing (<xref target="sser"></xref>) may work as follows. The
+        specialized service router advertises one or more specific prefixes
+        with appropriate source prefixes, e.g., to the CPE router, "rtr" in
+        <xref target="routepoption2"></xref>. The CPE router in turn
+        advertises the specific service's prefixes and source prefixes to the
+        host. This will allow proper configuration at the host so that the
+        host can use the service by sending the packets with the correct
+        source and destination addresses.</t>
+      </section>
+
+      <section anchor="pvd" title="Provisioning Domains and SADR">
+        <t>A consistent set of network configuration information is called
+a provisioning domain (PvD). In the case of multihomed with multi-prefix (MHMP),
+        more than one provisioning domain is present on a single link. In the case
+        of multi-prefix multiple interface (MPMI) environments, elements of
+        the same domain may be present on multiple links. PvD-aware nodes
+        support association of configuration information into PvDs and use
+        these PvDs to serve requests for network connections, e.g., choosing
+        the right source address for the packets. PvDs can be constructed from
+        one of more DHCP or Router Advertisement (RA) options carrying such
+        information as PvD identity and PvD container <xref
+        target="MPvD_NDP"></xref> <xref
+        target="MPvD_DHCP"></xref>. PvDs constructed
+        based on such information are called explicit PvDs <xref
+        target="RFC7556"></xref>.</t>
+
+        <t>Apart from PvD identity, PvD content may be encapsulated in
+        separate RA or DHCP options called the PvD Container Option. These options
+        are placed in the container options of an explicit PvD.</t>
+
+        <t>Explicit PvDs may be received from different interfaces. A single PvD
+        may be accessible over one interface or simultaneously accessible over
+        multiple interfaces. Explicit PvDs may be scoped to a configuration
+        related to a particular interface; however, in general, this does not
+        apply. 
+
+What matters is that the PvD identity is authenticated by the node even in cases where the node has a single
+connected interface. The authentication of the PvD ID should meet the level
+        required by the node policy. Single PvD information may be received
+        over multiple interfaces as long as the PvD ID is the same. This applies
+        to the Router Advertisements (RAs) in which case a multihomed host
+        (that is, with multiple interfaces) should trust a message from a
+        router on one interface to install a route to a different router on
+        another interface.</t>
+      </section>
+    </section>
+
+    <section anchor="conclusion" title="Discussion of Alternate Solutions">
+      <t>We presented many topologies in which a host with multiple interfaces
+      or a multihomed host is connected to various networks or Network
+      Providers, which in turn may apply ingress routing. The scenario analysis
+      in <xref target="scens"></xref> shows that in order to prevent packets from
+      being dropped due to ingress routing, source-address-dependent routing
+      is needed. Also, source-address-dependent routing should be supported by
+      routers throughout a site that has multiple egress points.</t>
+
+      <t>In this section, we provide some alternate solutions vis-a-vis the
+      scenarios presented in <xref target="Scenarios"></xref>. We start with
+      Rule 5.5 in <xref target="RFC6724"></xref> for source address selection and
+      the scenarios it solves, and then continue with solutions that state exactly
+      what information hosts need in terms of new Router Advertisement options
+      for correct source address selection in those scenarios. No
+      recommendation is made in this section.</t>
+
+      <section anchor="newoptions" title="Router Advertisement Option">
+        <t>There is a need to configure the host not only with the prefixes,
+        but also with the source prefixes that the next-hop routers support. Such a
+        configuration may prevent the host from getting ingress/egress policy error
+        messages such as ICMP source address failure messages.</t>
+
+        <t>If host configuration is done using Router Advertisement messages,
+        then there is a need to define new Router Advertisement options for
+        source-address-dependent routing. These options include the Route Prefix
+        with Source Address/Prefix Option. Other options such as the Next-Hop
+        Address with the Route Prefix Option and the Next-Hop Address with the Source
+        Address and Route Prefix Option will be considered in <xref
+        target="newoptionset"></xref>.</t>
+
+        <t>As discussed in <xref target="scens"></xref>, the scenario in <xref
+        target="pp"></xref> can be solved by defining a new Router
+        Advertisement option.</t>
+
+        <t>If host configuration is done using DHCP, then there is a need to
+        define new DHCP options for Route Prefix with Source Address/Prefix.
+        As mentioned above, DHCP server configuration is interface specific.
+        New DHCP options for source-address-dependent routing such as route
+        prefix and source prefix need to be configured separately for each interface.</t>
+
+        <t>The scenario in <xref target="pp"></xref> can be solved by defining
+        a new DHCP option.</t>
+      </section>
+
+      <section anchor="newoptionset" title="Router Advertisement Option Set">
+        <t>Rule 5.5 for source address selection may be a solution
+        for selecting the right source addresses for each next hop, but there
+        are cases where the next-hop routers on each interface of the host are
+        not known by the host initially. Such use cases are out of scope.
+        Guidelines for use cases that require the Router Advertisement option set
+        involving third-party next-hop addresses are also out of scope.</t>
+      </section>
+
+      <section anchor="rule55" title="Rule 5.5 for Source Address Selection">
+        <t>One possible solution is Rule 5.5 in <xref
+	target="RFC6724"></xref>, the default rule for source address selection, which recommends selecting the
+        source addresses advertised by the next hop. Considering the above
+        scenarios, we can state that this rule can solve the problem in
+	Figures <xref
+	target="routepoption2" format="counter"></xref>, <xref
+	target="routepoption" format="counter"></xref>,
+        and <xref target="top3" format="counter"></xref>.</t>
+
+        <t>Source address selection rules can be distributed by the DHCP server
+        using the DHCP option OPTION_ADDRSEL_TABLE defined in <xref
+        target="RFC7078"></xref>.</t>
+
+        <t>In case of DHCP-based host configuration, the DHCP server can configure
+        only the interface of the host to which it is directly connected. In
+        order for Rule 5.5 to apply on other interfaces, the option should be
+        sent on those interfaces as well using the DHCPv6 address
+	selection policy option defined in <xref target="RFC7078"></xref>.</t>
+
+        <t>Rule 5.5, the default rule for source address selection, solves that problem
+        when an application sends a packet with an unspecified source address.
+        In the presence of two default routes, one route will be chosen, and
+        Rule 5.5 will make sure that the right source address is used.</t>
+
+        <t>When the application selects a source address, i.e., the source
+        address is chosen before next-hop selection, even though the source
+        address is a way for the application to select the exit point, in this
+        case, that purpose will not be served. In the presence of multiple
+        default routes, one will be picked, ignoring the source address that
+        was selected by the application because it is known that IPv6
+        implementations are not required to remember which next hops
+        advertised which prefixes. Therefore, the next-hop router may not be
+        the correct one, and the packets may be filtered.</t>
+
+        <t>This implies that the hosts should register which next-hop router
+        announced each prefix. It is required that RAs be sent by the routers
+        and that they contain PIO on all links. It is also required that the
+        hosts remember the source addresses of the routers that sent PIOs
+        together with the prefixes advertised. This can be achieved by
+        updating redirect rules specified in <xref target="RFC4861"></xref>.
+        <xref target="RFC8028"></xref> further
+        elaborates this to specify to which router a host should present its
+        transmission.</t>
+
+        <t>The source-address-dependent routing solution is not complete without
+        support from the edge routers. All routers in edge networks need to be
+        required to support routing based on not only the destination address
+        but also the source address. All edge routers need to be required to
+        satisfy filters as defined in BCP 38.</t>
+      </section>
+    </section>
+
+    <?rfc compact="yes" ?>
+
+    <section title="Security Considerations">
+      <t>This document describes some use cases, and thus brings no additional
+      security risks. Solution documents should further elaborate on specific
+      security considerations.</t>
+    </section>
+
+
+  </middle>
+
+  <?rfc compact="no" ?>
+
+  <back>
+    <references title="Normative References">
+      <?rfc include='reference.RFC.2827'?>
+
+      <?rfc include='reference.RFC.3704'?>
+
+      <?rfc include='reference.RFC.4861'?>
+
+      <?rfc include='reference.RFC.5340'?>
+
+      <?rfc include='reference.RFC.6296'?>
+
+      <?rfc include='reference.RFC.6724'?>
+
+      <?rfc include='reference.RFC.7078'?>
+
+      <?rfc include='reference.RFC.8028'?>
+    </references>
+
+    <references title="Informative References">
+
+<!-- draft-baker-ipv6-ospf-dst-src-routing-03 IESG State: Expired -->
+
+<reference anchor='SD_RTG_OSPF'>
+<front>
+<title>IPv6 Source/Destination Routing using OSPFv3</title>
+
+<author initials='F' surname='Baker' fullname='Fred Baker'>
+    <organization />
+</author>
+
+<date month='August' day='28' year='2013' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-baker-ipv6-ospf-dst-src-routing-03' />
+
+</reference>
+
+      <reference anchor="ISO.10589.1992">
+        <front>
+          <title>Intermediate system to intermediate system intra-domain-
+          routing routine information exchange protocol for use in conjunction
+          with the protocol for providing the connectionless-mode Network
+          Service (ISO 8473), ISO Standard 10589</title>
+
+          <author>
+            <organization>International Organization for
+            Standardization</organization>
+          </author>
+
+          <date year="1992" />
+        </front>
+
+        <seriesInfo name="ISO" value="ISO.10589.1992" />
+      </reference>
+
+      <?rfc include='reference.RFC.7788'?>
+
+      <?rfc include='reference.RFC.4191'?>
+
+      <?rfc include='reference.RFC.7157'?>
+
+      <?rfc include='reference.RFC.4116'?>
+
+<!-- draft-baker-ipv6-isis-dst-src-routing-06 IESG State: I-D Exists -->
+<reference anchor="SD_RTG_ISIS">
+<front>
+<title>IPv6 Source/Destination Routing using IS-IS</title>
+
+<author initials='F' surname='Baker' fullname='Fred Baker'>
+    <organization />
+</author>
+
+<author initials='D' surname='Lamparter' fullname='David Lamparter'>
+    <organization />
+</author>
+
+<date month='October' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-baker-ipv6-isis-dst-src-routing-06' />
+
+</reference>
+
+<!-- draft-baker-rtgwg-src-dst-routing-use-cases-02 IESG State: Expired -->
+<reference anchor="SD_RTG">
+<front>
+<title>Requirements and Use Cases for Source/Destination Routing</title>
+
+<author initials='F' surname='Baker' fullname='Fred Baker'>
+    <organization />
+</author>
+
+<author initials='M' surname='Xu' fullname='Mingwei Xu'>
+    <organization />
+</author>
+
+<author initials='S' surname='Yang' fullname='Shu Yang'>
+    <organization />
+</author>
+
+<author initials='J' surname='Wu' fullname='Jianping Wu'>
+    <organization />
+</author>
+
+<date month='April' day='28' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-baker-rtgwg-src-dst-routing-use-cases-02' />
+
+</reference>
+
+      <?rfc include='reference.RFC.7556'?>
+
+<!-- draft-ietf-mif-mpvd-ndp-support-03 IESG State: Expired-->
+
+<reference anchor='MPvD_NDP'>
+<front>
+<title>Support for multiple provisioning domains in IPv6 Neighbor Discovery Protocol</title>
+
+<author initials='J' surname='Korhonen' fullname='Jouni Korhonen'>
+    <organization />
+</author>
+
+<author initials='S' surname='Krishnan' fullname='Suresh Krishnan'>
+    <organization />
+</author>
+
+<author initials='S' surname='Gundavelli' fullname='Sri Gundavelli'>
+    <organization />
+</author>
+
+<date month='February' day='25' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-mif-mpvd-ndp-support-03' />
+
+</reference>
+
+<!-- draft-ietf-mif-mpvd-dhcp-support-02 IESG State: Expired-->
+
+<reference anchor='MPvD_DHCP'>
+<front>
+<title>Support for multiple provisioning domains in DHCPv6</title>
+
+<author initials='S' surname='Krishnan' fullname='Suresh Krishnan'>
+    <organization />
+</author>
+
+<author initials='J' surname='Korhonen' fullname='Jouni Korhonen'>
+    <organization />
+</author>
+
+<author initials='S' surname='Bhandari' fullname='Shwetha Bhandari'>
+    <organization />
+</author>
+
+<date month='October' day='19' year='2015' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-mif-mpvd-dhcp-support-02' />
+
+</reference>
+
+<!-- draft-huitema-multi6-ingress-filtering-00 IESG State: Expired-->
+
+<reference anchor='INGRESS_FIL'>
+<front>
+<title>Ingress filtering compatibility for IPv6 multihomed sites</title>
+
+<author initials='C' surname='Huitema' fullname='Christian  Huitema'>
+    <organization />
+</author>
+
+<author initials='R' surname='Draves' fullname='Richard Draves'>
+    <organization />
+</author>
+
+<author initials='M' surname='Bagnulo' fullname='Marcelo Bagnulo'>
+    <organization />
+</author>
+
+<date month='October' day='18' year='2004' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-huitema-multi6-ingress-filtering-00' />
+
+</reference>
+
+    </references>
+
+    <section title="Acknowledgements" numbered="no">
+      <t>In writing this document, we benefited from the ideas expressed by
+      the electronic mail discussion participants on 6man Working Group: Brian
+      Carpenter, Ole Troan, Pierre Pfister, Alex Petrescu, Ray Hunter, Lorenzo
+      Colitti, and others.</t>
+
+      <t>Pierre Pfister proposed the scenario in <xref target="pp"></xref> as
+      well as some text for Rule 5.5.</t>
+
+      <t>The text on corporate VPN in <xref target="Scenarios"/> was provided by Brian
+      Carpenter.</t>
+    </section>
+
+  </back>
+</rfc>

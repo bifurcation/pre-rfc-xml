@@ -1,0 +1,2029 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc iprnotified="no" ?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no" ?>
+<?rfc rfcedstyle="yes" ?>
+
+<rfc number="7421"
+     category="info" 
+     submissionType="IETF"
+     consensus="yes"
+     ipr="trust200902">
+
+  <front>
+    <title abbrev="Why 64">Analysis of the 64-bit Boundary in IPv6
+    Addressing</title>
+
+    <author fullname="Brian Carpenter" initials="B. E." role="editor"
+            surname="Carpenter">
+      <organization abbrev="Univ. of Auckland"></organization>
+      <address>
+        <postal>
+          <street>Department of Computer Science</street>
+          <street>University of Auckland</street>
+          <street>PB 92019</street>
+          <city>Auckland</city>
+          <region></region>
+          <code>1142</code>
+          <country>New Zealand</country>
+        </postal>
+        <email>brian.e.carpenter@gmail.com</email>
+      </address>
+    </author>
+
+    <author fullname="Tim Chown" initials="T. J." surname="Chown">
+      <organization abbrev="Univ. of Southampton"></organization>
+      <address>
+        <postal>
+          <street>University of Southampton</street>
+          <city>Southampton</city>
+          <region>Hampshire</region>
+          <code>SO17 1BJ</code>
+          <country>United Kingdom</country>
+        </postal>
+        <email>tjc@ecs.soton.ac.uk</email>
+      </address>
+    </author>
+
+    <author fullname="Fernando Gont" initials="F." surname="Gont">
+      <organization>SI6 Networks / UTN-FRH</organization>
+      <address>
+        <postal>
+          <street>Evaristo Carriego 2644</street>
+          <city>Haedo</city>
+          <region>Provincia de Buenos Aires</region>
+          <code>1706</code>
+          <country>Argentina</country>
+        </postal>
+        <email>fgont@si6networks.com</email>
+      </address>
+    </author>
+
+    <author fullname="Sheng Jiang" initials="S." surname="Jiang">
+      <organization>Huawei Technologies Co., Ltd</organization>
+      <address>
+        <postal>
+          <street>Q14, Huawei Campus</street>
+          <street>No.156 Beiqing Road</street>
+          <city>Hai-Dian District, Beijing</city>
+          <code>100095</code>
+          <country>P.R. China</country>
+        </postal>
+        <email>jiangsheng@huawei.com</email>
+      </address>
+    </author> 
+
+    <author fullname="Alexandru Petrescu" initials="A." surname="Petrescu">
+      <organization abbrev="CEA, LIST">CEA, LIST</organization>
+      <address>
+        <postal>
+          <street>CEA Saclay</street>
+          <city>Gif-sur-Yvette</city>
+          <region>Ile-de-France</region>
+          <code>91190</code>
+          <country>France</country>
+        </postal>
+        <email>Alexandru.Petrescu@cea.fr</email>
+      </address>
+    </author>
+
+<author fullname="Andrew Yourtchenko" initials="A" surname="Yourtchenko">
+      <organization>Cisco</organization>
+      <address>
+        <postal>
+      <street>7a de Kleetlaan</street>
+      <city>Diegem</city>
+      <code>1830</code>
+      <country>Belgium</country>
+        </postal>
+            <email>ayourtch@cisco.com</email>
+      </address>
+    </author>
+
+    <date month="January" year="2015" />
+
+    <area>Internet</area>
+
+    <workgroup>6MAN</workgroup>
+
+    <abstract>
+      <t>The IPv6 unicast addressing format includes a separation between the
+      prefix used to route packets to a subnet and the interface identifier
+      used to specify a given interface connected to that subnet. Currently,
+      the interface identifier is defined as 64 bits long for almost every case,
+      leaving 64 bits for the subnet prefix. This document describes the advantages
+      of this fixed boundary and analyzes the issues that would be involved in
+      treating it as a variable boundary.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section anchor="intro" title="Introduction">
+      <t>Rather than simply overcoming the IPv4 address shortage
+      by doubling the address size to 64 bits, IPv6 addresses were originally chosen
+      to be 128 bits long to provide flexibility and new possibilities.
+      In particular, the notion
+      of a well-defined interface identifier was added to the IP addressing model.
+      The IPv6 addressing architecture <xref target="RFC4291"/>
+      specifies that a unicast address is divided into n bits of subnet prefix
+      followed by (128-n) bits of interface identifier (IID). The bits in the IID
+      may have significance only in the process of
+      deriving the IID; once it is derived, the entire identifier should be
+      treated as an opaque value <xref target="RFC7136"/>. Also, since IPv6 routing is
+      entirely based on variable length prefixes (also known as variable length subnet masks),
+      there is no basic architectural assumption that n has any particular fixed value. All IPv6
+      routing protocols support prefixes of any length up to /128. </t>
+
+      <t>The IID is of basic importance in the IPv6 stateless address autoconfiguration (SLAAC) 
+      process <xref target="RFC4862"/>. However, it is important to understand that its
+      length is a parameter in the SLAAC process, and it is determined 
+      in a separate link-type specific document (see the definition of "interface identifier"
+      in Section 2 of RFC 4862). The SLAAC
+      protocol does not define its length or assume any particular length.
+      Similarly, DHCPv6 <xref target="RFC3315"/> does not include
+      a prefix length in its address assignment. </t>
+
+      <t>The notion of a /64 boundary in the address was introduced after the
+      initial design of IPv6, following a period when it was expected
+      to be at /80. There were two motivations for setting it at /64.
+      One was the original "8+8" proposal <xref target="ODELL"/> that
+      eventually led to the Identifier-Locator Network Protocol (ILNP)
+      <xref target="RFC6741"/>, which required a fixed point for the split
+      between local and wide-area parts of the address.  
+The other was the expectation that
+64-bit Extended Unique Identifier (EUI-64)
+Media Access Control (MAC) addresses would become widespread in place of 
+48-bit addresses, coupled
+with the plan at that time that auto-configured addresses would normally be
+based on interface identifiers derived from MAC addresses. </t>
+
+      <t> As a result, RFC 4291 describes a method of forming interface identifiers from
+      IEEE EUI-64 hardware addresses <xref target="IEEE802"/>, and this
+      specifies that such interface identifiers are 64 bits long. Various
+      other methods of forming interface identifiers also specify a length of
+      64 bits. The addressing architecture, as modified by <xref target="RFC7136"/>,
+      states that:</t>
+      <t><list style="empty">
+   <t>For all unicast addresses, except those that start with the binary
+value 000, Interface IDs are required to be 64 bits long.  If
+derived from an IEEE MAC-layer address, they must be constructed
+in Modified EUI-64 format.
+</t></list></t>  
+   <t>The de facto length of almost all IPv6 interface identifiers
+      is therefore 64 bits. The only documented exception is in <xref target="RFC6164"/>,
+      which standardizes 127-bit prefixes for point-to-point links between routers,
+      among other things, to avoid a loop condition known as the ping-pong problem. </t>
+
+      <t>With that exception, and despite the comments above about the routing architecture
+      and the design of SLAAC, using an IID shorter than 64 bits and a subnet prefix
+      longer than 64 bits is outside the current IPv6 specifications, so
+      results may vary. </t>
+
+      <t>The question is often asked why the subnet prefix boundary is set rigidly at /64.
+      The first purpose of this document is to explain the advantages of the fixed IID length.
+      Its second purpose is to analyze, in some detail, the effects of hypothetically
+      varying the IID length. 
+      The fixed-length limits the practical length of a routing prefix
+      to 64 bits, whereas architecturally, and from the point of view of
+      routing protocols, 
+it could be any value up to /128, as in the case of host routes. Whatever the length of the IID,
+      the longest match is done on the concatenation of prefix and IID. Here, we mainly discuss the
+      question of a shorter IID, which would allow a longer subnet prefix. The document makes
+      no proposal for a change to the IID length. </t>
+
+      <t>The following three sections describe, in turn, the advantages of the fixed-length IID, some
+      arguments for shorter lengths, and the expected effects of varying the length. </t>
+
+    </section>
+
+    <section anchor="adv" title="Advantages of a Fixed Identifier Length">
+
+     <t>As mentioned in <xref target="intro"/>, the existence of an IID of a given length is
+     a necessary part of IPv6 stateless address autoconfiguration (SLAAC) <xref target="RFC4862"/>.
+     This length is normally the same for all nodes on a given link that is running SLAAC.
+     Even though this length is a parameter for SLAAC, determined separately for the
+     link-layer media type of each interface,
+     a globally fixed IID length for all link-layer media is the simplest solution
+     and is consistent with the principles of Internet host configuration described in <xref target="RFC5505"/>.
+     </t>
+
+     <t>An interface identifier of significant length, clearly separated from the subnet prefix,
+     makes it possible to limit the traceability of a host computer by varying the identifier.
+     This is discussed further in <xref target="privacy"/>. </t>
+
+     <t>An interface identifier of significant length guarantees that there are always enough
+     addresses in any subnet to add one or more real or virtual interfaces.
+     There might be other limits, but IP addressing will never get in the way.</t>
+
+     <t>The addressing architecture <xref target="RFC4291"/> <xref target="RFC7136"/> sets the
+     IID length at 64 bits for all unicast addresses and therefore for all media supporting SLAAC.
+     An immediate effect of fixing the IID length at 64 bits is, of course, that it
+     fixes the subnet prefix length also at 64 bits, regardless of the aggregate prefix
+     assigned to the site concerned, which in accordance with <xref target="RFC6177"/>
+     should be /56 or shorter. This situation has various specific advantages:</t>
+
+      <t><list style="symbols">
+
+         <t>Everything is the same. Compared to IPv4, there is no more
+	 calculating leaf subnet sizes, no
+         more juggling between subnets, and fewer consequent errors. Network
+	 design is therefore simpler
+         and much more straightforward. This is of importance for all types of
+	 networks -- enterprise, campus, small office, or home networks -- and
+	 for all types of operator, from professional to consumer. </t>
+
+         <t>Adding a subnet is easy -- just take another /64 from the pool. No estimates,
+         calculations, consideration, or judgement is needed. </t>
+
+         <t>Router configurations are homogeneous and easier to understand. </t>
+
+         <t>Documentation is easier to write and easier to read; training is easier. </t>
+      </list></t>  
+
+      <t>The remainder of this document describes arguments that have been made against the current
+      fixed IID length and analyzes the effects of a possible change. However, the consensus of
+      the IETF is that the benefits of keeping the length fixed at 64 bits
+      and the practical difficulties of changing it outweigh the arguments for change. </t>
+
+    </section>
+
+    <section anchor="scenarios" title="Arguments for Shorter Identifier Lengths">
+      <t>In this section, we describe arguments for scenarios where shorter IIDs, implying prefixes
+      longer than /64, have been used or proposed. </t>
+
+      <section anchor="insuff" title="Insufficient Address Space Delegated">
+        <t>A site may not be delegated a sufficiently generous prefix from
+	which to allocate a /64 prefix to all of its internal subnets. In this
+	case, the site may either determine that it does not have enough
+	address space to number all its network elements and thus, at the very best, be only
+           partially operational, or it may choose to use internal prefixes
+	   longer than /64 to allow multiple subnets and the hosts within them
+	   to be configured with addresses. </t>
+
+        <t>In this case, the site might choose, for example, to use a /80 per
+	subnet in combination with hosts using either manually configured
+	addressing or DHCPv6 <xref target="RFC3315"/>. </t>
+
+        <t>Scenarios that have been suggested where an insufficient prefix might be delegated
+           include home or small office networks, vehicles, building services,
+	   and transportation
+           services (e.g., road signs). It should be noted that the homenet architecture text
+           <xref target="RFC7368"/>
+           states that Customer Premises Equipment (CPE) should consider the
+	   lack of sufficient address space to be an error
+           condition, rather than using prefixes longer than /64 internally. </t>
+
+        <t>Another scenario occasionally suggested is one where the Internet address registries
+           actually begin to run out of IPv6 prefix space, such that operators can no longer
+           assign reasonable prefixes to users in accordance with <xref target="RFC6177"/>.
+           It is sometimes suggested that assigning a prefix such as /48 or /56 to every
+           user site (including the smallest) as recommended by <xref target="RFC6177"/>
+           is wasteful. In fact, the currently released unicast address space,
+           2000::/3, contains 35 trillion /48 prefixes ((2**45 = 35,184,372,088,832),
+           of which only a small fraction have been allocated. Allowing for a
+           conservative estimate of allocation efficiency, i.e., an HD-ratio of 0.94
+           <xref target="RFC4692"/>, approximately 5 trillion /48 prefixes can be
+           allocated. Even with a relaxed HD-ratio of 0.89, approximately one trillion
+           /48 prefixes can be allocated. Furthermore, with only 2000::/3 currently
+           committed for unicast addressing, we still have approximately 85% of the address
+           space in reserve. Thus, there is no objective risk of prefix depletion by
+           assigning /48 or /56 prefixes even to the smallest sites.
+        </t>
+      </section>
+
+      <section anchor="hier" title="Hierarchical Addressing">
+        <t>Some operators have argued that more prefix bits are needed to allow an
+        aggregated hierarchical addressing scheme within a campus or corporate network.
+        However, if a campus or enterprise gets a /48 prefix (or shorter), then that 
+        already provides 16 bits for hierarchical allocation. In any case,
+        flat IGP routing is widely and successfully used within rather large networks,
+        with hundreds of routers and thousands of end systems. Therefore, there is no objective
+        need for additional prefix bits to support hierarchy and aggregation within enterprises.
+        </t>  
+      </section>
+
+      <section anchor="audit" title="Audit Requirement">
+        <t>Some network operators wish to know and audit nodes that are active on a network,
+        especially those that are allowed to communicate off-link or off-site. They may also
+        wish to limit the total number of active addresses and sessions that can be sourced from a
+        particular host, LAN, or site, in order to prevent potential resource-depletion attacks
+        or other problems spreading beyond a certain scope of control. It has been argued that
+        this type of control would be easier if only long network prefixes with relatively
+        small numbers of possible hosts per network were used, reducing the discovery problem.
+        However, such sites most typically operate using DHCPv6, which means that all legitimate hosts
+        are automatically known to the DHCPv6 servers, which is sufficient for audit purposes.
+        Such hosts could, if desired, be limited to a small range of IID values without
+        changing the /64 subnet length. Any hosts inadvertently obtaining addresses via SLAAC
+        can be audited through Neighbor Discovery (ND) logs. </t>
+      </section>
+
+      <section anchor="cacheattack" title="Concerns over ND Cache Exhaustion">
+
+        <t>A site may be concerned that it is open to ND cache exhaustion
+           attacks <xref target="RFC3756"/>, whereby an attacker sends a large number of messages in rapid succession to
+           a series of (most likely inactive) host addresses within a specific subnet.
+           Such an attack attempts to fill a router's ND cache with ND requests pending completion,
+           which results in denying correct operation to active devices on the network. </t>
+
+        <t>One potential way to mitigate this attack would be to consider using a /120 prefix,
+           thus limiting the number of addresses in the subnet
+           to be similar to an IPv4 /24 prefix, which should not cause any concerns for ND cache
+           exhaustion. Note that the prefix does need to be quite long for this scenario to
+           be valid. The number of theoretically possible ND cache slots on the segment needs to
+           be of the same order of magnitude as the actual number of hosts. Thus, small increases
+           from the /64 prefix length do not have a noticeable impact; even 2^32 potential entries,
+           a factor of two billion decrease compared to 2^64, is still more than enough to
+           exhaust the memory on current routers. Given that most link-layer mappings
+           cause SLAAC to assume a 64-bit network boundary,
+           in such an approach hosts would likely need to use DHCPv6 or be manually configured with
+           addresses. </t>
+
+        <t>It should be noted that several other mitigations of the ND cache attack
+           are described in <xref target="RFC6583"/>, and that limiting the size of the cache and 
+           the number of incomplete entries allowed would also defeat the attack. For the specific
+           case of a point-to-point link between routers, this attack is indeed mitigated by
+           a /127 prefix <xref target="RFC6164"/>. </t>
+        
+      </section>
+    </section> <!-- scenarios -->
+
+<section anchor="effects" title="Effects of Varying the Interface Identifier Length">
+<t>This section of the document analyzes the impact and effects of varying the length
+of an IPv6 unicast IID by reducing it to less than 64 bits. </t>
+
+    <section anchor="standards" title="Interaction with IPv6 Specifications">
+      <t>
+      The precise 64-bit length of the IID is widely mentioned
+      in numerous RFCs describing various aspects of IPv6. It is not straightforward
+      to distinguish cases where this has normative impact or affects interoperability.
+      This section aims to identify specifications that contain an explicit reference
+      to the 64-bit length. Regardless of implementation issues, the RFCs themselves would
+      all need to be updated if the 64-bit rule was changed, even if the updates were small,
+      which would involve considerable time and effort. 
+      </t>
+
+      <t>
+    First and foremost, the RFCs describing the architectural
+    aspects of IPv6 addressing explicitly state, refer, and repeat
+    this apparently immutable value: Addressing Architecture <xref target="RFC4291"/>,
+    IPv6 Address Assignment to End Sites <xref target="RFC6177"/>,
+    Reserved IIDs <xref target="RFC5453"/>, and
+    ILNP Node Identifiers <xref target="RFC6741"/>.
+    Customer edge routers impose /64 for their interfaces <xref target="RFC7084"/>.
+    The IPv6 Subnet Model <xref target="RFC5942"/> points out that the assumption
+    of a /64 prefix length is a potential implementation error.
+      </t>
+      <t>
+    Numerous IPv6-over-foo documents make mandatory statements with
+    respect to the 64-bit length of the IID to be used
+    during the Stateless Autoconfiguration.  These
+    documents include <xref target="RFC2464"/> (Ethernet), <xref
+    target="RFC2467"/> (Fiber Distributed Data Interface (FDDI)),
+    <xref target="RFC2470"/> (Token Ring), <xref target="RFC2492"/> (ATM), <xref target="RFC2497"/> (ARCnet),
+    <xref target="RFC2590"/> (Frame Relay), 
+    <xref target="RFC3146"/> (IEEE 1394), <xref target="RFC4338"/> (Fibre Channel), 
+    <xref target="RFC4944"/> (IEEE 802.15.4), <xref target="RFC5072"/> (PPP), 
+    <xref target="RFC5121"/>
+    <xref target="RFC5692"/> (IEEE 802.16),
+    <xref target="RFC2529"/> (6over4),
+    <xref target="RFC5214"/> (Intra-Site Automatic Tunnel Addressing Protocol
+    (ISATAP)), <xref target="AERO-TRANS"/> (Asymmetric Extended Route
+    Optimization (AERO)),
+    <xref target="BLUETOOTH-LE"/> (BLUETOOTH Low Energy), <xref
+    target="IPv6-TRANS"/> (IPv6 over MS/TP), and 
+    <xref target="IPv6-G9959"/> (IPv6 packets over ITU-T G.9959).
+      </t>
+      <t>
+    To a lesser extent, the address configuration RFCs
+    themselves may in some ways assume the 64-bit length of an
+    IID (e.g, RFC 4862 for the link-local addresses, DHCPv6 for
+    the potentially assigned EUI-64-based IP addresses, and
+    Optimistic Duplicate Address Detection <xref target="RFC4429"/>
+    that computes 64-bit-based collision probabilities).
+      </t>
+
+      <t>
+    The Multicast Listener Discovery Version 1 (MLDv1) <xref target="RFC2710"/> and MLDv2 <xref target="RFC3810"/>
+    protocols mandate that all queries be sent with a link-local source address,
+    with the exception of MLD messages sent using the unspecified address when 
+    the link-local address is tentative <xref target="RFC3590"/>. At the time of publication
+    of RFC 2710, the IPv6 addressing architecture specified link-local addresses
+    with 64-bit interface identifiers. MLDv2 explicitly specifies the use of the
+    fe80::/64 link-local prefix and bases the querier election algorithm on
+    the link-local subnet prefix of length /64.
+      </t>
+      <t>
+    The "IPv6 Flow Label Specification" <xref target="RFC6437"/> gives an example of
+    a 20-bit hash function generation, which relies on splitting an
+    IPv6 address in two equally sized, 64-bit-length parts.
+      </t>
+      <t>
+    The basic transition mechanisms <xref target="RFC4213"/> refer to IIDs of length
+    64 for link-local addresses; other transition mechanisms such as 
+    Teredo <xref target="RFC4380"/> assume the use of IIDs of length 64.
+    Similar assumptions are found in 6to4 <xref target="RFC3056"/> and 6rd
+    <xref target="RFC5969"/>. Translation-based transition mechanisms such as
+    NAT64 and NPTv6 have some dependency
+    on prefix length, discussed below. 
+      </t>
+      <t>
+    The proposed method <xref target="RFC7278"/> of extending an assigned /64 prefix from a
+    smartphone's cellular interface to its WiFi link relies on
+    prefix length, and implicitly on the length of the IID, to be valued at 64.
+      </t>
+      <t>
+    The Cryptographically Generated Addresses (CGA) and Hash-Based Addresses
+    (HBA) specifications rely on the 64-bit identifier
+    length (see below), as do the Privacy extensions <xref target="RFC4941"/>
+    and some examples in "Internet Key Exchange Version 2 (IKEv2)" <xref target="RFC7296"/>. </t>
+    <t>
+    464XLAT <xref target="RFC6877"/> explicitly mentions acquiring /64 prefixes. However, it also discusses
+    the possibility of using the interface address on the device as the end point for the
+    traffic, thus potentially removing this dependency. </t>
+
+    <t><xref target="RFC2526"/> reserves a number of subnet anycast addresses by
+    reserving some anycast IIDs.  An anycast IID so reserved cannot be less than 7 bits long.
+    This means that a subnet prefix length longer than /121 is not possible, and 
+    a subnet of exactly /121 would be useless since all its identifiers are reserved.
+    It also means that half of a /120 is reserved for anycast. This could of course
+    be fixed in the way described for /127 in <xref target="RFC6164"/>, i.e.,
+    avoiding the use of anycast within a /120 subnet. Note that support for "on-link anycast"
+    is a standard IPv6 neighbor discovery capability <xref target="RFC4861"/> <xref target="RFC7094"/>;
+    therefore, applications and their developers would expect it to be available.</t>
+
+    <t>The Mobile IP home network models <xref target="RFC4887"/> rely heavily
+    on the /64 subnet length and assume a 64-bit IID. </t>
+   
+    <t>While preparing this document, it was noted that many other IPv6 specifications
+    refer to mandatory alignment on 64-bit boundaries, 64-bit data structures, 64-bit
+    counters in MIBs, 64-bit sequence numbers and cookies in security, etc.  Finally,
+    the number "64" may be considered "magic" in some RFCs, e.g., 64k limits in DNS
+    and Base64 encodings in MIME. None of this has any influence on the length of
+    the IID but might confuse a careless reader. </t>
+
+ </section>
+
+    <section anchor="breakage" title="Possible Failure Modes">
+      <t>This section discusses several specific aspects of IPv6 where we
+         can expect operational failures with subnet prefixes other than /64. </t>
+     
+      <t><list style="symbols">
+          <t>Router implementations: Router implementors might interpret IETF
+  specifications such as <xref target="RFC6164"/> and <xref target="RFC7136"/> as indicating that
+  prefixes between /65 and /126 (inclusive) for unicast packets on-the-wire
+  are invalid and that operational practices that utilize
+  prefix lengths in this range may fail on some devices, as discussed
+  in <xref target="other"/>.
+</t>
+
+          <t>Multicast: <xref target="RFC3306"/> defines a method for generating 
+          IPv6 multicast group addresses based on unicast prefixes.
+          This method assumes a longest prefix of 64 bits.
+          If a longer prefix is used, there is no way to generate a specific multicast group address
+          using this method.  In such cases, the administrator would need to use an "artificial" prefix from
+          within their allocation (a /64 or shorter) from which to generate the group address. This
+          prefix would not correspond to a real subnet.
+          <vspace blankLines="1"/>
+          Similarly, <xref target="RFC3956"/>, which specifies the Embedded
+	  Rendezvous Point (RP))
+	  allowing IPv6 multicast 
+          rendezvous point addresses to be embedded in the multicast group address,
+          would also fail, as the scheme assumes a maximum prefix length of 64 bits.</t>
+
+          <t>CGA: The Cryptographically Generated Address format <xref
+          target="RFC3972"/> is heavily based on a /64 interface
+          identifier. <xref target="RFC3972"/> has defined a detailed
+          algorithm showing how to generate a 64-bit interface identifier from a public
+          key and a 64-bit subnet prefix. Changing the /64 boundary would
+          certainly invalidate the current CGA definition. However, the CGA might
+          benefit in a redefined version if more bits are used for interface
+          identifiers (which means shorter prefix length). For now, 
+          59 bits are used for cryptographic purposes. The more bits are
+          available, the stronger CGA could be. Conversely, longer prefixes
+          would weaken CGA.  </t>
+
+          <t>NAT64: Both stateless NAT64 <xref target="RFC6052"/> and
+          stateful NAT64 <xref target="RFC6146"/> are flexible for the
+          prefix length. <xref target="RFC6052"> </xref> has defined multiple
+          address formats for NAT64. In Section 2 of 
+	  "IPv4-Embedded IPv6 Address Prefix and Format" <xref target="RFC6052"/>,
+the network-specific
+          prefix could be one of /32, /40, /48, /56, /64, and /96. The remaining
+          part of the IPv6 address is constructed by a 32-bit IPv4 address, an
+          8-bit u byte and a variable length suffix (there is no u byte and
+          suffix in the case of the 96-bit Well-Known Prefix). NAT64 is therefore
+          OK with a subnet boundary out to /96 but not longer.</t>
+
+          <t>NPTv6: IPv6-to-IPv6 Network Prefix Translation <xref
+          target="RFC6296"/> is also bound to /64 boundary. NPTv6 maps a
+          /64 prefix to another /64 prefix. When the NPTv6 Translator is
+          configured with a /48 or shorter prefix, the 64-bit interface
+          identifier is kept unmodified during translation. However, the /64
+          boundary might be changed as long as the "inside" and "outside"
+          prefixes have the same length.</t>
+
+          <t>ILNP: Identifier-Locator Network Protocol (ILNP) <xref
+	  target="RFC6741"/> is designed around the /64 boundary, since it
+	  relies on locally unique 64-bit node identifiers (in the
+          interface identifier field).
+          While a redesign to use longer prefixes is not inconceivable, this would need
+          major changes to the existing specification for the IPv6 version of ILNP. </t>
+
+          <t>Shim6: The Multihoming Shim Protocol for IPv6 (Shim6) <xref target="RFC5533"/>
+          in its insecure form treats IPv6 addresses as opaque 128-bit
+	  objects. However, to secure
+          the protocol against spoofing, it is essential to either use CGAs
+	  (see above) or HBAs <xref target="RFC5535"/>. Like CGAs, HBAs are generated using a procedure
+          that assumes a 64-bit identifier. Therefore, in effect, secure shim6 is affected by
+          the /64 boundary exactly like CGAs.          
+          </t>
+
+          <t>Duplicate address risk: If SLAAC was modified to work with
+          shorter IIDs, the statistical risk of hosts choosing the same pseudo-random
+          identifier <xref target="RFC7217"/>
+          would increase correspondingly. The practical impact of this would range from
+          slight to dramatic, depending on how much the IID length was reduced. In
+          particular, a /120 prefix would imply an 8-bit IID and address collisions
+          would be highly probable. </t>
+
+          <t>The link-local prefix: While RFC 4862 is careful not to define any specific length
+          of link-local prefix within fe80::/10, the addressing architecture <xref target="RFC4291"/>
+          does define the link-local IID length to be 64 bits.
+          If different hosts on a link used IIDs of different lengths to form a link-local address,
+          there is potential for confusion and unpredictable results. 
+          Typically today the choice of 64 bits for the link-local IID length is hard-coded per
+          interface, in accordance with the relevant IPv6-over-foo specification,
+          and systems behave as if the link-local prefix was actually fe80::/64.
+          There might be no way to change this except conceivably by manual configuration,
+          which will be impossible if the host concerned has no local user interface.
+          </t>
+          
+        </list></t>
+
+    <t>It goes without saying that if prefixes longer than /64 are to be used, all hosts must be
+       capable of generating IIDs shorter than 64 bits, in order to follow the auto-configuration
+       procedure correctly <xref target="RFC4862"/>.  </t>
+
+     </section> <!-- breakage -->
+
+    <section anchor="expt" title="Experimental Observations">
+
+    <section title="Survey of the processing of Neighbor Discovery Options with Prefixes Other than /64" anchor="survey">
+<t>This section provides a survey of the processing of Neighbor Discovery options that include prefixes that are different than /64.</t>
+
+<t>The behavior of nodes was assessed with respect to the following options:</t>
+
+<t> <list style="symbols">
+<t>PIO-A: Prefix Information Option (PIO) <xref target="RFC4861"/> with the A bit set.</t>
+<t>PIO-L: Prefix Information Option (PIO) <xref target="RFC4861"/> with the L bit set.</t>
+<t>PIO-AL: Prefix Information Option (PIO) <xref target="RFC4861"/> with both the A and L bits set.</t>
+<t>RIO: Route Information Option (RIO) <xref target="RFC4191"/>.</t>
+</list> </t>
+
+
+<t>In the tables below, the following notation is used:</t>
+
+<t> <list style="hanging">
+<t hangText="NOT-SUP:">
+<vspace blankLines="0" />This option is not supported (i.e., it is ignored no matter the prefix length used).</t>
+<t hangText="LOCAL:">
+<vspace blankLines="0" />The corresponding prefix is considered "on-link".</t>
+<t hangText="ROUTE:">
+<vspace blankLines="0" />The corresponding route is added to the IPv6 routing table.</t>
+<t hangText="NOT-DEF:">
+<vspace blankLines="0" />The default configuration is NOT-SUP, but there is an option
+to enable ROUTE.</t>
+
+<t hangText="IGNORE:">
+<vspace blankLines="0" />The option is ignored as an error.</t>
+</list> </t>
+
+
+<texttable title="Processing of ND options with prefixes longer than /64" style="all" anchor="survey-long-prefix">
+        <ttcol align="center">Operating System</ttcol>
+        <ttcol align="center">PIO-A</ttcol><ttcol align="center">PIO-L</ttcol><ttcol align="center">PIO-AL</ttcol><ttcol align="center">RIO</ttcol>
+
+        <c>FreeBSD 9.0</c>       <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-SUP</c>
+
+        <c>Linux 3.0.0-15</c>    <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-DEF</c>
+
+        <c>Linux-current</c>     <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-DEF</c>
+
+
+        <c>NetBSD 5.1</c>        <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-SUP</c>
+
+        <c>OpenBSD-current</c>   <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-SUP</c>
+<!--
+        <c>Solaris 10</c>        <c>PIO-A</c><c>PIO-L</c><c>PIO-AL</c><c>RIO</c>
+-->
+        <c>Win XP SP2</c>       <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>ROUTE</c>
+
+<!--
+        <c>Win Vista (Build 6000)</c>  <c>PIO-A</c><c>PIO-L</c><c>PIO-AL</c><c>RIO</c>
+-->
+        <c>Win 7 Home Premium</c>  <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>ROUTE</c>
+
+<!--
+        <c>Win 8 Home Premium</c>      <c>PIO-A</c><c>PIO-L</c><c>PIO-AL</c><c>RIO</c>
+
+-->
+    </texttable>
+
+<t></t>
+
+<texttable title="Processing of ND options with prefixes shorter than /64" style="all" anchor="survey-short-prefix">
+        <ttcol align="center">Operating System</ttcol>
+        <ttcol align="center">PIO-A</ttcol><ttcol align="center">PIO-L</ttcol><ttcol align="center">PIO-AL</ttcol><ttcol align="center">RIO</ttcol>
+
+        <c>FreeBSD 9.0</c>       <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-SUP</c>
+
+        <c>Linux 3.0.0-15</c>    <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-DEF</c>
+
+        <c>Linux-current</c>     <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-DEF</c>
+
+
+        <c>NetBSD 5.1</c>        <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-SUP</c>
+
+        <c>OpenBSD-current</c>   <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>NOT-SUP</c>
+<!--
+        <c>Solaris 10</c>        <c></c><c>PIO-L</c><c>PIO-AL</c><c>RIO</c>
+-->
+        <c>Win XP SP2</c>       <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>ROUTE</c>
+<!--
+        <c>Win Vista (Build 6000)</c>  <ttcol align="center">PIO-A</c><ttcol align="center">PIO-L</c><ttcol align="center">PIO-AL</c><ttcol align="center">RIO</c>
+-->
+        <c>Win 7 Home Premium</c>    <c>IGNORE</c><c>LOCAL</c><c>LOCAL</c><c>ROUTE</c>
+
+<!--
+        <c>Win 8 Home Premium</c>      <c>PIO-A</c><c>PIO-L</c><c>PIO-AL</c><c>RIO</c>
+
+-->
+    </texttable>
+
+<t>The results obtained can be summarized as follows:</t>
+<t><list style="symbols">
+<t>
+The "A" bit in the Prefix Information Options is honored only if the prefix
+length is 64.  This is consistent with <xref target="RFC4862"/>, at least for the case where
+the IID length is defined to be 64 bits in the corresponding
+link-type-specific document, which is the case for all currently published
+such documents.  <xref target="RFC4862"/> defines the case where the sum of the advertised
+prefix length and the IID length does not equal 128 as an error condition.
+</t>
+
+<t>The "L" bit in the Prefix Information Options is honored for any arbitrary prefix length (whether shorter or longer than /64).</t>
+<t>Nodes that support the Route Information Option allow such routes to be specified with prefixes of any arbitrary length (whether shorter or longer than /64)</t>
+</list></t>
+
+</section> <!-- survey -->
+
+      <section anchor="other" title="Other Observations">
+      <t>Participants in the V6OPS working group have indicated that some forwarding devices have been
+      shown to work correctly with long prefixes such as /80 or /96. Indeed, it is to be expected
+      that forwarding based on the longest prefix match will work for any prefix length, and no reports
+      of this completely failing have been noted. Also, DHCPv6 is in widespread use without any dependency
+      on the /64 boundary. Reportedly, there are deployments of /120 subnets configured using
+      DHCPv6. </t>
+
+      <t>There have been definite reports that some routers have a performance drop-off or
+      even resource exhaustion for prefixes longer than /64 due to design issues. In particular,
+      some routing chip designs allocate much less space for longer prefixes than for prefixes
+      up to /64 for the sake of savings in memory, power, and lookup latency. Some devices
+      need special-case code to handle point-to-point links according to <xref target="RFC6164"/>. </t>
+
+      <t>It has been reported that at least one type of switch has a content-addressable memory limited
+      to 144 bits, which is indeed a typical value for commodity components <xref target="TCAM"/>.
+      This means that packet filters or access control lists cannot be defined based on 128-bit addresses
+      and two 16-bit port numbers; the longest prefix that could be used in such a filter is a /112. </t>
+
+
+      </section>
+
+</section> <!-- expt -->
+
+    <section anchor="impl" title="Implementation and Deployment Issues">
+
+      <t>From an early stage, implementations and deployments of IPv6 assumed the /64
+      subnet length, even though routing was based on prefixes of any length. 
+      As shown above, this became anchored in many specifications (<xref target="standards"/>)
+      and in important aspects of implementations commonly used in local area networks
+      (<xref target="expt"/>). In fact, a programmer might be lulled into assuming a comfortable
+      rule of thumb that subnet prefixes are always /64 and an IID is always of length 64.
+      Apart from the limited evidence in <xref target="survey"/>, we cannot tell without code
+      inspections or tests whether existing stacks are able to handle a
+      flexible IID length 
+      or
+      whether they would require modification to do so.
+      A conforming implementation of an IPv6-over-foo that specifies a 64 bit
+      IID for foo links will of course only support 64. But in a well designed stack,
+      the IP layer itself will treat that 64 as a parameter, so changing the IID length
+      in the IPv6-over-foo code should be all that is necessary. </t>
+
+      <t>The main practical consequence of the existing specifications is that deployments in
+      which longer subnet prefixes are used cannot make use of SLAAC-configured addresses and
+      require either manually configured addresses or DHCPv6. To reverse this argument,
+      if it was considered desirable to allow auto-configured addresses with subnet
+      prefixes longer than /64, all of the specifications identified above as
+      depending on /64 would have to be modified with due regard to interoperability
+      with unmodified stacks. In fact, <xref target="RFC7217"/>
+      allows for this possibility. Then, modified stacks would have to be developed
+      and deployed. It might be the case that some stacks contain dependencies
+      on the /64 boundary that are not directly implied by the specifications,
+      and any such hidden dependencies would also need to be found and removed. </t>
+
+      <t>At least one DHCPv6 client unconditionally installs a /64 prefix as on-link when it
+      configures an interface with an address, although some specific operating system vendors
+      seem to change this default behavior by tweaking a client-side script. 
+      This is in clear violation of the IPv6 subnet model <xref target="RFC5942"/>.
+      The motivation for this choice is that if there is no router on the link, the hosts 
+      would fail to communicate with each other using the configured addresses because the
+      "on-link assumption" was removed in <xref target="RFC4861"/>.  This is not really about
+      the magic number of 64, but an implementation may sometimes pick an
+      arbitrary value of prefix length due to the removal of the on-link
+      assumption, and the value chosen will most likely be 64.  </t>
+
+      <t>Typical IP Address Management (IPAM) tools treat /64 as the default subnet
+      length but allow users to specify longer subnet prefixes if desired. Clearly,
+      all IPAM tools and network management systems would need to be checked
+      in detail. </t>
+
+      <t>Finally, IPv6 is already deployed at many sites, with a large number
+      of staff trained on the basis of the existing standards, supported by
+      documentation and tools based on those standards. Numerous existing
+      middlebox devices are also based on those standards. These people, documents,
+      tools, and devices represent a very large investment that would be seriously
+      impacted by a change in the /64 boundary. </t>
+
+
+    </section> <!-- impl -->
+
+    <section anchor="privacy" title="Privacy Issues">
+      <t>The length of the interface identifier has implications for privacy
+      <xref target="ADDRESS-PRIVACY"/>. In any case in
+      which the value of the identifier is intended to be hard to guess, whether or
+      not it is cryptographically generated, it is apparent that more bits are
+      better. For example, if there are only 20 bits to be guessed, then at most just over a
+million guesses are needed, which is well within the capacity of a low-cost
+attack mechanism. It is hard to state in general how many bits are enough
+      to protect privacy, since this depends on the resources available to the attacker,
+      but it seems clear that a privacy solution needs to resist an attack
+      requiring billions rather than millions of guesses. Trillions would be
+      better, suggesting that at least 40 bits should be available. Thus,  we
+      can argue that subnet prefixes longer than say
+      /80 might raise privacy concerns by making the IID guessable. </t>
+
+      <t>A prefix long enough to limit the number of addresses comparably to
+      an IPv4 subnet,
+      such as /120, would create exactly the same situation for privacy as IPv4 except for
+      the absence of NAT. In particular, a host would be forced to pick a new
+      IID when roaming to a
+      new network to avoid collisions. As mentioned earlier, it is likely that SLAAC will
+      not be used on such a subnet.
+<!--  An argument could be made that since this reduces
+      traceability, it is a good thing from a privacy point of view. -->
+      </t>
+
+    </section> <!-- privacy -->
+
+</section> <!-- effects -->
+
+
+
+    <section anchor="security" title="Security Considerations">
+      <t>In addition to the privacy issues mentioned in <xref target="privacy"/> and the issues mentioned
+      with CGAs and HBAs in <xref target="breakage"/>, the length of the subnet prefix affects the
+      matter of defense against scanning attacks <xref target="HOST-SCANNING"/>.
+      Assuming the attacker has
+      discovered or guessed the prefix length, a longer prefix reduces the space that the attacker
+      needs to scan, e.g., to only 256 addresses if the prefix is /120. On the other hand,
+      if the attacker has not discovered the prefix length and assumes it to be /64,
+      routers can trivially discard attack packets that do not fall within an actual
+      subnet. </t>
+
+      <t>However, assume that an attacker finds one valid address "A" and
+      assumes that it is within
+      a long prefix such as a /120. The attacker then starts a scanning
+      attack by scanning "outwards" from A, by trying A+1, A-1, A+2, A-2,
+      etc. This attacker will
+      easily find all hosts in any subnet with a long prefix, because they
+      will have addresses close
+      to A. We therefore conclude that any prefix containing densely packed
+      valid addresses is vulnerable
+      to a scanning attack, without the attacker needing to guess the prefix
+      length. Therefore,
+      to preserve IPv6's advantage over IPv4 in resisting scanning attacks, it
+      is important that
+      subnet prefixes are short enough to allow sparse allocation of identifiers within
+      each subnet. The considerations are similar to those for privacy, and we can again
+      argue that prefixes longer than say /80 might significantly increase vulnerability.
+      Ironically, this argument is exactly converse to the argument for longer
+      prefixes to resist
+      an ND cache attack, as described in <xref target="cacheattack"/>. </t>
+
+      <t>Denial-of-service attacks related to Neighbor Discovery are discussed in <xref target="cacheattack"/>
+      and in <xref target="RFC6583"/>.
+      One of the mitigations suggested by that document is "sizing subnets to reflect the number of
+      addresses actually in use", but the fact that this greatly simplifies scanning attacks is
+      not noted. For further discussion of scanning attacks, see <xref target="HOST-SCANNING"/>.</t>
+
+      <t>Note that, although not known at the time of writing, there might be other resource
+      exhaustion attacks available, similar in nature to the ND cache attack. We cannot
+      exclude that such attacks might be exacerbated by sparsely populated subnets
+      such as a /64. It should also be noted that this analysis assumes a conventional
+      deployment model with a significant number of end-systems located in a single LAN broadcast
+      domain. Other deployment models might lead to different conclusions. </t>
+   
+    </section>
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      
+<reference anchor='RFC3972' target="http://www.rfc-editor.org/info/rfc3972">
+<front>
+<title>Cryptographically Generated Addresses (CGA)</title>
+<author initials='T.' surname='Aura' fullname='T. Aura'>
+<organization /></author>
+<date year='2005' month='March' />
+</front>
+<seriesInfo name='RFC' value='3972' />
+<format type='TXT' octets='51473' target='http://www.rfc-editor.org/rfc/rfc3972.txt' />
+</reference>
+
+<reference anchor='RFC4291' target="http://www.rfc-editor.org/info/rfc4291">
+<front>
+<title>IP Version 6 Addressing Architecture</title>
+<author initials='R.' surname='Hinden' fullname='R. Hinden'>
+<organization /></author>
+<author initials='S.' surname='Deering' fullname='S. Deering'>
+<organization /></author>
+<date year='2006' month='February' />
+</front>
+<seriesInfo name='RFC' value='4291' />
+<format type='TXT' octets='52897' target='http://www.rfc-editor.org/rfc/rfc4291.txt' />
+</reference>
+
+<reference anchor='RFC4861' target="http://www.rfc-editor.org/info/rfc4861">
+<front>
+<title>Neighbor Discovery for IP version 6 (IPv6)</title>
+<author initials='T.' surname='Narten' fullname='T. Narten'>
+<organization /></author>
+<author initials='E.' surname='Nordmark' fullname='E. Nordmark'>
+<organization /></author>
+<author initials='W.' surname='Simpson' fullname='W. Simpson'>
+<organization /></author>
+<author initials='H.' surname='Soliman' fullname='H. Soliman'>
+<organization /></author>
+<date year='2007' month='September' />
+</front>
+<seriesInfo name='RFC' value='4861' />
+<format type='TXT' octets='235106' target='http://www.rfc-editor.org/rfc/rfc4861.txt' />
+</reference>
+
+<reference anchor='RFC5533' target="http://www.rfc-editor.org/info/rfc5533">
+<front>
+<title>Shim6: Level 3 Multihoming Shim Protocol for IPv6</title>
+<author initials='E.' surname='Nordmark' fullname='E. Nordmark'>
+<organization /></author>
+<author initials='M.' surname='Bagnulo' fullname='M. Bagnulo'>
+<organization /></author>
+<date year='2009' month='June' />
+</front>
+<seriesInfo name='RFC' value='5533' />
+<format type='TXT' octets='299931' target='http://www.rfc-editor.org/rfc/rfc5533.txt' />
+</reference>
+
+<reference anchor='RFC5535' target="http://www.rfc-editor.org/info/rfc5535">
+<front>
+<title>Hash-Based Addresses (HBA)</title>
+<author initials='M.' surname='Bagnulo' fullname='M. Bagnulo'>
+<organization /></author>
+<date year='2009' month='June' />
+</front>
+<seriesInfo name='RFC' value='5535' />
+<format type='TXT' octets='63994' target='http://www.rfc-editor.org/rfc/rfc5535.txt' />
+</reference>
+
+<reference anchor='RFC6052' target="http://www.rfc-editor.org/info/rfc6052">
+<front>
+<title>IPv6 Addressing of IPv4/IPv6 Translators</title>
+<author initials='C.' surname='Bao' fullname='C. Bao'>
+<organization /></author>
+<author initials='C.' surname='Huitema' fullname='C. Huitema'>
+<organization /></author>
+<author initials='M.' surname='Bagnulo' fullname='M. Bagnulo'>
+<organization /></author>
+<author initials='M.' surname='Boucadair' fullname='M. Boucadair'>
+<organization /></author>
+<author initials='X.' surname='Li' fullname='X. Li'>
+<organization /></author>
+<date year='2010' month='October' />
+</front>
+<seriesInfo name='RFC' value='6052' />
+<format type='TXT' octets='41849' target='http://www.rfc-editor.org/rfc/rfc6052.txt' />
+</reference>
+
+ <!-- &RFC5157; -->
+<reference anchor='RFC6146' target="http://rfc-editor.org/info/rfc6146">
+<front>
+<title>Stateful NAT64: Network Address and Protocol Translation from IPv6 Clients to IPv4 Servers</title>
+<author initials='M.' surname='Bagnulo' fullname='M. Bagnulo'>
+<organization /></author>
+<author initials='P.' surname='Matthews' fullname='P. Matthews'>
+<organization /></author>
+<author initials='I.' surname='van Beijnum' fullname='I. van Beijnum'>
+<organization /></author>
+<date year='2011' month='April' /></front>
+<seriesInfo name='RFC' value='6146' />
+<format type='TXT' octets='107954' target='http://www.rfc-editor.org/rfc/rfc6146.txt' />
+</reference>
+
+<reference anchor='RFC6164' target="http://www.rfc-editor.org/info/rfc6164">
+<front>
+<title>Using 127-Bit IPv6 Prefixes on Inter-Router Links</title>
+<author initials='M.' surname='Kohno' fullname='M. Kohno'>
+<organization /></author>
+<author initials='B.' surname='Nitzan' fullname='B. Nitzan'>
+<organization /></author>
+<author initials='R.' surname='Bush' fullname='R. Bush'>
+<organization /></author>
+<author initials='Y.' surname='Matsuzaki' fullname='Y. Matsuzaki'>
+<organization /></author>
+<author initials='L.' surname='Colitti' fullname='L. Colitti'>
+<organization /></author>
+<author initials='T.' surname='Narten' fullname='T. Narten'>
+<organization /></author>
+<date year='2011' month='April' />
+</front>
+<seriesInfo name='RFC' value='6164' />
+<format type='TXT' octets='16057' target='http://www.rfc-editor.org/rfc/rfc6164.txt' />
+</reference>
+
+
+
+<reference anchor='RFC6296' target="http://www.rfc-editor.org/info/rfc6296">
+<front>
+<title>IPv6-to-IPv6 Network Prefix Translation</title>
+<author initials='M.' surname='Wasserman' fullname='M. Wasserman'>
+<organization /></author>
+<author initials='F.' surname='Baker' fullname='F. Baker'>
+<organization /></author>
+<date year='2011' month='June' />
+</front>
+<seriesInfo name='RFC' value='6296' />
+<format type='TXT' octets='73700' target='http://www.rfc-editor.org/rfc/rfc6296.txt' />
+</reference>
+
+<reference anchor='RFC5453' target="http://www.rfc-editor.org/info/rfc5453">
+<front>
+<title>Reserved IPv6 Interface Identifiers</title>
+<author initials='S.' surname='Krishnan' fullname='S. Krishnan'>
+<organization /></author>
+<date year='2009' month='February' />
+</front>
+<seriesInfo name='RFC' value='5453' />
+<format type='TXT' octets='11754' target='http://www.rfc-editor.org/rfc/rfc5453.txt' />
+</reference>
+
+<reference anchor='RFC7084' target="http://www.rfc-editor.org/info/rfc7084">
+<front>
+<title>Basic Requirements for IPv6 Customer Edge Routers</title>
+<author initials='H.' surname='Singh' fullname='H. Singh'>
+<organization /></author>
+<author initials='W.' surname='Beebee' fullname='W. Beebee'>
+<organization /></author>
+<author initials='C.' surname='Donley' fullname='C. Donley'>
+<organization /></author>
+<author initials='B.' surname='Stark' fullname='B. Stark'>
+<organization /></author>
+<date year='2013' month='November' />
+</front>
+<seriesInfo name='RFC' value='7084' />
+<format type='TXT' octets='46569' target='http://www.rfc-editor.org/rfc/rfc7084.txt' />
+</reference>
+
+<reference anchor='RFC5942' target="http://www.rfc-editor.org/info/rfc5942">
+<front>
+<title>IPv6 Subnet Model: The Relationship between Links and Subnet Prefixes</title>
+<author initials='H.' surname='Singh' fullname='H. Singh'>
+<organization /></author>
+<author initials='W.' surname='Beebee' fullname='W. Beebee'>
+<organization /></author>
+<author initials='E.' surname='Nordmark' fullname='E. Nordmark'>
+<organization /></author>
+<date year='2010' month='July' />
+</front>
+<seriesInfo name='RFC' value='5942' />
+<format type='TXT' octets='27035' target='http://www.rfc-editor.org/rfc/rfc5942.txt' />
+</reference>
+
+<reference anchor='RFC2464' target="http://www.rfc-editor.org/info/rfc2464">
+<front>
+<title abbrev='IPv6 Packets over Ethernet'>Transmission of IPv6 Packets over Ethernet Networks</title>
+<author initials='M.' surname='Crawford' fullname='Matt Crawford'>
+<organization>Fermilab</organization>
+<address>
+<postal>
+<street>PO Box 500, MS 368</street>
+<city>Batavia</city>
+<region>IL</region>
+<code>60510</code>
+<country>USA</country></postal>
+<phone>+1 630 840 3461</phone>
+<email>crawdad@fnal.gov</email></address></author>
+<date year='1998' month='December' />
+</front>
+<seriesInfo name='RFC' value='2464' />
+<format type='TXT' octets='12725' target='http://www.rfc-editor.org/rfc/rfc2464.txt' />
+<format type='HTML' octets='31035' target='http://xml.resource.org/public/rfc/html/rfc2464.html' />
+<format type='XML' octets='21983' target='http://xml.resource.org/public/rfc/xml/rfc2464.xml' />
+</reference>
+
+<reference anchor='RFC2467' target="http://www.rfc-editor.org/info/rfc2467">
+<front>
+<title abbrev='IPv6 over FDDI'>Transmission of IPv6 Packets over FDDI Networks</title>
+<author initials='M.' surname='Crawford' fullname='Matt Crawford'>
+<organization>Fermilab</organization>
+<address>
+<postal>
+<street>PO Box 500,  MS 368</street>
+<city>Batavia</city>
+<region>IL</region>
+<code>60510</code>
+<country>USA</country></postal>
+<phone>+1 630 840 3461</phone>
+<email>crawdad@fnal.gov</email></address></author>
+<date year='1998' month='December' />
+</front>
+<seriesInfo name='RFC' value='2467' />
+<format type='TXT' octets='16028' target='http://www.rfc-editor.org/rfc/rfc2467.txt' />
+<format type='HTML' octets='36382' target='http://xml.resource.org/public/rfc/html/rfc2467.html' />
+<format type='XML' octets='31364' target='http://xml.resource.org/public/rfc/xml/rfc2467.xml' />
+</reference>
+
+<reference anchor='RFC2470' target="http://www.rfc-editor.org/info/rfc2470">
+<front>
+<title abbrev='IPv6 over Token Ring'>Transmission of IPv6 Packets over Token Ring Networks</title>
+<author initials='M.' surname='Crawford' fullname='Matt Crawford'>
+<organization>Fermilab</organization>
+<address>
+<postal>
+<street>PO Box 500, MS 368</street>
+<city>Batavia</city>
+<region>IL</region>
+<code>60510</code>
+<country>USA</country></postal>
+<phone>+1 630 840 3461</phone>
+<email>crawdad@fnal.gov</email></address></author>
+<author initials='T.' surname='Narten' fullname='Thomas Narten'>
+<organization>IBM Corporation</organization>
+<address>
+<postal>
+<street>P.O. Box 12195</street>
+<city>Research Triangle Park</city>
+<region>NC</region>
+<code>27709-2195</code>
+<country>USA</country></postal>
+<phone>+1 919 254 7798</phone>
+<email>narten@raleigh.ibm.com</email></address></author>
+<author initials='S.' surname='Thomas' fullname='Stephen Thomas'>
+<organization>TransNexus</organization>
+<address>
+<postal>
+<street>430 Tenth Street NW Suite N204</street>
+<city>Atlanta</city>
+<region>GA</region>
+<code>30318</code>
+<country>USA</country></postal>
+<phone>+1 404 872 4745</phone>
+<email>stephen.thomas@transnexus.com</email></address></author>
+<date year='1998' month='December' />
+</front>
+<seriesInfo name='RFC' value='2470' />
+<format type='TXT' octets='21677' target='http://www.rfc-editor.org/rfc/rfc2470.txt' />
+<format type='HTML' octets='41688' target='http://xml.resource.org/public/rfc/html/rfc2470.html' />
+<format type='XML' octets='35035' target='http://xml.resource.org/public/rfc/xml/rfc2470.xml' />
+</reference>
+
+<reference anchor='RFC2492' target="http://www.rfc-editor.org/info/rfc2492">
+<front>
+<title>IPv6 over ATM Networks</title>
+<author initials='G.' surname='Armitage' fullname='Grenville Armitage'>
+<organization>Bell Laboratories, Lucent Technologies</organization>
+<address>
+<postal>
+<street>101 Crawfords Corner Road</street>
+<street>Holmdel</street>
+<street>NJ 07733</street>
+<country>USA</country></postal>
+<email>gja@lucent.com</email></address></author>
+<author initials='P.' surname='Schulter' fullname='Peter Schulter'>
+<organization>BrightTiger Technologies</organization>
+<address>
+<postal>
+<street>125 Nagog Park</street>
+<street>Acton</street>
+<street>MA 01720</street></postal>
+<email>paschulter@acm.org</email></address></author>
+<author initials='M.' surname='Jork' fullname='Markus Jork'>
+<organization>European Applied Research Center</organization>
+<address>
+<postal>
+<street>Digital Equipment GmbH</street>
+<street>CEC Karlsruhe</street>
+<street>Vincenz-Priessnitz-Str. 1</street>
+<street>D-76131 Karlsruhe</street>
+<country>Germany</country></postal>
+<email>jork@kar.dec.com</email></address></author>
+<date year='1999' month='January' />
+</front>
+<seriesInfo name='RFC' value='2492' />
+<format type='TXT' octets='21199' target='http://www.rfc-editor.org/rfc/rfc2492.txt' />
+<format type='XML' octets='25340' target='http://xml.resource.org/public/rfc/xml/rfc2492.xml' />
+</reference>
+
+<reference anchor='RFC2497' target="http://www.rfc-editor.org/info/rfc2497">
+<front>
+<title abbrev='IPv6 Datagrams on ARCnet'>Transmission of IPv6 Packets over ARCnet Networks</title>
+<author initials='I.' surname='Souvatzis' fullname='Ignatios Souvatzis'>
+<organization>The NetBSD Project</organization>
+<address>
+<postal>
+<street>Stationenweg 29</street>
+<city>Bornheim</city>
+<region />
+<code>D-53332</code>
+<country>DE</country></postal>
+<phone>+49 228 734316</phone>
+<email>is@netbsd.org</email></address></author>
+<date year='1999' month='January' />
+</front>
+<seriesInfo name='RFC' value='2497' />
+<format type='TXT' octets='10304' target='http://www.rfc-editor.org/rfc/rfc2497.txt' />
+</reference>
+
+<reference anchor='RFC2590' target="http://www.rfc-editor.org/info/rfc2590">
+<front>
+<title abbrev='IPv6 over Frame Relay Networks'>Transmission of IPv6 Packets over Frame Relay Networks Specification</title>
+<author initials='A.' surname='Conta' fullname='Alex Conta'>
+<organization>Lucent Technologies Inc.</organization>
+<address>
+<postal>
+<street>300 Baker Avenue</street>
+<street>Suite 100</street>
+<city>Concord</city>
+<region>MA</region>
+<code>01742</code>
+<country>US</country></postal>
+<phone>+1 978 287 2842</phone>
+<email>aconta@lucent.com</email></address></author>
+<author initials='A.' surname='Malis' fullname='Andrew Malis'>
+<organization>Ascend Communications</organization>
+<address>
+<postal>
+<street>1 Robbins Road</street>
+<city>Westford</city>
+<region>MA</region>
+<code>01886</code>
+<country>US</country></postal>
+<phone>+1 978 952 7414</phone>
+<email>malis@ascend.com</email></address></author>
+<author initials='M.' surname='Mueller' fullname='Martin Mueller'>
+<organization>Lucent Technologies Inc.</organization>
+<address>
+<postal>
+<street>300 Baker Avenue</street>
+<street>Suite 100</street>
+<city>Concord</city>
+<region>MA</region>
+<code>01742</code>
+<country>US</country></postal>
+<phone>+1 978 287 2833</phone>
+<email>memueller@lucent.com</email></address></author>
+<date year='1999' month='May' />
+</front>
+<seriesInfo name='RFC' value='2590' />
+<format type='TXT' octets='41817' target='http://www.rfc-editor.org/rfc/rfc2590.txt' />
+</reference>
+
+<reference anchor='RFC3146' target="http://www.rfc-editor.org/info/rfc3146">
+<front>
+<title>Transmission of IPv6 Packets over IEEE 1394 Networks</title>
+<author initials='K.' surname='Fujisawa' fullname='K. Fujisawa'>
+<organization /></author>
+<author initials='A.' surname='Onoe' fullname='A. Onoe'>
+<organization /></author>
+<date year='2001' month='October' />
+</front>
+<seriesInfo name='RFC' value='3146' />
+<format type='TXT' octets='16569' target='http://www.rfc-editor.org/rfc/rfc3146.txt' />
+</reference>
+
+<reference anchor='RFC4338' target="http://www.rfc-editor.org/info/rfc4338">
+<front>
+<title>Transmission of IPv6, IPv4, and Address Resolution Protocol (ARP) Packets over Fibre Channel</title>
+<author initials='C.' surname='DeSanti' fullname='C. DeSanti'>
+<organization /></author>
+<author initials='C.' surname='Carlson' fullname='C. Carlson'>
+<organization /></author>
+<author initials='R.' surname='Nixon' fullname='R. Nixon'>
+<organization /></author>
+<date year='2006' month='January' />
+</front>
+<seriesInfo name='RFC' value='4338' />
+<format type='TXT' octets='75541' target='http://www.rfc-editor.org/rfc/rfc4338.txt' />
+</reference>
+
+<reference anchor='RFC4944' target="http://www.rfc-editor.org/info/rfc4944">
+<front>
+<title>Transmission of IPv6 Packets over IEEE 802.15.4 Networks</title>
+<author initials='G.' surname='Montenegro' fullname='G. Montenegro'>
+<organization /></author>
+<author initials='N.' surname='Kushalnagar' fullname='N. Kushalnagar'>
+<organization /></author>
+<author initials='J.' surname='Hui' fullname='J. Hui'>
+<organization /></author>
+<author initials='D.' surname='Culler' fullname='D. Culler'>
+<organization /></author>
+<date year='2007' month='September' />
+</front>
+<seriesInfo name='RFC' value='4944' />
+<format type='TXT' octets='67232' target='http://www.rfc-editor.org/rfc/rfc4944.txt' />
+</reference>
+
+<reference anchor='RFC5072' target="http://www.rfc-editor.org/info/rfc5072">
+<front>
+<title>IP Version 6 over PPP</title>
+<author initials='S.' surname='Varada' fullname='S. Varada'>
+<organization /></author>
+<author initials='D.' surname='Haskins' fullname='D. Haskins'>
+<organization /></author>
+<author initials='E.' surname='Allen' fullname='E. Allen'>
+<organization /></author>
+<date year='2007' month='September' />
+</front>
+<seriesInfo name='RFC' value='5072' />
+<format type='TXT' octets='33910' target='http://www.rfc-editor.org/rfc/rfc5072.txt' />
+</reference>
+
+ <reference anchor='RFC5121' target="http://www.rfc-editor.org/info/rfc5121">
+ <front>
+ <title>Transmission of IPv6 via the IPv6 Convergence Sublayer over IEEE 802.16 Networks</title>
+ <author initials='B.' surname='Patil' fullname='B. Patil'>
+ <organization /></author>
+ <author initials='F.' surname='Xia' fullname='F. Xia'>
+ <organization /></author>
+ <author initials='B.' surname='Sarikaya' fullname='B. Sarikaya'>
+ <organization /></author>
+ <author initials='JH.' surname='Choi' fullname='JH. Choi'>
+ <organization /></author>
+ <author initials='S.' surname='Madanapalli' fullname='S. Madanapalli'>
+ <organization /></author>
+ <date year='2008' month='February' />
+ </front>
+ <seriesInfo name='RFC' value='5121' />
+ <format type='TXT' octets='50092' target='http://www.rfc-editor.org/rfc/rfc5121.txt' />
+ </reference>
+
+ <reference anchor='RFC5692' target="http://www.rfc-editor.org/info/rfc5692">
+ <front>
+ <title>Transmission of IP over Ethernet over IEEE 802.16 Networks</title>
+ <author initials='H.' surname='Jeon' fullname='H. Jeon'>
+ <organization /></author>
+ <author initials='S.' surname='Jeong' fullname='S. Jeong'>
+ <organization /></author>
+ <author initials='M.' surname='Riegel' fullname='M. Riegel'>
+ <organization /></author>
+ <date year='2009' month='October' />
+ </front>
+ <seriesInfo name='RFC' value='5692' />
+ <format type='TXT' octets='44724' target='http://www.rfc-editor.org/rfc/rfc5692.txt' />
+ </reference>
+
+ <reference anchor='RFC4191' target="http://www.rfc-editor.org/info/rfc4191">
+ <front>
+ <title>Default Router Preferences and More-Specific Routes</title>
+ <author initials='R.' surname='Draves' fullname='R. Draves'>
+ <organization /></author> <author initials='D.' surname='Thaler' fullname='D. Thaler'>
+ <organization /></author>
+ <date year='2005' month='November' />
+ </front>
+ <seriesInfo name='RFC' value='4191' />
+ <format type='TXT' octets='34672' target='http://www.rfc-editor.org/rfc/rfc4191.txt' />
+ </reference>
+
+ <reference anchor='RFC4429' target="http://www.rfc-editor.org/info/rfc4429">
+ <front>
+ <title>Optimistic Duplicate Address Detection (DAD) for IPv6</title>
+ <author initials='N.' surname='Moore' fullname='N. Moore'>
+ <organization /></author>
+ <date year='2006' month='April' />
+ </front>
+ <seriesInfo name='RFC' value='4429' />
+ <format type='TXT' octets='33123' target='http://www.rfc-editor.org/rfc/rfc4429.txt' />
+ </reference>
+
+ <reference anchor='RFC2710' target="http://www.rfc-editor.org/info/rfc2710">
+ <front>
+ <title abbrev='Multicast Listener Discovery for IPv6'>Multicast Listener Discovery (MLD) for IPv6</title>
+ <author initials='S.' surname='Deering' fullname='Stephen E. Deering'>
+ <organization>Cisco Systems, Inc.</organization>
+ <address>
+ <postal>
+ <street>170 West Tasman Drive</street>
+ <city>San Jose</city>
+ <region>CA</region>
+ <code>95134-1706</code>
+ <country>US</country></postal>
+ <phone>+1 408 527 8213</phone>
+ <email>deering@cisco.com</email></address></author>
+ <author initials='W.' surname='Fenner' fullname='William C. Fenner'>
+ <organization>AT &amp; T Research</organization>
+ <address>
+ <postal>
+ <street>75 Willow Road</street>
+ <city>Menlo Park</city>
+ <region>CA</region>
+ <code>94025</code>
+ <country>US</country></postal>
+ <phone>+1 650 867 6073</phone>
+ <email>fenner@research.att.com</email></address></author>
+ <author initials='B.' surname='Haberman' fullname='Brian Haberman'>
+ <organization>IBM Corporation</organization>
+ <address>
+ <postal>
+ <street>800 Park Office Drive</street>
+ <city>Research Triangle Park</city>
+ <region>NC</region>
+ <code>27709</code>
+ <country>US</country></postal>
+ <phone>+1 919 254 2673</phone>
+ <email>haberman@raleigh.ibm.com</email></address></author>
+ <date year='1999' month='October' />
+ </front>
+ <seriesInfo name='RFC' value='2710' />
+ <format type='TXT' octets='46838' target='http://www.rfc-editor.org/rfc/rfc2710.txt' />
+ </reference>
+
+ <reference anchor='RFC3590' target="http://www.rfc-editor.org/info/rfc3590">
+ <front>
+ <title>Source Address Selection for the Multicast Listener Discovery 
+ (MLD) Protocol</title>
+ <author initials='B.' surname='Haberman' fullname='B. Haberman'>
+ <organization /></author>
+ <date year='2003' month='September' />
+ </front>
+ <seriesInfo name='RFC' value='3590' />
+ <format type='TXT' octets='11554' target='http://www.rfc-editor.org/rfc/rfc3590.txt' />
+ </reference>
+
+ <reference anchor='RFC3810' target="http://www.rfc-editor.org/info/rfc3810">
+ <front>
+ <title>Multicast Listener Discovery Version 2 (MLDv2) for IPv6</title>
+ <author initials='R.' surname='Vida' fullname='R. Vida'>
+ <organization /></author>
+ <author initials='L.' surname='Costa' fullname='L. Costa'>
+ <organization /></author>
+ <date year='2004' month='June' />
+ </front>
+ <seriesInfo name='RFC' value='3810' />
+ <format type='TXT' octets='153579' target='http://www.rfc-editor.org/rfc/rfc3810.txt' />
+ </reference>
+
+ <reference anchor='RFC6437' target="http://www.rfc-editor.org/info/rfc6437">
+ <front>
+ <title>IPv6 Flow Label Specification</title>
+ <author initials='S.' surname='Amante' fullname='S. Amante'>
+ <organization /></author>
+ <author initials='B.' surname='Carpenter' fullname='B. Carpenter'>
+ <organization /></author>
+ <author initials='S.' surname='Jiang' fullname='S. Jiang'>
+ <organization /></author>
+ <author initials='J.' surname='Rajahalme' fullname='J. Rajahalme'>
+ <organization /></author>
+ <date year='2011' month='November' />
+ </front>
+ <seriesInfo name='RFC' value='6437' />
+ <format type='TXT' octets='35269' target='http://www.rfc-editor.org/rfc/rfc6437.txt' />
+ </reference>
+
+ <reference anchor='RFC3306' target="http://www.rfc-editor.org/info/rfc3306">
+ <front>
+ <title>Unicast-Prefix-based IPv6 Multicast Addresses</title>
+ <author initials='B.' surname='Haberman' fullname='B. Haberman'>
+ <organization /></author>
+ <author initials='D.' surname='Thaler' fullname='D. Thaler'>
+ <organization /></author>
+ <date year='2002' month='August' />
+ </front>
+ <seriesInfo name='RFC' value='3306' />
+ <format type='TXT' octets='12713' target='http://www.rfc-editor.org/rfc/rfc3306.txt' />
+ </reference>
+
+ <reference anchor='RFC3956' target="http://www.rfc-editor.org/info/rfc3956">
+ <front>
+ <title>Embedding the Rendezvous Point (RP) Address in an IPv6 Multicast Address</title>
+ <author initials='P.' surname='Savola' fullname='P. Savola'>
+ <organization /></author>
+ <author initials='B.' surname='Haberman' fullname='B. Haberman'>
+ <organization /></author>
+ <date year='2004' month='November' />
+ </front>
+ <seriesInfo name='RFC' value='3956' />
+ <format type='TXT' octets='40136' target='http://www.rfc-editor.org/rfc/rfc3956.txt' />
+ </reference>
+
+ <reference anchor='RFC4862' target="http://www.rfc-editor.org/info/rfc4862">
+ <front>
+ <title>IPv6 Stateless Address Autoconfiguration</title>
+ <author initials='S.' surname='Thomson' fullname='S. Thomson'>
+ <organization /></author>
+ <author initials='T.' surname='Narten' fullname='T. Narten'>
+ <organization /></author>
+ <author initials='T.' surname='Jinmei' fullname='T. Jinmei'>
+ <organization /></author>
+ <date year='2007' month='September' />
+ </front>
+ <seriesInfo name='RFC' value='4862' />
+ <format type='TXT' octets='72482' target='http://www.rfc-editor.org/rfc/rfc4862.txt' />
+ </reference>
+
+ <reference anchor='RFC2526' target="http://www.rfc-editor.org/info/rfc2526">
+ <front>
+ <title>Reserved IPv6 Subnet Anycast Addresses</title>
+ <author initials='D.' surname='Johnson' fullname='David B. Johnson'>
+ <organization>Carnegie Mellon University</organization>
+ <address>
+ <postal>
+ <street>Computer Science Department</street>
+ <street>5000 Forbes Avenue</street>
+ <city>Pittsburgh</city>
+ <region>PA</region>
+ <code>15213-3891</code>
+ <country>US</country></postal>
+ <phone>+1 412 268 7399</phone>
+ <facsimile>+1 412 268 5576</facsimile>
+ <email>dbj@cs.cmu.edu</email></address></author>
+ <author initials='S.' surname='Deering' fullname='Stephen E. Deering'>
+ <organization>Cisco Systems, Inc.</organization>
+ <address>
+ <postal>
+ <street>170 West Tasman Drive</street>
+ <city>San Jose</city>
+ <region>CA</region>
+ <code>95134-1706</code>
+ <country>US</country></postal>
+ <phone>+1 408 527 8213</phone>
+ <facsimile>+1 408 527 8254</facsimile>
+ <email>deering@cisco.com</email></address></author>
+ <date year='1999' month='March' />
+ </front>
+ <seriesInfo name='RFC' value='2526' />
+ <format type='TXT' octets='14555' target='http://www.rfc-editor.org/rfc/rfc2526.txt' />
+ </reference>
+
+ <reference anchor='RFC5214' target="http://www.rfc-editor.org/info/rfc5214">
+ <front>
+ <title>Intra-Site Automatic Tunnel Addressing Protocol (ISATAP)</title>
+ <author initials='F.' surname='Templin' fullname='F. Templin'>
+ <organization /></author>
+ <author initials='T.' surname='Gleeson' fullname='T. Gleeson'>
+ <organization /></author>
+ <author initials='D.' surname='Thaler' fullname='D. Thaler'>
+ <organization /></author>
+ <date year='2008' month='March' />
+ </front>
+ <seriesInfo name='RFC' value='5214' />
+ <format type='TXT' octets='30126' target='http://www.rfc-editor.org/rfc/rfc5214.txt' />
+ </reference>
+
+ <reference anchor='RFC4213' target="http://www.rfc-editor.org/info/rfc4213">
+ <front>
+ <title>Basic Transition Mechanisms for IPv6 Hosts and Routers</title>
+ <author initials='E.' surname='Nordmark' fullname='E. Nordmark'>
+ <organization /></author>
+ <author initials='R.' surname='Gilligan' fullname='R. Gilligan'>
+ <organization /></author>
+ <date year='2005' month='October' />
+ </front>
+ <seriesInfo name='RFC' value='4213' />
+ <format type='TXT' octets='58575' target='http://www.rfc-editor.org/rfc/rfc4213.txt' />
+ </reference>
+
+ <reference anchor='RFC4380' target="http://www.rfc-editor.org/info/rfc4380">
+ <front>
+ <title>Teredo: Tunneling IPv6 over UDP through Network Address Translations (NATs)</title>
+ <author initials='C.' surname='Huitema' fullname='C. Huitema'>
+ <organization /></author>
+ <date year='2006' month='February' />
+ </front>
+ <seriesInfo name='RFC' value='4380' />
+ <format type='TXT' octets='132607' target='http://www.rfc-editor.org/rfc/rfc4380.txt' />
+ </reference>
+
+ <reference anchor='RFC2529' target="http://www.rfc-editor.org/info/rfc2529">
+ <front>
+ <title abbrev='Transmission of IPv6 Packets over IPv4'>Transmission of IPv6 over IPv4 Domains without Explicit Tunnels</title>
+ <author initials='B.' surname='Carpenter' fullname='Brian E. Carpenter'>
+ <organization>IBM United Kingdom Laboratories</organization>
+ <address>
+ <postal>
+ <street>Internet Division</street>
+ <street>MP 185</street>
+ <street>Hursley Park</street>
+ <city>Winchester</city>
+ <region>England</region>
+ <code>S021 2JN</code>
+ <country>UK</country></postal>
+ <email>brian@hursley.ibm.com</email></address></author>
+ <author initials='C.' surname='Jung' fullname='Cyndi Jung'>
+ <organization>3Com Corporation</organization>
+ <address>
+ <postal>
+ <street>5400 Bayfront Plaza</street>
+ <street>Mailstop 3219</street>
+ <city>Santa Clara</city>
+ <region>CA</region>
+ <code>95052-8145</code>
+ <country>US</country></postal>
+ <email>cmj@3Com.com</email></address></author>
+ <date year='1999' month='March' />
+ </front>
+ <seriesInfo name='RFC' value='2529' />
+ <format type='TXT' octets='21049' target='http://www.rfc-editor.org/rfc/rfc2529.txt' />
+ </reference>
+
+ <reference anchor='RFC3056' target="http://www.rfc-editor.org/info/rfc3056">
+ <front>
+ <title>Connection of IPv6 Domains via IPv4 Clouds</title>
+ <author initials='B.' surname='Carpenter' fullname='B. Carpenter'>
+ <organization /></author>
+ <author initials='K.' surname='Moore' fullname='K. Moore'>
+ <organization /></author>
+ <date year='2001' month='February' />
+ </front>
+ <seriesInfo name='RFC' value='3056' />
+ <format type='TXT' octets='54902' target='http://www.rfc-editor.org/rfc/rfc3056.txt' />
+ </reference>
+
+ <reference anchor='RFC5969' target="http://www.rfc-editor.org/info/rfc5969">
+ <front>
+ <title>IPv6 Rapid Deployment on IPv4 Infrastructures (6rd) -- Protocol Specification</title>
+ <author initials='W.' surname='Townsley' fullname='W. Townsley'>
+ <organization /></author>
+ <author initials='O.' surname='Troan' fullname='O. Troan'>
+ <organization /></author>
+ <date year='2010' month='August' />
+ </front>
+ <seriesInfo name='RFC' value='5969' />
+ <format type='TXT' octets='45278' target='http://www.rfc-editor.org/rfc/rfc5969.txt' />
+ </reference>
+
+ <reference anchor='RFC4941' target="http://www.rfc-editor.org/info/rfc4941">
+ <front>
+ <title>Privacy Extensions for Stateless Address Autoconfiguration in IPv6</title>
+ <author initials='T.' surname='Narten' fullname='T. Narten'>
+ <organization /></author>
+ <author initials='R.' surname='Draves' fullname='R. Draves'>
+ <organization /></author>
+ <author initials='S.' surname='Krishnan' fullname='S. Krishnan'>
+ <organization /></author>
+ <date year='2007' month='September' />
+ </front>
+ <seriesInfo name='RFC' value='4941' />
+ <format type='TXT' octets='56699' target='http://www.rfc-editor.org/rfc/rfc4941.txt' />
+ </reference>
+
+ <reference anchor='RFC7296' target="http://www.rfc-editor.org/info/rfc7296">
+ <front>
+ <title>Internet Key Exchange Protocol Version 2 (IKEv2)</title>
+ <author initials='C.' surname='Kaufman' fullname='C. Kaufman'>
+ <organization /></author>
+ <author initials='P.' surname='Hoffman' fullname='P. Hoffman'>
+ <organization /></author>
+ <author initials='Y.' surname='Nir' fullname='Y. Nir'>
+ <organization /></author>
+ <author initials='P.' surname='Eronen' fullname='P. Eronen'>
+ <organization /></author>
+ <author initials='T.' surname='Kivinen' fullname='T. Kivinen'>
+ <organization /></author>
+
+ <date year='2014' month='October' />
+ </front>
+ <seriesInfo name='STD' value='79' />
+ <seriesInfo name='RFC' value='7296' />
+
+ </reference>
+
+ <reference anchor='RFC6177' target="http://www.rfc-editor.org/info/rfc6177">
+ <front>
+ <title>IPv6 Address Assignment to End Sites</title>
+ <author initials='T.' surname='Narten' fullname='T. Narten'>
+ <organization /></author>
+ <author initials='G.' surname='Huston' fullname='G. Huston'>
+ <organization /></author>
+ <author initials='L.' surname='Roberts' fullname='L. Roberts'>
+ <organization /></author>
+ <date year='2011' month='March' />
+ </front>
+ <seriesInfo name='BCP' value='157' />
+ <seriesInfo name='RFC' value='6177' />
+ <format type='TXT' octets='21231' target='http://www.rfc-editor.org/rfc/rfc6177.txt' />
+ </reference>
+
+ <reference anchor='RFC7136' target="http://www.rfc-editor.org/info/rfc7136">
+ <front>
+ <title>Significance of IPv6 Interface Identifiers</title>
+ <author initials='B.' surname='Carpenter' fullname='B. Carpenter'>
+ <organization /></author>
+ <author initials='S.' surname='Jiang' fullname='S. Jiang'>
+ <organization /></author>
+ <date year='2014' month='February' />
+ </front>
+ <seriesInfo name='RFC' value='7136' />
+ <format type='TXT' octets='23172' target='http://www.rfc-editor.org/rfc/rfc7136.txt' />
+ </reference>
+
+ <reference anchor='RFC3315' target="http://www.rfc-editor.org/info/rfc3315">
+ <front>
+ <title>Dynamic Host Configuration Protocol for IPv6 (DHCPv6)</title>
+ <author initials='R.' surname='Droms' fullname='R. Droms'>
+ <organization /></author>
+ <author initials='J.' surname='Bound' fullname='J. Bound'>
+ <organization /></author>
+ <author initials='B.' surname='Volz' fullname='B. Volz'>
+ <organization /></author>
+ <author initials='T.' surname='Lemon' fullname='T. Lemon'>
+ <organization /></author>
+ <author initials='C.' surname='Perkins' fullname='C. Perkins'>
+ <organization /></author>
+ <author initials='M.' surname='Carney' fullname='M. Carney'>
+ <organization /></author>
+ <date year='2003' month='July' />
+ </front>
+ <seriesInfo name='RFC' value='3315' />
+ <format type='TXT' octets='231402' target='http://www.rfc-editor.org/rfc/rfc3315.txt' />
+ </reference>
+     </references>
+
+     <references title="Informative References">
+
+ <reference anchor='RFC2629' target="http://www.rfc-editor.org/info/rfc2629">
+ <front>
+ <title>Writing I-Ds and RFCs using XML</title>
+ <author initials='M.T.' surname='Rose' fullname='Marshall T. Rose'>
+ <organization>Invisible Worlds, Inc.</organization>
+ <address>
+ <postal>
+ <street>660 York Street</street>
+ <city>San Francisco</city>
+ <region>CA</region>
+ <code>94110</code>
+ <country>US</country></postal>
+ <phone>+1 415 695 3975</phone>
+ <email>mrose@not.invisible.net</email>
+ <uri>http://invisible.net/</uri></address></author>
+ <date year='1999' month='June' />
+ </front>
+ <seriesInfo name='RFC' value='2629' />
+ <format type='TXT' octets='48677' target='http://www.rfc-editor.org/rfc/rfc2629.txt' />
+ <format type='HTML' octets='72426' target='http://xml.resource.org/public/rfc/html/rfc2629.html' />
+ <format type='XML' octets='53481' target='http://xml.resource.org/public/rfc/xml/rfc2629.xml' />
+ </reference>
+
+ <reference anchor='RFC6741' target="http://www.rfc-editor.org/info/rfc6741">
+ <front>
+ <title>Identifier-Locator Network Protocol (ILNP) Engineering Considerations</title>
+ <author initials='RJ' surname='Atkinson,' fullname='SN'>
+ <organization /></author>
+ <date year='2012' month='November' />
+ </front>
+ <seriesInfo name='RFC' value='6741' />
+ <format type='TXT' octets='93512' target='http://www.rfc-editor.org/rfc/rfc6741.txt' />
+ </reference>
+
+ <reference anchor='RFC6877' target="http://www.rfc-editor.org/info/rfc6877">
+ <front>
+ <title>464XLAT: Combination of Stateful and Stateless Translation</title>
+ <author initials='M.' surname='Mawatari' fullname='M. Mawatari'>
+ <organization /></author>
+ <author initials='M.' surname='Kawashima' fullname='M. Kawashima'>
+ <organization /></author>
+ <author initials='C.' surname='Byrne' fullname='C. Byrne'>
+ <organization /></author>
+ <date year='2013' month='April' />
+ </front>
+ <seriesInfo name='RFC' value='6877' />
+ <format type='TXT' octets='31382' target='http://www.rfc-editor.org/rfc/rfc6877.txt' />
+ </reference>
+
+ <reference anchor='RFC6583' target="http://rfc-editor.org/info/rfc6583">
+ <front>
+ <title>Operational Neighbor Discovery Problems</title>
+ <author initials='I.' surname='Gashinsky' fullname='I. Gashinsky'>
+ <organization /></author>
+ <author initials='J.' surname='Jaeggli' fullname='J. Jaeggli'>
+ <organization /></author>
+ <author initials='W.' surname='Kumari' fullname='W. Kumari'>
+ <organization /></author>
+ <date year='2012' month='March' />
+ </front>
+ <seriesInfo name='RFC' value='6583' />
+ <format type='TXT' octets='29480' target='http://www.rfc-editor.org/rfc/rfc6583.txt' />
+ </reference>
+
+ <reference anchor='RFC4887' target="http://www.rfc-editor.org/info/rfc4887">
+ <front>
+ <title>Network Mobility Home Network Models</title>
+ <author initials='P.' surname='Thubert' fullname='P. Thubert'>
+ <organization /></author>
+ <author initials='R.' surname='Wakikawa' fullname='R. Wakikawa'>
+ <organization /></author>
+ <author initials='V.' surname='Devarapalli' fullname='V. Devarapalli'>
+ <organization /></author>
+ <date year='2007' month='July' />
+ </front>
+ <seriesInfo name='RFC' value='4887' />
+ <format type='TXT' octets='40372' target='http://www.rfc-editor.org/rfc/rfc4887.txt' />
+ </reference>
+
+ <reference anchor='RFC5505' target="http://www.rfc-editor.org/info/rfc5505">
+ <front>
+ <title>Principles of Internet Host Configuration</title>
+ <author initials='B.' surname='Aboba' fullname='B. Aboba'>
+ <organization /></author>
+ <author initials='D.' surname='Thaler' fullname='D. Thaler'>
+ <organization /></author>
+<author initials='L.' surname='Andersson' fullname='L. Andersson'>
+<organization /></author>
+<author initials='S.' surname='Cheshire' fullname='S. Cheshire'>
+<organization /></author>
+<date year='2009' month='May' />
+</front>
+<seriesInfo name='RFC' value='5505' />
+<format type='TXT' octets='57340' target='http://www.rfc-editor.org/rfc/rfc5505.txt' />
+</reference>
+
+<reference anchor='RFC7217' target="http://www.rfc-editor.org/info/rfc7217">
+<front>
+<title>A Method for Generating Semantically Opaque Interface Identifiers with IPv6 Stateless Address Autoconfiguration (SLAAC)</title>
+<author initials='F.' surname='Gont' fullname='F. Gont'>
+<organization /></author>
+<date year='2014' month='April' />
+</front>
+<seriesInfo name='RFC' value='7217' />
+<format type='TXT' octets='48497' target='http://www.rfc-editor.org/rfc/rfc7217.txt' />
+</reference>
+
+<reference anchor='RFC3756' target="http://www.rfc-editor.org/info/rfc3756">
+<front>
+<title>IPv6 Neighbor Discovery (ND) Trust Models and Threats</title>
+<author initials='P.' surname='Nikander' fullname='P. Nikander'>
+<organization /></author>
+<author initials='J.' surname='Kempf' fullname='J. Kempf'>
+<organization /></author>
+<author initials='E.' surname='Nordmark' fullname='E. Nordmark'>
+<organization /></author>
+<date year='2004' month='May' />
+</front>
+<seriesInfo name='RFC' value='3756' />
+<format type='TXT' octets='56674' target='http://www.rfc-editor.org/rfc/rfc3756.txt' />
+</reference>
+
+<reference anchor='RFC7094' target="http://www.rfc-editor.org/info/rfc7094">
+<front>
+<title>Architectural Considerations of IP Anycast</title>
+<author initials='D.' surname='McPherson' fullname='D. McPherson'>
+<organization /></author>
+<author initials='D.' surname='Oran' fullname='D. Oran'>
+<organization /></author>
+<author initials='D.' surname='Thaler' fullname='D. Thaler'>
+<organization /></author>
+<author initials='E.' surname='Osterweil' fullname='E. Osterweil'>
+<organization /></author>
+<date year='2014' month='January' />
+</front>
+<seriesInfo name='RFC' value='7094' />
+<format type='TXT' octets='50246' target='http://www.rfc-editor.org/rfc/rfc7094.txt' />
+</reference>
+
+<reference anchor='RFC4692' target="http://www.rfc-editor.org/info/rfc4692">
+<front>
+<title>Considerations on the IPv6 Host Density Metric</title>
+<author initials='G.' surname='Huston' fullname='G. Huston'>
+<organization /></author>
+<date year='2006' month='October' />
+</front>
+<seriesInfo name='RFC' value='4692' />
+<format type='TXT' octets='41357' target='http://www.rfc-editor.org/rfc/rfc4692.txt' />
+</reference>
+
+<reference anchor='RFC7278' target="http://www.rfc-editor.org/info/rfc7278">
+<front>
+<title>Extending an IPv6 /64 Prefix from a Third Generation Partnership Project (3GPP) Mobile Interface to a LAN Link</title>
+<author initials='C.' surname='Byrne' fullname='C. Byrne'>
+<organization /></author>
+<author initials='D.' surname='Drown' fullname='D. Drown'>
+<organization /></author>
+<author initials='A.' surname='Vizdal' fullname='A. Vizdal'>
+<organization /></author>
+<date year='2014' month='June' />
+</front>
+<seriesInfo name='RFC' value='7278' />
+<format type='TXT' octets='19965' target='http://www.rfc-editor.org/rfc/rfc7278.txt' />
+</reference>
+
+<!--draft-ietf-6man-ipv6-address-generation-privacy-02: I-D Exists-->
+<reference anchor='ADDRESS-PRIVACY'>
+<front>
+<title>Privacy Considerations for IPv6 Address Generation Mechanisms</title>
+<author initials='A' surname='Cooper' fullname='Alissa Cooper'>
+    <organization />
+</author>
+<author initials='F' surname='Gont' fullname='Fernando Gont'>
+    <organization />
+</author>
+<author initials='D' surname='Thaler' fullname='Dave Thaler'>
+    <organization />
+</author>
+<date month='October' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' 
+	    value='draft-ietf-6man-ipv6-address-generation-privacy-02' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-6man-ipv6-address-generation-privacy-02.txt' />
+</reference>
+
+<reference anchor='RFC7368'>
+<front>
+<title>IPv6 Home Networking Architecture Principles</title>
+<author initials='T' surname='Chown' fullname='Tim Chown' role="editor">
+    <organization />
+</author>
+<author initials='J' surname='Arkko' fullname='Jari Arkko'>
+    <organization />
+</author>
+<author initials='A' surname='Brandt' fullname='Anders Brandt'>
+    <organization />
+</author>
+<author initials='O' surname='Troan' fullname='Ole Troan'>
+    <organization />
+</author>
+<author initials='J' surname='Weil' fullname='Jason Weil'>
+    <organization />
+</author>
+<date month='October' year='2014' />
+</front>
+<seriesInfo name='RFC,' value='7368' />
+</reference>
+
+<!--draft-ietf-6lowpan-btle-12: I-D Exists-->
+<reference anchor='BLUETOOTH-LE'>
+<front>
+<title>Transmission of IPv6 Packets over BLUETOOTH Low Energy</title>
+<author initials='J' surname='Nieminen' fullname='Johanna Nieminen'>
+    <organization />
+</author>
+<author initials='T' surname='Savolainen' fullname='Teemu Savolainen'>
+    <organization />
+</author>
+<author initials='M' surname='Isomaki' fullname='Markus Isomaki'>
+    <organization />
+</author>
+<author initials='B' surname='Patil' fullname='Basavaraj Patil'>
+    <organization />
+</author>
+<author initials='Z' surname='Shelby' fullname='Zach Shelby'>
+    <organization />
+</author>
+<author initials='C' surname='Gomez' fullname='Carles Gomez'>
+    <organization />
+</author>
+<date month='February' year='2013' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-6lowpan-btle-12' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-6lowpan-btle-12.txt' />
+</reference>
+
+<!--draft-ietf-6man-6lobac-01: I-D Exists-->
+<reference anchor='IPv6-TRANS'>
+<front>
+<title>Transmission of IPv6 over MS/TP Networks</title>
+<author initials='K' surname='Lynn' fullname='Kerry Lynn' role="editor">
+    <organization />
+</author>
+<author initials='J' surname='Martocci' fullname='Jerry Martocci'>
+    <organization />
+</author>
+<author initials='C' surname='Neilson' fullname='Carl Neilson'>
+    <organization />
+</author>
+<author initials='S' surname='Donaldson' fullname='Stuart Donaldson'>
+    <organization />
+</author>
+<date month='July' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-6lo-6lobac-00' />
+</reference>
+
+<!--draft-brandt-6man-lowpanz-02: I-D Exists-->
+<reference anchor='IPv6-G9959'>
+<front>
+<title>Transmission of IPv6 packets over ITU-T G.9959 Networks</title>
+<author initials='A' surname='Brandt' fullname='Anders Brandt'>
+    <organization />
+</author>
+<author initials='J' surname='Buron' fullname='Jakob Buron'>
+    <organization />
+</author>
+<date month='October' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-6lo-lowpanz-08' />
+
+</reference>
+
+<!--draft-templin-aerolink-46: I-D Exists-->
+<reference anchor='AERO-TRANS'>
+<front>
+<title>Transmission of IP Packets over AERO Links</title>
+<author initials='F' surname='Templin' fullname='Fred Templin'>
+    <organization />
+</author>
+<date month='October' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-templin-aerolink-46' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-templin-aerolink-46.txt' />
+</reference>
+
+<!--draft-ietf-opsec-ipv6-host-scanning-04: I-D Exists-->
+<reference anchor='HOST-SCANNING'>
+<front>
+<title>Network Reconnaissance in IPv6 Networks</title>
+<author initials='F' surname='Gont' fullname='Fernando Gont'>
+    <organization />
+</author>
+<author initials='T' surname='Chown' fullname='Tim Chown'>
+    <organization />
+</author>
+<date month='June' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-opsec-ipv6-host-scanning-04' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-opsec-ipv6-host-scanning-04.txt' />
+</reference>
+
+<!--draft-odell-8+8-00: I-D Expired-->
+<reference anchor='ODELL'>
+<front>
+<title>8+8 - An Alternate Addressing Architecture for IPv6</title>
+<author initials="M. " surname="O'Dell" fullname="Mike O'Dell"/>
+<date month='October' year='1996'/>
+</front>
+<seriesInfo name="Work in Progress," value='draft-odell-8+8-00' />
+</reference>
+
+      <reference anchor="IEEE802">
+        <front>
+          <title>IEEE Standard for Local and Metropolitan Area Networks:
+          Overview and Architecture</title>
+          <author><organization>IEEE</organization></author>
+          <date year="2007" />
+        </front>
+        <seriesInfo name="IEEE Std 802-2001" value="(R2007)" />
+      </reference>
+
+      <reference anchor="TCAM">
+        <front>
+          <title>Algorithmic Approaches to Redesigning TCAM-Based Systems</title>
+          <author initials="C. R." surname="Meiners" fullname="Chad R. Meiners"/> 
+          <author initials="A. X." surname="Liu" fullname="Alex X. Liu"/>
+          <author initials="E." surname="Torng" fullname="Eric Torng"/> 
+          <date year="2008" />
+        </front>
+        <seriesInfo name="ACM SIGMETRICS'08" value="467-468" />
+      </reference>
+
+    </references>
+<section anchor="app-Acknowledgements" title="Acknowledgements">
+<t>This document was inspired by a vigorous discussion on the V6OPS
+   working group mailing list with at least 20 participants.  Later,
+   valuable comments were received from Ran Atkinson, Fred Baker, Steven
+   Blake, Lorenzo Colitti, David Farmer, Bill Fenner, Ray Hunter,
+   Paraskevi Iliadou, Jen Linkova, Philip Matthews, Matthew Petach,
+   Scott Schmit, Tatuya Jinmei, Fred Templin, Ole Troan, Stig Venaas,
+   and numerous other participants in the 6MAN working group.  An
+   extremely detailed review by Mark Smith was especially helpful.</t>
+
+<t> This document was produced using the xml2rfc tool <xref target="RFC2629"/>.</t>
+</section>
+  </back>
+</rfc>

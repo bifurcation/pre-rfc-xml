@@ -1,0 +1,1851 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc rfcedstyle="yes"?>
+<?rfc subcompact="no"?>
+<?rfc symrefs="yes"?>
+<?rfc comments="yes" ?>
+<?rfc inline="yes" ?>
+<?rfc sortrefs="yes" ?>
+
+<rfc number="6710" category="std"  submissionType="IETF" consensus="yes" ipr="trust200902">
+
+  <front>
+    <title abbrev="Message Transfer Priority SMTP Extension">
+      Simple Mail Transfer Protocol Extension for Message Transfer Priorities
+    </title>
+    <author initials="A." surname="Melnikov" fullname="Alexey Melnikov">
+      <organization>Isode Ltd</organization>
+      <address>
+	<postal>
+	  <street>5 Castle Business Village</street>
+	  <street>36 Station Road</street>
+	  <city>Hampton</city>
+	  <region>Middlesex</region>
+	  <code>TW12 2BX</code>
+	  <country>UK</country>
+	</postal>
+	<email>Alexey.Melnikov@isode.com</email>
+      </address>
+    </author>
+      
+    <author initials="K." surname="Carlberg" fullname="Ken Carlberg">
+      <organization>G11</organization>
+      <address>
+	<postal>
+	  <street>1601 Clarendon Blvd, #203</street>
+	  <city>Arlington</city>
+	  <region>VA</region>
+	  <code>22209</code>
+	  <country>USA</country>
+	</postal>
+	<email>carlberg@g11.org.uk</email>
+      </address>
+    </author>
+
+    <date year="2012" month="August"/>
+    
+    <keyword>SMTP</keyword>
+    <keyword>Priority</keyword>
+    <keyword>MMHS</keyword>
+
+    <abstract>
+      <t>
+   This memo defines an extension to the SMTP (Simple Mail Transfer
+   Protocol) service
+   whereby messages are given a label to indicate preferential
+   handling, to enable mail handling nodes to take this information into account for
+   onward processing.
+      </t>
+    </abstract>
+    
+  </front>
+  <middle>
+    <section title="Introduction">
+
+<t>
+Where resources for switching or transferring messages are constrained
+(e.g., bandwidth, round trip time, transition storage, or processing
+capability), it is desirable to 
+give preferential handling to some messages over others, according
+to their labeled priority.  This is particularly important
+during emergencies for first responders (<xref target="mapping-emg"/>) and for environments
+such as military (<xref target="mapping-mil"/>) and aviation (<xref target="mapping-mixer"/>) messaging,
+where messages have high operational significance, and the consequences of extraneous delay can be significant.
+</t>
+
+<t>
+In order for an SMTP receiver to be able to relay higher-priority messages first,
+there needs to be a mechanism to communicate (during both Message Submission <xref target="RFC6409"/>
+and Message Transfer <xref target="RFC5321"/>)
+the priority of each message.   This specification defines this mechanism by specification
+of an SMTP <xref target="RFC5321"/> extension.
+</t>
+
+<t>
+In order to permit end-to-end use of this extension across an email infrastructure that does not support it,
+a companion tunneling mechanism is defined in <xref target="PRIORITY-TUNNELING"/> that uses a new message header field <xref target="RFC5322"/>.
+</t>
+
+<t>
+   This extension provides services to some classes of users in networks with limited available bandwidth
+   or long round trip times, when the actual message
+   transfer over the network can create a significant portion of the
+   overall message delivery time from a sender to a recipient, for example, over a satellite or high-frequency
+   radio link. It is also useful in case of a Mail Transfer Agent (MTA) queue buildup
+   due to the rate of incoming messages being higher than the rate of outgoing messages.
+   When neither of the two conditions mentioned above is true,
+   the use of the MT&nbhy;PRIORITY SMTP extension will not result in better SMTP service to any user.
+<!--////Alexey: Does this really need saying? Is this a Quality of Implementation issue?-->   
+   Also note that while this SMTP extension can help in improving delivery speed for
+   higher-priority messages, it does not provide any guarantees that for two given
+   messages with priorities M and N (M > N) submitted simultaneously, the message with
+   priority M will arrive earlier than the message with priority N. That is, this extension
+   calls for best effort to provide preferential processing.
+</t>
+
+<t>
+   Besides the actions taken at the application
+   level, it can thus be important to deploy priority or precedence
+   mechanisms offered by the network itself to ensure timely delivery of
+   the emails.  Examples would be the use of DiffServ <xref target="RFC2474"/>,
+   RSVP <xref target="RFC2205"/>, and <xref target="RFC6401"/> (an extension to
+RSVP that prioritizes reservations). 
+</t>
+      
+    </section>
+    
+    <section title="Conventions Used in This Document">
+      
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+	    "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in
+	    this document are to be interpreted as described in
+	    <xref target="RFC2119"/> when they appear in ALL CAPS.
+      These words also appear in this document in lower case as plain
+      English words, absent their normative meanings.</t>
+      
+      <t>The formal syntax uses the <xref target="RFC5234">Augmented
+	  Backus-Naur Form (ABNF)</xref> notation including the core rules
+	defined in Appendix B of <xref target="RFC5234">RFC 5234</xref>.
+      </t>
+
+<t>
+In examples, "C:" and "S:" indicate lines sent by the client and
+server, respectively.  Line breaks that do not start with a new "C:" or
+"S:" exist for editorial reasons and are not a part of the protocol.
+</t>
+
+<t>
+  This document uses the term "priority" specifically in relation to
+  the internal treatment of a message by the server. Messages with
+  higher priorities may be given expedited handling, and those with
+  lower priorities may be handled only as resources become available.
+</t>
+
+    </section>
+
+    <section title="Definition of the Priority SMTP Extension">
+
+	<t>The Priority SMTP service extension is defined as follows:
+	
+	    <list style="numbers">
+		
+   <t>The textual name of this extension is "Priority Message Handling".</t>
+
+   <t>The EHLO keyword value associated with this extension is "MT&nbhy;PRIORITY".</t>
+
+   <t>The EHLO keyword has an OPTIONAL parameter that conveys the name of the Priority Assignment Policy
+   (see <xref target="pap-definition"/>) used by the server. (See the
+&lt;mt-priority-ehlo&gt; ABNF non-terminal
+    in <xref target="pri-abnf"/> for details of its syntax.) Absence of the parameter means that the server
+    is unwilling to disclose its Priority Assignment Policy.
+    Clients can choose to use the MT&nbhy;PRIORITY SMTP extension even if they don't recognize a particular
+    Priority Assignment Policy name advertised by a server.</t>
+
+   <t>No additional SMTP verbs are defined by this extension.</t>
+	
+   <t>One optional parameter ("MT&nbhy;PRIORITY") is added to the
+      MAIL FROM command. The value associated with this parameter is
+      a decimal integer number from -9 to 9 (inclusive)
+      indicating the priority of the email message (see <xref target="faq"/> for more details
+      on why this range was selected).
+      The syntax of the MT&nbhy;PRIORITY parameter is described by the &lt;priority-value&gt;
+      ABNF non-terminal defined in <xref target="pri-abnf"/>.
+      Higher numbers mean higher priority.</t>
+        
+   <t>The maximum length of a MAIL FROM command line is increased by
+      15 octets by the possible addition of a space, the MT&nbhy;PRIORITY keyword,
+      and a priority value.</t>
+
+   <t>The MT&nbhy;PRIORITY extension is valid for the submission service
+      <xref target="RFC6409"/> and the Local Mail Transfer Protocol (LMTP) <xref target="RFC2033"/>.</t>
+
+	    </list>
+	</t>
+
+    </section>
+
+    <section title="Handling of Messages Received via SMTP">
+      
+	<t>
+	This section describes how a conforming SMTP server should handle any
+	messages received via SMTP.
+	</t>
+
+	
+	<section title="Handling of the MT&nbhy;PRIORITY Parameter by the Receiving SMTP Server" anchor="message-pri">
+
+	    <t>
+        The following rules apply to SMTP transactions in a server that
+        supports the MT&nbhy;PRIORITY parameter:
+
+          <list style="numbers">
+
+		   <t>
+		   If any of the associated &lt;esmtp-value&gt;s (as defined in Section 4.1.2
+       of <xref target="RFC5321"/>)
+       are not syntactically valid, or
+		   if there is more than one MT&nbhy;PRIORITY parameter in a
+		   particular MAIL FROM command, the server MUST return an error, for example
+		   "501 syntax error in parameter" (with the 5.5.2 Enhanced Status Code <xref target="RFC2034"/> <xref target="RFC5248"/>).
+		   </t>
+
+       <t>
+	     When inserting a Received header field as specified
+	     in Section 4.4 of <xref target="RFC5321"/>, the compliant MTA/MSA
+(Mail Submission Agent) 
+	     SHOULD include the "PRIORITY" clause whose syntax is specified
+	     in <xref target="pri-abnf"/>.
+	     </t>
+
+       <t>
+       The received MT&nbhy;PRIORITY parameter value SHOULD be logged as part of any logging of message transactions.
+       </t>
+
+       <t>If the sending SMTP client specified the MT&nbhy;PRIORITY parameter to the MAIL FROM command,
+		   then the value of this parameter is the message priority.</t>
+
+		   <t>
+       If no priority has been determined by the above,
+       the server may use its normal policies to set the message's priority.
+       By default, each message has priority 0.
+       </t>
+
+	    </list>
+
+	    </t>
+
+<!--From RFC 5321:
+450  Requested mail action not taken: mailbox unavailable (e.g.,
+      mailbox busy or temporarily blocked for policy reasons)
+455  Server unable to accommodate parameters
+550  Requested action not taken: mailbox unavailable (e.g., mailbox
+      not found, no access, or command rejected for policy reasons)
+-->
+    <t>
+      The SMTP server MUST NOT allow "upgraded" (positive) priorities from untrusted (e.g., unauthenticated)
+      or unauthorized sources.  (One example of an "unauthorized source"
+      might be an SMTP sender that successfully authenticated using SMTP AUTH, but that is not
+      explicitly authorized to use the SMTP MT&nbhy;PRIORITY service. In case of MTA-to-MTA transfer,
+      such authorization will usually be done as a bilateral agreement between two domains to honor
+      priorities from each other.)
+      The server MAY, however, allow an untrusted source to lower its own message's
+      priorities -- consider, for example, an email marketer that
+      voluntarily sends its marketing messages at a negative priority.
+    </t>
+
+    <t>The SMTP server MAY also alter the message priority (to lower or
+    to raise it) in order to enforce some other site policy. (Note that this also includes the case
+in which the priority is not explicitly specified.)
+    For example, an MSA might have a mapping table that assigns priorities
+    to messages based on authentication credentials.
+    </t>
+
+    <t>
+    If the SMTP server changes (lowers or raises) the priority of a message, it SHOULD use
+    the X.3.6 Enhanced Status Code <xref target="RFC2034"/> in its response to the MAIL FROM
+    or in the final response to the DATA (or similar) command.
+    The human readable text part after the status code contains the new priority,
+    followed by SP (ASCII space) and explanatory human readable text.
+    </t>      
+
+    <t>
+      Alternatively, an SMTP server that is an MSA MAY reject a message based on the determined
+      priority. In such cases, the MSA SHOULD use the 450 or 550 reply code.
+      The corresponding Enhanced Status Code MUST be X.7.15 <xref target="RFC2034"/>
+      if the determined priority level is below the lowest priority currently acceptable for
+      the receiving SMTP server.
+      Note that this condition might be temporary.
+<!--////Should this be controlled by the Priority Assignment Policy?-->
+      In some environments, operational policies might permit periods of operation
+      that relay only higher-priority messages and reject lower priority ones.
+      Such handling choices need to be specified for that operational environment.
+    </t>
+
+	</section>
+
+	<section title="Relay of Messages to Other Conforming SMTP/LMTP Servers" anchor="relay-conform">
+	    
+	    <t>
+	    The following rules govern the behavior of a conforming MTA (in the
+	    role of an SMTP/LMTP client) when
+	    relaying a message that was received via the SMTP protocol to an
+	    SMTP/LMTP server that supports the MT&nbhy;PRIORITY extension:
+
+<list style="numbers">
+    
+		<t>
+		An MT&nbhy;PRIORITY parameter with the value determined by the procedure from
+		<xref target="message-pri"/>
+    MUST appear in the MAIL FROM command issued when the message is relayed to
+    an MTA/MDA (Mail Delivery Agent) that also supports the MT&nbhy;PRIORITY extension.
+    (Note that due to site policy, this value might be different from
+    the value received from the SMTP client. See <xref target="message-pri"/>
+    for details.
+    Also note that this value might be different than the priority level at which
+    the MTA actually handles the request, due to the rounding described in <xref target="pri-processing"/>.)
+    </t>
+
+<!--
+////Need to mention Priority Assignment Policy here?
+-->
+
+    <t>
+		Further processing of the MT&nbhy;PRIORITY parameter is described in <xref target="pri-processing"/>.
+		</t>
+    
+</list>
+
+	    </t>
+
+	</section>
+
+	<section title="Relay of Messages to Non-Conforming SMTP/LMTP Servers" anchor="relay-non-conform">
+
+	   <t>
+	   The following rules govern the behavior of a conforming MTA (in the
+	   role of an SMTP/LMTP client) when relaying a message that was received via the
+	   SMTP protocol to an SMTP/LMTP server that does not support the MT&nbhy;PRIORITY extension:
+
+<list style="numbers">
+  
+    <t>
+      The MTA relays the message without including the MT&nbhy;PRIORITY parameter in the
+      MAIL FROM command.
+      
+<!--////Would be happy to include this, but is this going to be confusing to people?
+      Use of other MAIL FROM command parameters required by other SMTP extensions
+      is unaffected by this SMTP extension.
+-->      
+    </t>
+
+</list>
+
+    </t>
+
+  </section>
+
+	<section title="Mailing Lists and Aliases">
+
+<t>
+  Several types of mechanisms exist to redirect or forward messages to
+  alternative or multiple addresses <xref target="RFC5598"/>.
+  Examples for this are aliases and mailing lists <xref target="RFC5321"/>.
+</t>
+
+<t>
+  If a message is subject to such processing,
+  the Mediator node (Section 2.1 of <xref target="RFC5598"/>)
+  SHOULD retain the MT&nbhy;PRIORITY parameter value
+  for all expanded and/or translated addresses.
+</t>
+	    
+	</section>
+	
+	<section title="Gatewaying a Message into a Foreign Environment">
+	    
+	  <t>
+	The following rules govern the behavior of a conforming MTA when
+	gatewaying a message that was received via the SMTP protocol into a
+	foreign (non-SMTP) environment:
+
+<list style="numbers">
+
+	<t>
+	If the destination environment is unable to provide an equivalent
+	of the MT&nbhy;PRIORITY parameter, the conforming MTA SHOULD behave
+	as if it is relaying to a non-conformant SMTP server (<xref target="relay-non-conform"/>).
+	</t>
+    
+	<t>
+	If the destination environment is capable of providing an equivalent
+	of the MT&nbhy;PRIORITY parameter, the conforming MTA SHOULD behave
+	as if it is relaying to a conformant SMTP server (<xref target="relay-conform"/>),
+  converting the MT&nbhy;PRIORITY value to the equivalent in the destination environment.
+  </t>
+
+</list>
+
+	  </t>
+	
+	</section>
+
+	<section title="Interaction with the DSN SMTP Extension" anchor="dns-interaction">
+
+<!--////Alexey: Dave Crocker thinks that this should be controlled by the specific mapping policy,
+as some deployments might decide to use different priority for control messages altogether.
+Ned doesn't seem to agree with him (or at least he is less sure about that.)
+
+There is also a minor security issue raised by this SHOULD. See the Security Considerations section.-->
+
+	   <t>
+	   An MTA that needs to generate
+     a delivery report (whether for successful delivery or delayed/failed delivery)
+     for a message it is processing SHOULD use the priority value of the message as
+     the priority of the generated delivery report. In particular, this requirement
+     applies to MTAs that also implement <xref target="RFC3461"/>.
+	   </t>
+
+<!--Previous version
+
+     <t>
+     For delivery reports received by an MTA, processing rules specified in <xref target="message-pri"/> apply.
+     But note that while it might be tempting to handle all delivery reports (a.k.a. DSNs) at their
+     stated priority, under the assumption that failure notices need to get
+     through quickly in some situations, but such a policy creates an
+     exposure to fake DSN attacks if sources of DSNs can't be reliably established.
+     </t>
+-->
+
+     <t>
+     For delivery reports (DSNs) received by an MTA for relay, processing rules specified
+     in <xref target="message-pri"/> apply -- there is no special processing for relayed DSNs.
+     It might seem tempting to try to detect DSNs and process
+     them at an elevated priority under the assumption that failure notices need
+     to get through quickly, even or perhaps especially if the DSN came from an
+     untrusted source. But such a policy can create an exposure to fake DSN
+     attacks by giving untrusted systems a way to inject high-priority messages.
+     Implementation of such a policy also assumes that DSNs can be detected
+     reliably, which may not be the case since some systems use nonstandard
+     DSN formats.
+     </t>
+
+  </section>
+
+    </section>
+
+    <section title="The Priority Service Extension" anchor="pri-processing">
+
+    <t>
+    The priorities of messages affect the order in which messages are
+    transferred from the client to the server.  This is largely
+    independent from the order in which they were originally received
+    by the server.
+    </t>
+
+    <t>
+    A message priority is a decimal integer in the range from -9 to 9 (inclusive).
+    SMTP servers compliant with this specification are not required to support all
+    19 distinct priority levels (i.e., to treat each priority value as a separate priority),
+    but they MUST implement all distinct priority levels specified in the Priority Assignment Policy
+    (see <xref target="pap-definition"/>) implemented by the server. 
+    That is, an implementation that only supports N priority levels (where N &lt; 19) will internally 
+    round up a syntactically valid priority value that isn't supported to the next higher supported number
+    (or to the highest supported priority, if the value is higher than any supported priority).
+    For example, an implementation can treat priority values below and including -4 as priority -4,
+    priority -3 as priority -2, and all priorities starting from 5 can be treated as priority 6.
+    (See <xref target="pap-definition"/> for implementation/deployment considerations related to
+    Priority Assignment Policy.)    
+    </t>
+      
+    <t>
+    Irrespective of the number of distinct priority levels supported by the SMTP server,
+    when relaying the message to the next hop or delivering it over LMTP, the SMTP server
+    MUST communicate the priority value as determined in <xref target="message-pri"/>.
+    </t>
+
+    <t>Note: 19 possible priority levels are defined by this specification for extensibility.
+    For example, a particular implementation or deployment environment might need to provide
+    finer-grained control over message transfer priorities.
+    See <xref target="faq"/> for more details on why the range from -9 to 9 was selected.
+    </t>
+
+<!--
+5.4.  Size Limitation
+
+   The larger a message, the longer the time required to send it over a
+   given connection.  In constrained networks this can impair the
+   possibility of the MTS to deliver large messages with high priorities
+   in time.  Therefore, NameSpace Policy MAY define size constraints for
+   any or all of its priority levels.
+
+   These constraints can always be enforced independent of the SMTP
+   Service Extensions supported by the server receiving the email.  It
+   is always possible for the server to count the number of received
+   octets after the client indicated the end of the email and base the
+   decision to accept or reject the email on this number.
+
+   Therefor, after completely receiving the content of the email the
+   server MUST check that the actual received size does not exceed the
+   lowest size limitation allowed by the priorities set for all
+   recipients.  If the actual size is too big for at least one
+   recipient, the server MUST NOT send a successful reply but MUST
+////Do we need to support the new SMTP status codes?
+   reject the email with an error code of "556 Priority defined size
+   limit exceeded".  If the client uses an SMTP Service Extension which
+   allows to transmit the content in several chunks, such as [9], the
+   server SHOULD check the current size after every chunk and SHOULD
+   abort the email with the above error code as soon as the size
+   constraint applicable for the email is violated.
+
+   In addition to just counting the received octets while the email is
+   being transmitted, a client and server may also deploy mechanisms,
+   that allow for an earlier detection of size violations.  An example
+   for such a service is the "SMTP Service Extension for Message Size
+   Declaration" (SIZE Extension) from RFC 1870 [3].
+
+   The SIZE Extension allows a client to declare the size of the email
+   with an optional parameter to the MAIL FROM: SMTP command.  This
+   parameter can be used for example to decide for each individual
+   recipient whether the email fulfils the size constraints.  Unless
+   NameSpace Policy defines another course of action, if the size
+   provided with the SIZE argument of the MAIL FROM: command is too
+   large for the priority set for any of the recipients, the recipient
+   MUST be rejected with an error code of "556 Priority defined size
+   limit exceeded".  Processing for the remaining recipients is to
+   continue normally.
+
+   If the NameSpace Policy does not address size constraints, the
+   default is that emails may be of arbitrary size.  Constraints imposed
+   by other circumstances such as available storage space or general
+   limitations are, of course, unaffected by this.
+-->
+
+   <t>
+   As per the Priority Assignment Policy, some SMTP servers MAY impose additional maximum message
+   size constraints for different
+   message transfer priorities; for example, messages with priority 6 might not be larger
+   than 4 Kb. If an SMTP server chooses to reject a message because it is too big
+   for the determined priority, it SHOULD use 552 reply codes together
+   with the X.7.16 Enhanced Status Code <xref target="RFC2034"/>.
+   </t>
+
+<!--////As per Robert, dropping the whole paragraph will address his concern      
+      
+   <t>
+   As a general principle message rejection based based on priority (see <xref target="message-pri"/>)
+   or priority+message size combination SHOULD only be done when a message is submitted (i.e. by an MSA)
+////Add a reference for "border MTA" and "Administrative Domain"?
+   or when it enters an Administrative Domain (i.e. by a border MTA), i.e. it SHOULD NOT be done
+   by internal MTAs or MDAs.
+
+////   
+   Internal MTAs and MDAs don't need to enforce priority related policies, as long as they can verify origin of messages.
+   
+   In case of an MSA there is a link to a Mail User Agents (MUAs)
+   which generated the message, so the MUA is in a position to perform a corrective action,
+   such as resubmission of the message
+   with lower priority, converting or truncating the message to make it smaller, etc.
+   Such actions usually require user interaction. For this reason it is also important for MUAs
+   to support Enhanced Status Codes specified in this document (see <xref target="iana-regs"/> for
+   the summary).
+   Any rejection caused by a downstream MTA is going to result in a bounce message. Such bounce messages
+   are not friendly to users and are frequently removed by antispam software.
+   
+////Note that rejecting messages based on priority due to DoS might be Ok? But that might defeat the purpose
+////of the extension?   
+   </t>
+-->
+
+   <t>
+<!--RFC Editor: can you make this an indented paragraph below the previous one?-->
+   Implementation Note: If the SMTP server also supports the SMTP SIZE extension <xref target="RFC1870"/>,
+   then an SMTP client can use both SIZE= and MT&nbhy;PRIORITY= parameters on the MAIL FROM
+   command. This allows the server to perform early rejection of a message in case
+   the message size is too big for the specified priority, thus avoiding wasting bandwidth
+   by transferring the message first and then rejecting it due to its size. 
+   </t>
+
+   <t>
+   The Priority Service Extension can be combined with the
+   DELIVERBY <xref target="RFC2852"/> SMTP service extension; however, there is no requirement
+   that both extensions always be implemented together.
+   </t>
+
+      <section title="Expedited Transfer">
+
+<t>
+   The main service provided by the Priority Message Handling SMTP
+   Service Extension is expedited transfer of emails with a higher
+   priority.  Therefore, an SMTP client that has more than one email to send at
+   a given time sends those with a higher priority before those with
+   a lower one.
+   Additionally, the retry interval and/or default timeout before a non-delivery report
+   is generated MAY be lower (more aggressive) for messages of higher priority.
+   Lower retry intervals/default timeouts are controlled by the local MTA policy. 
+</t>
+
+<t>Note that as this SMTP extension requires some sort of trust relationship
+between a sender and a receiver and thus some form of authentication 
+(whether using SMTP AUTH, TLS, IP address whitelist, etc.), so senders using this SMTP extension will not
+be subject to greylisting <xref target="RFC6647"/>,
+unless they are unauthorized to use this SMTP extension due to an explicit policy
+decision or a misconfiguration error. However, note that in case of connection-level or
+SMTP EHLO/HELO greylisting, SMTP AUTH or TLS authentication options are not
+available to the server.</t>
+
+<t>
+   In order to make implementations of this extension easier, this SMTP extension
+   only allows a single priority for all recipients of the same message.
+</t>
+
+<t>
+<!--///This just seems like a reworded repeat of the first paragraph:
+   As a default policy, emails with higher priority waiting to be sent
+   by a client SHOULD NOT initiate transactions for emails with lower
+   priorites.
+-->
+  Within a priority level, the MTA uses its normal algorithm (the algorithm
+  used in absence of this SMTP extension) for determining message processing order.
+</t>
+
+<t>
+   Several possible ways of implementing expedited transfer are described
+   in more details in <xref target="strategies"/>. Note that these
+   sections don't describe all details and pitfalls for each implementation
+   strategy.
+</t>
+
+	</section>
+
+	<section title="Timely Delivery" anchor="deliver-by">
+
+<!--////This is now controlled by the Priority Assignment Policy. Does this need rewording?-->
+
+<t>
+  An important constraint (usually associated with higher-priority levels) in some environments is that messages with high-priority values
+  have some delivery time constraints.  In some cases, higher priorities mean a shorter
+  maximum time allowed for delivery.
+</t>
+
+<t>
+  Unextended SMTP does not offer a service for timely delivery,
+  i.e., "deliver this message within X seconds from submission" service.
+  The "Deliver By SMTP Service Extension" (DELIVERBY Extension)
+  defined in <xref target="RFC2852"/> is an example of an SMTP extension
+  providing a service that can be used to implement timely
+  delivery. Note that SMTP DELIVERBY and SMTP MT&nbhy;PRIORITY
+  extensions are complimentary and can be used together
+  (assuming the SMTP server they are talking to advertises
+  support for both). However, note that use of the DELIVERBY
+  extension alone does not guarantee any priority processing.
+<!--////Is the last sentence needed?-->  
+  If the client is using both SMTP DELIVERBY and SMTP MT&nbhy;PRIORITY
+  at the same time, the client can consider using smaller DELIVERBY
+  timeouts for higher-priority messages.
+</t>
+
+	</section>
+
+    </section>
+
+    <section title="Use of MT&nbhy;PRIORITY with LMTP">
+
+      <t>An LMTP server can advertise support for the MT&nbhy;PRIORITY extension if
+      it supports any combination of the following features:
+
+	      <list style="numbers">
+
+        <t>
+          The LMTP server is architected in such a way that it can deliver higher-priority messages quicker than lower-priority messages.
+        </t>
+
+        <t>The LMTP server logs that the MT&nbhy;PRIORITY extension was used by the previous SMTP hop.</t>
+
+        <t>
+          The LMTP server is exposing information about the MT&nbhy;PRIORITY extension to
+          a delivery-time filtering engine such as Sieve <xref target="RFC5228"/>.
+        </t>
+
+        </list>
+        
+      </t>
+
+    </section>
+
+    <section title="Syntax" anchor="pri-abnf">
+
+      <figure>
+        <artwork type="ABNF">
+<![CDATA[
+
+   priority-value = (["-"] NZDIGIT) / "0"
+                    ; Allowed values are from -9 to 9 inclusive
+
+   NZDIGIT = %x31-39
+             ; "1"-"9"
+
+   CFWS = <defined in RFC 5322>
+
+   ; New "clause" that can be used in the Received header field
+   Pri  = CFWS "PRIORITY" FWS priority-value
+             ; Complies with the <Additional-Registered-Clauses>
+             ; non-terminal syntax from RFC 5321.
+
+   mt-priority-ehlo = "MT-PRIORITY" [SP priority-profile]
+             ; Complies with the <ehlo-line> ABNF production 
+             ; from RFC 5321.
+
+   priority-profile = 1*20(ALPHA / DIGIT / "-" / "_" / ".")
+             ; name of the Priority Assignment Profile advertized in
+             ; the MT-PRIORITY EHLO response.
+             
+   ALPHA = <Defined in RFC 5234>
+   
+   DIGIT = <Defined in RFC 5234>
+]]>
+        </artwork>
+      </figure>
+
+<!--////RFC 5321 doesn't seem to have ABNF for the response line?!
+      ; Syntax of the X.7.TBD3 response
+      ["X.7.TBD3" SP] priority-value SP human-readable-text
+-->
+
+    </section>
+    
+    <section title="Example">
+
+      <t>The original submission (from MUA (Mail User Agent) to MSA) might
+appear as shown below.
+      Note that the example is also making use of the STARTTLS <xref target="RFC3207"/>,
+      DELIVERBY <xref target="RFC2852"/>, and
+	    DSN <xref target="RFC3461"/> SMTP extensions, even though there is no requirement
+	    that these other extensions be supported when the MT&nbhy;PRIORITY SMTP extension
+	    is implemented.</t>
+      
+<figure><artwork>
+       <![CDATA[
+     S: 220 example.com SMTP server here
+     C: EHLO mua.example.com
+     S: 250-example.com
+     S: 250-STARTTLS
+     S: 250-AUTH SCRAM-SHA-1 DIGEST-MD5
+     S: 250-DSN
+     S: 250-DELIVERBY
+     S: 250-ENHANCEDSTATUSCODES
+     S: 250 MT-PRIORITY MIXER
+     C: AUTH SCRAM-SHA-1
+     [...authentication exchange...]
+     S: 235 2.7.0 Authentication successful
+     C: MAIL FROM:<eljefe@example.com> BY=125;R ENVID=QQ314159
+         MT-PRIORITY=3
+     S: 250 2.1.0 <eljefe@example.com> sender ok
+     C: RCPT TO:<topbanana@example.net>
+     S: 250 2.1.5 <topbanana@example.net> recipient ok
+     C: RCPT TO:<Dana@Ivory.example.net> NOTIFY=SUCCESS,FAILURE
+         ORCPT=rfc822;Dana@Ivory.example.net
+     S: 250 2.1.5 <Dana@Ivory.example.net> recipient ok
+     C: DATA
+     S: 354 okay, send message
+     C:  (message goes here)
+     C: .
+     S: 250 2.1.0 message accepted
+     C: QUIT
+     S: 221 2.0.0 goodbye
+]]></artwork></figure>
+
+	<t>
+  In the above example, the MUA has specified the priority 3 and the server has accepted it.
+  The server is advertising the MIXER Priority Assignment Policy (the default).
+  Another variant of the initial submission might look like:
+	</t>
+      
+<figure><artwork>
+       <![CDATA[
+     S: 220 example.com SMTP server here
+     C: EHLO mua.example.com
+     S: 250-example.com
+     S: 250-STARTTLS
+     S: 250-AUTH SCRAM-SHA-1 DIGEST-MD5
+     S: 250-DSN
+     S: 250-DELIVERBY
+     S: 250-ENHANCEDSTATUSCODES
+     S: 250 MT-PRIORITY
+     C: AUTH SCRAM-SHA-1
+     [...authentication exchange...]
+     S: 235 2.7.0 Authentication successful
+     C: MAIL FROM:<eljefe@example.com> BY=125;R ENVID=QQ314159
+     S: 250 2.1.0 <eljefe@example.com> sender ok
+     C: RCPT TO:<topbanana@example.net>
+     S: 250 2.1.5 <topbanana@example.net> recipient ok
+     C: RCPT TO:<Dana@Ivory.example.net> NOTIFY=SUCCESS,FAILURE
+         ORCPT=rfc822;Dana@Ivory.example.net
+     S: 250 2.1.5 <Dana@Ivory.example.net> recipient ok
+     C: DATA
+     S: 354 okay, send message
+     C:  (message goes here)
+     C: .
+     S: 250 X.3.6 3 is the new priority assigned to the message
+     C: QUIT
+     S: 221 2.0.0 goodbye
+]]></artwork></figure>
+      
+	<t>
+  In the above example, the MUA has not specified any priority, but the MSA has assigned priority 3 to the message.
+  Also note that the server is unwilling to adverte the Priority Assignment Policy it supports in the EHLO response.
+  </t>
+
+	<t>
+  The MSA relays the message to the next MTA.
+	</t>
+	
+<figure><artwork>
+       <![CDATA[
+     S: 220 example.net SMTP server here
+     C: EHLO example.com
+     S: 250-example.net
+     S: 250-DSN
+     S: 250-DELIVERBY
+     S: 250 MT-PRIORITY STANAG4406
+     C: MAIL FROM:<eljefe@example.com> BY=120;R ENVID=QQ314159
+         MT-PRIORITY=3
+     S: 250 <eljefe@example.com> sender ok
+     C: RCPT TO:<topbanana@example.net>
+     S: 250 <topbanana@example.net> recipient ok
+     C: RCPT TO:<Dana@Ivory.example.net> NOTIFY=SUCCESS,FAILURE
+         ORCPT=rfc822;Dana@Ivory.example.net
+     S: 250 <Dana@Ivory.example.net> recipient ok
+     C: DATA
+     S: 354 okay, send message
+     C:  (message goes here)
+     C: .
+     S: 250 message accepted
+     C: QUIT
+     S: 221 goodbye
+]]></artwork></figure>
+   
+	   <t>
+     The receiving SMTP server advertises support for the "STANAG4406" Priority Assignment Policy,
+     which supports 6 priority levels as described in <xref target="mapping-mil"/>.
+     This means that the server will use the priority value 4 internally
+     (the next supported priority higher or equal to 3)
+     and will communicate the priority value 3 when relaying it to the next hop (if necessary).
+	   </t>
+
+    </section>
+
+    <section title="Deployment Considerations">
+
+      <section title="Multiple MX Records">
+        
+        <t>
+        If multiple DNS MX records are used to specify multiple servers for a
+        domain in Section 5 of <xref target="RFC5321"/>, it is strongly advised that
+        all of them support the MT&nbhy;PRIORITY extension and handle priorities in
+        exactly the same way. If one or more servers behave differently in this respect,
+        then it is strongly suggested that none of the servers
+        support the MT&nbhy;PRIORITY extension. Otherwise,
+        unexpected differences in message delivery speed or even rejections
+        can happen during temporary or permanent
+        failures, which users might perceive as serious reliability issues.
+        </t>
+        
+      </section>
+
+      <section title="Priority Assignment Policies" anchor="pap-definition">
+
+        <t>
+        This document allows up to 19 distinct priority values.
+        In a particular operating environment, independent originators
+        need to assign priority values according to, roughly, the same criteria,
+        so that the same "high priority message" doesn't get associated
+        with the value 3 for one sender and with the value 5 for another,
+        as such messages might unintentionally receive different preferential
+treatment.
+        </t>
+        
+        <t>
+        In order to achieve consistent behavior in an operating environment,
+        the Priority Assignment Policy (together with possible associated restrictions on maximum message
+        sizes for each priority (if any), default timeouts, etc.)
+        should be documented for the environment.
+        Each SMTP/LMTP server supports a Priority Assignment Policy, whether explicit (advertised
+        in the MT&nbhy;PRIORITY EHLO response) or implicit (not advertised).
+        The default Priority Assignment Policy (assumed by the client when no Priority Assignment
+        Policy name is advertised in the MT&nbhy;PRIORITY EHLO response) is specified in <xref target="mapping-mixer"/>.
+        Two other policies are specified in <xref target="mapping-mil"/>
+        and <xref target="mapping-emg"/>. Additional policies SHOULD be registered with IANA
+        as specified in <xref target="policy-reg"/>.
+        </t>
+
+        <t>Moreover, all MSAs/MTAs/MDAs within any given Administrative Management Domain
+        has to be configured to use the same Priority Assignment Policy. Otherwise, a differently
+        configured MSA/MTA/MDA can expose the whole domain to possible attacks, like
+        injection of a high-priority fake DSN.</t>
+
+        <t>When this SMTP extension is deployed across multiple cooperating Administrative Domains,
+        such Administrative Domains need to use the same or at least compatible policies.
+        Again, differences in policies (for example, differences in how users are authenticated
+        or differences in how priorities are handled)
+        can expose an Administrative Domain to weaknesses in a partner domain.
+        </t>
+
+      </section>
+      
+    </section>
+
+    <section title="IANA Considerations" anchor="iana-regs">
+      
+      <t>IANA has added the MT&nbhy;PRIORITY SMTP extension
+      to the "SMTP Service Extensions" registry (http://www.iana.org/assignments/mail-parameters).
+      This extension is suitable for the Submit port.
+      </t>
+
+      <t>IANA has added the following new Received header
+      field clause to the "Additional-registered-clauses" sub-registry
+      (http://www.iana.org/assignments/mail-parameters) to help with
+      tracing email messages delivered using the MT&nbhy;PRIORITY SMTP extension:<vspace blankLines="1"/>
+
+      Clause name: PRIORITY<vspace/>
+      Description: Records the value of the MT&nbhy;PRIORITY parameter specified in the MAIL FROM command<vspace/>
+      Syntax of the value: See <xref target="pri-abnf"/> of RFC 6710<vspace/>
+      Reference: RFC 6710
+      </t>
+	
+      <t>IANA has added the following Enumerated Status Codes
+      to the "Simple Mail Transfer Protocol (SMTP) Enhanced Status Codes"
+registry (http://www.iana.org/assignments/smtp-enhanced-status-codes)
+      established by <xref target="RFC5248"/>:
+
+        <list style="numbers">
+
+          <t><list style='hanging'>
+   <t hangText="Code:">X.7.15</t>
+   <t hangText="Sample Text:">Priority Level is too low</t>
+   <t hangText="Associated basic status code:">450, 550 (other 4XX or 5XX codes are allowed)</t>
+   <t hangText="Description:">The specified priority level is below the lowest
+                       priority acceptable for the receiving SMTP server.
+                       This condition might be temporary, for example
+                       the server is operating in a mode
+                       where only higher-priority messages are accepted
+                       for transfer and delivery,
+                       while lower-priority messages are rejected.</t>
+   <t hangText="Reference:">RFC 6710</t>
+   <t hangText="Submitter:">A. Melnikov</t>
+   <t hangText="Change controller:">IESG</t>
+          </list></t>
+
+          <t><list style='hanging'>
+   <t hangText="Code:">X.7.16</t>
+   <t hangText="Sample Text:">Message is too big for the specified priority</t>
+   <t hangText="Associated basic status code:">552 (other 4XX or 5XX codes are allowed)</t>
+   <t hangText="Description:">The message is too big for the specified priority.
+                       This condition might be temporary, for example
+                       the server is operating in a mode
+                       where only higher-priority messages below a certain size are accepted
+                       for transfer and delivery.</t>
+   <t hangText="Reference:">RFC 6710</t>
+   <t hangText="Submitter:">A. Melnikov</t>
+   <t hangText="Change controller:">IESG</t>
+          </list></t>
+
+          <t><list style='hanging'>
+   <t hangText="Code:">X.3.6</t>
+   <t hangText="Sample Text:">Requested priority was changed</t>
+   <t hangText="Associated basic status code:">250 or 251</t>
+   <t hangText="Description:">The message was accepted for relay/delivery, but the requested
+                       priority (possibly the implied default) was not honored.
+                       The human readable text after the status code contains the new priority,
+                       followed by SP (space) and explanatory human readable text.</t>
+   <t hangText="Reference:">RFC 6710</t>
+   <t hangText="Submitter:">A. Melnikov</t>
+   <t hangText="Change controller:">IESG</t>
+          </list></t>
+          
+	  </list>
+      </t>
+
+    <t>IANA has created a new IANA registry called "SMTP PRIORITY Extension Priority Assignment Policy".
+    Future registrations in this registry are governed by the "Specification Required" <xref target="RFC5226"/>
+    IANA registration policy.
+    Requirements on registrations (to be verified by the Designated Expert) are specified in <xref target="policy-reg"/>.
+    Changes to registrations undergo the same process as initial registrations. In cases of significant
+    changes to registrations (other than editorial clarifications), the Designated Expert MAY
+    require registration of a Priority Assignment Policy with a new name instead of updating the existing one.
+    </t>
+    
+    <section title="Requirements on Priority Assignment Policy Registrations" anchor="policy-reg">
+
+      <t>
+      Priority Assignment Policy registrations with IANA are accompanied by a
+policy specification document
+      that MUST specify the following information:
+
+      <list style="numbers">
+
+      <t>The Priority Assignment Policy name, which is a case-insensitive string of 1 to 20
+      US-ASCII characters to be advertised as the MT&nbhy;PRIORITY EHLO parameter. Allowed characters are:
+      ALPHA, DIGIT, "-", "_", and "."</t>
+
+      <t>Number of distinct priority levels supported by all servers implementing the policy and their respective values.</t>
+
+      <t>For each supported priority level: default retry timeouts (how often to retry sending a message
+      if there is a temporary error to transfer/deliver it). The policy specification
+      can also explicitly define such information as implementation and/or deployment specific.</t>
+
+      <t>For each supported priority level: default expiration timeouts (how long to attempt transfer/delivery
+      before the message expires and causes a non-delivery report to be generated). The policy specification
+      can also explicitly define such information as implementation and/or deployment specific.
+      Note that a client can override such default when it uses additional SMTP extensions (such as the one
+      mentioned in <xref target="deliver-by"/>).
+      </t>
+
+      <t>Maximum message size associated with each priority level. The policy specification
+      can also explicitly define such information as implementation and/or deployment specific.</t>
+
+      <t>Any requirements/restrictions on the kind of SMTP client authentication required in order
+      for an SMTP server implementing this policy to accept priority values specified by an SMTP client.
+      For example, this can limit which Simple Authentication and Security
+Layer (SASL) <xref target="RFC4422"/> authentication mechanisms
+      are to be used, require TLS, etc.</t>
+
+      <t>Any other information that might affect processing of messages with different priorities.</t>
+
+      <t>Note that the policy specification document is not allowed to redefine the allowed range of
+      priorities specified in <xref target="pri-processing"/> and other aspects of handling of different
+      priorities, unless explicitly specified by this document.</t>
+
+      </list>
+    
+    </t>
+
+    </section>
+      
+      
+    <section title="Initial Priority Assignment Policy Registrations">
+
+      <t>IANA has registered the following initial values in the
+      "SMTP PRIORITY Extension Priority Assignment Policy" registry:</t>
+      
+	<texttable>
+	    <preamble>Initial Priority Assignment Policy Registrations</preamble>
+    
+	    <ttcol align='left'>Policy Name</ttcol>
+	    <ttcol align='left'>Reference</ttcol>
+      <ttcol align='left'>Comment</ttcol>
+
+      <c>MIXER</c><c><xref target="mapping-mixer"/> of RFC 6710</c><c>Default policy</c>
+      <c>STANAG4406</c><c><xref target="mapping-mil"/> of RFC 6710</c><c></c>
+	    <c>NSEP</c><c><xref target="mapping-emg"/> of RFC 6710</c><c></c>
+
+<!--
+	    <postamble></postamble>
+-->
+	</texttable>      
+
+    </section>
+
+  </section>
+
+    <section title="Security Considerations" anchor="seccons">
+	
+	<t>
+  Message Submission Agents ought to only accept message transfer
+  priorities from users (or only certain groups of such users) who are authenticated and authorized
+  in some way that's acceptable to the MSA.  As part of this policy, they can also
+  restrict maximum priority values that different groups of users can
+  request, and can override the priority values specified by MUAs.
+	</t>
+
+	<t>
+  Similarly, MTAs ought to only accept message transfer
+  priorities from senders (or only certain groups of such senders) who are authenticated and authorized
+  in some way that's acceptable to the MTA.  As part of this policy, they can also
+  restrict maximum priority values that different groups of senders can
+  request, and can override the priority values specified by them.
+	</t>
+  
+<!--////SMs altenative text for the first 2 paragraphs:
+	<t>
+  Allowing authenticated and trusted senders, or only certain groups of
+  
+Specifying is fine, but the recipient might not accept the value!!!
+
+  such senders, to specify a message transfer priority when a message is
+  submitted through a MSA or relayed through a MTA is a matter of site
+  policy.  As a part of this policy, they can restrict maximum priority values
+  that different groups of senders can request and can override the priority
+  values specified.
+	</t>
+-->
+      
+	<t>
+	In the absence of the policy enforcement mentioned above, an SMTP server (whether an MSA or an MTA)
+  implementing this SMTP extension might be susceptible to a denial-of-service attack. For example,
+	malicious clients (MUAs/MSAs/MTAs) can try to abuse this feature by always
+  requesting priority 9.
+	</t>
+
+<!--////As per Stephen's comment. This is lacking the conclusion.-->
+
+<!--      
+  <t>This specification recommends inheritance of the original priority when creating a DSN report
+  (<xref target="dns-interaction"/>). This enables a sender to bombard an innocent recipient
+  with several high priority messages by sending a single email message with the MAIL FROM containing
+  address of the victim and multiple non existent recipients. (Note that the ability to generate
+  multiple DSN reports going to a victim is not new with this extension, it is present in unextended SMTP.
+  The only thing that this extension adds is the ability to make such DSNs high priority.)
+  </t>
+-->
+
+    </section>
+
+  </middle>
+  <back>
+<?rfc rfcedstyle="no"?>
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2033"?> <!-- LMTP -->
+      <?rfc include="reference.RFC.2034"?> <!-- SMTP extension for returning Enhanced Status Codes -->
+      <?rfc include="reference.RFC.2119"?> <!-- Keywords -->
+      <?rfc include="reference.RFC.3461"?> <!-- SMTP DSN -->
+      <?rfc include="reference.RFC.5321"?> <!-- SMTP -->
+      <?rfc include="reference.RFC.5322"?> <!-- Email -->
+      <?rfc include="reference.RFC.5226"?> <!-- IANA Policies -->
+<!--      <?rfc include="reference.RFC.5234"?>  ABNF -->
+<?xml version='1.0' encoding='UTF-8'?>
+
+<reference anchor='RFC5234'>
+
+<front>
+<title>Augmented BNF for Syntax Specifications: ABNF</title>
+<author initials='D.' surname='Crocker' fullname='D. Crocker' role="editor">
+<organization /></author>
+<author initials='P.' surname='Overell' fullname='P. Overell'>
+<organization /></author>
+<date year='2008' month='January' />
+<abstract>
+<t>Internet technical specifications often need to define a formal syntax.  Over the years, a modified version of Backus-Naur Form (BNF), called Augmented BNF (ABNF), has been popular among many Internet specifications.  The current specification documents ABNF.  It balances compactness and simplicity with reasonable representational power.  The differences between standard BNF and ABNF involve naming rules, repetition, alternatives, order-independence, and value ranges.  This specification also supplies additional rule definitions and encoding for a core lexical analyzer of the type common to several Internet specifications. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='STD' value='68' />
+<seriesInfo name='RFC' value='5234' />
+<format type='TXT' octets='26359' target='http://www.rfc-editor.org/rfc/rfc5234.txt' />
+</reference>
+
+
+
+      <?rfc include="reference.RFC.5248"?> <!-- Enhanced Status Codes Registry -->
+      <?rfc include="reference.RFC.6409"?> <!-- Submission Service -->
+    </references>
+
+    <references title="Informative References">
+
+      <?rfc include="reference.RFC.5598"?>
+<!--      <?rfc include="reference.RFC.1845"?> SMTP CHECKPOINT -->
+<reference anchor='RFC1845'>
+
+<front>
+<title abbrev='SMTP Checkpoint/Restart'>SMTP Service Extension for Checkpoint/Restart</title>
+
+<author initials='D.' surname='Crocker' fullname='Dave Crocker'>
+<organization>Brandenburg Consulting</organization>
+<address>
+<postal>
+<street>675 Spruce Dr.</street>
+<city>Sunnyvale</city>
+<region>CA</region>
+<code>94086</code>
+<country>US</country></postal>
+<phone>+1 408 246 8253</phone>
+<facsimile>+1 408 249 6205</facsimile>
+<email>dcrocker@mordor.stanford.edu</email></address></author>
+<author initials='N.' surname='Freed' fullname='Ned Freed'>
+<organization>Innosoft International, Inc.</organization>
+<address>
+<postal>
+<street>1050 East Garvey Avenue South</street>
+<city>West Covina</city>
+<region>CA</region>
+<code>91790</code>
+<country>US</country></postal>
+<phone>+1 818 919 3600</phone>
+<facsimile>+1 818 919 3614</facsimile>
+<email>ned@innosoft.com</email></address></author>
+<author initials='A.' surname='Cargille' fullname='A. Cargille'>
+<organization />
+<address />
+</author>
+<date year='1995' month='September' />
+
+<abstract>
+<t>This memo defines an extension to the SMTP service whereby an interrupted SMTP transaction can be restarted at a later time without having to repeat all of the commands and message content sent prior to the interruption.</t></abstract></front>
+
+<seriesInfo name='RFC' value='1845' />
+<format type='TXT' octets='15399' target='http://www.rfc-editor.org/rfc/rfc1845.txt' />
+</reference>
+
+
+      <?rfc include="reference.RFC.1870"?> <!-- SMTP SIZE -->
+      <?rfc include="reference.RFC.2156"?> <!-- MIXER -->
+<!--       <?rfc include="reference.RFC.2205"?> RSVP -->
+<reference anchor='RFC2205'>
+
+<front>
+<title abbrev='RSVP'>Resource ReSerVation Protocol (RSVP) -- Version 1 Functional Specification</title>
+<author initials='B.' surname='Braden' fullname='Bob Braden' role="editor">
+<organization>USC Information Sciences Institute</organization>
+<address>
+<postal>
+<street>4676 Admiralty Way</street>
+<street>Marina del Rey</street>
+<street>CA 90292</street></postal>
+<phone>(310) 822-1511</phone>
+<email>Braden@ISI.EDU</email></address></author>
+<author initials='L.' surname='Zhang' fullname='Lixia Zhang'>
+<organization>UCLA Computer Science Department</organization>
+<address>
+<postal>
+<street>4531G Boelter Hall</street>
+<street>Los Angeles</street>
+<street>CA 90095-1596</street>
+<country>USA</country></postal>
+<phone>310-825-2695</phone>
+<email>lixia@cs.ucla.edu</email></address></author>
+<author initials='S.' surname='Berson' fullname='Steve Berson'>
+<organization>USC Information Sciences Institute</organization>
+<address>
+<postal>
+<street>4676 Admiralty Way</street>
+<street>Marina del Rey</street>
+<street>CA 90292</street></postal>
+<phone>(310) 822-1511</phone>
+<email>Berson@ISI.EDU</email></address></author>
+<author initials='S.' surname='Herzog' fullname='Shai Herzog'>
+<organization>IBM T. J. Watson Research Center</organization>
+<address>
+<postal>
+<street>P.O Box 704</street>
+<street>Yorktown Heights</street>
+<street>NY 10598</street></postal>
+<phone>(914) 784-6059</phone>
+<email>Herzog@WATSON.IBM.COM</email></address></author>
+<author initials='S.' surname='Jamin' fullname='Sugih Jamin'>
+<organization>University of Michigan</organization>
+<address>
+<postal>
+<street>CSE/EECS</street>
+<street>1301 Beal Ave.</street>
+<street>Ann Arbor</street>
+<street>MI 48109-2122</street></postal>
+<phone>(313) 763-1583</phone>
+<email>jamin@EECS.UMICH.EDU</email></address></author>
+<date year='1997' month='September' />
+<area>Transport</area>
+<keyword>multicast</keyword>
+<keyword>resource reservation protocol</keyword>
+<keyword>RSVP</keyword>
+<abstract>
+<t>
+   This memo describes version 1 of RSVP, a resource reservation setup
+   protocol designed for an integrated services Internet.  RSVP provides
+   receiver-initiated setup of resource reservations for multicast or
+   unicast data flows, with good scaling and robustness properties.
+   What&apos;s Changed
+</t>
+<t>
+   This revision contains the following very minor changes from the ID14
+   version.
+
+<list>
+<t>
+      o    For clarity, each message type is now defined separately in
+           Section 3.1.
+</t>
+<t>
+      o    We added more precise and complete rules for accepting Path
+           messages for unicast and multicast destinations (Section
+           3.1.3).
+</t>
+<t>
+      o    We added more precise and complete rules for processing and
+           forwarding PathTear messages (Section 3.1.5).
+</t>
+<t>
+      o    A note was added that a SCOPE object will be ignored if it
+           appears in a ResvTear message (Section 3.1.6).
+</t>
+<t>
+      o    A note was added that a SENDER_TSPEC or ADSPEC object will be
+           ignored if it appears in a PathTear message (Section 3.1.5).
+</t>
+<t>
+      o    The obsolete error code Ambiguous Filter Spec (09) was
+           removed, and a new (and more consistent) name was given to
+           error code 08 (Appendix B).
+</t>
+<t>
+      o    In the generic interface to traffic control, the Adspec was
+           added as a parameter to the AddFlow and ModFlow calls
+           (3.11.2).  This is needed to accommodate a node that updates
+           the slack term (S) of Guaranteed service.
+</t>
+<t>
+      o    An error subtype was added for an Adspec error (Appendix B).
+</t>
+<t>
+      o    Additional explanation was added for handling a CONFIRM
+           object (Section 3.1.4).
+</t>
+<t>
+      o    The rules for forwarding objects with unknown class type were
+           clarified.
+</t>
+<t>
+      o    Additional discussion was added to the Introduction and to
+           Section 3.11.2 about the relationship of RSVP to the link
+           layer.  (Section 3.10).
+</t>
+<t>
+      o    Section 2.7 on Policy and Security was split into two
+           sections, and some additional discussion of security was
+           included.
+</t>
+<t>
+      o    There were some minor editorial improvements.
+</t></list></t></abstract></front>
+
+<seriesInfo name='RFC' value='2205' />
+<format type='TXT' octets='223974' target='http://www.rfc-editor.org/rfc/rfc2205.txt' />
+<format type='HTML' octets='254360' target='http://xml.resource.org/public/rfc/html/rfc2205.html' />
+<format type='XML' octets='225955' target='http://xml.resource.org/public/rfc/xml/rfc2205.xml' />
+</reference>
+
+
+
+      <?rfc include="reference.RFC.2474"?> <!-- DiffServ -->
+      <?rfc include="reference.RFC.2852"?> <!-- SMTP DELIVERBY -->
+      <?rfc include="reference.RFC.3207"?> <!-- SMTP STARTTLS -->
+      <?rfc include="reference.RFC.4190"?>
+      <?rfc include="reference.RFC.4412"?>
+<!--      <?rfc include="reference.RFC.4422"?> SASL -->
+<reference anchor='RFC4422'>
+
+<front>
+<title>Simple Authentication and Security Layer (SASL)</title>
+<author initials='A.' surname='Melnikov' fullname='A. Melnikov' role="editor">
+<organization /></author>
+<author initials='K.' surname='Zeilenga' fullname='K. Zeilenga' role="editor">
+<organization /></author>
+<date year='2006' month='June' />
+<abstract>
+<t>The Simple Authentication and Security Layer (SASL) is a framework for providing authentication and data security services in connection-oriented protocols via replaceable mechanisms. It provides a structured interface between protocols and mechanisms. The resulting framework allows new protocols to reuse existing mechanisms and allows old protocols to make use of new mechanisms. The framework also provides a protocol for securing subsequent protocol exchanges within a data security layer.&lt;/t>&lt;t> This document describes how a SASL mechanism is structured, describes how protocols include support for SASL, and defines the protocol for carrying a data security layer over a connection. In addition, this document defines one SASL mechanism, the EXTERNAL mechanism.&lt;/t>&lt;t> This document obsoletes RFC 2222. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='4422' />
+<format type='TXT' octets='73206' target='http://www.rfc-editor.org/rfc/rfc4422.txt' />
+</reference>
+
+
+
+<!--      <?rfc include="reference.RFC.5228"?> Sieve -->
+<reference anchor='RFC5228'>
+
+<front>
+<title>Sieve: An Email Filtering Language</title>
+<author initials='P.' surname='Guenther' fullname='P. Guenther' role="editor">
+<organization /></author>
+<author initials='T.' surname='Showalter' fullname='T. Showalter' role="editor">
+<organization /></author>
+<date year='2008' month='January' />
+<abstract>
+<t>This document describes a language for filtering email messages at time of final delivery.  It is designed to be implementable on either a mail client or mail server.  It is meant to be extensible, simple, and independent of access protocol, mail architecture, and operating system.  It is suitable for running on a mail server where users may not be allowed to execute arbitrary programs, such as on black box Internet Message Access Protocol (IMAP) servers, as the base language has no variables, loops, or ability to shell out to external programs. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='5228' />
+<format type='TXT' octets='87531' target='http://www.rfc-editor.org/rfc/rfc5228.txt' />
+</reference>
+
+      <reference anchor="PRIORITY-TUNNELING">
+        
+        <front>
+          <title abbrev="Tunneling of Message Transfer Priorities">
+            Tunneling of SMTP Message Transfer Priorities
+          </title>
+          <author initials="A." surname="Melnikov" fullname="Alexey Melnikov">
+            <organization>Isode Ltd</organization>
+            <address>
+              <postal>
+                <street>5 Castle Business Village</street>
+                <street>36 Station Road</street>
+                <city>Hampton</city>
+                <region>Middlesex</region>
+                <code>TW12 2BX</code>
+                <country>UK</country>
+              </postal>
+              <email>Alexey.Melnikov@isode.com</email>
+            </address>
+          </author>
+
+          <author initials="K." surname="Carlberg" fullname="Ken Carlberg">
+            <organization>G11</organization>
+            <address>
+              <postal>
+                <street>1601 Clarendon Blvd, #203</street>
+                <city>Arlington</city>
+                <region>VA</region>
+                <code>22209</code>
+                <country>USA</country>
+              </postal>
+              <email>carlberg@g11.org.uk</email>
+            </address>
+          </author>
+
+          <date year="2012" month="July"/>
+
+        </front>
+        
+        <seriesInfo name="Work in" value="Progress" />
+
+      </reference>
+      
+
+        <reference anchor="ACP123">
+        <front>
+          <title>Common Messaging strategy and procedures</title>
+
+          <!--CCEB == COMBINED COMMUNICATIONS-ELECTRONICS BOARD-->
+          <author surname="CCEB">
+            <!--
+			<organization></organization>
+-->
+          </author>
+
+          <date month="May" year="2009" />
+        </front>
+
+        <seriesInfo name="ACP" value="123" />
+        <format target="http://jcs.dtic.mil/j6/cceb/acps/acp123" type="HTML" />
+
+      </reference>
+      
+      <reference anchor="STANAG-4406">
+        <front>
+          <title>STANAG 4406 Edition 2: Military Message Handling System</title>
+          <author surname="NATO">
+          </author>
+          <date month="March" year="2005"/>
+        </front>
+
+        <seriesInfo name="STANAG" value="4406"/>
+      </reference>
+
+
+
+     <?rfc include="reference.RFC.6647"?>
+
+
+      <?rfc include="reference.RFC.4125"?>
+<!--      <?rfc include="reference.RFC.4127"?> -->
+<reference anchor='RFC4127'>
+
+<front>
+<title>Russian Dolls Bandwidth Constraints Model for Diffserv-aware MPLS Traffic Engineering</title>
+<author initials='F.' surname='Le Faucheur' fullname='F. Le Faucheur' role="editor">
+<organization /></author>
+<date year='2005' month='June' />
+<abstract>
+<t>This document provides specifications for one Bandwidth Constraints Model for Diffserv-aware MPLS Traffic Engineering, which is referred to as the Russian Dolls Model.  This memo defines an Experimental Protocol for the Internet community.</t></abstract></front>
+
+<seriesInfo name='RFC' value='4127' />
+<format type='TXT' octets='23694' target='http://www.rfc-editor.org/rfc/rfc4127.txt' />
+</reference>
+
+
+      <?rfc include="reference.RFC.6401"?>
+
+<reference anchor='SMTP-PRI-OLD'>
+<front>
+<title>SMTP Service Extension for Priority Message Handling</title>
+
+<author initials='M' surname='Schmeing' fullname='Michael Schmeing'>
+    <organization />
+</author>
+<author initials='J' surname='Brendecke' fullname='J. Brendecke'>
+    <organization />
+</author>
+<author initials='K' surname='Carlberg' fullname='K. Carlberg'>
+    <organization />
+</author>
+
+<date month='August' day='23' year='2006' />
+
+<abstract><t>This memo defines an extension to the SMTP (Simple Mail Transfer Protocol) service whereby messages are sent with a priority to achieve a certain order in which the messages are transferred by an MTA (Message Transfer Agent). This priority or precedence order is used instead of the first-come-first-serve rule. This extension is not to be confused with "Importance of a Message" which is widely deployed using an email header such as Importance or even Priority or Precedence with common values of HIGH, NORMAL and LOW. Importance of a Message does not affect the priority of the transport itself in any way. Nevertheless, there may be policy defined relations between priorities and importance indicators. This extension uses the term priority in the meaning of expedited treatment of a message by the server according to its priority.</t></abstract>
+
+</front>
+
+<seriesInfo name='Work in' value='Progress' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-schmeing-smtp-priorities-05.txt' />
+</reference>
+
+
+    </references>
+<?rfc rfcedstyle="yes"?>
+    <section title="Priority Assignment Policy for Military Messaging" anchor="mapping-mil">
+
+	<t>
+	Military Messaging as specified in ACP 123 <xref target="ACP123"/>
+  (also specified in STANAG 4406 <xref target="STANAG-4406"/>) defines 6 priority ("precedence") values.
+  While ACP 123/STANAG 4406 allow for 32 different priority levels (16 levels
+are reserved for NATO and an
+<!--////Do we need to change this to 7?-->
+  additional 16 are reserved for national use), only 6 are in use in practice.
+  This section specifies the Priority Assignment Policy for Military Messaging and how the MT&nbhy;PRIORITY parameter
+  can be mapped when gatewaying between SMTP and ACP 123/STANAG 4406 environments.</t>
+  
+  <t>
+	Where SMTP is used to support military messaging, the following mappings SHOULD be used.
+	</t>
+
+	<texttable anchor='mmhs-mapping'>
+	    <preamble>Recommended Mapping of MT&nbhy;PRIORITY Values for MMHS</preamble>
+	    <ttcol align='center'>MT&nbhy;PRIORITY value</ttcol>
+	    <ttcol align='left'>MMHS Precedence name</ttcol>
+
+<!--///Should all of this be shifted so that 0 is actually "Routine"?
+Steve thought that the current mapping is Ok.-->
+
+	    <c>-4</c><c>Deferred</c>
+	    <c>-2</c><c>Routine</c>
+	    <c>0</c><c>Priority</c>
+	    <c>2</c><c>Immediate</c>
+	    <c>4</c><c>Flash</c>
+	    <c>6</c><c>Override</c>
+<!--
+	    <postamble></postamble>
+-->
+	</texttable>
+
+      
+    <t>
+      The Priority Assignment Policy registration for Military Messaging is as follows:
+
+      <list style="numbers">
+
+      <t>The Priority Assignment Policy name is "STANAG4406".</t>
+
+      <t>Number of distinct priority levels: 6, as specified in the table above.</t>
+
+      <t>Default retry timeouts for each priority level are implementation and/or deployment specific.</t>
+
+      <t>Default expiration timeouts for each priority level are implementation and/or deployment specific.</t>
+
+<!--
+/////        
+<texttable>
+	    <preamble>Recommended expiration and retry timeouts for the MMHS Profile from ACP 123</preamble>
+    
+	    <ttcol align='center'>Priority value</ttcol>
+	    <ttcol align='left'>Expiration timeout</ttcol>
+      <ttcol align='left'>Retry timeout</ttcol>
+
+/////
+But in another place I read:
+    An MTA in the MTS shall generate
+    a Non-Delivery Report if it has held messages with a priority field of
+    URGENT, NORMAL, and NON-URGENT for 12 minutes, 60 minutes, and 96 hours,
+    respectively (see 4.I.404).
+    
+      <c>-4</c><c>8 hours</c><c>(Unspecified)</c>
+	    <c>-2</c><c>8 hours</c><c>(Unspecified)</c>
+	    <c>0</c><c>45 minutes</c><c>50 minutes</c>
+	    <c>2</c><c>20 minutes</c><c>25 minutes</c>
+	    <c>4</c><c>10 minutes</c><c>11 minutes</c>
+	    <c>6</c><c>3 minutes</c><c>4 minutes</c>
+	</texttable>
+-->
+
+        <t>Maximum message size associated with each priority level is implementation and/or deployment specific.</t>
+
+      <t>No restrictions on what kind of SMTP client authentication is required.</t>
+        
+      </list>
+    
+    </t>
+
+    </section>
+    
+    <section title="Priority Assignment Policy for MIXER" anchor="mapping-mixer">
+
+	<t>
+	MIXER <xref target="RFC2156"/> defines the Priority header field with 3 values.
+  This section specifies the Priority Assignment Policy for MIXER and how the MT&nbhy;PRIORITY parameter
+  can be mapped when used with MIXER.
+  </t>
+      
+  <t>
+	Where SMTP is used to support MIXER messaging, the following mappings SHOULD be used.
+	</t>
+
+	<texttable anchor='mixer-mapping'>
+	    <preamble>Recommended Mapping of MT&nbhy;PRIORITY Values for MIXER</preamble>
+	    <ttcol align='left'>MT&nbhy;PRIORITY value</ttcol>
+	    <ttcol align='left'>MIXER Priority value</ttcol>
+<c>-4</c><c>non-urgent</c>
+<c>0</c><c>normal</c>
+<c>4</c><c>urgent</c>
+
+<!--
+	    <postamble></postamble>
+-->
+	</texttable>
+
+    <t>
+      The Priority Assignment Policy registration for MIXER is as follows:
+
+      <list style="numbers">
+
+      <t>The Priority Assignment Policy name is "MIXER".</t>
+
+      <t>Number of distinct priority levels: 3, as specified in the table above.</t>
+
+      <t>Default retry timeouts for each priority level are implementation and/or deployment specific.</t>
+
+      <t>Default expiration timeouts for each priority level are implementation and/or deployment specific.</t>
+
+      <t>Maximum message size associated with each priority level is implementation and/or deployment specific.</t>
+
+      <t>No restrictions on what kind of SMTP client authentication is required.</t>
+        
+      </list>
+    
+    </t>
+
+    </section>
+
+    <section title="Priority Assignment Policy for National Security / Emergency Preparedness (NS/EP)" anchor="mapping-emg">
+
+	<t>
+  There are several forms of communication systems used during an emergency or disaster.
+	The most well known form involves the many-to-one model of the general public contacting
+	a public safety access point via 911/999/112 calls through the public telephone network.
+	Typically, these calls do not require authorization, nor do they invoke any prioritization.
+	</t>
+
+	<t>
+	Another form of emergency communications involves a set of authorized users or nodes
+	that use prioritized services to help establish and continue communication given
+	limited available resources.  <xref target="RFC4190"/> includes descriptions of several systems that
+	have been developed to support National Security / Emergency Preparedness (NS/EP).
+	These deployed systems require a form of authentication and have focused on prioritization
+	of telephony-based services.  They have also been designed as a binary form (on/off)
+	of signaled priority communications.  
+	</t>
+
+	<t>
+	<xref target="RFC4412"/> includes examples of a more expansive view of NS/EP communications
+	in which priority migrates from a single on/off bit value to one that comprises 5 priority
+	values.  This is shown in the cases of the Emergency Telecommunications
+Service (ETS) and Wireless Priority Service (WPS) Namespaces.
+	Given a lack of pre-existing NS/EP values assigned for email, we follow the paradigm of
+	the ETS and WPS Namespaces and recommend the 5 ascending values shown in the table below.
+	</t>
+
+	<texttable>
+<!--
+	    <preamble></preamble>
+-->	    
+	    <ttcol align='center'>MT&nbhy;PRIORITY value</ttcol>
+	    <ttcol align='left'>Relational Order</ttcol>
+
+	    <c>-2</c><c>Lowest Priority</c>
+	    <c>0</c><c>----------</c>
+	    <c>2</c><c>----------</c>
+	    <c>4</c><c>----------</c>
+	    <c>6</c><c>Highest Priority</c>
+
+<!--
+	    <postamble></postamble>
+-->
+	</texttable>
+
+    <t>
+      The Priority Assignment Policy registration for NS/EP is as follows:
+
+      <list style="numbers">
+
+      <t>The Priority Assignment Policy name is "NSEP".</t>
+
+      <t>Number of distinct priority levels: 5, as specified in the table above.</t>
+
+      <t>Default retry timeouts for each priority level are implementation and/or deployment specific.</t>
+
+      <t>Default expiration timeouts for each priority level are implementation and/or deployment specific.</t>
+
+      <t>Maximum message size associated with each priority level is implementation and/or deployment specific.</t>
+
+      <t>No restrictions on what kind of SMTP client authentication is required.</t>
+
+      </list>
+    
+    </t>
+      
+    </section>
+
+
+    <section title="Possible Implementation Strategies" anchor="strategies">
+
+      <t>This appendix suggests some strategies to implement the SMTP
+      extension defined in this document. The list is not exhaustive.</t>
+
+      <t>This appendix and its subsections are Informative.</t>
+
+      <section title="Probability">
+
+      <t>
+        As the name suggests, probability involves increasing the chances of
+        obtaining resources without adversely affecting previously
+        established connections.  One example would involve requesting
+        resources set aside for specific priority levels.  If these
+        additional resources are exhausted, then the desired connection is
+        denied.  Queues, new timers, or combinations thereof can be used to
+        facilitate the higher-priority requests, but the key is that
+        mechanisms focus on increasing the probability of message transfer.
+      </t>
+
+      </section>
+
+      <section title="Preemption of Sessions or Transactions">
+
+      <t>
+        Preemption is a type of action that focuses only on a
+        comparison of priorities to determine if previously established
+        transactions need to be displaced in favor of higher-priority requests.
+        If no additional connection is possible, the client aborts a
+        running session for emails with lower priority no later than directly
+        after the current transaction.  The client can even interrupt an
+        active transaction, and ought to do so if other constraints, such
+        as delivery time (as specified in the DELIVERBY SMTP extension <xref target="RFC2852"/>),
+        would be violated for the email with higher priority.
+        When interrupting an active transaction, the client ought to take
+        the total message size and the size of the transferred portion of
+        the message being interrupted into consideration.
+        This preliminary termination of sessions or transactions is called preemption.
+      </t>
+
+      <t>
+        If preemption of running transactions occurs, the client
+        needs to choose a transaction with the lowest priority currently processed.
+      </t>
+
+      <t>
+        If the client has an option (i.e., it is supported by the next-hop MTA)
+        to interrupt transactions in a way that allows them to be restarted at the interruption
+        point later, it ought to deploy it.  An example for a mechanism providing
+        such a service is the "SMTP Service Extension for Checkpoint/Restart"
+        defined in <xref target="RFC1845"/>.
+      </t>
+
+      <t>
+        If a client opts for the preemption of sessions instead of
+        transactions, it needs to preempt the next session that reaches the end
+        of a transaction.
+      </t>
+
+      </section>
+
+      <section title="Resource Allocation Models">
+
+      <t>
+      Adding prioritization to a design moves the subject away from a strictly best effort
+      (and a first-come-first-served) model to one that includes admission control and
+      resource allocation models.  Over the years, a variety of work has been done within
+      the IETF to specify resource allocations models.  Examples include
+      the Maximum Allocation Model <xref target="RFC4125"/>, the Russian Dolls Model <xref target="RFC4127"/>,
+      and the Priority Bypass Model (Appendix A.3 of <xref target="RFC6401"/>).
+      </t>
+
+      <t>
+      While we recognize that these various models have been designed for other protocols
+      (i.e., MPLS and RSVP), an understanding of their design characteristics may be beneficial
+      in considering future implementations of a priority SMTP service.
+      </t>
+
+<!--////Alexey: not entirely happy about that, get rid of passive voice?-->        
+      <t>
+      In cases where the processing of high-priority messages by an MTA
+      is not considered negligible and exceeds engineered expectations,
+      then operators managing that MTA may be notified in some form
+      (e.g., pushed alarm, polled status).
+      </t>
+
+      </section>
+
+    </section>
+    
+    <section title="Background on Design Choices" anchor="faq">
+
+      <t>This section provides some background on design choices made during development of
+      the MT&nbhy;PRIORITY SMTP extension.</t>
+
+      <t>The priority applies per message, rather than per recipient, in order
+      to keep the protocol simpler and because of the expectation that it
+      will be uncommon to need different priorities for different recipients
+      on the same message.  In cases where that is necessary, it can always
+      be achieved by sending separate messages with the same content,
+      segregating the recipients by desired message priority.</t>
+
+      <t>The choice of the priority range -9 to 9 (as opposed to, say, 1 to 6,
+      or 0 to 9) was made after taking the following into consideration:
+    
+	      <list style="numbers">
+
+          <t>Clearly, having multiple priority levels is the whole point of
+          this extension.  Existing implementations of similar functionality
+          in MTAs are already using 3 levels.  One of the use cases
+          motivating this extension requires 6 levels, so at least 6
+          different values are required.</t>
+
+          <t>During discussions of this extension, several different use cases
+          were suggested that required differing numbers of priority levels.
+          Defining just the 6 priority levels needed in item 1, above, would
+          limit the extensibility for possible future use cases.  Therefore,
+          this document is defining a wider range, which allows implementations
+          and deployments to add higher or lower priority levels and to insert
+          additional priority levels between the recommended set of 6.  This
+          avoids the need to further extend this extension just to have a few
+          more priority levels.</t>
+
+          <t>It seems natural to use zero for the "normal" or default priority, rather
+          than picking some non-zero number and having the priorities go up
+          or down from there.  This way, negative numbers always represent
+          priorities that are lower than normal, with positive numbers as higher
+          priorities.</t>
+
+        </list>
+      
+      </t>
+
+    </section>
+
+    <section title="Acknowledgements">
+	
+      <t>
+      This document copies lots of text from "SMTP Service Extension for
+   Priority Message Handling" <xref target="SMTP-PRI-OLD" />. Therefore, the authors of this document
+      would like to acknowledge contributions made by the authors of that document:
+	    Michael Schmeing and Jan-Wilhelm Brendecke.
+      </t>
+
+      <t>
+	    Many thanks for input provided by Steve Kille, David Wilson,
+	    John Klensin, Dave Crocker, Graeme Lunt, Alessandro Vesely,
+      Barry Leiba, Bill McQuillan, Murray Kucherawy, SM,
+      Glenn Parsons, Pete Resnick, Chris Newman, Ned Freed, and Claudio Allocchio.
+      </t>
+
+      <t>
+      Special thanks to Barry Leiba for agreeing to shepherd this document.
+      </t>
+ 
+    </section>
+  </back>
+</rfc>

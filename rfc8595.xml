@@ -1,0 +1,1283 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt"?>
+
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY RFC2119 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY RFC3031 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3031.xml">
+<!ENTITY RFC4364 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4364.xml">
+<!ENTITY RFC5920 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5920.xml">
+<!ENTITY RFC6790 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6790.xml">
+<!ENTITY RFC7274 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7274.xml">
+<!ENTITY RFC7665 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7665.xml">
+<!ENTITY RFC8174 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8174.xml">
+<!ENTITY RFC8300 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8300.xml">
+<!ENTITY RFC8393 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8393.xml">
+<!ENTITY RFC8402 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8402.xml">
+<!ENTITY RFC8459 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8459.xml">
+]>
+
+<rfc category="std" number="8595" ipr="trust200902" submissionType="IETF" consensus="yes">
+
+  <front>
+    <title abbrev="MPLS SFC">An MPLS-Based Forwarding Plane for Service Function Chaining</title>
+
+    <author fullname="Adrian Farrel" initials="A." surname="Farrel">
+      <organization>Old Dog Consulting</organization>
+      <address>
+        <email>adrian@olddog.co.uk</email>
+      </address>
+    </author>
+
+    <author fullname="Stewart Bryant" initials="S." surname="Bryant">
+      <organization>Futurewei</organization>
+      <address>
+        <email>stewart.bryant@gmail.com</email>
+      </address>
+    </author>
+
+    <author fullname="John Drake" initials="J." surname="Drake">
+      <organization>Juniper Networks</organization>
+      <address>
+        <email>jdrake@juniper.net</email>
+      </address>
+    </author>
+
+    <date month="June" year="2019"/>
+
+    <keyword>SFC</keyword>
+    <keyword>MPLS</keyword>
+    <keyword>Service Function Chaining</keyword>
+    <keyword>NSH</keyword>
+    <keyword>Network Service Header</keyword>
+    <keyword>MPLS</keyword>
+    <keyword>Multiprotocol Label Switching</keyword>
+
+    <abstract>
+      <t>This document describes how Service Function Chaining (SFC) can be achieved
+         in an MPLS network by means of a logical representation of the Network
+         Service Header (NSH) in an MPLS label stack.  That is, the NSH is not used,
+         but the fields of the NSH are mapped to fields in the MPLS label
+         stack.
+         This approach does not deprecate or replace the NSH, but it acknowledges that there may be a
+         need for an interim deployment of SFC functionality in brownfield networks.</t>
+    </abstract>
+
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t>Service Function Chaining (SFC) is the process of directing packets
+      through a network so that they can be acted on by an ordered set of
+      abstract Service Functions (SFs) before being delivered to the intended
+      destination.  An architecture for SFC is defined in <xref target="RFC7665" />.</t>
+
+      <t>When applying a particular service function chain to the traffic
+      selected by a service classifier, the traffic needs to be steered
+      through an ordered set of SFs in the network.  This
+      ordered set of SFs is termed a Service Function Path (SFP), and the
+      traffic is passed between Service Function Forwarders (SFFs) that are
+      responsible for delivering the packets to the SFs and for forwarding
+      them onward to the next SFF.</t>
+
+      <t>In order to steer the selected traffic between SFFs and to the correct SFs,
+         the service classifier needs to attach information to each packet.  This
+         information indicates the SFP on which the packet is being forwarded and hence
+         the SFs to which it must be delivered.  The information also indicates the
+         progress the packet has already made along the SFP.</t>
+
+      <t>The Network Service Header (NSH) <xref target="RFC8300" /> has been
+         defined to carry the necessary information for SFC
+         in packets.  The NSH can be inserted into packets and contains various
+         information, including a Service Path Identifier (SPI), a Service Index (SI),
+         and a Time To Live (TTL) counter.</t>
+
+      <t>Multiprotocol Label Switching (MPLS) <xref target="RFC3031" /> is a widely
+         deployed forwarding technology that uses labels placed in a packet in a
+         label stack to identify the forwarding actions to be taken at each hop
+         through a network.  Actions may include swapping or popping the labels as
+         well as using the labels to determine the next hop for forwarding the
+         packet.
+  Labels may also be used to establish the context under which the
+         packet is forwarded.    In many cases, MPLS will be used as a tunneling
+         technology to carry packets through networks between SFFs.</t>
+
+      <t>This document describes how SFC can be achieved
+         in an MPLS network by means of a logical representation of the NSH in
+         an MPLS label stack.  This approach is applicable to all forms of
+         MPLS forwarding (where labels are looked up at each hop and are swapped or
+         popped <xref target="RFC3031" />).  It does not deprecate or replace the
+         NSH, but it acknowledges that there may be a need for an interim deployment
+         of SFC functionality in brownfield networks.  The mechanisms described in
+         this document are a compromise between the full function that can be
+         achieved using the NSH and the benefits of reusing the existing MPLS
+         forwarding paradigms (the approach defined here does not include the
+         O&nbsp;bit defined in <xref target="RFC8300"/> and has some limitations
+ to the use of metadata as described in <xref target="metadata" />).</t>
+
+      <t><xref target="uses" /> provides a short overview of several use case scenarios
+         that help to explain the relationship between the MPLS label operations (swapping,
+         popping, stacking) and the MPLS encoding of the logical NSH described in this
+         document.</t>
+
+      <t>It is assumed that the reader is fully familiar with the terms and concepts
+         introduced in <xref target="RFC7665" /> and <xref target="RFC8300" />.</t>
+
+      <t>Note that one of the features of the SFC architecture described in
+         <xref target="RFC7665" /> is the "SFC proxy", which exists to include legacy
+         SFs that are not able to process NSH-encapsulated packets.  This issue is
+         equally applicable to the use of MPLS-encapsulated packets that encode a
+         logical representation of an NSH.  It is discussed further in
+         <xref target="proxy" />.</t>
+
+    </section>
+
+    <section title="Requirements Language">
+
+     <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+     "SHALL&nbsp;NOT", "SHOULD", "SHOULD&nbsp;NOT", "RECOMMENDED",
+     "NOT&nbsp;RECOMMENDED", "MAY", and "OPTIONAL" in this document
+     are to be interpreted as described in BCP&nbsp;14
+     <xref target="RFC2119"/> <xref target="RFC8174"/> when,
+     and only when, they appear in all capitals, as shown here.</t>
+
+    </section>
+
+    <section anchor="choice" title="Choice of Data-Plane SPI/SI Representation">
+
+      <t>While <xref target="RFC8300" /> defines the NSH that can be used in a number
+         of environments, this document provides a mechanism to handle situations in
+         which the NSH is not ubiquitously deployed.  In this case, it is possible to
+         use an alternative data-plane representation of the SPI&wj;/SI by carrying the
+         identical semantics in MPLS labels.</t>
+
+      <t>In order to correctly select the mechanism by which SFC information is encoded
+         and carried between SFFs, it may be necessary to configure the capabilities and
+         choices either within the whole Service Function Overlay Network or
+ on a hop-by-hop basis.  It is a requirement that both ends of a tunnel over the underlay
+         network (i.e., a pair of SFFs adjacent in the SFP) know that the tunnel is used
+         for SFC and know what form of NSH representation is used.
+  A control-plane
+         signaling approach to achieve these objectives is provided using BGP in
+         <xref target="BGP-NSH-SFC" />.</t>
+
+      <t>Note that the encoding of the SFC information is independent of the choice of
+         tunneling technology used between SFFs.  Thus, an MPLS representation of the
+         logical NSH (as defined in this document) may be used even if the tunnel between
+         a pair of SFFs is not an MPLS tunnel.  Conversely, MPLS tunnels may be used to
+         carry other encodings of the logical NSH (specifically, the NSH itself). </t>
+    </section>
+
+    <section anchor="uses" title="Use Case Scenarios">
+       <t>There are five scenarios that can be considered for the use of an MPLS encoding
+          in support of SFC.  These are set out in the following subsections.</t>
+
+       <section anchor="useNSH" title="Label Swapping for Logical NSH">
+          <t>The primary use case for SFC is described in <xref target="RFC7665" /> and
+             delivered using the NSH, which, as described in <xref target="RFC8300" />, uses
+             an encapsulation with a position indicator that is modified at each SFC hop
+             along the chain to indicate the next hop.</t>
+
+          <t>The label-swapping use case scenario effectively replaces the NSH with an
+             MPLS encapsulation as described in <xref target="mplsswap" />.  The MPLS labels
+             encode the same information as the NSH to form a logical NSH.  The labels are
+             modified (swapped per <xref target="RFC3031" />) at each SFC hop along the chain
+             to indicate the next hop.  The processing and the forwarding state for a chain
+             (i.e., the actions to take on a received label) are programmed
+ into the network using a control plane or management plane.</t>
+       </section>
+
+       <section anchor="useHier" title="Hierarchical Encapsulation">
+          <t><xref target="RFC8459" /> describes an architecture for hierarchical
+            encapsulation using the NSH.  It facilitates partitioning of SFC domains
+            for administrative reasons and allows concatenation of 
+            service function chains under the control of a service classifier.</t>
+
+          <t>The same function can be achieved in an MPLS network using an MPLS encoding
+             of the logical NSH, and label stacking as defined in <xref target="RFC3031" />
+             and described in <xref target="mplsstack" />.  In this model, swapping is used
+             per <xref target="useNSH" /> to navigate one chain, and when the end of the
+             chain is reached, the final label is popped, revealing the label for another
+             chain.  Thus, the primary mode is swapping, but stacking is used to enable the
+             ingress classifier to control concatenation of service function chains.</t>
+       </section>
+
+       <section anchor="useFine" title="Fine Control of Service Function Instances">
+          <t>It may be that a service function chain (as described in <xref target="useNSH" />)
+             allows some leeway in the choice of service function instances along the chain.
+             However, it may be that a service classifier wishes to constrain the choice and
+             this can be achieved using chain concatenation so that the first chain ends at
+             the point of choice, the next label in the stack indicates the
+ specific service function instance to be executed, and the next label in the stack starts a new
+             chain.  Thus, a mixture of label swapping and stacking is used.</t>
+       </section>
+
+       <section anchor="useMicro" title="Micro Chains and Label Stacking">
+          <t>The scenario in <xref target="useHier" /> may be extended to its logical extreme by
+             making each concatenated chain as short as it can be: one SF.  Each
+             label in the stack indicates the next SF to be executed, and the
+             network is programmed through the control plane or management plane to know how
+             to route to the next (i.e., first) hop in each chain just as it would be to
+             support the scenarios in
+ Sections&nbsp;<xref target="useNSH" format="counter"/> and
+ <xref target="useHier" format="counter"/>.</t>
+
+          <t>This scenario is functionally identical to the use of
+Segment Routing (SR) in an MPLS network (known as SR-MPLS) for SFC, as
+ described in <xref target="useSR" />, and the discussion in that section
+ applies to this section as well.</t>
+       </section>
+
+       <section anchor="useSR" title="SFC and Segment Routing">
+          <t>SR-MPLS uses a stack of MPLS labels to encode information about the path and network functions that
+             a packet should traverse.  SR-MPLS is achieved by applying control-plane and
+             management-plane techniques to program the MPLS forwarding plane and by
+             imposing labels on packets at the entrance to the SR-MPLS network. An
+             implementation proposal for achieving SFC using SR-MPLS can be found in
+             <xref target="SR-Srv-Prog" /> and is not discussed
+             further in this document.</t>
+       </section>
+
+    </section>
+
+    <section anchor="basic" title="Basic Unit of Representation">
+
+      <t>When an MPLS label stack is used to carry a logical NSH, a basic unit of representation
+         is used.  This unit comprises two MPLS labels, as shown below.  The unit may be present
+         one or more times in the label stack as explained in subsequent sections.</t>
+
+      <t>In order to convey the same information as is present in the NSH, two MPLS label stack
+         entries are used.  One carries a label to provide context within the SFC scope (the SFC
+         Context Label), and the other carries a label to show which SF is to be
+         actioned (the SF Label).  This two-label unit is shown in <xref target="basicunitfig" />.</t>
+
+        <figure anchor="basicunitfig" title="The Basic Unit of MPLS Label Stack for SFC"> <artwork> <![CDATA[0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           SFC Context Label           | TC  |S|       TTL     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           SF Label                    | TC  |S|       TTL     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ ]]>
+          </artwork>
+        </figure>
+
+      <t>The fields of these two label stack entries are encoded as follows:
+         <list style="hanging">
+           <t hangText="Label:">The Label fields contain the values of the SFC Context Label
+              and the SF Label encoded as 20-bit integers.  The precise semantics of these
+              Label fields are dependent on whether the label stack entries are used for MPLS
+              label swapping (see <xref target="mplsswap" />) or MPLS label stacking (see
+              <xref target="mplsstack" />).</t>
+           <t hangText="TC:">The TC bits have no meaning in this case.  They SHOULD be set to
+              zero in both label stack entries when a packet is sent and MUST be ignored on
+              receipt.</t>
+           <t hangText="S:"> The "Bottom of Stack" bit has its usual meaning in MPLS.  It MUST be
+              clear in the SFC Context Label stack entry. In the SF Label stack entry, it MUST
+              be clear in all cases except when the label is the bottom of the
+ stack, when it MUST be set.</t>
+           <t hangText="TTL:">The TTL field in the SFC Context Label stack entry SHOULD be set to 1.
+              The TTL in the SF Label stack entry (called the SF TTL) is set according to its use
+              for MPLS label swapping (see <xref target="mplsswap" />) or MPLS label stacking (see
+              <xref target="mplsstack" />) and is used to mitigate packet loops.</t>
+         </list></t>
+
+      <t>The sections that follow show how this basic unit of MPLS label stack may be used
+         for SFC in the MPLS label-swapping case and in the MPLS
+ label-stacking case. For simplicity,
+         these sections do not describe the use of metadata; that topic is covered separately in
+         <xref target="metadata" />.</t>
+    </section>
+
+    <section anchor="mplsswap" title="MPLS Label Swapping">
+
+      <t>This section describes how the basic unit of MPLS label stack for SFC
+ (introduced in
+         <xref target="basic" />) is used when MPLS label swapping is in use.  The use case
+         scenario for this approach is introduced in <xref target="useNSH" />.</t>
+
+      <t>As can be seen in <xref target="swapFig" />, the top of the label stack comprises
+         the labels necessary to deliver the packet over the MPLS tunnel between SFFs.  Any MPLS
+         encapsulation may be used (i.e., MPLS, MPLS in UDP, MPLS in GRE, and
+	 MPLS in Virtual Extensible Local Area Networks (VXLANs)
+         or the Generic Protocol Extension for VXLAN (GPE)); thus, the tunnel technology does not need to be MPLS, but MPLS is shown here for simplicity.</t>
+
+      <t>An entropy label <xref target="RFC6790" /> may also be present,
+ as described in <xref target="entropy" />.</t>
+
+      <figure anchor="swapFig" title="The MPLS SFC Label Stack">
+        <artwork> <![CDATA[   ---------------
+   ~ Tunnel Labels ~
+   +---------------+
+   ~   Optional    ~
+   ~ Entropy Label ~
+   +---------------+ - - -
+   |   SPI Label   |
+   +---------------+  Basic unit of MPLS label stack for SFC
+   |   SI Label    |
+   +---------------+ - - -
+   |               |
+   ~    Payload    ~
+   |               |
+    --------------- ]]>
+        </artwork>
+      </figure>
+
+      <t>Under these labels (or other encapsulation) comes a single instance of the basic unit
+         of MPLS label stack for SFC.  In addition to the interpretation of the fields of these
+         label stack entries (provided in <xref target="basic"/>), the following meanings are
+         applied:
+
+         <list style="hanging">
+           <t hangText="SPI Label:">The Label field of the SFC Context Label stack entry contains the
+              value of the SPI encoded as a 20-bit integer.  The semantics of
+ the SPI are exactly
+              as defined in <xref target="RFC8300"/>.  Note that an SPI as defined by
+              <xref target="RFC8300"/> can be encoded in 3 octets (i.e., 24 bits), but
+              that the Label field allows for only 20 bits and reserves the values 0 through 15 as
+              &quot;special&nbhy;purpose labels&quot; <xref target="RFC7274" />.  Thus, a system using MPLS
+              representation of the logical NSH MUST NOT assign SPI values greater than 2^20 - 1
+              or less than 16.</t>
+
+           <t hangText="SI Label:">The Label field of the SF Label stack entry contains the value
+              of the SI exactly as defined in <xref target="RFC8300"/>.  Since the SI
+              requires only 8 bits, and to avoid overlap with the special&nbhy;purpose label
+              range of 0 through 15 <xref target="RFC7274"/>, the SI is carried in the top (most significant) 8
+              bits of the Label field with the low-order 12 bits set to zero.</t>
+
+           <t hangText="TC:">The TC fields are as described in <xref target="basic" />.</t>
+
+           <t hangText="S:">The S bits are as described in <xref target="basic" />.</t>
+
+           <t hangText="TTL:">The TTL field in the SPI Label stack entry SHOULD be set to 1 as
+              stated in <xref target="basic" />.  The TTL in the SF Label stack entry is decremented
+              once for each forwarding hop in the SFP, i.e., for each SFF transited, and so mirrors
+              the TTL field in the NSH.</t>
+         </list></t>
+
+      <t>The following processing rules apply to the Label fields:
+         <list style="symbols">
+            <t>When a classifier inserts a packet onto an SFP, it sets the SPI Label to indicate the
+               identity of the SFP and sets the SI Label to indicate the first SF in the path.</t>
+            <t>When a component of the SFC system processes a packet, it uses the SPI Label to
+               identify the SFP and the SI Label to determine which SFF or instance of an SF (an
+               SFI) to deliver the packet to.  Under normal circumstances (with the exception of branching
+               and reclassification -- see <xref target="BGP-NSH-SFC" />),
+               the SPI Label value is preserved on all packets.  The SI Label value is modified
+               by SFFs and through reclassification to indicate the next hop
+	    along the&nbsp;SFP.</t>
+         </list></t>
+
+      <t>The following processing rules apply to the TTL field of the SF Label stack entry and are
+         derived from Section&nbsp;2.2 of <xref target="RFC8300"/>:
+         <list style="symbols">
+            <t>When a classifier places a packet onto an SFP, it MUST set the TTL to a value between
+               1 and 255.  It SHOULD set this according to the expected length of the SFP (i.e., the
+               number of SFs on the SFP), but it MAY set it to a larger value according to local
+               configuration.  The maximum TTL value supported in an NSH is 63, and so the practical
+               limit here may also be 63.</t>
+            <t>When an SFF receives a packet from any component of the SFC system (classifier, SFI, or
+               another SFF), it MUST discard any packets with TTL set to zero.  It SHOULD log such
+               occurrences but MUST apply rate limiting to any such logs.</t>
+            <t>An SFF MUST decrement the TTL by one each time it performs a lookup to forward a packet
+               to the next SFF.</t>
+            <t>If an SFF decrements the TTL to zero, it MUST NOT send the packet and MUST discard the
+               packet.  It SHOULD log such occurrences but MUST apply rate limiting to any such logs.</t>
+            <t>SFIs MUST ignore the TTL but MUST mirror it back to the SFF unmodified along with the SI
+               (which may have been changed by local reclassification).</t>
+            <t>If a classifier along the SFP makes any change to the intended path of the packet, including
+               for looping, jumping, or branching (see <xref target="BGP-NSH-SFC" />),
+               it MUST NOT change the SI TTL of the packet.  In particular, each component of the SFC
+               system MUST NOT increase the SI TTL value; otherwise, loops may go undetected.</t>
+         </list></t>
+
+    </section>
+
+    <section anchor="mplsstack" title="MPLS Label Stacking">
+
+      <t>This section describes how the basic unit of MPLS label stack for SFC
+ (introduced in
+         <xref target="basic" />) is used when MPLS label stacking is used to carry information about
+         the SFP and SFs to be executed.  The use case scenarios for this
+ approach are introduced in <xref target="uses" />.</t>
+
+      <t>As can be seen in <xref target="stackFig" />, the top of the label stack comprises the labels
+         necessary to deliver the packet over the MPLS tunnel between SFFs.  Any MPLS encapsulation
+         may be used.</t>
+
+      <figure anchor="stackFig" title="The MPLS SFC Label Stack for Label
+ Stacking"><artwork><![CDATA[    -------------------
+   ~   Tunnel Labels   ~
+   +-------------------+
+   ~     Optional      ~
+   ~   Entropy Label   ~
+   +-------------------+ - - -
+   | SFC Context Label |
+   +-------------------+  Basic unit of MPLS label stack for SFC
+   |     SF Label      |
+   +-------------------+ - - -
+   | SFC Context Label |
+   +-------------------+  Basic unit of MPLS label stack for SFC
+   |     SF Label      |
+   +-------------------+ - - -
+   ~                   ~
+   +-------------------+ - - -
+   | SFC Context Label |
+   +-------------------+  Basic unit of MPLS label stack for SFC
+   |     SF Label      |
+   +-------------------+ - - -
+   |                   |
+   ~      Payload      ~
+   |                   |
+    ------------------- ]]>
+        </artwork>
+      </figure>
+
+      <t>An entropy label <xref target="RFC6790" /> may also be present, as described in
+         <xref target="entropy" />.</t>
+
+      <t>Under these labels comes one or more instances of the basic unit of MPLS label stack for SFC.
+         In addition to the interpretation of the fields of these label stack entries (provided in
+         <xref target="basic"/>), the following meanings are applied:
+
+         <list style="hanging">
+           <t hangText="SFC Context Label:">The Label field of the SFC Context Label stack entry
+              contains a label that delivers SFC context.  
+This label contains the SPI, encoded as a 20-bit integer using the
+ semantics exactly as defined in <xref target="RFC8300"/>. Note that in this case a system using MPLS
+              representation of the logical NSH MUST NOT assign SPI values greater than 2^20 - 1 or
+              less than 16.
+  This label may also be used to convey other SFC context-specific semantics,
+              such as indicating how to interpret the SF Label or how to forward the packet to the
+              node that offers the SF if so configured and coordinated with the controller that programs
+              the labels for the SFP.</t>
+
+           <t hangText="SF Label:">The Label field of the SF Label stack entry contains a value
+              that identifies the next SFI to be actioned for the packet.  This label may be
+              scoped globally or within the context of the preceding SFC Context Label and
+              comes from the range 16&nbsp;...&nbsp;2^20&nbsp;-&nbsp;1.</t>
+
+           <t hangText="TC:">The TC fields are as described in <xref target="basic" />.</t>
+
+           <t hangText="S:">The S bits are as described in <xref target="basic" />.</t>
+
+           <t hangText="TTL:">The TTL fields in the SFC Context Label stack entry and in the
+              SF Label stack entry SHOULD be set to 1 as stated in <xref target="basic" /> but MAY
+              be set to larger values if the label indicated a forwarding operation towards the node
+              that hosts the SF.</t>
+
+         </list></t>
+
+      <t>The following processing rules apply to the Label fields:
+         <list style="symbols">
+            <t>When a classifier inserts a packet onto an SFP, it adds a stack comprising one or
+               more instances of the basic unit of MPLS label stack for SFC.  Taken together, this
+               stack defines the SFs to be actioned and so defines the SFP that the packet will
+               traverse.</t>
+            <t>When a component of the SFC system processes a packet, it uses the top basic unit of
+               label stack for SFC to determine to which SFI to next deliver the packet.  When an
+               SFF receives a packet, it examines the top basic unit of MPLS label stack for SFC to
+               determine where to send the packet next.  If the next recipient is a local SFI, the
+               SFF strips the basic unit of MPLS label stack for SFC before forwarding the packet.</t>
+         </list></t>
+
+    </section>
+
+    <section anchor="mixedmode" title="Mixed-Mode Forwarding">
+
+      <t>The previous sections describe homogeneous networks where SFC forwarding is either all label
+         swapping or all label popping (stacking).  This simplification helps to clarify the explanation
+         of the mechanisms.</t>
+
+      <t>However, as described in <xref target="useHier" />, some use cases may use label swapping and
+         stacking at the same time.  Furthermore, it is also possible that different parts of the network
+         utilize swapping or popping such that an end-to-end service chain has to utilize a combination of
+         both techniques.  It is also worth noting that a classifier may be content to use an SFP
+         as installed in the network by a control plane or management plane and so would use label swapping, but
+         that there may be a point in the SFP where a choice of SFIs can be made (perhaps for load balancing)
+         and where, in this instance, the classifier wishes to exert control over that choice by use of a
+         specific entry on the label stack as described in <xref target="useFine" />.</t>
+
+      <t>When an SFF receives a packet containing an MPLS label stack, it checks from the context of the
+         incoming interface, and from the SFP indicated by the top label, whether it is processing an {SPI, SI}
+         label pair for label swapping or a {context label, SFI index} label pair for label stacking.  It then
+         selects the appropriate SFI to which to send the packet.  When it receives the packet back from the
+         SFI, it has four cases to consider.
+
+         <list style="symbols">
+            <t>If the current hop requires an {SPI, SI} and the next hop requires an {SPI, SI}, it sets the SPI
+               Label according to the SFP to be traversed, selects an instance of the SF to be executed at the
+               next hop, sets the SI Label to the SI value of the next hop, and tunnels the packet to the SFF for
+               that SFI.</t>
+            <t>If the current hop requires an {SPI, SI} and the next hop requires a {context label, SFI Label},
+               it pops the {SPI, SI} from the top of the MPLS label stack and tunnels the packet to the SFF
+               indicated by the context label.</t>
+            <t>If the current hop requires a {context label, SFI Label}, it pops the {context label, SFI Label}
+               from the top of the MPLS label stack.
+               <list style="symbols">
+                  <t>If the new top of the MPLS label stack contains an {SPI, SI} label pair, it selects an
+                     SFI to use at the next hop and tunnels the packet to the SFF for that SFI.</t>
+                  <t>If the new top of the MPLS label stack contains a {context label, SFI Label}, it tunnels the
+                     packet to the SFF indicated by the context label.</t>
+               </list></t>
+         </list></t>
+
+    </section>
+
+    <section anchor="proxy" title="A Note on Service Function Capabilities and SFC Proxies">
+      <t>The concept of an "SFC proxy" is introduced in <xref target="RFC7665"/>.  An SFC proxy is logically
+         located between an SFF and an SFI that is not "SFC&nbsp;aware".  Such SFIs are not capable of handling the
+         SFC encapsulation (whether that be NSH or MPLS) and need the encapsulation stripped from the packets
+         they are to process.  In many cases, legacy SFIs that were once deployed as "bumps in the wire" fit
+         into this category until they have been upgraded to be SFC aware.</t>
+
+      <t>The job of an SFC proxy is to remove and then reimpose SFC encapsulation so that the SFF is able to
+         process as though it was communication with an SFC-aware SFI, and so that the SFI is unaware of the
+         SFC encapsulation.  In this regard, the job of an SFC proxy is no different when NSH encapsulation is
+         used and when MPLS encapsulation is used as described in this document, although (of course) it is
+         different encapsulation bytes that must be removed and reimposed.</t>
+
+      <t>It should be noted that the SFC proxy is a logical function.  It could be implemented as a separate
+         physical component on the path from the SFF to the SFI, but it could be co-resident with the SFF or it
+         could be a component of the SFI.  This is purely an implementation choice.</t>
+
+      <t>Note also that the delivery of metadata (see <xref target="metadata"/>) requires specific processing
+         if an SFC proxy is in use.  This is also no different when NSH
+ functionality or the MPLS encoding defined in this
+         document is in use, and how it is handled will depend on how (or if) each non-SFC-aware SFI can receive
+         metadata.</t>
+    </section>
+
+    <section anchor="controlplane" title="Control-Plane Considerations">
+
+      <t>In order that a packet may be forwarded along an SFP, several functional
+         elements must be executed.
+         <list style="symbols">
+           <t>Discovery/advertisement of SFIs.</t>
+           <t>Computation of the SFP.</t>
+           <t>Programming of classifiers.</t>
+           <t>Advertisement of forwarding instructions.</t>
+         </list></t>
+
+      <t>Various approaches may be taken.  These include a fully centralized model
+         where SFFs report to a central controller the SFIs that they support, the
+         central controller computes the SFP and programs the classifiers, and (if
+         the label-swapping approach is taken) the central controller installs
+         forwarding state in the SFFs that lie on the SFP.</t>
+
+      <t>Alternatively, a dynamic control plane may be used, such as that described
+         in <xref target="BGP-NSH-SFC" />.  In this case,
+         the SFFs use the control plane to advertise the SFIs that they support, a
+         central controller computes the SFP and programs the classifiers, and (if
+         the label&nbhy;swapping approach is taken) the central controller uses the control
+         plane to advertise the SFPs so that SFFs that lie on the SFP can install the
+         necessary forwarding state.</t>
+
+    </section>
+
+    <section anchor="entropy" title="Use of the Entropy Label">
+
+       <t>Entropy is used in ECMP situations to ensure that packets from the same
+          flow travel down the same path, thus avoiding jitter or reordering issues
+          within a flow.</t>
+
+       <t>Entropy is often determined by hashing on specific fields in a packet header,
+          such as the "five-tuple" in the IP and transport headers.  However, when an
+          MPLS label stack is present, the depth of the stack could be too large for
+          some processors to correctly determine the entropy hash.  This problem is
+          addressed by the inclusion of an entropy label as described in
+          <xref target="RFC6790" />.</t>
+
+       <t>When entropy is desired for packets as they are carried in MPLS tunnels over
+          the underlay network, it is RECOMMENDED that an entropy label be included in
+          the label stack immediately after the tunnel labels and before the
+ SFC Labels,
+          as shown in
+Figures&nbsp;<xref target="swapFig" format="counter"/> and
+ <xref target="stackFig" format="counter"/>.</t>
+
+       <t>If an entropy label is present in an MPLS payload, it is RECOMMENDED
+ that the initial classifier use that value in an entropy label inserted in the label
+          stack when the packet is forwarded (on the first tunnel) to the first SFF.  In
+          this case, it is not necessary to remove the entropy label from the payload.</t>
+    </section>
+
+    <section anchor="metadata" title="Metadata">
+
+<!-- Quoted text is DNE. -->
+       <t>Metadata is defined in <xref target="RFC7665" /> as providing "the ability to
+          exchange context information between classifiers and SFs, and among SFs."
+          <xref target="RFC8300" /> defines how this context information can be
+          directly encoded in fields that form part of the NSH encapsulation.</t>
+
+       <t>Sections <xref target="IndMetadata" format="counter"/> and
+ <xref target="inband" format="counter"/>
+ describe how metadata is associated with user data
+          packets, and how metadata may be exchanged between SFC nodes in the network,
+          when using an MPLS encoding of the logical representation of the
+         NSH.</t>
+
+       <t>It should be noted that the MPLS encoding is less functional than the direct
+          use of the NSH.  Both methods support metadata that is "per&nbhy;SFP" or
+          "per-flow" (see <xref target="RFC8393"/> for definitions of these terms),
+          but "per-packet" metadata (where the metadata must be carried on each packet
+          because it differs from one packet to the next even on the same flow or SFP) is
+          only supported using the NSH and not using the mechanisms defined in this
+          document.</t>
+
+       <section anchor="IndMetadata" title="Indicating Metadata in User Data Packets">
+
+         <t>Metadata is achieved in the MPLS realization of the logical NSH by the use of
+            an SFC Metadata Label, which uses the extended special&nbhy;purpose label construct
+            <xref target="RFC7274" />.  Thus, three label stack entries are present, as
+            shown in <xref target="metabasicFig" />:
+
+            <list style="symbols">
+              <t>The Extension Label (value 15).</t>
+              <t>An extended special&nbhy;purpose label called the Metadata Label Indicator (MLI) (value 16).</t>
+              <t>The Metadata Label (ML).</t>
+            </list></t>
+
+          <figure anchor="metabasicFig" title="The MPLS SFC Metadata Label">
+ <artwork><![CDATA[                           ----------------
+                          | Extension = 15 |
+                          +----------------+
+                          |      MLI       |
+                          +----------------+
+                          | Metadata Label |
+                           ---------------- ]]>
+            </artwork>
+          </figure>
+
+         <t>The Metadata Label value is an index into a table of metadata that is programmed
+            into the network using in-band or out-of-band mechanisms.
+  Out-of-band mechanisms
+            potentially include management-plane and control-plane solutions (such as
+            <xref target="BGP-NSH-SFC" />) but are out of scope for
+            this document.  The in-band mechanism is described in <xref target="inband" />.</t>
+
+         <t>The SFC Metadata Label (as a set of three labels as indicated in
+            <xref target="metabasicFig" />) may be present zero, one, or more times in an
+            MPLS SFC packet.  For MPLS label swapping, the SFC Metadata Labels are placed
+            immediately after the basic unit of MPLS label stack for SFC, as shown in
+            <xref target="swapmetaFig" />.  For MPLS label stacking, the SFC Metadata Labels
+            are placed at the bottom of the label stack, as shown in <xref
+           target="stackmetaFig" />.</t>
+
+          <figure anchor="swapmetaFig" title="The MPLS SFC Label Stack for
+ Label Swapping with&nbsp;Metadata&nbsp;Label"><artwork><![CDATA[
+                         ----------------
+                        ~ Tunnel Labels  ~
+                        +----------------+
+                        ~   Optional     ~
+                        ~ Entropy Label  ~
+                        +----------------+
+                        |   SPI Label    |
+                        +----------------+
+                        |   SI Label     |
+                        +----------------+
+                        | Extension = 15 |
+                        +----------------+
+                        |     MLI        |
+                        +----------------+
+                        | Metadata Label |
+                        +----------------+
+                        ~     Other      ~
+                        |    Metadata    |
+                        ~  Label Triples ~
+                        +----------------+
+                        |                |
+                        ~    Payload     ~
+                        |                |
+                         ---------------- ]]>
+            </artwork>
+          </figure>
+
+          <figure anchor="stackmetaFig" title="The MPLS SFC Label Stack for
+ Label Stacking with&nbsp;Metadata&nbsp;Label"><artwork><![CDATA[
+                        -------------------
+                       ~   Tunnel Labels   ~
+                       +-------------------+
+                       ~     Optional      ~
+                       ~   Entropy Label   ~
+                       +-------------------+
+                       | SFC Context Label |
+                       +-------------------+
+                       |     SF Label      |
+                       +-------------------+
+                       ~                   ~
+                       +-------------------+
+                       | SFC Context Label |
+                       +-------------------+
+                       |     SF Label      |
+                       +-------------------+
+                       |   Extension = 15  |
+                       +-------------------+
+                       |        MLI        |
+                       +-------------------+
+                       |  Metadata Label   |
+                       +-------------------+
+                       ~       Other       ~
+                       |      Metadata     |
+                       ~   Label Triples   ~
+                       +-------------------+
+                       |                   |
+                       ~      Payload      ~
+                       |                   |
+                        ------------------- ]]>
+            </artwork>
+          </figure>
+
+       </section>
+
+       <section anchor="inband" title="In-Band Programming of Metadata">
+
+         <t>A mechanism for sending metadata associated with an SFP without a payload packet
+            is described in <xref target="RFC8393" />.  The same approach can be used in an MPLS
+            network where the NSH is logically represented by an MPLS label stack.</t>
+
+         <t>The packet header is formed exactly as previously described in this document so
+            that the packet will follow the SFP through the SFC network.  However, instead of
+            payload data, metadata is included after the bottom of the MPLS label stack.  An
+            extended special&nbhy;purpose label is used to indicate that the metadata is present.
+            Thus, three label stack entries are present:
+            <list style="symbols">
+              <t>The Extension Label (value 15).</t>
+              <t>An extended special-purpose label called the Metadata Present
+	      Indicator (MPI) (value 17).</t>
+              <t>The Metadata Label (ML) that is associated with this metadata on this SFP
+                 and can be used to indicate the use of the metadata as described in
+                 <xref target="metadata" />.</t>
+            </list></t>
+
+         <t>The MPI, if present, is placed immediately after the last
+            basic unit of MPLS label stack for SFC.  The resultant label stacks are shown in
+            <xref target="swapmetapresFig" /> for the MPLS label-swapping case and
+            <xref target="stackmetapresFig" /> for the MPLS label-stacking case.</t>
+
+        <figure anchor="swapmetapresFig" title="The MPLS SFC Label Stack for
+ Label Swapping Carrying&nbsp;Metadata"><artwork><![CDATA[                           ---------------
+                          ~ Tunnel Labels ~
+                          +---------------+
+                          ~   Optional    ~
+                          ~ Entropy Label ~
+                          +---------------+
+                          |   SPI Label   |
+                          +---------------+
+                          |   SI Label    |
+                          +---------------+
+                          | Extension = 15|
+                          +---------------+
+                          |     MPI       |
+                          +---------------+
+                          | Metadata Label|
+                          +---------------+
+                          |               |
+                          ~    Metadata   ~
+                          |               |
+                           --------------- ]]>
+          </artwork>
+        </figure>
+
+  <figure anchor="stackmetapresFig" title="The MPLS SFC Label Stack for
+ Label Stacking Carrying&nbsp;Metadata"><artwork><![CDATA[
+                         -------------------
+                        ~   Tunnel Labels   ~
+                        +-------------------+
+                        ~     Optional      ~
+                        ~   Entropy Label   ~
+                        +-------------------+
+                        | SFC Context Label |
+                        +-------------------+
+                        |     SF Label      |
+                        +-------------------+
+                        | SFC Context Label |
+                        +-------------------+
+                        |     SF Label      |
+                        +-------------------+
+                        ~                   ~
+                        +-------------------+
+                        | SFC Context Label |
+                        +-------------------+
+                        |     SF Label      |
+                        +-------------------+
+                        |   Extension = 15  |
+                        +-------------------+
+                        |        MPI        |
+                        +-------------------+
+                        |  Metadata Label   |
+                        +-------------------+
+                        |                   |
+                        ~    Metadata       ~
+                        |                   |
+                         ------------------- ]]>
+          </artwork>
+        </figure>
+
+         <t>In both cases, the metadata is formatted as a TLV, as shown in <xref target="metaTLV" />.</t>
+
+        <figure anchor="metaTLV" title="The Metadata TLV">
+ <artwork> <![CDATA[0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           Length              |        Metadata Type          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~                         Metadata                              ~
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ ]]>
+          </artwork>
+        </figure>
+
+         <t>The fields of this TLV are interpreted as follows:
+           <list style="hanging">
+             <t hangText="Length:">The length of the metadata carried in the Metadata
+               field in octets, not including any padding.</t>
+             <t hangText="Metadata Type:">The type of the metadata present.  Values
+               for this field are taken from the "NSH MD Types" registry maintained by
+               IANA and defined in <xref target="RFC8300" /> and encoded with the
+               most significant bit first.</t>
+             <t hangText="Metadata:">The actual metadata formatted as described in
+               whatever document defines the metadata.  This field is end-padded
+               with zero to 3&nbsp;octets of zeroes to take it up to a 4&nbhy;octet
+               boundary.</t>
+           </list></t>
+
+         <section anchor="loss" title="Loss of In-Band Metadata">
+           <t>Note that in-band exchange of metadata is vulnerable to packet loss.  This is
+              both a risk arising from network faults and an attack vulnerability.</t>
+
+           <t>If packets that arrive at an SFF use an MLI that does not have an entry in the
+              metadata table, an alarm can be raised and the packet can be discarded or
+              processed without the metadata according to local configuration.  This provides
+              some long-term mitigation but is not an ideal solution.</t>
+
+           <t>Further mitigation of loss of metadata packets can be achieved by retransmitting
+              them at a configurable interval.  This is a relatively cheap, but only partial,
+              solution because there may still be a window during which the metadata has not
+              been received.</t>
+
+           <t>The concern of lost metadata may be particularly important when the metadata
+              applicable to a specific MPI is being changed.  This could result in out-of-date
+              metadata being applied to a packet.  If this is a concern, it is RECOMMENDED that
+              a new MPI be used to install a new entry in the metadata table, and the packets
+              in the flow should be marked with the equivalent new MLI.</t>
+
+           <t>Finally, if an application that requires metadata is sensitive to this potential
+              loss or attack, it SHOULD NOT use in&nbhy;band metadata distribution but SHOULD rely
+              on control-plane or management-plane mechanisms, because these approaches can use
+              a more sophisticated protocol that includes confirmation of delivery and can perform
+              verification or inspection of entries in the metadata table.</t>
+
+         </section>
+
+       </section>
+
+    </section>
+
+    <section anchor="examples" title="Worked Examples">
+
+       <t>This section reverts to the simplified descriptions of networks that rely wholly on
+          label swapping or label stacking.  As described in <xref target="uses" />, actual
+          deployment scenarios may depend on the use of both mechanisms and utilize a mixed
+          mode as described in <xref target="mixedmode" />.</t>
+
+       <t>Consider the simplistic MPLS SFC overlay network shown in <xref target="mplsswapeg" />.
+          A packet is classified for an SFP that will see it pass through
+ two SFs (SFa and SFb) that are accessed through two SFFs (SFFa and
+ SFFb, respectively).  The packet is ultimately delivered to the
+ destination,&nbsp;D.</t>
+
+        <figure anchor="mplsswapeg" title="Service Function Chaining
+ in an MPLS Network"><artwork><![CDATA[         +---------------------------------------------------+
+         |                   MPLS SFC Network                |
+         |                                                   |
+         |            +---------+       +---------+          |
+         |            |   SFa   |       |   SFb   |          |
+         |            +----+----+       +----+----+          |
+         |               ^ | |             ^ | |             |
+         |            (2)| | |(3)       (5)| | |(6)          |
+         |       (1)     | | V     (4)     | | V    (7)      |
+    +----------+ ---> +----+----+ ----> +----+----+ ---> +-------+
+    |Classifier+------+  SFFa   +-------+  SFFb   +------+   D   |
+    +----------+      +---------+       +---------+      +-------+
+         |                                                   |
+         +---------------------------------------------------+ ]]>
+          </artwork>
+        </figure>
+
+       <t>Let us assume that the SFP is computed and assigned an SPI value
+ of 239.  The forwarding
+          details of the SFP are distributed (perhaps using the mechanisms of
+          <xref target="BGP-NSH-SFC" />) so that the SFFs are programmed
+          with the necessary forwarding instructions.</t>
+
+       <t>The packet progresses as follows:
+          <list style="numbers">
+            <t>The classifier assigns the packet to the SFP and imposes two label stack entries
+               comprising a single basic unit of MPLS SFC representation:
+               <list style="symbols">
+                 <t>The higher label stack entry contains a label carrying the SPI value of 239.</t>
+                 <t>The lower label stack entry contains a label carrying the SI value of 255.</t>
+               </list>
+               Further labels may be imposed to tunnel the packet from the classifier to SFFa.</t>
+            <t>When the packet arrives at SFFa, SFFa strips any labels associated with the tunnel that
+               runs from the classifier to SFFa.
+  SFFa examines the top labels and matches the SPI/SI
+               to identify that the packet should be forwarded to SFa.  The packet is forwarded to SFa
+               unmodified.</t>
+            <t>SFa performs its designated function and returns the packet
+ to&nbsp;SFFa.</t>
+            <t>SFFa modifies the SI in the lower label stack entry (to 254) and uses the SPI/SI to
+               look up the forwarding instructions.  It sends the packet with two label stack entries:
+               <list style="symbols">
+                 <t>The higher label stack entry contains a label carrying the SPI value of 239.</t>
+                 <t>The lower label stack entry contains a label carrying the SI value of 254.</t>
+               </list>
+               Further labels may be imposed to tunnel the packet from SFFa
+ to&nbsp;SFFb.</t>
+            <t>When the packet arrives at SFFb, SFFb strips any labels associated with the tunnel from SFFa.
+               SFFb examines the top labels and matches the SPI/SI to identify that the packet should be
+               forwarded to SFb.  The packet is forwarded to SFb unmodified.</t>
+            <t>SFb performs its designated function and returns the packet
+ to&nbsp;SFFb.</t>
+            <t>SFFb modifies the SI in the lower label stack entry (to 253) and uses the SPI/SI to
+               look up the forwarding instructions.  It determines that it is the last SFF in the SFP,
+               so it strips the two SFC Label stack entries and forwards the payload toward D using the
+               payload protocol.</t>
+          </list></t>
+
+       <t>Alternatively, consider the MPLS SFC overlay network shown in <xref target="mplsstackeg" />.
+          A packet is classified for an SFP that will see it pass through two
+ SFs (SFx and SFy) that are accessed through two SFFs (SFFx and SFFy,
+ respectively).  The packet is ultimately delivered to the
+ destination,&nbsp;D.</t>
+
+        <figure anchor="mplsstackeg" title="Service Function Chaining Using
+ MPLS Label Stacking"><artwork><![CDATA[        +---------------------------------------------------+
+        |                   MPLS SFC Network                |
+        |                                                   |
+        |            +---------+       +---------+          |
+        |            |   SFx   |       |   SFy   |          |
+        |            +----+----+       +----+----+          |
+        |               ^ | |             ^ | |             |
+        |            (2)| | |(3)       (5)| | |(6)          |
+        |       (1)     | | V     (4)     | | V    (7)      |
+   +----------+ ---> +----+----+ ----> +----+----+ ---> +-------+
+   |Classifier+------+  SFFx   +-------+  SFFy   +------+   D   |
+   +----------+      +---------+       +---------+      +-------+
+        |                                                   |
+        +---------------------------------------------------+ ]]>
+          </artwork></figure>
+
+       <t>Let us assume that the SFP is computed and assigned an SPI value
+ of 239.  However, the forwarding
+          state for the SFP is not distributed and installed in the network.  Instead, it will be attached
+          to the individual packets using the MPLS label stack.</t>
+
+       <t>The packet progresses as follows:
+          <list style="numbers">
+            <t>The classifier assigns the packet to the SFP and imposes two basic units of MPLS SFC
+               representation to describe the full SFP:
+               <list style="symbols">
+                 <t>The top basic unit comprises two label stack entries as follows:
+                    <list style="symbols">
+                      <t>The higher label stack entry contains a label carrying the SFC context.</t>
+                      <t>The lower label stack entry contains a label carrying the SF indicator for SFx.</t>
+                    </list></t>
+                 <t>The lower basic unit comprises two label stack entries as follows:
+                    <list style="symbols">
+                      <t>The higher label stack entry contains a label carrying the SFC context.</t>
+                      <t>The lower label stack entry contains a label carrying the SF indicator for SFy.</t>
+                    </list></t>
+               </list>
+               Further labels may be imposed to tunnel the packet from the classifier to SFFx.</t>
+            <t>When the packet arrives at SFFx, SFFx strips any labels associated with the tunnel from the
+               classifier.  SFFx examines the top labels and matches the context/SF values to identify that the
+               packet should be forwarded to SFx.  The packet is forwarded to SFx unmodified.</t>
+            <t>SFx performs its designated function and returns the packet
+ to&nbsp;SFFx.</t>
+            <t>SFFx strips the top basic unit of MPLS SFC representation, revealing the next basic unit.  It
+               then uses the revealed context/SF values to determine how to route the packet to the next SFF,
+               SFFy.  It sends the packet with just one basic unit of MPLS SFC representation comprising two
+               label stack entries:
+               <list style="symbols">
+                 <t>The higher label stack entry contains a label carrying the SFC context.</t>
+                 <t>The lower label stack entry contains a label carrying the SF indicator for SFy.</t>
+               </list>
+               Further labels may be imposed to tunnel the packet from SFFx
+ to&nbsp;SFFy.</t>
+            <t>When the packet arrives at SFFy, SFFy strips any labels associated with the tunnel from SFFx.
+               SFFy examines the top labels and matches the context/SF values to identify that the
+               packet should be forwarded to SFy.  The packet is forwarded to SFy unmodified.</t>
+            <t>SFy performs its designated function and returns the packet
+ to&nbsp;SFFy.</t>
+            <t>SFFy strips the top basic unit of MPLS SFC representation, revealing the payload packet. It
+               forwards the payload toward D using the payload protocol.</t>
+         </list></t>
+    </section>
+
+    <section anchor="implement" title="Implementation Notes">
+      <t>It is not the job of an IETF specification to describe the internals of an implementation,
+         except where that directly impacts upon the bits on the wire that change the likelihood of
+         interoperability or where the availability of configuration or security options directly
+         affects the utility of an implementation.</t>
+
+      <t>However, in view of the objective of this document to acknowledge that there may be a need
+         for an interim deployment of SFC functionality in brownfield MPLS networks, this section
+         provides some observations about how an SFF might utilize MPLS features that are available
+         in existing routers.  This section is not intended to be definitive
+ or technically complete; rather, it is indicative.</t>
+
+      <t>Consider the mechanism used to indicate to which Virtual Routing and
+ Forwarding (VRF) system an
+         incoming MPLS packet should be routed in a Layer&nbsp;3 Virtual Private Network (L3VPN)
+         <xref target="RFC4364" />.  In this case, the top MPLS label is an
+ indicator of the VRF system that is to be used to route the payload.</t>
+
+      <t>A similar approach can be taken with the label-swapping SFC technique described in
+         <xref target="mplsswap" /> such that the SFC Context Label identifies a routing table
+         specific to the SFP.  The SF Label can be looked up in the context of this routing table
+         to determine to which SF to direct the packet and how to forward it to the next SFF.</t>
+
+      <t>Advanced features (such as metadata) are not inspected by SFFs.  The packets are passed to
+         SFIs that are MPLS-SFC aware or to SFC proxies, and those components are responsible for
+         handling all metadata issues.</t>
+
+      <t>Of course, an actual implementation might make considerable optimizations on this approach,
+         but this section should provide hints about how MPLS-based SFC might be achieved with
+         relatively small modifications to deployed MPLS devices.</t>
+
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+
+      <t>Discussion of the security properties of SFC networks can be found in <xref target="RFC7665" />.
+         Further security discussion for the NSH and its use is provided in <xref target="RFC8300" />.
+         Those documents provide analysis and present a set of requirements and recommendations for
+         security, and the normative security requirements from those documents apply to this specification.
+         However, it should be noted that those documents do not describe any mechanisms for securing NSH
+         systems.</t>
+
+      <t>It is fundamental to the SFC design that the classifier is a fully trusted element.  That is, the
+         classification decision process is not visible to the other elements, and its output is treated as
+         accurate.  As such, the classifier has responsibility for determining the processing that the packet
+         will be subject to, including, for example, firewall functions.  It is also fundamental to the MPLS
+         design that packets are routed through the network using the path specified by the node imposing the
+         labels and that the labels are swapped or popped correctly.  Where an SF
+ is not encapsulation aware, the
+         encapsulation may be stripped by an SFC proxy such that a packet may exist as a native packet (perhaps
+         IP) on the path between the SFC proxy and the SF; however, this is an
+ intrinsic part of the SFC design, which
+         needs to define how a packet is protected in that environment.</t>
+
+      <t>SFC components are configured and enabled through a management system or a control plane.  This
+         document does not make any assumptions about what mechanisms are used.  Deployments should, however,
+         be aware that vulnerabilities in the management plane or control plane of an SFC system imply
+         vulnerabilities in the whole SFC system.  Thus, control-plane solutions (such as
+         <xref target="BGP-NSH-SFC" />) and management-plane mechanisms must include
+         security measures that can be enabled by operators to protect their SFC systems.</t>
+
+      <t>An analysis of the security of MPLS systems is provided in <xref
+      target="RFC5920" />, which also notes that the MPLS forwarding plane has no built-in security mechanisms.  Some proposals
+         to add encryption to the MPLS forwarding plane have been suggested
+         <xref target="MPLS-Opp-Sec" />, but no
+ mechanisms have been agreed upon
+         at the time of publication of this document.  Additionally,  MPLS does not provide any cryptographic
+         integrity protection on the MPLS headers.  That means that procedures described in this document
+         rely on three basic principles:
+
+         <list style="symbols">
+           <t>The MPLS network is often considered to be a closed network such that insertion,
+              modification, or inspection of packets by an outside party is not possible.  MPLS networks
+              are operated with closed boundaries so that MPLS-encapsulated packets are not admitted to
+              the network, and MPLS headers are stripped before packets are
+ forwarded from the network.
+
+<!-- Quoted text is DNE. -->
+              This is particularly pertinent in the SFC context because <xref target="RFC7665"/> notes
+              that "The architecture described herein is assumed to be applicable to a single network
+              administrative domain."  Furthermore, <xref target="RFC8300"/> states that packets
+              originating outside the SFC-enabled domain MUST be dropped if they contain an NSH and
+              packets exiting the SFC-enabled domain MUST be dropped if they contain an NSH.  These
+              constraints apply equally to the use of MPLS to encode a logical representation of the NSH.</t>
+
+           <t>The underlying transport mechanisms (such as Ethernet) between adjacent MPLS
+              nodes may offer security mechanisms that can be used to defend packets "on the
+              wire".</t>
+
+           <t>The SFC-capable devices participating in an SFC system are responsible for verifying
+              and protecting payload packets and their contents as well as providing other security
+              capabilities that might be required in the particular system.</t>
+         </list></t>
+
+      <t>Additionally, where a tunnel is used to link two non-MPLS domains, the tunnel design needs to
+         specify how the tunnel is secured.</t>
+
+      <t>Thus, this design relies on the component underlying technologies to address the potential
+         security vulnerabilities, and it documents the necessary protections (or risk of their absence)
+         above.  It does not include any native security mechanisms in-band with the MPLS encoding of
+         the NSH functionality.</t>
+
+      <t>Note that configuration elements of this system (such as the programming of the table of metadata;
+         see <xref target="metadata"/>) must also be adequately secured, although such mechanisms are not
+         in scope for this protocol specification.</t>
+
+      <t>No known new security vulnerabilities over the SFC architecture <xref target="RFC7665" /> and
+         the NSH specification <xref target="RFC8300" /> are introduced by this design, but if issues are
+         discovered in the future, it is expected that they will be addressed through modifications to
+         control/management components of any solution or through changes to the underlying technology.</t>
+
+    </section>
+
+    <section anchor="IANA" title="IANA Considerations">
+      <t>IANA has made allocations from the "Extended Special&nbhy;Purpose MPLS Label Values"
+         subregistry of the "Special&nbhy;Purpose Multiprotocol Label Switching (MPLS) Label Values" registry as follows:</t>
+
+      <figure><artwork><![CDATA[
+   Value  | Description                       | Reference
+   -------+-----------------------------------+--------------
+    16    | Metadata Label Indicator (MLI)    | RFC 8595
+    17    | Metadata Present Indicator (MPI)  | RFC 8595]]>
+        </artwork>
+      </figure>
+
+    </section>
+
+  </middle>
+
+  <back>
+
+    <references title="Normative References">
+      &RFC2119;
+      &RFC6790;
+      &RFC7274;
+      &RFC8174;
+      &RFC8300;
+      &RFC8393;
+    </references>
+
+    <references title="Informative References">
+      &RFC3031;
+      &RFC4364;
+      &RFC5920;
+      &RFC7665;
+      &RFC8402;
+      &RFC8459;
+
+<!-- draft-ietf-bess-nsh-bgp-control-plane (I-D Exists) -->
+<reference anchor='BGP-NSH-SFC'>
+<front>
+<title>BGP Control Plane for NSH SFC</title>
+<author initials='A' surname='Farrel' fullname='Adrian Farrel'>
+    <organization />
+</author>
+<author initials='J' surname='Drake' fullname='John Drake'>
+    <organization />
+</author>
+<author initials='E' surname='Rosen' fullname='Eric Rosen'>
+    <organization />
+</author>
+<author initials='J' surname='Uttaro' fullname='Jim Uttaro'>
+    <organization />
+</author>
+<author initials='L' surname='Jalil' fullname='Luay Jalil'>
+    <organization />
+</author>
+<date month='May' year='2019' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-bess-nsh-bgp-control-plane-11' />
+</reference>
+
+<!-- draft-ietf-mpls-opportunistic-encrypt (Expired) -->
+<reference anchor='MPLS-Opp-Sec'>
+<front>
+<title>Opportunistic Security in MPLS Networks</title>
+<author initials='A' surname='Farrel' fullname='Adrian Farrel'>
+    <organization />
+</author>
+<author initials='S' surname='Farrell' fullname='Stephen Farrell'>
+    <organization />
+</author>
+<date month='March' year='2017' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-mpls-opportunistic-encrypt-03' />
+</reference>
+
+<!-- draft-xuclad-spring-sr-service-programming (I-D Exists) -->
+<reference anchor='SR-Srv-Prog'>
+<front>
+<title>Service Programming with Segment Routing</title>
+<author initials='F' surname='Clad' fullname='Francois Clad' role="editor">
+    <organization />
+</author>
+<author initials='X' surname='Xu' fullname='Xiaohu Xu' role="editor">
+    <organization />
+</author>
+<author initials='C' surname='Filsfils' fullname='Clarence Filsfils'>
+    <organization />
+</author>
+<author initials='D' surname='Bernier' fullname='Daniel Bernier'>
+    <organization />
+</author>
+<author initials='C' surname='Li' fullname='Cheng Li'>
+    <organization />
+</author>
+<author initials='B' surname='Decraene' fullname='Bruno Decraene'>
+    <organization />
+</author>
+<author initials='S' surname='Ma' fullname='Shaowen Ma'>
+    <organization />
+</author>
+<author initials='C' surname='Yadlapalli' fullname='Chaitanya Yadlapalli'>
+    <organization />
+</author>
+<author initials='W' surname='Henderickx' fullname='Wim Henderickx'>
+    <organization />
+</author>
+<author initials='S' surname='Salsano' fullname='Stefano Salsano'>
+    <organization />
+</author>
+<date month='April' year='2019' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-xuclad-spring-sr-service-programming-02' />
+</reference>
+
+    </references>
+
+    <section anchor="Acknowledgements" title="Acknowledgements" numbered="no">
+
+      <t>This document derives ideas and text from <xref target="BGP-NSH-SFC" />.
+The authors are grateful to all those who contributed to the discussions that led to that
+         work: Loa Andersson, Andrew G.&nbsp;Malis, Alexander (Sasha) Vainshtein, Joel Halpern, Tony Przygienda,
+         Stuart Mackie, Keyur Patel, and Jim Guichard. Loa Andersson provided helpful review comments.</t>
+
+      <t>Thanks to Loa Andersson, Lizhong Jin, Matthew Bocci, Joel Halpern, and Mach Chen for reviews of this text.
+         Thanks to Russ Mundy for his Security Directorate review and to S Moonesamy for useful discussions.  Thanks
+         also to Benjamin Kaduk, Alissa Cooper, Eric Rescorla, Mirja Kuehlewind, Alvaro Retana, and Martin Vigoureux
+         for comprehensive reviews during IESG evaluation.</t>
+
+      <t>The authors would like to be able to thank the authors of <xref target="SR-Srv-Prog" />
+         and <xref target="RFC8402" /> whose original work on service chaining and the identification of services using
+         Segment Identifiers (SIDs), and conversation with whom, helped clarify the application of SR&nbhy;MPLS to SFC.</t>
+
+      <t>Particular thanks to Loa Andersson for conversations and advice about working group process.</t>
+
+    </section>
+
+    <section title="Contributors" numbered="no">
+      <t>The following individual contributed text to this document:</t>
+
+      <figure><artwork align="left"><![CDATA[   Andrew G. Malis
+   Email: agmalis@gmail.com ]]>
+        </artwork>
+      </figure>
+    </section>
+
+  </back>
+</rfc>

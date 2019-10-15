@@ -1,0 +1,972 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+
+<!ENTITY RFC2119 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY RFC3588 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.3588.xml">
+<!ENTITY RFC5729 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.5729.xml">
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc rfcedstyle="yes"?>
+
+<rfc category="info" number="6159" submissionType="independent">
+
+  <front>
+    <title abbrev="Diameter Explicit Routing"> Session-Specific Explicit
+Diameter Request Routing</title>
+
+    <author fullname="Tina Tsou" initials="T." surname="Tsou">
+      <organization>Huawei Technologies (USA)</organization>
+      <address>
+        <postal>
+          <street>2330 Central Expressway</street>
+          <city>Santa Clara</city>
+          <region>CA</region>
+          <code>95050</code>
+          <country>USA</country>
+        </postal>
+
+        <email>tena@huawei.com</email>
+        <phone>+1 408 330 4424</phone>
+        <uri>http://tinatsou.weebly.com/contact.html</uri>
+      </address>
+    </author>
+
+<author fullname="Glen Zorn" initials="G.Z."  surname="Zorn">
+              <organization>Network Zen</organization>
+              <address>
+                <postal>
+                  <street>227/358 Thanon Sanphawut</street>
+                  <city>Bang Na, Bangkok</city>
+                  <code>10260</code>
+                  <country>Thailand</country>
+                </postal>
+                <phone>+66 (0) 87-040-4617</phone>
+                <email>gwz@net-zen.net</email>
+              </address>
+        </author>
+
+    <author fullname="Tom Taylor" initials="T." role="editor"
+            surname="Taylor">
+      <organization>Huawei Technologies</organization>
+
+      <address>
+        <postal>
+          <street>1852 Lorraine Ave.</street>
+          <city>Ottawa</city>
+          <country>Canada</country>
+        </postal>
+
+        <email>tom111.taylor@bell.net</email>
+
+      </address>
+    </author>
+    
+    <date month="April" year="2011" />
+
+    <abstract>
+    <t>   
+    This document describes a mechanism to enable specific Diameter proxies
+    to remain in the path of all message exchanges constituting a Diameter
+    session.
+   </t>
+   </abstract>
+
+<note title="IESG Note">
+  <t>
+  Techniques similar to those discussed in this document were discussed
+  in the IETF Diameter Maintenance and Extensions (DIME) Working Group.
+  The group had no consensus that the
+  problems addressed by such work are a real concern in Diameter
+  deployments. Furthermore, there was no consensus that the proposed
+  solutions are in line with the architectural principles of the Diameter
+  protocol. As a result, the working group decided not to undertake the
+  work. There has also not been a formal request for this functionality
+  from any standards body. This RFC represents a continuation of the
+  abandoned work. Readers of this specification should be aware that the
+  IETF has not reviewed this specification and cannot say anything about
+  suitability for a particular purpose or compatibility with the Diameter
+  architecture and other extensions.
+  </t>
+  </note>
+
+  </front>
+
+<middle>
+<section anchor="intro" title="Introduction">
+  <t>   
+    In the Diameter base protocol <xref target="RFC3588"/>, the routing of 
+    request messages is based solely on the routing decisions made separately 
+    by each node along the path. <xref target="RFC5729"/> has added the ability
+    to force messages to pass through a specified set of realms through the use 
+    of Network Access Identifier (NAI) decoration. However, no other specification
+    provides the ability to force routing through a specific set of agents. 
+    Therefore, in a topology where multiple paths exist from source to destination,
+    there is no guarantee that all messages relating to a given session will 
+    take the same path. In general, this has not caused problems, but some
+    architectures (e.g., WLAN Third Generation Partnership Project (3GPP) IP 
+    access <xref target="TS23.234"/>) require that once certain agents become
+    engaged in a session, they be able to process all subsequent messages for
+    that session.
+  </t>
+
+  <t>
+    While the solution presented in this document is valid, it violates one of
+    the basic premises of Diameter -- the robustness of its architecture. With 
+    normal Diameter routing, sessions will survive failures of agents along the
+    routing path. With the proposals in this document, routing becomes pinned to
+    specific agents whose failure will terminate the session.
+  </t>
+
+  <t>
+    The authors see no interaction between explicit routing and the specific
+    applications with which it is employed. Hence, in principle it can be added
+    to existing applications if they support the necessary extensibility, and 
+    equally can be used with new applications.
+  </t>
+
+</section><!-- intro -->
+
+<section anchor="term" title="Terminology">
+
+  <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+    "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+    interpreted as described in <xref target="RFC2119"/>.
+            <vspace blankLines="1"/>
+    The following terms are used to define the functionality and
+    participants in the routing extensions described in this document.
+    <list style="hanging">
+      <t hangText="ER"> 
+        <vspace blankLines="0"/>
+        Explicit routing -- the mechanism provided by this specification to allow
+        proxies traversed by the initial message of a session to ensure that they
+        remain on the messaging path for all subsequent request messages of a 
+        session.
+      </t>
+
+      <t hangText="ER-Proxy">
+        <vspace blankLines="0"/>
+        A proxy that implements the ER mechanism and can therefore use it to
+        remain in the path for subsequent messages of a session.
+      </t>
+
+      <t hangText="ER-Destination">
+        <vspace blankLines="0"/>
+        A Diameter node that is capable of participating in ER and that will
+        ultimately consume the request sent by an ER&nbhy;Originator.
+      </t>
+
+      <t hangText="ER-Originator">
+        <vspace blankLines="0"/>
+        A Diameter node initiating a session and sending the requests. The
+        ER&nbhy;Originator can be any Diameter node sending a request, i.e.,
+        a client, server or proxy capable of initiating sessions and
+        participating in ER.
+      </t>
+
+      <t hangText="Authentication, Authorization, and Accounting (AAA) Relays">
+        <vspace blankLines="0"/>
+        Other Diameter nodes interspersed between the ER&nbhy;Originator,
+        ER&nbhy;Proxies, and the ER&nbhy;Destination. These nodes represent
+        existing Diameter agents and proxies that do not participate in ER and 
+        do not recognize Explicit-Path Attribute Value Pairs (AVPs).
+      </t>
+    </list>
+  </t>
+</section><!-- term -->
+
+<section anchor="wlan" title="The 3GPP Wireless LAN (WLAN) Access Architecture">
+
+  <t>
+    The 3GPP WLAN IP access architecture <xref target="TS23.234"/> is one example
+    of a system requiring that certain agents (stateful proxies, in this case)
+    remain in the forwarding path of all session messages. The 3GPP WLAN 
+    interworking architecture extends 3GPP services to the WLAN access side,
+    enabling a 3GPP subscriber to use a WLAN to access 3GPP services.
+        <vspace blankLines="1"/>
+    WLAN AAA provides access to the WLAN to be authenticated and authorized 
+    through the 3GPP system. This access control can permit or deny a subscriber
+    access to the WLAN system and/or the 3GPP system.
+        <vspace blankLines="1"/>
+    There are two 3GPP WLAN interworking reference models:
+    <list style="numbers">
+      <t>
+        In the non-roaming case, the model includes the WLAN access network and 
+        the 3GPP AAA server in the home network. The 3GPP AAA server is responsible
+        for access control as well as charging.
+      </t>
+
+      <t>
+        In the roaming case, the model includes the WLAN access network, the 
+        3GPP AAA proxy in the visited network, and the 3GPP AAA server in the 
+        home network. The 3GPP AAA server is responsible for access control.
+        Charging records may be generated by the AAA proxy and/or the AAA server.
+        The AAA proxy relays access control and charging messages to the AAA 
+        server. The AAA proxy will also do offline charging, if required.
+      </t>
+    </list>
+    The roaming case presents two problems for which the Diameter routing 
+    mechanism described in <xref target="RFC3588"/> does not offer any unambiguous
+    and standard solution.
+    <list style="hanging">
+      <t hangText="Network Selection">
+           <vspace blankLines="0"/>
+        Selecting an initial message path for the Diameter session through (possibly
+        many) alternative visited network(s) to the home network.
+      </t>
+      
+      <t hangText="Explicit Routing (ER)"> 
+           <vspace blankLines="0"/>
+        Maintaining the selected message path for all messages in the Diameter
+        session.
+      </t>
+    </list>
+    Selecting an initial message path is outside the scope of this document. A
+    mechanism for maintaining the selected message path is described in detail below.
+  </t>
+    
+  <section anchor="keepPath" title="Maintaining the Routing Path">
+  
+    <t>
+      After a successful authentication, a Diameter session is established 
+       involving (at least) the following stateful entities:
+      <list style="symbols">
+        <t>   
+          the Diameter client in the WLAN access node (e.g., the 3GPP AAA client 
+          in the terminal visited network),
+        </t>
+        
+        <t>
+          a Diameter proxy in the visited mobile network (e.g., the 3GPP AAA proxy
+          in the terminal visited network), and
+        </t>
+        
+        <t>
+          a Diameter server in the user's home realm (e.g., the destination 3GPP 
+          AAA server in the terminal home network).
+        </t>
+      </list>
+    </t>
+      
+    <t>
+      Message routing for the initial session request uses the normal Diameter
+      routing tables (Section 2.7 of <xref target="RFC3588"/>) in the 3GPP AAA
+      client, the 3GPP AAA proxy in the visited network, and any intermediate
+      proxies after that. The 3GPP AAA client sends the initial session request
+      to the 3GPP AAA proxy in the visited network. The 3GPP AAA proxy processes
+      the request, then forwards it towards the destination 3GPP AAA server,
+      through an intermediate proxy if necessary. The request may be forwarded
+      through other intermediate proxies in the same way, until it reaches the
+      destination 3GPP AAA server in the terminal home network.
+    </t>
+
+    <t>
+      The functions assigned to the 3GPP AAA proxy include:
+      <list style="symbols">
+        <t>
+           Reporting charging information to the offline charging system in
+           the visited network,
+        </t>
+          
+         <t>
+           Policy enforcement based on roaming agreements, and
+         </t>
+          
+         <t>
+           Service termination initiated by the visited network's operator.
+         </t>
+       </list>
+      These functions all require that state be maintained within the visited
+      network. The 3GPP's choice is to maintain that state at the 3GPP AAA 
+      proxy. This means that the latter must remain in the messaging path for
+      all subsequent messages relating to the same session.
+    </t>
+    
+  </section><!-- keepPath -->
+</section><!-- wlan -->
+
+<section anchor="explicit" title="Diameter Explicit Routing (ER)">
+
+  <t>
+    This section outlines a Diameter ER mechanism by which Diameter nodes
+    participating in ER can remain in the path of all request messages for a
+    specific session. A new Explicit-Path AVP is defined to enable ER
+    participants to manipulate the Destination-Host and/or Destination-Realm 
+    AVPs of request messages in order to ensure the correct routing behavior.
+    The following sections describe the extensions to the request routing in 
+    <xref target="RFC3588"/> to implement the ER mechanism. The proposed 
+    extensions utilize existing routing strategies in <xref target="RFC3588"/>
+    and do not mandate modifications to it. The mechanism imposes loose rather 
+    than strict source routing, in that subsequent messages of a session are
+    forced through the participating nodes, but not through any individual
+    non-participating nodes. In summary, only Diameter nodes interested in
+    participating in the ER scheme will be involved in it. 
+  </t>
+    
+  <section anchor="expOrig" title="Originating a Request (ER-Originator)">
+        
+    <t>    
+      A Diameter node acting as an ER&nbhy;Originator for a particular session
+      MUST maintain a local cache that enumerates all the Diameter identities
+      of the ER&nbhy;Proxies that the request messages must traverse along the
+      path to the ER&nbhy;Destination. The identity of a Diameter node is defined
+      in <xref target="RFC3588"/>. The local cache MAY also include the node's
+      realm. The data structure of the cache is left up to the implementation
+      and SHOULD persist as part of the session attributes or properties.
+    </t>
+            
+    <t>    
+      An ER&nbhy;Originator sending request messages MUST add an Explicit-Path 
+      AVP to these requests. The contents of the cache SHOULD be used to populate
+      the Explicit-Path AVP, with each cached entry represented by a 
+      corresponding instance of the Explicit-Path-Record AVP. ER&nbhy;Proxies
+      along the path of the request message MUST examine the contents of the
+      Explicit-Path AVP and make routing adjustments based on records it
+      contains. An example of the message flow is shown in 
+      <xref target="expExamp"/>. Note that the ER&nbhy;Originator can be 
+      any Diameter node, i.e., a client, server, or proxy.
+    </t>
+            
+    <t>    
+      The ER&nbhy;Originator can populate the cache either by pre-configuring its
+      contents or by using the first request message of the session to gather
+      identities of participating ER&nbhy;Proxies along the routing path. The 
+      latter scheme is known as Explicit-Path discovery. The contents of the cache
+      can be pre-configured if the ER&nbhy;Originator has explicit knowledge of
+      the ER&nbhy;Proxies the request messages must traverse; otherwise, the
+      ER&nbhy;Originator can use Explicit-Path discovery. It is RECOMMENDED that
+      Explicit-Path discovery be used whenever possible since pre&nbhy;configuration
+      is less flexible by nature. 
+    </t>
+            
+    <t>    
+      Explicit-Path discovery is useful if the identities of the ER&nbhy;Proxies
+      are not known or if there are several ER&nbhy;capable proxies (a cluster of
+      proxies) that can be dynamically chosen based on other routing policies. In
+      Explicit-Path discovery, the cache of the ER&nbhy;Originator is initially 
+      empty. To initiate discovery, when the ER&nbhy;Originator sends the first
+      request message of a session, it MUST include the Explicit-Path AVP 
+      containing a single Explicit-Path-Record AVP with the identity and/or the
+      realm of the ER&nbhy;Originator. The ER&nbhy;Originator MUST set the 
+      Destination-Host and/or Destination-Realm AVP of the request message to
+      the identity and/or the realm of the ER&nbhy;Destination, respectively, as
+      specified in <xref target="RFC3588"/>. 
+      <list style="empty">
+        <t>
+          Note that ER&nbhy;Originator initial request message 
+          routing procedures and the process of population of the 
+          Destination-Realm may be affected by the User-Name AVP NAI decoration 
+          <xref target="RFC5729"/>. NAI decoration is a form of request message
+          source routing and defines realms that the request message must traverse
+          through before routing towards the ER&nbhy;Destination. Diameter nodes
+          participating in request message routing must examine and process the
+          User-Name AVP, and modify the Destination-Realm AVP accordingly as 
+          long as there are realms left in the decorated NAI. Source routing
+          based upon NAI decoration does not affect Explicit-Path discovery as
+          defined in this document.
+        </t>
+      </list>
+    </t>
+                        
+    <t>    
+      If the path taken by the initial request encounters one or more participating
+      ER-Proxies and a participating ER-Destination, the procedures described in 
+      <xref target="expRel"/> and <xref target="expRecv"/> ensure that a successful
+      response to that request will contain an Explicit-Path AVP that includes one
+      or more Explicit-Path-Records containing the ER&nbhy;Originator's identity,
+      the identities of all participating ER&nbhy;Proxies, and the identity of the
+      ER&nbhy;Destination. The ER&nbhy;Originator SHOULD populate its local cache 
+      with the contents of the Explicit-Path AVP received in this initial answer
+      message.
+    </t>
+            
+    <t>    
+      If the answer message does not contain an Explicit-Path AVP or the Result-Code
+      AVP is set to DIAMETER_ER_NOT_AVAILABLE (<xref target="expErr"/>), it is an
+      indication to the ER&nbhy;Originator that the destination of the request does
+      not support ER and that the ER&nbhy;Originator SHOULD avoid sending an 
+      Explicit-Path AVP in subsequent request messages.
+    </t>
+            
+    <t>
+      If the initial request message initiated Explicit-Path discovery, but the
+      Explicit-Path AVP in the answer message contains Explicit-Path-Records for 
+      the ER&nbhy;Originator and ER&nbhy;Destination only, it is an indication to
+      the ER&nbhy;Originator that there are no Diameter proxies capable of
+      participating in ER along the path and that the ER&nbhy;Originator SHOULD
+      NOT send an Explicit-Path AVP in subsequent request messages of this
+      session. See <xref target="expFail"/> for more discussion. In such cases,
+      the situation may be transient, and Explicit-Path discovery may find
+      participating proxies in succeeding sessions. It is left up to the
+      ER&nbhy;Originator to decide if Explicit-Path discovery should be attempted
+      in succeeding sessions. 
+    </t>
+            
+    <t>    
+      Once the ER&nbhy;Originator's local cache has been populated, whether by
+      pre&nbhy;configuration or through Explicit-Path discovery, all request
+      messages for the session MUST include the Explicit-Path AVP using the 
+      contents of the local cache. The Explicit-Path AVP MUST contain the
+      Explicit-Path-Records of all the nodes enumerated in the cache except
+      that of the ER&nbhy;Originator itself. The identities enumerated in the
+      Explicit-Path AVP MUST appear in the order they will be traversed in the
+      routing path. The last entry in the Explicit-Path AVP MUST be the 
+      Explicit-Path-Record of the ER&nbhy;Destination. In addition, the value 
+      of the Destination-Host and possibly the Destination-Realm in the request 
+      message MUST be copied from the values of the Proxy-Host AVP and, if present,
+      the Proxy-Realm AVP of the first Explicit-Path-Record AVP present in the 
+      Explicit-Path AVP.  
+      <list style="empty">
+        <t>        
+          This ensures that the ER&nbhy;Originator as well as any AAA relays
+          between the ER&nbhy;Originator and the first ER&nbhy;Proxy will route
+          the message towards the first ER&nbhy;Proxy as specified in 
+          RFC&nbsp;3588 <xref target="RFC3588"/>.
+         </t>
+      </list>
+      Subsequent actions taken by the first ER&nbhy;Proxy upon receipt of the 
+      message are described in <xref target="expRel"/> and will mimic those of
+      the ER&nbhy;Originator.
+    </t>
+            
+    <t>    
+      Answer messages received by the ER&nbhy;Originator to subsequent request
+      messages after the Explicit-Path has been established SHOULD NOT have an 
+      Explicit-Path AVP. If they do, this SHOULD be considered a suspect condition
+      that may be caused by a misbehaving ER participant. It is left up to the
+      ER&nbhy;Originator whether to continue using the ER scheme when such a 
+      condition arises or to attempt another Explicit-Path discovery for 
+      subsequent sessions.
+    </t>
+        
+  </section><!-- expOrig -->
+
+  <section anchor="expRel" title="Relaying and Proxying Requests (ER-Proxy)">
+  
+    <t> 
+      The basic action taken by an ER&nbhy;Proxy upon receiving a request is to
+      check whether explicit routing is supported in the request and if so,
+      check whether it is already a participant in explicit routing for the 
+      said request. If it is not an existing participant, if Explicit-Path discovery
+      is in progress, and if it wishes to participate, it appends an 
+      Explicit-Path-Record AVP identifying itself to the end of the 
+      Explicit-Path AVP. If it is an existing participant, the ER&nbhy;Proxy
+      pops/removes the Explicit-Path-Record AVP pertaining to itself from the 
+      Explicit-Path AVP and then uses the next Explicit-Path-Record AVP for
+      subsequent routing. Details of this operation follow.
+    </t>
+ 
+    <t>
+      An ER&nbhy;Proxy is not required to keep local state or cache state 
+      regarding the explicit routing procedure. However, it MUST check whether
+      an incoming request contains an Explicit-Path AVP. The following cases can
+      occur.
+      <list style="numbers">
+        <t>
+          If an incoming request does not contain an Explicit-Path AVP, then the
+          ER&nbhy;Proxy takes no action beyond processing and forwarding the 
+          request as specified in <xref target="RFC3588"/>.                  
+        </t>
+        
+        <t>
+          If the incoming request contains an Explicit-Path AVP, the ER&nbhy;Proxy
+          MUST check whether its identity is present in the Explicit-Path AVP.
+          Determining whether its identity is present can be done by matching its
+          identity to the Proxy-Host AVP contained in each Explicit-Path-Record.
+          If its identity is not present, then:
+          <list style="letters">
+            <t>
+              If it wishes to participate in explicit routing, the ER&nbhy;Proxy
+              MUST verify that Explicit-Path discovery is in progress by verifying
+              that the Proxy-Host AVP in the first Explicit-Path-Record AVP in the
+              Explicit-Path AVP does not match the Destination-Host AVP (if
+              present). If this verification succeeds or the Destination-Host 
+              AVP is absent, the ER&nbhy;Proxy MAY append a new 
+              Explicit-Path-Record as the last AVP in the Explicit-Path AVP prior
+              to forwarding the request. The new Explicit-Path-Record MUST contain
+              a Proxy-Host AVP set to the proxy's identity, and MAY contain a 
+              Proxy-Realm AVP giving the proxy's realm. If, however, the 
+              Destination-Host AVP is present and matches the Proxy-Host AVP of the
+              first Explicit-Path-Record AVP, then the Explicit-Path contains an
+              already-defined source route that does not include the ER&nbhy;Proxy.
+              The ER&nbhy;Proxy SHOULD process the request as if the ER-Path AVP
+              were absent.                       
+            </t>
+            
+            <t>
+              If the ER&nbhy;Proxy does not wish to participate in the
+              ER, it SHOULD NOT modify the Explicit-Path AVP and SHOULD simply
+              process and forward the request as specified in <xref target="RFC3588"/>
+              using the existing values of the Destination-Host and/or 
+              Destination-Realm AVPs. Non&nbhy;ER&nbhy;Proxies and relays that do 
+              not support ER and do not recognize Explicit-Path AVP will take the 
+              same action.
+            </t>
+           </list>
+        </t>
+            
+        <t>
+          If the identity of the ER&nbhy;Proxy is present in the Explicit-Path
+          AVP, then:
+          <list style="letters">
+            <t>
+              If it is not the first Explicit-Path-Record in the AVP, this MUST
+              be considered an error, and an answer message with the 'E'&nbsp;bit 
+              set and the Result-Code set to DIAMETER_INVALID_PROXY_PATH_STACK MUST
+              be sent back to the ER&nbhy;Originator (<xref target="expErr"/>). 
+            </t>
+              
+            <t>
+              If the identity of the ER&nbhy;Proxy matches the first 
+              Explicit-Path-Record, the ER&nbhy;Proxy MUST remove this record from
+              the Explicit-Path AVP and repopulate the Destination-Host and possibly 
+              the Destination-Realm AVP from the next Explicit-Path-Record present in 
+              the Explicit-Path AVP. Setting the Destination-Host and possibly the
+              Destination-Realm AVP will ensure that the ER&nbhy;Proxy as well as
+              all AAA relays between the current ER&nbhy;Proxy and the next
+              ER&nbhy;Proxy enumerated in the Explicit-Path AVP will route the
+              message towards the next ER&nbhy;Proxy. The process of removing the
+              ER&nbhy;Proxy's record is analogous to popping an entry from a stack
+              represented by the Explicit-Path AVP.
+             </t>
+          </list>
+         </t>  
+      </list>
+      The behavior specified above also applies to a Diameter node that acts as
+      a relay agent and participates in the ER scheme.
+    </t>
+    
+  </section><!-- expRel -->
+
+  <section anchor="expRecv" title="Receiving Requests (ER-Destination)">
+  
+    <t>   
+      A Diameter node that locally processes requests sent by the ER&nbhy;Originator
+      (<xref target="expOrig"/>) and is able to support ER (an ER&nbhy;Destination)
+      MUST check for the presence of an Explicit-Path AVP in the request message.
+      <list style="numbers">
+        <t>
+          If an incoming request does not contain an Explicit-Path AVP, then it 
+          is an indication that messages belonging to this session will not use 
+          ER. The ER&nbhy;Destination MUST simply process the request for local
+          consumption and formulate an answer message as specified in 
+          <xref target="RFC3588"/>.                  
+        </t>
+        
+        <t>
+          If the incoming request contains an Explicit-Path AVP, the
+          ER&nbhy;Destination MUST check whether its identity is present in the
+          Explicit-Path AVP. If its identity is not present, indicating that 
+          Explicit-Path discovery is in progress, then:
+          <list style="letters">
+            <t>
+              If it wishes to participate in the ER, and subject to paragraph
+B below,
+              the ER&nbhy;Destination MUST append a new Explicit-Path-Record to the
+              Explicit-Path AVP in the received message. The new Explicit-Path-Record
+              MUST contain at the least a Proxy-Host AVP set to the
+              ER&nbhy;Destination's identity. The ER&nbhy;Destination MUST then copy
+              the resulting Explicit-Path AVP to the subsequent answer message.  
+            </t>
+            
+            <t>
+              If there is only one Explicit-Path-Record in the incoming Explicit-Path
+              AVP, then this is an indication of a successful Explicit-Path discovery, 
+              but with no participating ER-Proxies.  The ER-Destination SHOULD NOT
+              copy the Explicit-Path AVP into the subsequent answer message.
+            </t>
+            
+            <t>
+              If the ER&nbhy;Destination supports ER but does not wish to or
+              cannot participate, it MAY send a Result-Code AVP set to
+              DIAMETER_ER_NOT_AVAILABLE as defined in <xref target="expErr"/>.
+              The ER&nbhy;Destination MUST NOT include any Explicit-Path AVP
+              in the subsequent answer.  Diameter servers that do not support ER 
+              and do not recognize the Explicit-Path AVP will also omit the
+              Explicit-Path AVP from the answer message.
+            </t>
+          </list> 
+        </t>
+        
+        <t>
+          If the identity of the ER&nbhy;Destination matches a record in the 
+          Explicit-Path AVP, then it MUST be the only Explicit-Path-Record
+          present in the Explicit-Path AVP. Otherwise, this MUST be considered
+          an error, and an answer message with the 'E'&nbsp;bit set and containing
+          an Experimental-Result-Code AVP set to DIAMETER_INVALID_PROXY_PATH_STACK
+          MUST be sent back to the ER&nbhy;Originator (<xref target="expErr"/>). 
+          If the identity of the ER&nbhy;Destination does match the only existing
+          Explicit-Path-Record, then this is an indication that the request reached
+          the ER&nbhy;Destination by way of a successfully executed explicit route.
+          The ER&nbhy;Destination MUST NOT include the Explicit-Path AVP in the
+          subsequent answer message.                        
+        </t>
+      </list>
+    </t>
+    
+  </section><!-- expRecv -->
+
+  <section anchor="expAns" title="Diameter Answer Processing">
+  
+    <t>   
+      There is no requirement on Diameter nodes participating in ER to provide
+      special handling or routing of answer messages. Answer messages SHOULD be
+      processed normally as specified in <xref target="RFC3588"/>. However, a
+      Diameter node acting as an ER&nbhy;Destination MUST formulate a proper 
+      Explicit-Path AVP in answer messages as described in <xref target="expRecv"/>.
+    </t>
+    
+  </section><!-- expAns -->
+
+  <section anchor="expFail" title="Failover and Failback Considerations">
+  
+    <t>  
+      If there is no ER&nbhy;Proxy along the selected path, the answer message
+      MAY contain an Explicit-Path AVP that contains only the Explicit-Route-Records
+      of the ER&nbhy;Originator and the ER&nbhy;Destination, indicating that 
+      there is no ER support found in Diameter nodes along the path. It is left
+      to the ER&nbhy;Originator to continue with processing of the request 
+      without ER support or terminate the session. The ER&nbhy;Originator SHOULD
+      NOT attempt to perform Explicit-Path discovery in subsequent request messages
+      of this session in such cases, to protect against failback conditions where
+      an ER&nbhy;Proxy suddenly appears in the path and attempts to add a new 
+      Explicit-Path-Record for request messages other than the initial request.
+      <list style="empty">
+        <t>
+          Allowing an ER&nbhy;Proxy to join the session after the initial request
+          makes sense only if the application requirements do not mandate that 
+          every participating ER&nbhy;Proxy receive all of the messages of a 
+          session.
+        </t>
+      </list>
+      However, depending on local policy, the ER&nbhy;Originator MAY attempt ER
+      path discovery in subsequent sessions despite the lack of proxy participants
+      in the earlier attempt.
+    </t>      
+    
+    <t> 
+      If a failover occurs in a Diameter node preceding an ER&nbhy;Proxy when
+      the Explicit-Path is already established, it is possible that a
+      DIAMETER_UNABLE_TO_DELIVER error will be received by the ER&nbhy;Originator
+      if there are no alternative paths towards the ER&nbhy;Proxy. In such a case,
+      it is left to the ER&nbhy;Originator to handle the error as specified in the
+      Diameter application or in <xref target="RFC3588"/>.
+    </t>
+    
+  </section><!-- expFail -->
+
+  <section anchor="AVPs" title="Attribute-Value Pairs">
+  
+    <t>
+      The following sections define the AVPs used in the ER process. All of these
+      AVPs MUST have the 'V'&nbsp;bit set and the 'M'&nbsp;bit cleared, with the
+      Vendor-ID field set to 2011 (as assigned by IANA in "Private Enterprise 
+      Numbers" registry; see http://www.iana.org/).
+    </t>
+
+    <section anchor="expPathRecAVP" title="Explicit-Path-Record AVP">
+  
+      <t>
+        The Explicit-Path-Record AVP (AVP Code 35001) is of type Group. The identity
+        added in the Proxy-Host <xref target="RFC3588"/> element of this AVP MUST be
+        the same as the one advertised by the Diameter node in the Origin-Host AVP
+        during the Capabilities Exchange messages.
+      
+        <figure suppress-title="true">
+          <artwork>
+     Explicit-Path-Record ::= &lt; AVP Header: 35001 >
+                              { Proxy-Host }
+                              [ Proxy-Realm ]
+          </artwork>
+        </figure>
+      </t>
+    
+      <section anchor="pathProxhost" title="Proxy-Host AVP">
+    
+        <t>
+          The Proxy-Host AVP (AVP Code 35004) is of type DiameterIdentity. It 
+          identifies the ER node that is inserting the record. The Proxy-Host AVP 
+          MUST be present. 
+        </t>
+    
+      </section>
+    
+      <section anchor="pathProxrlm" title="Proxy-Realm AVP">
+    
+        <t>
+          The Proxy-Realm AVP (AVP Code 35002) is of type DiameterIdentity, and 
+          contains the realm of the ER node inserting the record. The Proxy-Realm AVP
+          MAY be present in the Explicit-Path-Record. If it is present, the realm name
+          included in the value of the Proxy-Host AVP MUST match the value of the 
+          Proxy-Realm AVP. 
+        </t>
+                
+      </section><!-- pathProxrlm -->
+    
+    </section><!-- expPathRecAVP -->
+    
+    <section anchor="expPathAVP" title="Explicit-Path AVP">
+  
+      <t>
+        The Explicit-Path AVP (AVP Code 35003) is of type Grouped. This AVP MUST be
+        present in all request messages performing ER. It MAY be present in the 
+        answer to the initial session request message if Explicit-Path discovery was
+        successfully executed for the request.
+      
+        <figure suppress-title="true">
+          <artwork>
+        
+      Explicit-Path ::= &lt; AVP Header: 35003 >
+                     1* [ Explicit-Path-Record ]
+                      * [ AVP ]
+          </artwork>
+        </figure>
+      </t>
+    
+    </section><!-- expPathAVP -->
+  </section><!-- AVPs -->
+
+  <section anchor="expErr" title="Error Handling">
+  
+    <t>   
+      The following error conditions may occur during ER processing. All error
+      indications MUST be encapsulated in an instance of the Experimental-Result
+      AVP <xref target="RFC3588"/> with the Vendor-ID AVP set to 2011 and the
+      Experimental-Result-Code set as specified below.
+      <list style="hanging">
+        <t hangText="DIAMETER_INVALID_PROXY_PATH_STACK     3501">
+                  <vspace blankLines="1"/>
+          A request message received by an ER&nbhy;Proxy or ER&nbhy;Destination 
+          after an Explicit-Path has been established has the first or only 
+          Explicit-Path-Record AVP not matching the ER&nbhy;Proxy's or the
+          ER&nbhy;Destination's identity. The same error applies to
+          ER&nbhy;Destinations receiving an Explicit-Path-AVP containing more 
+          than one Explicit-Path-Record or an Explicit-Path-AVP with only one
+          Explicit-Path-Record not matching its own identity.
+                  <vspace blankLines="1"/>
+          This error SHOULD be considered a protocol failure and SHOULD be
+          treated on a per-hop basis; Diameter proxies may attempt to correct
+          the error, if possible. Diameter answer messages containing this error
+          indication MUST have the 'E'&nbsp;bit set and MUST conform to Section 
+          7.2 of <xref target="RFC3588"/>.
+        </t>
+
+        <t hangText="DIAMETER_ER_NOT_AVAILABLE     4501">
+                    <vspace blankLines="1"/>
+          An ER&nbhy;Destination that supports ER routing but is unable to comply
+          for unknown reasons MAY send an answer message with the Result-Code AVP
+          set to this error code. This error value SHOULD be considered a 
+          transient failure indicating that subsequent ER attempts may succeed.
+        </t>
+      </list>
+    </t>
+  </section><!-- expErr -->
+</section><!-- explicit -->
+
+<section anchor="expExamp" title="Example Message Flow">
+  <t>
+    The example presented here illustrates the flow of Diameter messages with 
+    the typical attributes present in the ER scenario.
+  </t>         
+  
+  <t>
+    The ER&nbhy;Originator in the example below shows the use of Explicit-Path
+    discovery with the first request. However, the ER&nbhy;Originator could also
+    use a pre-configured cache. The ER&nbhy;Originator can be any Diameter node
+    sending a request, i.e., a client, server, or proxy. In this scenario, the 
+    local cache of the ER&nbhy;Originator is initially empty.
+  </t>         
+  
+  <t>
+    The AAA relays between the ER&nbhy;Proxies, ER&nbhy;Originator, and
+    ER&nbhy;Destination may or may not be present and are shown here to depict
+    routing paths that the requests may take prior to being processed by nodes
+    participating in the ER scheme. The AAA relays also depict existing Diameter
+    relays or proxies that do not recognize Explicit-Path AVPs and therefore do
+    not participate in ER.
+    
+    <figure anchor="fig_examp" title="Example ER Message Flow">
+      <artwork>
+       ER-                     ER-                   ER-         ER-
+   Originator   AAA relays   Proxy1   AAA relays   Proxy2    Destination
+      (o.r1                  (p.r1                 (p.r2       (d.r2
+     .example)              .example)             .example)   .example)
+                     |          |          |          |          |
+   cache=(empty)     |          |          |          |          |
+       ------------->|--------->|          |          |          |
+    (1st request of the session)|          |          |          |
+         Explicit-Path=         |          |          |          |
+           o.r1.example,r1.example         |          |          |
+     dest-host=d.r2.example     |          |          |          |
+     dest-realm=r2.example      |          |          |          |
+                     |          |          |          |          |
+                     |          |--------->|--------->|          |
+                     |          |  (forwarded request)|          |
+                     |          |  Explicit-Path=     |          |
+                     |          |    record1=o.r1.example,r1.example
+                     |          |    record2=p.r1.example,r1.example
+                     |          |  dest-host=d.r2.example        |
+                     |          |  dest-realm=r2.example         |
+                     |          |          |          |          |
+                     |          |          |          |--------->|
+                     |          |          |      (forwarded request)
+                     |          |          |      Explicit-Path=
+                     |          |          |       record1=o.r1.example,
+                     |          |          |               r1.example
+                     |          |          |       record2=p.r1.example,
+                     |          |          |               r1.example
+                     |          |          |       record3=p.r2.example,
+                     |          |          |               r2.example
+                     |          |          |     dest-host=d.r2.example
+                     |          |          |     dest-realm=r2.example
+                     |          |          |          |          |
+    cache=           |&lt;---------|&lt;---------|&lt;---------|&lt;---------|
+      record1=o.r1.example,r1.example         (answer)           |
+      record2=p.r1.example,r1.example   Explicit-Path=
+      record3=p.r2.example,r2.example    record1=o.r1.example,r1.example
+      record4=d.r2.example,r2.example    record2=p.r1.example,r1.example
+                     |          |        record3=p.r2.example,r2.example
+                     |          |        record4=d.r2.example,r2.example
+    Note: An originator pre-configuring    |          |          |
+          its local cache can skip the     |          |          |
+          exchange above and send the      |          |          |
+          initial request as shown below   |          |          |
+                     |          |          |          |          |
+       ------------->|--------->|          |          |          |
+    (subsequent request of the session)    |          |          |
+         Explicit-Path=         |          |          |          |
+   record1=p.r1.example,r1.example         |          |          |
+   record2=p.r2.example,r2.example         |          |          |
+   record3=d.r2.example,r2.example         |          |          |
+     dest-host=p.r1.example     |          |          |          |
+     dest-realm=r1.example      |          |          |          |
+                     |          |--------->|--------->|          |
+                     |          |  (forwarded request)|          |
+                     |          |  Explicit-Path=     |          |
+                     |          |      record1=p.r2.example,r2.example
+                     |          |      record2=d.r2.example,r2.example
+                     |          |  dest-host=p.r2.example        |
+                     |          |  dest-realm=r2.example         |
+                     |          |          |          |          |
+                     |          |          |          |--------->|
+                     |          |          |     (forwarded request)
+                     |          |          |     Explicit-Path
+                     |          |          |       record1=d.r2.example,
+                     |          |          |               r2.example
+                     |          |          |     dest-host=d.r2.example
+                     |          |          |     dest-realm=r2.example
+                     |          |          |          |          |
+    cache=           |&lt;---------|&lt;---------|&lt;---------|&lt;---------|
+      record1=o.r1.example,r1.example    (answer)     |          |
+      record2=p.r1.example,r1.example    * no Explicit-Path-AVP present
+      record3=p.r2.example,r2.example      |          |          |
+      record4=d.r2.example,r2.example      |          |          |
+                     |          |          |          |          |
+                     |          |          |          |          |
+     (subsequent request of the session will repeat the process above)
+                     |          |          |          |          |
+                     |          |          |          |          |
+      </artwork>
+    </figure><!-- fig_examp -->
+  </t>
+
+</section><!-- expExamp -->
+
+<section anchor="RADDiam" title="RADIUS/Diameter Protocol Interactions">
+  <t>
+    No actions need to be taken with regards to RADIUS/Diameter interaction. The
+    routing extension described in this document is transparent to any 
+    translation gateway and relevant only to Diameter routing. The assumption is
+    that if there is a RADIUS proxy chain between Diameter translation agents, 
+    the route between translation agents remains stable during the session and 
+    does not cause an invalidation of the proxy path stack.
+  </t>
+  
+</section><!-- RADDiam -->
+
+<section anchor="secur" title="Security Considerations">
+  <t>
+    The security considerations in <xref target="RFC3588"/> apply to this 
+    extension. In addition, this extension raises questions of authorization
+    and can potentially allow a new denial-of-service attack.
+  </t>
+
+  <t>
+    The authorization issue comes about because the proxies that participate in 
+    ER are self-selected. An ER&nbhy;Proxy is able, through the operation of ER,
+    to guarantee that it can monitor every message of a session. This is in
+    contrast to ordinary Diameter routing, where some messages may pass by an 
+    alternate route. The question is whether the originating party is prepared 
+    to extend this additional degree of trust to arbitrary parties along the path.
+    If not, the ER&nbhy;Originator requires a mechanism to determine whether an
+    ER&nbhy;Proxy listed in the returned Explicit-Path AVP can be trusted. If it
+    has such a mechanism, then an unwanted ER&nbhy;Proxy can be deleted from its
+    cache and thus not appear in the ER&nbhy;Path AVP in subsequent requests. This
+    specification assumes that either the originating party is prepared to allow
+    arbitrary Diameter nodes along the path to attach themselves to the session 
+    as ER&nbhy;Proxies, or the ER&nbhy;Originator maintains a pre-configured list
+    of ER&nbhy;Proxies in its cache. 
+  </t>
+
+  <t>
+    The potential denial-of-service attack is not a serious one because the same
+    result can be obtained more directly. An attacker with control of a Diameter
+    node along the path of the original request could insert an Explicit-Path-Record
+    containing the identity of another node or a non-existent node, rather than 
+    its own identity. Routing subsequent messages of the session through another
+    node could result in violation of the trust assumptions made upstream. Routing
+    subsequent messages to a non-existent node causes them to be lost and 
+    terminates the session. It would seem simpler to perpetrate whatever harm
+    the attacker intends at the subverted Diameter node itself. The advantage 
+    of using ER to accomplish either of the attacks is that it makes it more
+    difficult to determine which node misbehaved, but the extra effort involved 
+    to implement the attack does not seem to be worth the potential gain. 
+  </t>
+  
+</section><!-- secur -->
+
+<section anchor="ack" title="Acknowledgements">
+  <t>   
+    The authors gratefully acknowledge the contributions of Tony Zhang, 
+    Fortune Huang, Rajith R., Victor Fajardo, Jouni Korhonen, Tolga Asveren,
+    Mark Jones, Avi Lior, Steve Norreys, Lionel Morand, Dave Frascone, and
+    Hannes Tschofenig.
+  </t>
+  
+</section><!-- ack -->
+
+</middle>
+
+  <back>
+
+    <references title="Normative References">
+        &RFC2119;
+        &RFC3588;
+        &RFC5729;
+    </references>
+
+    <references title="Informative References">
+        <reference anchor="TS23.234">
+        <front>
+            <title>3GPP system to Wireless Local Area Network (WLAN) interworking;
+System description</title>
+            <author initials="" surname="">
+                <organization>3GPP</organization>
+              </author>
+            <date year="2006" />
+        </front>
+        <seriesInfo name="TS" value="23.234 Version 7.4.0" />
+      </reference>
+    </references>
+  </back>
+</rfc>

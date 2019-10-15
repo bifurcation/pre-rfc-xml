@@ -1,0 +1,2138 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY RFC2119 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY RFC2629 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.2629.xml">
+<!ENTITY RFC3552 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.3552.xml">
+<!ENTITY RFC8126 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.8126.xml">
+<!ENTITY RFC6920 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.6920.xml">
+<!ENTITY RFC5280 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.5280.xml">
+<!ENTITY RFC7927 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.7927.xml">
+<!ENTITY RFC7945 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.7945.xml">
+<!ENTITY RFC8174 SYSTEM "http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml">
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="no" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="8609" submissionType="IRTF" category="exp"
+     consensus="yes" ipr="trust200902">
+
+  <!-- ***** FRONT MATTER ***** -->
+
+  <front>
+    <title abbrev="CCNx TLV">Content-Centric Networking (CCNx) Messages in TLV Format</title>
+
+    <author fullname="Marc Mosko" initials="M.E." surname="Mosko">
+      <organization>PARC, Inc.</organization>
+
+      <address>
+       <postal>
+         <street/>
+
+         <city>Palo Alto</city>
+
+         <region>California</region>
+
+         <code>94304</code>
+
+         <country>United States of America</country>
+       </postal>
+
+       <phone>+01 650-812-4405</phone>
+
+       <email>mmosko@parc.com</email>
+
+       <!-- uri and facsimile elements may also be added -->
+     </address>
+    </author>
+
+    <author fullname="Ignacio Solis" initials="I." surname="Solis">
+      <organization>LinkedIn</organization>
+      <address>
+       <postal>
+         <street/>
+         <city>Mountain View</city>
+         <region>California</region>
+         <code>94043</code>
+         <country>United States of America</country>
+       </postal>
+       <phone></phone>
+       <email>nsolis@linkedin.com</email>
+       <!-- uri and facsimile elements may also be added -->
+     </address>
+    </author>
+
+    <author fullname="Christopher A. Wood" initials="C.A." surname="Wood">
+      <organization>University of California, Irvine</organization>
+      <address>
+       <postal>
+         <street/>
+         <city>Irvine</city>
+         <region>California</region>
+         <code>92697</code>
+         <country>United States of America</country>
+       </postal>
+       <phone>+01 315-806-5939</phone>
+       <email>woodc1@uci.edu</email>
+     </address>
+    </author>
+
+    <date month="July" year="2019"/>
+
+    <area>General</area>
+
+    <workgroup>Information-Centric Networking</workgroup>
+
+    <keyword>Content-Centric Networking</keyword>
+
+    <abstract>
+
+       <t>Content-Centric Networking (CCNx) is a network protocol
+           that uses a hierarchical name to forward requests and to match
+	   responses to requests.
+           This document specifies the encoding of CCNx messages in a TLV
+	   packet format,
+         including the TLV types used by each message element and the encoding
+	 of each value.
+         The semantics of CCNx messages follow the encoding-independent CCNx
+	 Semantics specification.
+       </t>
+     <t>This document is a product of the Information Centric Networking
+        research group (ICNRG).  The document received wide review among ICNRG
+	participants
+         and has two full implementations currently in active use, which have
+	 informed the
+         technical maturity of the protocol specification.</t>
+
+    </abstract>
+  </front>
+
+  <middle>
+      <section title="Introduction">
+       <t>This document specifies a Type-Length-Value (TLV) packet format and the TLV type and value encodings for CCNx messages.
+           A full description of the CCNx network protocol, providing an encoding-free description of
+           CCNx messages and message elements, may be found in <xref target="RFC8569"/>. 
+           CCNx is a network protocol
+        that uses a hierarchical name to forward requests and to match responses
+        to requests.  
+
+  It does not use endpoint addresses; the Internet Protocol does.
+
+        Restrictions in a request can limit the response by the public key of the response's signer or
+        the cryptographic hash of the response.  Every CCNx forwarder along the path
+        does the name matching and restriction checking.
+           The CCNx protocol fits within the broader framework of Information-Centric Networking
+			(ICN) protocols <xref target="RFC7927"/>.
+           </t>
+           
+    <t>This document describes a TLV scheme using a fixed 2-byte T and a fixed 2-byte L field.
+    The rational for this choice is described in <xref target="Security"/>.
+    Briefly, this choice avoids multiple encodings of the same value (aliases) and
+    reduces the work of a validator to ensure compliance.  Unlike some uses of TLV in networking,
+    each network hop must evaluate the encoding, so even small validation latencies
+    at each hop could add up to a large overall forwarding delay.  For very small packets or low-throughput links, where the extra bytes may become a concern, one may use a
+    TLV compression protocol, for example, <xref target="compress"/> and <xref target="CCNxz"/>.
+    </t>
+
+ <t>This document uses the terms CCNx Packet, CCNx Message, and CCNx Message
+ TLV.
+       A CCNx Packet refers to the entire
+       Layer 3 datagram as specified in <xref target="packet_format"/>.
+       A CCNx Message is the ABNF token defined in the <xref target="RFC8569">CCNx
+       Semantics document</xref>.
+       A CCNx Message TLV refers to the
+       encoding of a CCNx Message as specified in <xref target="CCNMessage"/>.
+    </t>
+
+
+      <t>This document specifies: <list style="symbols">
+        <t>the CCNx Packet format,</t>
+        <t>the CCNx Message TLV format,</t>
+        <t>the TLV types used by CCNx messages,</t>
+        <t>the encoding of values for each type,</t>
+        <t>top-level types that exist at the outermost containment,</t>
+        <t>Interest TLVs that exist within Interest containment, and</t>
+        <t>Content Object TLVs that exist within Content Object containment.</t>
+        </list>
+      </t>
+
+       <t>This document is supplemented by these documents:
+      <list style="symbols">
+        <t><xref target="RFC8569"></xref>, which covers message
+	semantics and the protocol operation regarding
+        Interest and Content Object, including the Interest Return protocol.</t>
+        <t><xref target="CCNxURI"></xref>, which
+	covers the CCNx URI notation.</t>
+      </list>
+      </t>
+
+      <t>The type values in <xref target="IANA"/> conform to the IANA-assigned
+      numbers
+          for the CCNx protocol.  This document uses the symbolic names
+	  defined in
+          that section.  All TLV type values are
+        relative to their parent containers. For example,
+        each level of a nested TLV structure might define a "type = 1" with
+        a completely different meaning.</t>
+
+       <t>Packets are represented as 32-bit wide words using ASCII art.  Due to
+         the nested levels of TLV encoding and the presence of optional fields and variable sizes,
+         there is no concise way to represent all possibilities.  We use the convention that ASCII art
+         fields enclosed by vertical bars "|" represent exact bit widths.  Fields
+         with a forward slash "/" are variable bit widths, which we typically pad
+         out to word alignment for picture readability.</t>
+
+      <t>The document represents the consensus of the ICN RG.  It is the first
+		ICN protocol from the RG, created from the early CCNx protocol <xref target="nnc"/>
+		with significant revision and input from the ICN community and
+		RG members.  The document has received critical reading by several members
+		of the ICN community and the RG.  The authors and RG chairs
+		approve of the contents.  The document is sponsored under the
+		IRTF and is not issued by the IETF and is not an IETF standard.
+		This is an experimental protocol and may not be suitable for any
+		specific application and the specification may change in the future.
+		</t>
+
+      <section title="Requirements Language">
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+      </section>
+    </section>
+
+    <section anchor="definitions" title="Definitions">
+      <t>
+
+These definitions summarize items defined in <xref target="RFC8569"/>.  This document defines
+their encodings.
+
+        <list style="symbols">
+          <t>Name: A hierarchically structured variable-length identifier. It is an ordered list of path
+              segments, which are variable-length octet strings. In human-readable form, it is represented
+              in URI format as "ccnx:/path/part". There is no host or query string. See <xref target="CCNxURI"></xref>
+              for complete details.</t>
+          <t>Interest: A message requesting a Content Object with a matching Name and other
+            optional selectors to choose from multiple objects with the same Name. Any
+            Content Object with a Name and attributes that matches
+            the Name and optional selectors of the
+            Interest is said to satisfy the Interest.</t>
+          <t>Content Object: A data object sent in response to an Interest request. It has an optional
+              Name and a content payload that are bound together via cryptographic means. </t>
+        </list>
+      </t>
+    </section>
+
+    <section anchor="TLV" title="Type-Length-Value (TLV) Packets">
+         <t>We use 16-bit Type and 16-bit Length
+          fields to encode TLV-based packets. This provides 65,536 different possible types and value field lengths
+          of up to 64 KiB.  With 65,536 possible types at each level of TLV encoding,
+          there should be sufficient space for basic protocol types,
+          while also allowing ample room for experimentation, application use, vendor extensions,
+             and growth.  This encoding does not allow for jumbo packets beyond 64 KiB total length.
+             If used on a media that allows for jumbo frames, we suggest defining a media adaptation
+             envelope that allows for multiple smaller frames.</t>
+
+         <texttable anchor="reserved_types" title="Reserved TLV Types">
+             <ttcol align="center">Abbrev</ttcol>
+             <ttcol align="center">Name</ttcol>
+             <ttcol align="left">Description</ttcol>
+             
+             <c>T_ORG</c>
+             <c>Vendor Specific Information</c>
+             <c>Information specific to a vendor implementation (<xref
+                 target="vendor"/>).</c>
+             
+             <c>T_PAD</c>
+             <c>Padding</c>
+             <c>Adds padding to a field (<xref target="pad"/>).</c>
+             
+             <c>n/a</c>
+             <c>Experimental</c>
+             <c>Experimental use.</c>
+         </texttable>
+         
+
+          <t>There are several global TLV definitions that we reserve at all hierarchical contexts.
+              The TLV types in the range 0x1000 - 0x1FFF are Reserved for Experimental Use.
+          The TLV type T_ORG is also Reserved for Vendor Extensions (see <xref target="vendor"></xref>).  The TLV type T_PAD is used to optionally
+          pad a field out to some desired alignment.
+            </t>
+
+
+        <figure anchor="tlv-encoding" title="Type and Length encoding">
+          <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|              Type             |            Length             |
++---------------+---------------+---------------+---------------+
+]]></artwork>
+        </figure>
+
+        <t>The Length field contains the length of the Value field in octets.  It does
+          not include the length of the Type and Length fields. 
+
+ The Length MAY be zero.
+        </t>
+        <t>TLV structures are nestable, allowing the Value field of one TLV structure to contain
+          additional TLV structures. The enclosing TLV structure is called the container of the enclosed TLV.
+        </t>
+      <t>Type values are context dependent.  Within a TLV container, one may reuse previous type values for
+      new context-dependent purposes.
+      </t>
+
+        <section anchor="packet_format" title="Overall Packet Format">
+          <t>Each CCNx Packet includes the 8-byte fixed header, described below, followed by a set of TLV fields. These fields are
+            optional hop-by-hop headers and the Packet Payload.
+             </t>
+
+      <figure anchor="overall-packet" title="Overall Packet Format">
+        <artwork align="left"><![CDATA[
+                    1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|    Version    |  PacketType   |         PacketLength          |
++---------------+---------------+---------------+---------------+
+|           PacketType-specific fields          | HeaderLength  |
++---------------+---------------+---------------+---------------+
+/ Optional hop-by-hop header TLVs                               /
++---------------+---------------+---------------+---------------+
+/ PacketPayload TLVs                                            /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+      </figure>
+
+      <t>The PacketPayload of a CCNx Packet is the protocol message itself. The
+          Content Object Hash is computed over the PacketPayload only, excluding
+          the fixed and hop-by-hop headers, as those might change from hop to hop.
+          Signed information or similarity hashes should not include any
+          of the fixed or hop-by-hop headers.
+          The PacketPayload should be self-sufficient
+          in the event that the fixed and hop-by-hop headers are removed.
+          See <xref target="MH">Message Hash</xref>.
+      </t>
+       <t>Following the CCNx Message TLV, the PacketPayload may include optional
+       Validation TLVs.</t>
+          <figure anchor="packet-payload-tlvs" title="PacketPayload TLVs">
+            <artwork align="left"><![CDATA[
+                    1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+| CCNx Message TLV                                              /
++---------------+---------------+---------------+---------------+
+/ Optional CCNx ValidationAlgorithm TLV                         /
++---------------+---------------+---------------+---------------+
+/ Optional CCNx ValidationPayload TLV (ValidationAlg required)  /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+          </figure>
+
+      <t>After discarding the fixed and hop-by-hop headers, the remaining PacketPayload
+        should be a valid protocol message. Therefore, the PacketPayload always begins with
+        4 bytes of type-length that specifies the protocol message (whether it is an Interest, Content Object, or
+        other message type) and its total length.
+        The embedding of a self-sufficient protocol data unit inside the fixed
+        and hop-by-hop headers allows a network stack to discard the headers
+        and operate only on the embedded message.  It also decouples the
+      PacketType field -- which specifies how to forward the packet -- from the
+      PacketPayload.</t>
+
+      <t>The range of bytes protected by the Validation includes the CCNx
+      Message TLV and the
+        ValidationAlgorithm TLV.</t>
+
+      <t>The ContentObjectHash begins with the CCNx Message TLV and ends at the tail of the CCNx Packet.</t>
+        </section>
+
+         <section anchor="header" title="Fixed Headers">
+            <t>
+                In <xref target="overall-packet"/>, the fixed header fields are:
+              <list style="symbols">
+                <t>Version: defines the version of the packet, which MUST be 1.</t>
+                <t>HeaderLength: The length of the fixed header (8 bytes) and hop-by-hop headers.
+                  The minimum value MUST be 8.</t>
+                <t>PacketType: describes forwarder actions to take on the packet.</t>
+                <t>PacketLength: Total octets of packet including all headers (fixed header
+                  plus hop-by-hop headers) and protocol message.</t>
+                <t>PacketType-specific Fields: specific PacketTypes define the use of these bits.</t>
+              </list>
+            </t>
+
+          <t>The PacketType field indicates how the forwarder should process the packet.
+          A Request Packet (Interest) has PacketType PT_INTEREST, a Response (Content Object) has PacketType PT_CONTENT, and an Interest Return has PacketType PT_RETURN.
+        </t>
+
+        <t>HeaderLength is the number of octets from the
+          start of the CCNx Packet (Version) to the end of the hop-by-hop headers. PacketLength is
+          the number of octets from the start of the packet to the end of the packet.
+         Both lengths have a minimum value of 8 (the fixed header itself).</t>
+
+        <t>The PacketType-specific fields are reserved bits whose use depends on the
+          PacketType.  They are used for network-level signaling.</t>
+
+        <section title="Interest Fixed Header">
+          <t>If the PacketType is PT_INTEREST, it indicates that the packet should be forwarded following
+              the Interest pipeline in Section 2.4.4 of <xref target="RFC8569"/>.
+            For this type of packet, the Fixed Header includes a field for a HopLimit as well as Reserved and Flags fields. The Reserved
+            field MUST be set to 0 in an Interest.
+            There are currently no flags defined, so the Flags field MUST be set to 0.
+           </t>
+
+       <figure anchor="interest-header" title="Interest Header">
+         <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|    Version    |  PT_INTEREST  |         PacketLength          |
++---------------+---------------+---------------+---------------+
+|   HopLimit    |   Reserved    |     Flags     | HeaderLength  |
++---------------+---------------+---------------+---------------+
+   ]]></artwork>
+      </figure>
+
+
+      <section anchor="hoplimit" title="Interest HopLimit">
+        <t>For an Interest message, the HopLimit is a counter that is decremented with each hop. It limits the
+          distance an Interest may travel on the network.  The node originating the
+          Interest MAY put in any value up to the maximum of 255.  Each node that receives
+          an Interest with a HopLimit decrements the value upon
+          reception.  If the value is 0 after the decrement, the Interest
+          MUST NOT be forwarded off the node.</t>
+
+        <t>It is an error to receive an Interest from a remote node with the HopLimit field set
+	to 0.</t>
+        </section>
+        </section>
+        <section title="Content Object Fixed Header">
+            <t>If the PacketType is PT_CONTENT, it indicates that the packet should be forwarded following
+                the Content Object pipeline in Section 2.4.4 of <xref target="RFC8569"/>.
+            A Content Object defines a Flags field; however, there are currently no flags defined, so
+          the Flags field must be set to 0.</t>
+
+          <figure anchor="content-object-header" title="Content Object Header">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|    Version    |  PT_CONTENT   |         PacketLength          |
++---------------+---------------+---------------+---------------+
+|            Reserved           |     Flags     | HeaderLength  |
++---------------+---------------+---------------+---------------+
+   ]]></artwork>
+          </figure>
+
+        </section>
+
+        <section title="Interest Return Fixed Header">
+            <t>If the PacketType is PT_RETURN, it indicates that the packet should be processed following
+                the Interest Return rules in Section 10 of <xref target="RFC8569"/>.
+            The only difference between this Interest Return message and the original Interest is that the PacketType is changed
+            to PT_RETURN and a ReturnCode is put into the ReturnCode field.  All other
+          fields are unchanged from the Interest packet.  The purpose of this encoding is to prevent packet
+          length changes so no additional bytes are needed to return an Interest to
+          the previous hop.</t>
+
+          <figure anchor="interest-return-header" title="Interest Return Header">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|    Version    |   PT_RETURN   |         PacketLength          |
++---------------+---------------+---------------+---------------+
+|   HopLimit    |  ReturnCode   |     Flags     | HeaderLength  |
++---------------+---------------+---------------+---------------+
+   ]]></artwork>
+          </figure>
+
+
+          <section anchor="InterestReturnHopLimit" title="Interest Return HopLimit">
+            <t>This is the original Interest's HopLimit, as received before decrement at the node
+                sending the Interest Return.</t>
+          </section>
+
+          <section anchor="InterestReturnFlags" title="Interest Return Flags">
+            <t>These are the original Flags as set in the Interest.</t>
+          </section>
+
+          <section anchor="ReturnCode" title="Return Code">
+            <t>This section maps the Return Code name <xref target="RFC8569"/> to the
+                TLV symbolic name.  <xref target="IANA_InterestReturnCodes"/> maps the symbolic names
+                to numeric values.
+                This field is set by the node creating the Interest Return.</t>
+
+            <t>A return code of "0" MUST NOT be used, as it indicates that the returning system
+            did not modify the Return Code field.</t>
+
+            <texttable anchor="ReturnCodeTable" title="Return Codes">
+              <ttcol align="center">Return Type</ttcol>
+              <ttcol align="left">Name in RFC 8569</ttcol>
+
+              <c>T_RETURN_NO_ROUTE</c> <c>No Route</c>
+              <c>T_RETURN_LIMIT_EXCEEDED</c> <c>Hop Limit Exceeded</c>
+              <c>T_RETURN_NO_RESOURCES</c> <c>No Resources</c>
+              <c>T_RETURN_PATH_ERROR</c> <c>Path Error</c>
+              <c>T_RETURN_PROHIBITED</c> <c>Prohibited</c>
+              <c>T_RETURN_CONGESTED</c> <c>Congested</c>
+              <c>T_RETURN_MTU_TOO_LARGE</c> <c>MTU too large</c>
+              <c>T_RETURN_UNSUPPORTED_HASH_RESTRICTION</c> <c>Unsupported ContentObjectHashRestriction</c>
+              <c>T_RETURN_MALFORMED_INTEREST</c> <c>Malformed Interest</c>
+            </texttable>
+
+          </section>
+        </section>
+</section>
+
+<section anchor="formats" title="Global Formats">
+    <t>This section defines global formats that may be nested within other TLVs.</t>
+
+    <section anchor="pad" title="Pad">
+        <t>The pad type may be used by sources that prefer word-aligned
+            data.
+            Padding 4-byte words, for example, would use a 1-byte, 2-byte,
+            and 3-byte Length.  Padding 8-byte words would use a (0, 1, 2, 3, 5, 6, 7)-byte
+            Length.
+        </t>
+
+        <t>One MUST NOT pad inside a Name.  Apart from that, a pad MAY be inserted after any other
+            TLV in the CCNx Message TLV or in the ValidationAlgorithm TLV.
+          In the remainder of this document, we will not show optional Pad TLVs.</t>
+
+        <figure anchor="pad-encoding" title="Pad Encoding">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|             T_PAD             |             Length            |
++---------------+---------------+---------------+---------------+
+/                 variable-length pad MUST be zeros             /
++---------------+---------------+---------------+---------------+
+            ]]></artwork>
+        </figure>
+    </section>
+
+    <section anchor="vendor" title="Organization-Specific TLVs">
+        <t>Organization-specific TLVs (also known as Vendor TLVs) MUST use the T_ORG type.
+            The Length field is the length of the organization-specific
+	    information plus 3. The Value begins with the 3 byte organization
+	    number derived from the network byte order encoding of the <xref
+	    target="IANA-PEN">IANA "Private Enterprise Numbers" registry</xref>, 
+            followed by the organization-specific information.</t>
+        
+        <t>A T_ORG MAY be used as a path segment in a Name.  It is treated like any other path segment.</t>
+
+        <figure anchor="org-encoding" title="Organization-Specific TLVs">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|             T_ORG             |     Length (3+value length)   |
++---------------+---------------+---------------+---------------+
+|   PEN[0]      |    PEN[1]     |     PEN[2]    |               /
++---------------+---------------+---------------+               +
+/                  Vendor Specific Value                        /
++---------------+---------------+---------------+---------------+
+            ]]></artwork>
+        </figure>
+    </section>
+
+    <section anchor="hash_format" title="Hash Format">
+        <t>Hash values are used in several fields throughout a packet.  This TLV encoding is commonly embedded inside
+            those fields to specify the specific hash function used and its value.  Note that the
+            reserved TLV types are also reserved here for user-defined experimental functions.</t>
+
+        <t>The LENGTH field of the hash value MUST be less than or equal to the hash function length.  If the
+            LENGTH is less than the full length, it is taken as the left LENGTH bytes of the hash function output.  Only specified truncations are allowed, not arbitrary truncations.</t>
+
+        <t>This nested format is used because it allows binary comparison of hash values for certain fields
+            without a router needing to understand a new hash function.  For example, the KeyIdRestriction is bit-wise
+            compared between an Interest's KeyIdRestriction field and a ContentObject's KeyId field.  This format
+            means the outer field values do not change with differing hash functions so a router can still identify
+            those fields and do a binary comparison of the hash TLV without need to understand the specific
+            hash used.  An alternative approach, such as using T_KEYID_SHA512-256, would require each router
+            keeps an up-to-date parser and supporting user-defined hash functions here would explode the
+            parsing state-space.</t>
+
+        <t>A CCNx entity MUST support the hash type T_SHA-256. An entity MAY support
+            the remaining hash types.</t>
+
+        <texttable anchor="hash_types" title="CCNx Hash Functions">
+            <ttcol align="center">Abbrev</ttcol>
+            <ttcol align="center">Lengths (octets)</ttcol>
+
+            <c>T_SHA-256</c>
+            <c>32</c>
+
+            <c>T_SHA-512</c>
+            <c>64, 32</c>
+
+            <c>n/a</c>
+            <c>Experimental TLV types</c>
+        </texttable>
+
+        <figure anchor="hash-encoding-example" title="Example nesting inside type T_FOO">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|             T_FOO             |              36               |
++---------------+---------------+---------------+---------------+
+|           T_SHA512            |               32              |
++---------------+---------------+---------------+---------------+
+/                        32-byte hash value                     /
++---------------+---------------+---------------+---------------+
+            ]]></artwork>
+        </figure>
+    </section>
+
+    <section anchor="Link" title="Link">
+      <t> A Link is the tuple: {Name, [KeyIdRestr], [ContentObjectHashRestr]}.
+            It is a general encoding that is used in both the payload of a Content Object with
+            PayloadType = "Link" and in a Content Object's KeyLink field.
+            A Link is essentially the body of an Interest.
+      </t>
+        <figure anchor="link-encoding" title="Link Encoding">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+/ Mandatory CCNx Name                                           /
++---------------+---------------+---------------+---------------+
+/ Optional KeyIdRestriction                                     /
++---------------+---------------+---------------+---------------+
+/ Optional ContentObjectHashRestriction                         /
++---------------+---------------+---------------+---------------+
+            ]]></artwork>
+        </figure>
+    </section>
+</section>
+
+      <section anchor="per-hop" title="Hop-by-Hop TLV Headers">
+        <t>Hop-by-hop TLV headers are unordered and meaning MUST NOT
+          be attached to their ordering.
+          Three hop-by-hop headers are described in this document:</t>
+          <texttable anchor="hbh_types" title="Hop-by-Hop Header Types">
+            <ttcol align="center">Abbrev</ttcol>
+            <ttcol align="center">Name</ttcol>
+            <ttcol align="left">Description</ttcol>
+
+            <c>T_INTLIFE</c>
+            <c><xref target="Lifetime">Interest Lifetime</xref></c>
+            <c>The time an Interest should stay pending at an intermediate node.</c>
+
+            <c>T_CACHETIME</c>
+            <c><xref target="RCT">Recommended Cache Time</xref></c>
+            <c>The Recommended Cache Time for Content Objects.</c>
+
+            <c>T_MSGHASH</c>
+            <c><xref target="MH">Message Hash</xref></c>
+            <c>A <xref target="hash_format">cryptographic hash</xref>.</c>
+
+          </texttable>
+        <t>
+          Additional hop-by-hop headers are defined in
+          higher level specifications such as the fragmentation specification.</t>
+
+          <section anchor="Lifetime" title="Interest Lifetime">
+            <t>The Interest Lifetime is the time
+              that an
+              Interest should stay pending at an intermediate node.
+              It is expressed in milliseconds as an unsigned
+              integer in network byte order.</t>
+
+            <t>A value of 0 (encoded as 1 byte 0x00) indicates the
+              Interest does not elicit a Content Object response.  It should still be
+              forwarded, but no reply is expected and a forwarder could skip creating
+              a PIT entry.</t>
+
+            <figure anchor="lifetime-encoding" title="Interest Lifetime Encoding">
+              <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|          T_INTLIFE            |             Length            |
++---------------+---------------+---------------+---------------+
+/                                                               /
+/                      Lifetime (Length octets)                 /
+/                                                               /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+            </figure>
+          </section>
+
+        <section anchor="RCT" title="Recommended Cache Time">
+          <t>The Recommended Cache Time (RCT) is a measure of the useful lifetime of a Content Object as assigned by a content producer or upstream node.
+            It serves as a guideline to the Content Store cache in determining how long to keep the Content Object. It is a
+            recommendation only and may be ignored by the cache.  This is in contrast to the ExpiryTime (described in <xref target="expiry" />)
+            which takes precedence over the RCT and must be obeyed.</t>
+           <t>
+            Because the Recommended Cache Time is an optional hop-by-hop header and not a part of the signed message, a content producer
+            may re-issue a previously signed
+            Content Object with an updated RCT without needing to re-sign the message. There is little ill effect from an attacker
+            changing the RCT as the RCT serves as a guideline only.</t>
+
+            <t>The Recommended Cache Time (a millisecond timestamp) is an unsigned 
+integer in network byte order that indicates the time when the
+payload expires (as the number of milliseconds since the epoch in UTC). It is
+a 64-bit field. 
+            </t>
+          <figure anchor="RCT-encoding" title="Recommended Cache Time Encoding">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|         T_CACHETIME           |               8               |
++---------------+---------------+---------------+---------------+
+/                                                               /
+/                    Recommended Cache Time                     /
+/                                                               /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+          </figure>
+        </section>
+
+
+        <section anchor="MH" title="Message Hash">
+            <t>Within a trusted domain, an operator may calculate the message hash at a border device
+                and insert that value into the hop-by-hop headers of a message.  An egress device
+                should remove the value.  This permits intermediate devices within that trusted domain
+                to match against a ContentObjectHashRestriction without calculating it at every hop.</t>
+
+            <t>The message hash is a cryptographic hash from the start of the CCNx Message TLV to the end of
+                the packet.  It is used to match against the <xref target="COH">ContentObjectHashRestriction</xref>.
+                The Message Hash may be of longer length than an Interest's restriction, in which case the
+                device should use the left bytes of the Message Hash to check against the Interest's value.</t>
+
+            <t>The Message Hash may only carry one hash type and there may only be one Message Hash header.</t>
+
+            <t>The Message Hash header is unprotected, so this header is only of practical use within a
+                trusted domain, such as an operator's autonomous system.</t>
+
+            <figure anchor="message-hash-header" title="Message Hash Header">
+                <artwork align="left"><![CDATA[
+                    1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|          T_MSGHASH            |         (length + 4)          |
++---------------+---------------+---------------+---------------+
+|          hash type            |            length             |
++---------------+---------------+---------------+---------------+
+/                           hash value                          /
++---------------+---------------+---------------+---------------+
+                ]]></artwork>
+            </figure>
+        </section>
+
+      </section>
+
+      <section anchor="top_level" title="Top-Level Types">
+
+        <t>The top-level TLV types listed below exist at the outermost level of a CCNx Message TLV.</t>
+
+        <texttable anchor="top_types" title="CCNx Top Level Types">
+          <ttcol align="center">Abbrev</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="left">Description</ttcol>
+
+          <c>T_INTEREST</c>
+          <c><xref target="CCNMessage">Interest</xref></c>
+          <c>An Interest MessageType.</c>
+
+          <c>T_OBJECT</c>
+          <c><xref target="CCNMessage">Content Object</xref></c>
+          <c>A Content Object MessageType</c>
+
+          <c>T_VALIDATION_ALG</c>
+          <c><xref target="ValAlg">Validation Algorithm</xref></c>
+          <c>The method of message verification such as
+            a Message Integrity Check (MIC), Message Authentication Code (MAC), or cryptographic signature.
+          </c>
+
+          <c>T_VALIDATION_PAYLOAD</c>
+          <c><xref target="ValPayload">Validation Payload</xref></c>
+          <c>The validation output, such as the CRC32C code or the RSA signature.</c>
+        </texttable>
+      </section>
+
+
+
+        <section anchor="CCNMessage" title="CCNx Message TLV">
+          <t>This is the format for the CCNx Message itself. The CCNx Message TLV is the portion of the CCNx Packet
+            between the hop-by-hop headers and the Validation TLVs. The figure below is an expansion
+            of the "CCNx Message TLV" depicted in the beginning of <xref target="TLV" />.
+            The CCNx Message TLV begins with MessageType and runs through the optional Payload.
+            The same general format is used for both Interest and
+            Content Object messages which are differentiated by
+            the MessageType field. The first enclosed TLV of a CCNx Message TLV is always the
+            Name TLV, if present.  This is followed by an optional Message TLVs and an optional Payload TLV.</t>
+
+          <figure anchor="ccnx-message-encoding" title="CCNx Message TLV Encoding">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|         MessageType           |         MessageLength         |
++---------------+---------------+---------------+---------------+
+/ Name TLV       (Type = T_NAME)                                /
++---------------+---------------+---------------+---------------+
+/ Optional Message TLVs   (Various Types)                       /
++---------------+---------------+---------------+---------------+
+/ Optional Payload TLV  (Type = T_PAYLOAD)                      /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+          </figure>
+
+
+          <texttable anchor="CCNx_types" title="CCNx Message TLV Types">
+            <ttcol align="center">Abbrev</ttcol>
+            <ttcol align="center">Name</ttcol>
+            <ttcol align="left">Description</ttcol>
+
+            <c>T_NAME</c>
+            <c><xref target="names">Name</xref></c>
+            <c>The CCNx Name requested in an Interest or published in a Content Object.</c>
+
+            <c>T_PAYLOAD</c>
+            <c><xref target="content">Payload</xref></c>
+            <c>The message payload.</c>
+          </texttable>
+
+            <section anchor="names" title="Name">
+              <t>A Name is a TLV encoded sequence of
+                segments. The table below lists the type values appropriate for these name
+                segments. A Name MUST NOT include Pad TLVs.</t>
+
+              <t>As described in <xref target="RFC8569">CCNx Semantics</xref>, using the <xref target="CCNxURI">CCNx URI</xref>
+                notation, a T_NAME with zero length corresponds to "ccnx:/" (the default route).
+                The message grammar does not allow the first name segment to have zero length in a CCNx Message TLV Name.
+                In the TLV encoding, "ccnx:/" corresponds to T_NAME with zero length.</t>
+
+              <figure anchor="name-encoding" title="Name Encoding">
+                <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|            T_NAME             |            Length             |
++---------------+---------------+---------------+---------------+
+/ Name segment TLVs                                             /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+              </figure>
+
+              <texttable anchor="name_types" title="CCNx Name Types">
+                <ttcol align="center">Symbolic Name</ttcol>
+                <ttcol align="center">Name</ttcol>
+                <ttcol align="left">Description</ttcol>
+
+                <c>T_NAMESEGMENT</c>
+                <c><xref target="name_segment">Name segment</xref></c>
+                <c>A generic name segment.</c>
+
+                <c>T_IPID</c>
+                <c><xref target="name_ipid">Interest Payload ID</xref></c>
+                <c>An identifier that represents the Interest Payload field. As an example, the Payload ID might be a hash of the Interest Payload.
+                This provides a way to differentiate between Interests based on their payloads without having to parse all the bytes of the payload
+                itself, and instead using only this Payload ID name segment.</c>
+
+                <c>T_APP:00 - T_APP:4096</c>
+                <c><xref target="name_segment">Application Components</xref></c>
+                <c>Application-specific payload in a name segment.  An application may apply
+                  its own semantics to the 4096 reserved types.</c>
+              </texttable>
+
+              <section anchor="name_segment" title="Name Segments">
+
+              <t> 4096 special application payload name segments are allocated.
+                  These have application semantics applied to them.
+                  A good convention is to put the application's identity in the
+                  name prior to using these name segments.</t>
+
+                <t>For example, a name like "ccnx:/foo/bar/hi"
+                  would be encoded as:
+                  <figure anchor="name-example" title="Name Encoding Example">
+                    <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|            (T_NAME)           |           0x14 (20)           |
++---------------+---------------+---------------+---------------+
+|        (T_NAME_SEGMENT)       |           0x03 (3)            |
++---------------+---------------+---------------+---------------+
+|       f                o               o      |(T_NAME_SEGMENT)
++---------------+---------------+---------------+---------------+
+|               |            0x03 (3)           |       b       |
++---------------+---------------+---------------+---------------+
+|      a                r       |           (T_NAME_SEGMENT)    |
++---------------+---------------+---------------+---------------+
+|           0x02 (2)            |       h       |       i       |
++---------------+---------------+---------------+---------------+
+]]></artwork>
+                  </figure>
+                </t>
+
+              </section>
+
+              <section anchor="name_ipid" title="Interest Payload ID">
+                <t>The InterestPayloadID is a name segment created by the origin of an Interest to
+                  represent the Interest Payload.  This allows the proper multiplexing of Interests
+                  based on their name if they have different payloads. A common representation is to
+                  use a hash of the Interest Payload as the InterestPayloadID.</t>
+              <t>
+
+
+As part of the Value of the TLV, the InterestPayloadID contains a one-octet
+  identifier of the method used to create the InterestPayloadID followed by
+  a variable-length octet string.
+
+                     An implementation is not required to implement any of the methods to
+                  receive an Interest; the InterestPayloadID may be treated only as an opaque octet
+                  string for the purposes of multiplexing Interests with different payloads.  Only a
+                  device creating an InterestPayloadID name segment or a device verifying such a
+                  segment needs to implement the algorithms.</t>
+                <t>It uses the encoding of hash values specified in <xref target="hash_format"/>.</t>
+
+                  <t>In normal operations, we recommend displaying the InterestPayloadID as an opaque
+                    octet string in a CCNx URI, as this is the common denominator for implementation
+                    parsing.</t>
+
+                  <t>The InterestPayloadID, even if it is a hash, should not convey any security context.
+                  If a system requires confirmation that a specific entity created the InterestPayload,
+                  it should use a cryptographic signature on the Interest via the ValidationAlgorithm and
+                  ValidationPayload or use its own methods inside the Interest Payload.</t>
+              </section>
+
+            </section>
+
+
+          <!-- =========================================================== -->
+
+
+        <section anchor="metadata" title="Message TLVs">
+         <t>Each message type (Interest or Content Object) is associated with a set of
+           optional Message TLVs.  Additional
+         specification documents may extend the types associated with each.</t>
+
+
+          <section anchor="IntMeta" title="Interest Message TLVs">
+            <t>There are two Message TLVs currently associated with an Interest message:
+              the KeyIdRestriction selector and the ContentObjectHashRestr selector
+            are used to narrow the universe of acceptable Content Objects
+            that would satisfy the Interest.</t>
+
+            <figure anchor="interest-tlvs" title="Interest Message TLVs">
+              <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|         MessageType           |         MessageLength         |
++---------------+---------------+---------------+---------------+
+| Name TLV                                                      |
++---------------+---------------+---------------+---------------+
+/ Optional KeyIdRestriction TLV                                 /
++---------------------------------------------------------------+
+/ Optional ContentObjectHashRestriction TLV                     /
++---------------------------------------------------------------+
+]]></artwork>
+            </figure>
+
+            <texttable anchor="InterestMD_types" title="CCNx Interest Message TLV Types">
+              <ttcol align="center">Abbrev</ttcol>
+              <ttcol align="center">Name</ttcol>
+              <ttcol align="left">Description</ttcol>
+
+              <c>T_KEYIDRESTR</c>
+              <c><xref target="KeyIdRes">KeyIdRestriction</xref></c>
+              <c>A representation (as per <xref
+	      target="hash_format"></xref>) of the KeyId</c>
+
+              <c>T_OBJHASHRESTR</c>
+              <c><xref target="COH">ContentObjectHashRestriction</xref></c>
+              <c>A representation (as per <xref
+	      target="hash_format"></xref>) of the hash of the
+                specific Content Object that would satisfy the Interest.</c>
+            </texttable>
+
+            <section anchor="KeyIdRes" title="KeyIdRestriction">
+              <t>An Interest MAY include a KeyIdRestriction selector.
+                This ensures that only Content Objects with matching KeyIds will
+                satisfy the Interest. See <xref target="KeyId" /> for the format of a KeyId.</t>
+
+
+            </section>
+
+            <section anchor="COH" title="ContentObjectHashRestriction">
+              <t>An Interest MAY contain a ContentObjectHashRestriction selector. This is
+                the hash of the Content Object -- the self-certifying name restriction that
+                must be verified in the network, if an Interest carried this restriction
+                (see <xref target="MH">Message Hash</xref>).
+                The LENGTH MUST be from one of the allowed values for that hash
+                (see <xref target="hash_format"></xref>).</t>
+
+              <t>The ContentObjectHashRestriction SHOULD be of type T_SHA-256 and
+                  of length 32 bytes.</t>
+
+              <figure anchor="coh-encoding" title="ContentObjectHashRestriction Encoding">
+                <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|        T_OBJHASHRESTR         |           (LENGTH+4)          |
++---------------+---------------+---------------+---------------+
+|           hash type           |             LENGTH            |
++---------------+---------------+---------------+---------------+
+/                     LENGTH octets of hash                     /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+              </figure>
+            </section>
+
+
+
+          </section>
+
+          <section anchor="COmetadata" title="Content Object Message TLVs">
+            <t>The following message TLVs are currently defined for Content Objects:
+              PayloadType (optional) and ExpiryTime (optional).
+              </t>
+
+            <figure anchor="content-object-tlvs" title="Content Object Message TLVs">
+              <artwork align="left"><![CDATA[
+                      1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|         MessageType           |         MessageLength         |
++---------------+---------------+---------------+---------------+
+| Name TLV                                                      |
++---------------+---------------+---------------+---------------+
+/ Optional PayloadType TLV                                      /
++---------------------------------------------------------------+
+/ Optional ExpiryTime TLV                                       /
++---------------------------------------------------------------+
+]]></artwork>
+            </figure>
+            <texttable anchor="objectMD_types" title="CCNx Content Object Message TLV Types">
+              <ttcol align="center">Abbrev</ttcol>
+              <ttcol align="center">Name</ttcol>
+              <ttcol align="left">Description</ttcol>
+
+              <c>T_PAYLDTYPE</c>
+              <c><xref target="payload_type">PayloadType</xref></c>
+              <c>Indicates the type of Payload contents.</c>
+
+              <c>T_EXPIRY</c>
+              <c><xref target="expiry">ExpiryTime</xref></c>
+              <c>The time at which the Payload expires, as expressed in the number of milliseconds since the epoch in UTC.
+                If missing,
+                Content Object may be used as long as desired.</c>
+            </texttable>
+
+            <section anchor="payload_type" title="PayloadType">
+              <t>The PayloadType is an octet representing the general type of the Payload TLV.
+                <list style="symbols">
+                  <t>T_PAYLOADTYPE_DATA: Data (possibly encrypted)</t>
+                  <t>T_PAYLOADTYPE_KEY: Key</t>
+                  <t>T_PAYLOADTYPE_LINK: Link</t>
+                </list>
+                The Data type indicates that the Payload of the ContentObject
+                is opaque application bytes. The Key type indicates that the Payload is a
+                DER-encoded public key. The Link type indicates that the Payload is one or more
+                <xref target="Link">Links</xref>. If this field is missing, a Data type is assumed.
+              </t>
+
+              <figure anchor="payload-type-encoding" title="PayloadType Encoding">
+                <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|            T_PAYLDTYPE        |               1               |
++---------------+---------------+---------------+---------------+
+|  PayloadType  |
++---------------+
+]]></artwork>
+              </figure>
+            </section>
+
+            <section anchor="expiry" title="ExpiryTime">
+              <t> The ExpiryTime is the time at which the Payload expires, as expressed by a timestamp containing the number of milliseconds since the epoch in UTC.
+                It is a network byte order unsigned integer in a 64-bit field. A cache or end system should not respond with a Content Object past its ExpiryTime.
+                Routers forwarding a Content Object do not need to check the ExpiryTime.
+                If the ExpiryTime field is missing, the Content Object has no expressed expiration, and a cache or end system may use the
+                Content Object for as long as desired.
+              </t>
+              <figure anchor="expiry-time-encoding" title="ExpiryTime encoding">
+                <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|           T_EXPIRY            |               8               |
++---------------+---------------+---------------+---------------+
+/                          ExpiryTime                           /
+/                                                               /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+              </figure>
+            </section>
+
+        </section>
+        </section>
+          <section anchor="content" title="Payload">
+            <t>The Payload TLV contains the content of the packet.  It MAY be of zero length.
+              If a packet does not have any payload, this field SHOULD be
+	      omitted, rather than being of zero length.
+            </t>
+
+            <figure anchor="payload-encoding" title="Payload Encoding">
+              <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|           T_PAYLOAD           |            Length             |
++---------------+---------------+---------------+---------------+
+/                        Payload Contents                       /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+            </figure>
+        </section>
+
+
+
+
+        <section anchor="Validation" title="Validation">
+
+          <t>Both Interests and Content Objects have the option to include information about how to
+            validate the CCNx Message.
+            This information is contained in two TLVs: the
+          ValidationAlgorithm TLV and the ValidationPayload TLV.
+          The ValidationAlgorithm TLV specifies the mechanism to be used to verify the CCNx Message. Examples include verification with a
+          Message Integrity Check (MIC), a Message Authentication Code (MAC), or a cryptographic signature.
+          The ValidationPayload TLV contains the validation output, such as the CRC32C code or the RSA signature.
+          </t>
+
+          <t>An Interest would most likely only use a MIC type of validation -- a CRC, checksum, or digest.</t>
+
+
+          <section anchor="ValAlg" title="Validation Algorithm">
+            <t>The ValidationAlgorithm is a set of nested TLVs containing all of the information needed to verify the message.
+              The outermost container has type = T_VALIDATION_ALG.
+              The first nested TLV defines the specific type of validation
+            to be performed on the message. The type is identified with the "ValidationType" as shown in
+            the figure below and elaborated in the table below.
+            Nested within that container are the TLVs for any
+	    ValidationType-dependent data -- for example, a Key Id, Key Locator, etc.</t>
+
+            <t>Complete examples of several types may be found in <xref target="valexamples" />.
+            </t>
+          <figure anchor="validation-alg-encoding" title="Validation Algorithm Encoding">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|       T_VALIDATION_ALG        |      ValidationAlgLength      |
++---------------+---------------+---------------+---------------+
+|        ValidationType         |            Length             |
++---------------+---------------+---------------+---------------+
+/ ValidationType-dependent data                                 /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+          </figure>
+
+            <texttable anchor="validator_types" title="CCNx Validation Types">
+              <ttcol align="center">Abbrev</ttcol>
+              <ttcol align="center">Name</ttcol>
+              <ttcol align="left">Description</ttcol>
+
+              <c>T_CRC32C</c>
+              <c><xref target="MIC">CRC32C</xref></c>
+              <c>Castagnoli CRC32 (iSCSI, ext4, etc.) with normal form polynomial 0x1EDC6F41.</c>
+
+              <c>T_HMAC-SHA256</c>
+              <c><xref target="MAC">HMAC-SHA256</xref></c>
+              <c>HMAC (RFC 2104) using SHA256 hash.</c>
+
+              <c>T_RSA-SHA256</c>
+              <c><xref target="signature_val">RSA-SHA256</xref></c>
+              <c>RSA public-key signature using SHA256 digest.</c>
+
+              <c>T_EC-SECP-256K1</c>
+              <c><xref target="signature_val">SECP-256K1</xref></c>
+              <c>Elliptic Curve signature with SECP-256K1 parameters
+                (see <xref target="ECC"></xref>).</c>
+
+              <c>T_EC-SECP-384R1</c>
+              <c><xref target="signature_val">SECP-384R1</xref></c>
+              <c>Elliptic Curve signature with SECP-384R1 parameters
+                (see <xref target="ECC"></xref>).</c>
+            </texttable>
+
+          <section anchor="MIC" title="Message Integrity Checks">
+           <t>MICs do not require additional data in order to perform the verification. An example is
+             CRC32C that has a zero-length value. </t>
+          </section>
+
+            <section anchor="MAC" title="Message Authentication Codes">
+
+           <t>MACs are useful for communication between two trusting parties
+	   who have already shared secret keys.
+               An example is the HMAC algorithm.
+             A MAC uses the KeyId field to identify which shared secret is in
+	     use.  The meaning of the KeyId is
+             specific to the two parties involved and could be simply an
+	     integer to enumerate keys.
+             If a new MAC requires an additional field, such as an
+	     Initialization Vector, that field would
+             need to be defined as part of the updated specification.</t>
+
+            </section>
+
+            <section anchor="signature_val" title="Signature">
+              <t>Signature type Validators specify a digest mechanism and a signing algorithm to verify the message.
+                Examples include an RSA signature on a SHA256 digest, an
+                Elliptic Curve signature with SECP-256K1 parameters, etc. These Validators require a KeyId and
+              a mechanism for locating the publisher's public key (a KeyLocator) --
+              and optionally a PublicKey or Certificate or KeyLink.</t>
+            </section>
+
+            <section anchor="vdd" title="Validation-Dependent Data">
+              <t>Different Validation Algorithms require access to different pieces of data contained in the ValidationAlgorithm
+                TLV. As described above, Key Ids, Key Locators, Public Keys, Certificates, Links, and Key Names all play a role
+                in different Validation Algorithms. Any number of Validation-Dependent Data containers can be present in a Validation
+                Algorithm TLV.</t>
+
+              <t>Below is a table of CCNx ValidationType-dependent data types:</t>
+              <texttable anchor="vddtypes" title="CCNx Validation-Dependent Data Types">
+                <ttcol align="center">Abbrev</ttcol>
+                <ttcol align="center">Name</ttcol>
+                <ttcol align="left">Description</ttcol>
+
+                <c>T_KEYID</c>
+                <c><xref target="KeyId">SignerKeyId</xref></c>
+                <c>An identifier of the shared secret or public key associated with a MAC or Signature.</c>
+
+                <c>T_PUBLICKEY</c>
+                <c><xref target="PubKey">Public Key</xref></c>
+                <c>DER-encoded public key.</c>
+
+                <c>T_CERT</c>
+                <c><xref target="Cert">Certificate</xref></c>
+                <c>DER-encoded X.509 certificate.</c>
+
+                <c>T_KEYLINK</c>
+                <c><xref target="KeyLink">KeyLink</xref></c>
+                <c>A CCNx Link object. </c>
+
+                <c>T_SIGTIME</c>
+                <c><xref target="SigTime">SignatureTime</xref></c>
+                <c>A millisecond timestamp indicating the time when the signature was created. </c>
+              </texttable>
+            <section anchor="KeyId" title="KeyId">
+              <t>The KeyId for a signature is the publisher key identifier. It is
+	      similar to a Subject Key Identifier from X.509 (see
+	      Section 4.2.1.2 of <xref
+	      target="RFC5280"/>).
+                It should be derived from the key used to sign, such as from the SHA-256 hash of the key.  It
+                applies to both public and private key systems and to symmetric key systems.</t>
+
+              <t>The KeyId is represented using the hash format in <xref target="hash_format"></xref>.  If an application
+                  protocol uses a non-hash identifier, it should use one of the reserved values.</t>
+
+              <figure anchor="keyid-encoding" title="KeyId Encoding">
+                <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|            T_KEYID            |            LENGTH+4           |
++---------------+---------------+---------------+---------------+
+|          <hash type>          |             LENGTH            |
++---------------+---------------+---------------+---------------+
+/                     LENGTH octets of hash                     /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+              </figure>
+            </section>
+            <section anchor="PubKey" title="Public Key">
+              <t>A Public Key is a DER-encoded Subject Public Key Info
+                block, as in an X.509 certificate.</t>
+
+
+              <figure anchor="public-key-encoding" title="Public Key Encoding">
+                <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|          T_PUBLICKEY          |            Length             |
++---------------+---------------+---------------+---------------+
+/                Public Key (DER-encoded SPKI)                  /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+              </figure>
+            </section>
+
+            <section anchor="Cert" title="Certificate">
+
+<t>A Certificate is a DER-encoded X.509 certificate.
+The <xref target="KeyId">KeyId</xref> is derived from this encoding.</t>
+
+              <figure anchor="cert-encoding" title="Certificate Encoding">
+                <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|            T_CERT             |            Length             |
++---------------+---------------+---------------+---------------+
+/                 Certificate (DER-encoded X.509)               /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+              </figure>
+            </section>
+
+
+            <section anchor="KeyLink" title="KeyLink">
+              <t>A KeyLink type KeyLocator is a Link.</t>
+              <t>The KeyLink ContentObjectHashRestr, if included, is the digest of
+                the Content Object identified by KeyLink, not the digest of the public key.
+                Likewise, the KeyIdRestr of the KeyLink is the KeyId of the ContentObject, not
+                necessarily of the wrapped key.
+              </t>
+              <figure anchor="key-link-encoding" title="KeyLink Encoding">
+                <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+-------------------------------+
+|          T_KEYLINK            |            Length             |
++---------------+---------------+-------------------------------+
+/ Link                                                          /
++---------------------------------------------------------------+
+]]></artwork>
+              </figure>
+            </section>
+
+              <section anchor="SigTime" title="SignatureTime">
+                <t>The SignatureTime is a millisecond timestamp indicating the time at which a signature was created.  The signer sets this
+                field to the current time when creating a signature. A verifier may use this time to determine whether or not
+                the signature was created during the validity period of a key, or if it occurred in a reasonable sequence
+                with other associated signatures. The SignatureTime is unrelated to any time associated with the actual CCNx Message,
+                which could have been created long before the signature. The default behavior is to always include a SignatureTime when creating
+                an authenticated message (e.g., HMAC or RSA).</t>
+                
+                <t>SignatureTime is an unsigned integer in network byte order that indicates
+                    when the signature was created (as the number of milliseconds since the
+                    epoch in UTC).  It is a fixed 64-bit field.</t>
+                <figure anchor="sigtime-encoding" title="SignatureTime Encoding">
+                  <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+-------------------------------+
+|           T_SIGTIME           |               8               |
++---------------+---------------+-------------------------------+
+/                         SignatureTime                         /
++---------------------------------------------------------------+
+]]></artwork>
+                </figure>
+              </section>
+            </section>
+
+          <section anchor="valexamples" title="Validation Examples">
+            <t>As an example of a MIC-type validation, the encoding for CRC32C validation would be:</t>
+
+            <figure anchor="crc32-example" title="CRC32C Encoding Example">
+              <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|      T_VALIDATION_ALG         |               4               |
++---------------+---------------+---------------+---------------+
+|            T_CRC32C           |               0               |
++---------------+---------------+---------------+---------------+
+]]></artwork>
+            </figure>
+
+            <t>As an example of a MAC-type validation, the encoding for an HMAC using a SHA256 hash would be:</t>
+
+            <figure anchor="hmac-example" title="HMAC-SHA256 Encoding Example">
+              <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|       T_VALIDATION_ALG        |               40              |
++---------------+---------------+---------------+---------------+
+|        T_HMAC-SHA256          |               36              |
++---------------+---------------+---------------+---------------+
+|             T_KEYID           |               32              |
++---------------+---------------+---------------+---------------+
+/                            KeyId                              /
+/---------------+---------------+-------------------------------+
+]]></artwork>
+            </figure>
+
+            <t>
+   As an example of a Signature-type validation, the encoding for an RSA
+   public-key signature using a SHA256 digest and Public Key would be:
+	    </t>
+
+            <figure anchor="rsa-example" title="RSA-SHA256 Encoding Example">
+              <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|       T_VALIDATION_ALG        |   44 octets + Variable Length |
++---------------+---------------+---------------+---------------+
+|          T_RSA-SHA256         |   40 octets + Variable Length |
++---------------+---------------+---------------+---------------+
+|             T_KEYID           |               32              |
++---------------+---------------+---------------+---------------+
+/                            KeyId                              /
+/---------------+---------------+-------------------------------+
+|          T_PUBLICKEY          |  Variable Length (~160 octets)|
++---------------+---------------+---------------+---------------+
+/                Public Key (DER-encoded SPKI)                  /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+            </figure>
+
+
+          </section>
+          </section>
+
+
+          <section anchor="ValPayload" title="Validation Payload">
+          <figure anchor="valpayload-encoding" title="Validation Payload Encoding">
+            <artwork align="left"><![CDATA[
+                     1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++---------------+---------------+---------------+---------------+
+|     T_VALIDATION_PAYLOAD      |  ValidationPayloadLength      |
++---------------+---------------+---------------+---------------+
+/ Type-dependent data                                           /
++---------------+---------------+---------------+---------------+
+]]></artwork>
+          </figure>
+
+            <t>The ValidationPayload contains the validation output, such as the CRC32C code or the RSA signature.</t>
+
+          </section>
+
+      </section>
+    </section>
+
+
+    </section>
+
+
+    <section anchor="IANA" title="IANA Considerations">
+        <t>This section details each kind of CCNx protocol value that can be
+            registered. Each type registry can be updated by incrementally
+            expanding the type space, i.e., by allocating and reserving new types.
+            As per <xref target="RFC8126"/>, this section details the creation of
+          the "Content-Centric Networking (CCNx)" registry and several subregistries.
+        </t>
+
+    <section anchor="IANA_PacketLevel" title="Packet Type Registry">
+        <t> IANA has created the "CCNx Packet Types" registry and allocated
+	the packet types described below. 
+ The registration
+	procedure is RFC Required. The Type value is 1 octet. The range is
+	0x00-0xFF.
+</t>
+
+        <texttable title="Packet Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x00</c>
+          <c>PT_INTEREST</c>
+          <c><xref target="header">Fixed Header Types</xref></c>
+
+          <c>0x01</c>
+          <c>PT_CONTENT</c>
+          <c><xref target="header">Fixed Header Types</xref></c>
+
+          <c>0x02</c>
+          <c>PT_RETURN</c>
+          <c><xref target="header">Fixed Header Types</xref></c>
+      </texttable>
+    </section>
+
+    <section anchor="IANA_InterestReturnCodes" title="Interest Return Code Registry">
+        <t>IANA has created the "CCNx Interest Return Code Types" registry and
+	allocated the Interest Return code types described below. The registration
+	procedure is Specification Required. The Type value is 1 octet. The range is
+	0x00-0xFF.</t>
+
+        <texttable title="CCNx Interest Return Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x00</c>
+          <c>Reserved</c>
+          <c></c>
+
+          <c>0x01</c>
+          <c>T_RETURN_NO_ROUTE</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+
+          <c>0x02</c>
+          <c>T_RETURN_LIMIT_EXCEEDED</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+
+          <c>0x03</c>
+          <c>T_RETURN_NO_RESOURCES</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+
+          <c>0x04</c>
+          <c>T_RETURN_PATH_ERROR</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+
+          <c>0x05</c>
+          <c>T_RETURN_PROHIBITED</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+
+          <c>0x06</c>
+          <c>T_RETURN_CONGESTED</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+
+          <c>0x07</c>
+          <c>T_RETURN_MTU_TOO_LARGE</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+
+          <c>0x08</c>
+          <c>T_RETURN_UNSUPPORTED_HASH_RESTRICTION</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+
+          <c>0x09</c>
+          <c>T_RETURN_MALFORMED_INTEREST</c>
+          <c><xref target="ReturnCode">Fixed Header Types</xref></c>
+      </texttable>
+    </section>
+
+    <section anchor="IANA_HopByHop" title="Hop-by-Hop Type Registry">
+        <t>IANA has created the "CCNx Hop-by-Hop Types" registry and allocated
+	the hop-by-hop types described below. The registration
+	procedure is RFC Required. The Type value is 2 octets. The range is
+	0x0000-0xFFFF.</t>
+
+        <texttable title="CCNx Hop-by-Hop Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x0000</c>
+          <c>Reserved</c>
+          <c></c>
+          
+          <c>0x0001</c>
+          <c>T_INTLIFE</c>
+          <c><xref target="per-hop">Hop-by-hop TLV headers</xref></c>
+
+          <c>0x0002</c>
+          <c>T_CACHETIME</c>
+          <c><xref target="per-hop">Hop-by-hop TLV headers</xref></c>
+
+          <c>0x0003</c>
+          <c>T_MSGHASH</c>
+          <c><xref target="per-hop">Hop-by-hop TLV headers</xref></c>
+
+          <c>0x0004 - 0x0007</c>
+          <c>Reserved</c>
+          <c></c>
+
+          <c>0x0FFE</c>
+          <c>T_PAD</c>
+          <c><xref target="pad">Pad</xref></c>
+
+          <c>0x0FFF</c>
+          <c>T_ORG</c>
+          <c><xref target="vendor">Organization-Specific TLVs</xref></c>
+
+          <c>0x1000-0x1FFF</c>
+          <c>Reserved</c>
+          <c><xref target="TLV">Experimental Use</xref></c>
+      </texttable>
+    </section>
+
+      <section anchor="IANA_TopLevel" title="Top-Level Type Registry">
+        <t>IANA has created the "CCNx Top-Level Types" registry and allocated
+	the top-level types described below. The registration procedure is RFC
+	Required. The Type value is 2 octets. The range is
+	0x0000-0xFFFF.</t>
+
+        <texttable title="CCNx Top-Level Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x0000</c>
+          <c>Reserved</c>
+          <c></c>
+          
+          <c>0x0001</c>
+          <c>T_INTEREST</c>
+          <c><xref target="top_level">Top-Level Types</xref></c>
+
+          <c>0x0002</c>
+          <c>T_OBJECT</c>
+          <c><xref target="top_level">Top-Level Types</xref></c>
+
+          <c>0x0003</c>
+          <c>T_VALIDATION_ALG</c>
+          <c><xref target="top_level">Top-Level Types</xref></c>
+
+          <c>0x0004</c>
+          <c>T_VALIDATION_PAYLOAD</c>
+          <c><xref target="top_level">Top-Level Types</xref></c>
+        </texttable>
+      </section>
+
+      <section anchor="IANA_NameSegment" title="Name Segment Type Registry">
+        <t>IANA has created the "CCNx Name Segment Types" registry and allocated
+	the name segment types described below. The registration
+	procedure is Specification Required. The Type value is 2 octets. The range is
+	0x0000-0xFFFF.</t>
+
+        <texttable title="CCNx Name Segment Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x0000</c>
+          <c>Reserved</c>
+          <c></c>
+          
+          <c>0x0001</c>
+          <c>T_NAMESEGMENT</c>
+          <c><xref target="names">Name</xref></c>
+
+          <c>0x0002</c>
+          <c>T_IPID</c>
+          <c><xref target="names">Name</xref></c>
+
+          <c>0x0010 - 0x0013</c>
+          <c>Reserved</c>
+          <c>RFC 8609</c>
+
+          <c>0x0FFF</c>
+          <c>T_ORG</c>
+          <c><xref target="vendor">Organization-Specific TLVs</xref></c>
+
+          <c>0x1000 - 0x1FFF</c>
+          <c>T_APP:00 - T_APP:4096</c>
+          <c><xref target="names">Application Components</xref></c>
+      </texttable>
+    </section>
+
+    <section anchor="IANA_MessageTypes" title="Message Type Registry">
+        <t>IANA has created the "CCNx Message Types" registry and registered
+	the message segment types described below. The registration
+	procedure is RFC Required. The Type value is 2 octets. The range is
+	0x0000-0xFFFF.</t>
+
+        <texttable title="CCNx Message Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x0000</c>
+          <c>T_NAME</c>
+          <c><xref target="CCNMessage">Message Types</xref></c>
+
+          <c>0x0001</c>
+          <c>T_PAYLOAD</c>
+          <c><xref target="CCNMessage">Message Types</xref></c>
+
+          <c>0x0002</c>
+          <c>T_KEYIDRESTR</c>
+          <c><xref target="CCNMessage">Message Types</xref></c>
+
+          <c>0x0003</c>
+          <c>T_OBJHASHRESTR</c>
+          <c><xref target="CCNMessage">Message Types</xref></c>
+
+          <c>0x0005</c>
+          <c>T_PAYLDTYPE</c>
+          <c><xref target="COmetadata">Content Object Message Types</xref></c>
+
+          <c>0x0006</c>
+          <c>T_EXPIRY</c>
+          <c><xref target="COmetadata">Content Object Message Types</xref></c>
+          <c>0x0007 - 0x000C</c>
+          <c>Reserved</c>
+          <c>RFC 8609</c>
+
+          <c>0x0FFE</c>
+          <c>T_PAD</c>
+          <c><xref target="pad">Pad</xref></c>
+
+          <c>0x0FFF</c>
+          <c>T_ORG</c>
+          <c><xref target="vendor">Organization-Specific TLVs</xref></c>
+
+          <c>0x1000-0x1FFF</c>
+          <c>Reserved</c>
+          <c><xref target="TLV">Experimental Use</xref></c>
+      </texttable>
+    </section>
+
+    <section anchor="IANA_PayloadType" title="Payload Type Registry">
+        <t>IANA has created the "CCNx Payload Types" registry and allocated
+	the payload types described below.  The registration
+	procedure is Specification Required. The Type value is 1 octet. The range is
+	0x00-0xFF.</t>
+
+        <texttable title="CCNx Payload Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x00</c>
+          <c>T_PAYLOADTYPE_DATA</c>
+          <c><xref target="payload_type">Payload Types</xref></c>
+
+          <c>0x01</c>
+          <c>T_PAYLOADTYPE_KEY</c>
+          <c><xref target="payload_type">Payload Types</xref></c>
+
+          <c>0x02</c>
+          <c>T_PAYLOADTYPE_LINK</c>
+          <c><xref target="payload_type">Payload Types</xref></c>
+      </texttable>
+    </section>
+
+    <section anchor="IANA_ValidationAlgorithm" title="Validation Algorithm Type Registry">
+        <t>IANA has created the "CCNx Validation Algorithm Types" registry and
+	allocated the validation algorithm types described below.  The registration
+	procedure is Specification Required. The Type value is 2 octets. The range is
+	0x0000-0xFFFF.
+
+</t>
+
+        <texttable title="CCNx Validation Algorithm Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x0000</c>
+          <c>Reserved</c>
+          <c></c>
+
+          <c>0x0002</c>
+          <c>T_CRC32C</c>
+          <c><xref target="ValAlg">Validation Algorithm</xref></c>
+
+          <c>0x0004</c>
+          <c>T_HMAC-SHA256</c>
+          <c><xref target="ValAlg">Validation Algorithm</xref></c>
+
+          <c>0x0005</c>
+          <c>T_RSA-SHA256</c>
+          <c><xref target="ValAlg">Validation Algorithm</xref></c>
+
+          <c>0x0006</c>
+          <c>T_EC-SECP-256K1</c>
+          <c><xref target="ValAlg">Validation Algorithm</xref></c>
+
+          <c>0x0007</c>
+          <c>T_EC-SECP-384R1</c>
+          <c><xref target="ValAlg">Validation Algorithm</xref></c>
+
+          <c>0x0FFE</c>
+          <c>T_PAD</c>
+          <c><xref target="pad">Pad</xref></c>
+
+          <c>0x0FFF</c>
+          <c>T_ORG</c>
+          <c><xref target="vendor">Organization-Specific TLVs</xref></c>
+
+          <c>0x1000-0x1FFF</c>
+          <c>Reserved</c>
+          <c><xref target="TLV">Experimental Use</xref></c>
+      </texttable>
+    </section>
+
+    <section anchor="IANA_ValidationDD" title="Validation-Dependent Data Type Registry">
+
+        <t>IANA has created the "CCNx Validation-Dependent Data Types"
+        registry and allocated the validation-dependent data types described
+        below.  The registration procedure is RFC Required.  The Type value is
+        2 octets. The range is 0x0000-0xFFFF.</t>
+
+        <texttable title="CCNx Validation-Dependent Data Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x0000</c>
+          <c>Reserved</c>
+          <c></c>
+          
+          <c>0x0009</c>
+          <c>T_KEYID</c>
+          <c><xref target="vdd">Validation-Dependent Data</xref></c>
+
+          <c>0x000A</c>
+          <c>T_PUBLICKEYLOC</c>
+          <c><xref target="vdd">Validation-Dependent Data</xref></c>
+
+          <c>0x000B</c>
+          <c>T_PUBLICKEY</c>
+          <c><xref target="vdd">Validation-Dependent Data</xref></c>
+
+          <c>0x000C</c>
+          <c>T_CERT</c>
+          <c><xref target="vdd">Validation-Dependent Data</xref></c>
+
+          <c>0x000D</c>
+          <c>T_LINK</c>
+          <c><xref target="vdd">Validation-Dependent Data</xref></c>
+
+          <c>0x000E</c>
+          <c>T_KEYLINK</c>
+          <c><xref target="vdd">Validation-Dependent Data</xref></c>
+
+          <c>0x000F</c>
+          <c>T_SIGTIME</c>
+          <c><xref target="vdd">Validation-Dependent Data</xref></c>
+
+          <c>0x0FFF</c>
+          <c>T_ORG</c>
+          <c><xref target="vendor">Organization-Specific TLVs</xref></c>
+
+          <c>0x1000-0x1FFF</c>
+          <c>Reserved</c>
+          <c><xref target="TLV">Experimental Use</xref></c>
+      </texttable>
+    </section>
+
+    <section anchor="IANA_HashFunctions" title="Hash Function Type Registry">
+        <t>IANA has created the "CCNx Hash Function Types" registry and
+	allocated the hash function types described below. The registration
+	procedure is Specification Required. The Type value is 2 octets. The
+	range is 0x0000-0xFFFF.
+</t>
+
+        <texttable title="CCNx Hash Function Types">
+          <ttcol align="center">Type</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+
+          <c>0x0000</c>
+          <c>Reserved</c>
+          <c></c>
+          
+          <c>0x0001</c>
+          <c>T_SHA-256</c>
+          <c><xref target="hash_format">Hash Format</xref></c>
+
+          <c>0x0002</c>
+          <c>T_SHA-512</c>
+          <c><xref target="hash_format">Hash Format</xref></c>
+
+          <c>0x0FFF</c>
+          <c>T_ORG</c>
+          <c><xref target="vendor">Organization-Specific TLVs</xref></c>
+
+          <c>0x1000-0x1FFF</c>
+          <c>Reserved</c>
+          <c><xref target="TLV">Experimental Use</xref></c>
+      </texttable>
+    </section>
+
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+		<t>The CCNx protocol is a Layer 3 network protocol, which may also operate as an overlay using other
+		transports such as UDP or other tunnels.  It includes intrinsic support for message authentication
+		via a signature (e.g., RSA or elliptic curve) or Message Authentication Code (e.g., HMAC).  In lieu
+		of an authenticator, it may instead use a Message Integrity Check (e.g., SHA or CRC).  CCNx does not specify
+		an encryption envelope; that function is left to a
+		high-layer protocol (e.g., Encrypted Sessions in CCNx <xref target="esic"/>).</t>
+		
+		<t>
+        The CCNx Packet format includes the ability to attach MICs (e.g., SHA-256 or CRC), MACs (e.g., HMAC),
+        and Signatures (e.g., RSA or ECDSA) to
+        all packet types.  
+
+       Because Interest packets can be sent at will, an application should
+       carefully select when to use
+       a given ValidationAlgorithm in an Interest to avoid DoS attacks. MICs,
+       for example, are inexpensive and
+       could be used as desired, whereas MACs and Signatures are more
+       expensive and their inappropriate use
+       could open a computational DoS attack surface.
+
+  Applications should
+        use an explicit protocol to guide their use of packet signatures.  As a general guideline,
+        an application might use a MIC on an Interest to detect unintentionally corrupted packets.  
+        If one wishes to secure an Interest, one should
+        consider using an encrypted wrapper and a protocol that prevents replay attacks, especially if
+        the Interest is being used as an actuator.  Simply using
+        an authentication code or signature does not make an Interest secure.
+        There are several examples in the literature on how to secure ICN-style messaging <xref target="mobile"/>
+        <xref target="ace"/>.
+        </t>		
+		
+		<t>As a Layer 3 protocol, this document does not describe how one arrives at keys or how one trusts keys.
+		The CCNx content object may include a public key embedded in the object or may use the PublicKeyLocator
+		field to point to a public key (or public-key certificate) that authenticates the message.
+		One key exchange specification is <xref target="ccnxke">CCNxKE</xref> <xref target="mobile"/>, 
+		which is similar to the
+		TLS 1.3 key exchange except it is over the CCNx Layer 3 messages.  Trust is beyond the scope of
+		a Layer 3 protocol and is left to applications or application frameworks.
+		</t>
+		
+		<t>
+		The combination of an ephemeral key exchange (e.g., <xref target="ccnxke">CCNxKE</xref>) and an
+		encapsulating encryption (e.g., <xref target="esic"/>) provides the equivalent of a TLS tunnel.
+		Intermediate nodes may forward the Interests and Content Objects but have no visibility
+		inside.  It also completely hides the internal names in those used by the encryption layer.
+		This type of tunneling encryption is useful for content that has little or no cacheability,
+		as it can only be used by someone with the ephemeral key.  Short-term caching may help with
+		lossy links or mobility, but long-term caching is usually not of interest.
+		</t>
+		
+		<t>Broadcast encryption or proxy re-encryption may be useful for content with multiple uses
+		over time or many consumers.  There is currently no recommendation for this form of encryption.
+		</t>
+		
+		<t>The specific encoding of messages will have security implications.  This document
+		uses a Type-Length-Value (TLV) encoding.  We chose to compromise between extensibility and unambiguous
+		encodings of types and lengths.  Some TLV encodings use variable-length T and variable-length L fields to accommodate
+		a wide gamut of values while trying to be byte efficient.  Our TLV encoding uses a fixed length 2-byte T and
+		2-byte L.  Using fixed-length T and L fields solves two problems.  The first is aliases.  If one is able
+		to encode the same value, such as 0x02 and 0x0002, in different byte lengths, then one must decide if they
+		mean the same thing, if they are different, or if one is illegal.  If they are different, then one must
+		always compare on the buffers not the integer equivalents.  If one is illegal, then one must validate the
+		TLV encoding -- every field of every packet at every hop.  If they are the same, then one has the
+		second problem: how to specify packet filters.  For example, if a name has 6 name components, then there are
+		7 T fields and 7 L fields, each of which might have up to 4 representations of the same value.  That would be 14 fields
+		with 4 encodings each, or 1001 combinations.  It also means that one cannot compare, for example, a name
+		via a memory function, as one needs to consider that any embedded T or L might have a different format.</t>
+    		
+      <t>The Interest Return message has no authenticator from the previous hop.  Therefore, the payload of the Interest Return
+        should only be used locally to match an Interest.  A node should never forward that Interest payload as an Interest.
+        It should also verify that it sent the Interest in the Interest Return to that node and not allow anyone to negate
+        Interest messages.</t>
+        
+      <t>Caching nodes must take caution when processing content objects. 
+      	It is essential that the Content Store obey the rules outlined in <xref target="RFC8569"/>
+      	to avoid certain types of attacks.  CCNx 1.0 has no mechanism to work around
+      	an undesired result from the network (there are no "excludes"), so if a cache becomes poisoned
+      	with bad content it might cause problems retrieving content.   
+
+        There are three types of access
+      	to content from a Content Store: unrestricted, signature restricted, and hash restricted.
+      	If an Interest has no restrictions, then the requester is not particular about what they get
+      	back, so any matching cached object is OK.  In the hash restricted case, the requester
+      	is very specific about what they want, and the Content Store (and every forward hop) can
+      	easily verify that the content matches the request. In the signature
+	restricted case
+      	(which is often used for initial manifest discovery), the requester only knows the KeyId that signed
+      	the content.  This case requires the closest attention in the Content Store to avoid
+      	amplifying bad data.  The Content Store must only respond with a content object if it can
+      	verify the signature -- this means either the content object carries the public key inside it
+      	or the Interest carries the public key in addition to the KeyId.  If that is not the case,
+      	then the Content Store should treat the Interest as a cache miss and let an endpoint respond.
+      	</t>
+      	
+       <t>A user-level cache could perform full signature verification by fetching a public key
+      according to the PublicKeyLocator.  However, that is not a burden we wish to impose on
+      the forwarder.  A user-level cache could also rely on out-of-band attestation, such as 
+      the cache operator only inserting content that it knows has the correct signature.</t>
+      
+      <t>The CCNx grammar allows for hash algorithm agility via the HashType.
+      It specifies a short list of acceptable hash algorithms that should be implemented at
+      each forwarder.  Some hash values only apply to end systems, so updating
+      the hash algorithm does not affect forwarders -- they would simply match the buffer
+      that includes the type-length-hash buffer.  Some fields, such as the ConObjHash, must be verified
+      at each hop, so a forwarder (or related system) must know the hash algorithm, and it could
+      cause backward compatibility problems if the hash type is updated.
+	</t>
+      
+      <t>A CCNx name uses binary matching, whereas a URI uses a case-insensitive hostname.  Some
+      systems may also use case-insensitive matching of the URI path to a resource.  An implication
+      of this is that human-entered CCNx names will likely have case or non-ASCII symbol mismatches
+      unless one uses a consistent URI normalization for the CCNx name.  It also means that
+      an entity that registers a CCNx-routable prefix -- say,
+      "ccnx:/example.com" -- would need
+      separate registrations for simple variations like "ccnx:/Example.com".  Unless this is
+      addressed in URI normalization and routing protocol conventions, there could be
+      phishing attacks.</t>
+          
+       <t>For a more general introduction to ICN-related security concerns and approaches,
+       see <xref target="RFC7927"/> and <xref target="RFC7945"/>.</t>
+    </section>
+
+
+  </middle>
+
+  <!--  *****BACK MATTER ***** -->
+
+  <back>
+
+    <references title="Normative References">
+
+      &RFC2119;
+      &RFC8174;
+ </references>
+
+    <references title="Informative References">
+
+      &RFC8126;
+      &RFC5280;
+
+     <reference anchor="compress" target="https://datatracker.ietf.org/meeting/interim-2016-icnrg-02/materials/slides-interim-2016-icnrg-2-7">
+          <front>
+              <title>Header Compression for TLV-based Packets</title>
+              <author initials="M." surname="Mosko" fullname="Marc Mosko"><organization>PARC, Inc.</organization></author>
+              <date year="2016"/>
+          </front>
+          <seriesInfo name="ICNRG" value="Interim Meeting"/>
+      </reference>
+
+
+     <reference anchor="CCNxz" target="https://github.com/PARC/CCNxz">
+       <front>
+         <title>CCNxz TLV Header Compression Experimental Code</title>
+         <author initials="M." surname="Mosko" fullname="Marc Mosko"><organization>PARC, Inc.</organization></author>
+         <date month="March" year="2018"/>
+       </front>
+       <seriesInfo name="commit" value="f1093a2"/>
+     </reference>
+
+<!-- draft-irtf-icnrg-ccnxsemantics-09 in AUTH48 as RFC-to-be 8569 -->
+      <reference anchor="RFC8569" target="https://www.rfc-editor.org/info/rfc8569">
+        <front>
+          <title>Content-Centric Networking (CCNx) Semantics</title>
+
+          <author initials='M.' surname='Mosko' fullname='Marc Mosko'>
+            <organization>PARC, Inc.</organization>
+          </author>
+          <author initials='I.' surname='Solis' fullname='Ignacio Solis'>
+            <organization>LinkedIn</organization>
+          </author>
+          <author initials='C.' surname='Wood' fullname='Christopher A. Wood'>
+            <organization>University of California, Irvine</organization>
+          </author>
+
+          <date month="July" year="2019"/>
+        </front>
+	<seriesInfo name="RFC" value="8569"/>
+        <seriesInfo name="DOI" value="10.17487/RFC8569"/>
+      </reference>
+
+      <reference anchor="IANA-PEN" target="http://www.iana.org/assignments/enterprise-numbers">
+        <front>
+          <title>Private Enterprise Numbers</title>
+          <author>
+            <organization>IANA</organization>
+          </author>
+
+          <date/>
+        </front>
+      </reference>
+
+      <reference anchor="nnc" target="http://dx.doi.org/10.1145/1658939.1658941">
+      	<front>
+      		<title>Networking Named Content</title>
+      		<author initials="V." surname="Jacobson" fullname="Van Jacobson"><organization>Palo Alto Research Center</organization></author>
+      		<author initials="D.K." surname="Smetters" fullname="Diana K. Smetters"><organization>Palo Alto Research Center</organization></author>
+      		<author initials="J.D." surname="Thornton" fullname="James D. Thornton"><organization>Palo Alto Research Center</organization></author>
+      		<author initials="M.F." surname="Plass" fullname="Michael F. Plass"><organization>Palo Alto Research Center</organization></author>
+      		<author initials="N.H." surname="Briggs" fullname="Nicholas H. Briggs"><organization>Palo Alto Research Center</organization></author>
+      		<author initials="R.L." surname="Braynard" fullname="Rebecca L. Braynard"><organization>Palo Alto Research Center</organization></author>
+      		<date year="2009"/>
+      	</front>
+<seriesInfo name="Proceedings" value="of the 5th international conference on Emerging networking
+experiments and technologies (CoNEXT '09)"/>
+      </reference>
+
+      <reference anchor="ECC" target="http://www.secg.org/sec2-v2.pdf">
+        <front>
+          <title>SEC 2: Recommended Elliptic Curve Domain Parameters</title>
+          <author>
+            <organization>Certicom Research</organization>
+          </author>
+
+          <date year="2010"/>
+        </front>
+      </reference>
+
+<!-- draft-mosko-icnrg-ccnxurischeme-01: Expired -->
+      <reference anchor="CCNxURI">
+        <front>
+          <title>The CCNx URI Scheme</title>
+
+          <author initials='M.' surname='Mosko' fullname='Marc Mosko'>
+            <organization>PARC, Inc.</organization>
+          </author>
+          <author initials='C.' surname='Wood' fullname='Christopher A. Wood'>
+            <organization>University of California, Irvine.</organization>
+          </author>
+          <date month="April" year="2016"/>
+        </front>
+	<seriesInfo name="Work in Progress," value="draft-mosko-icnrg-ccnxurischeme-01"/>
+      </reference>
+
+     <reference anchor="mobile" target="http://dl.ifip.org/db/conf/networking/networking2017/1570334964.pdf">
+          <front>
+              <title>Mobile Sessions in Content-Centric Networks</title>
+              <author initials="M." surname="Mosko" fullname="Marc Mosko"><organization>PARC, Inc.</organization></author>
+              <author initials="E." surname="Uzun" fullname="Ersin Uzun"><organization>PARC, Inc.</organization></author>
+              <author initials="C." surname="Wood" fullname="Christopher A. Wood"><organization>University of California, Irvine</organization></author>
+              <date year="2017"/>
+          </front>
+          <seriesInfo name="IFIP" value="Networking"/>
+      </reference>
+
+     <reference anchor="ace" target="http://new.named-data.net/wp&nbhy;content/uploads/2015/12/ndn-0036-1-ndn-ace.pdf">
+          <front>
+              <title>NDN-ACE: Access control for constrained environments over named data networking</title>
+              <author initials="W." surname="Shang"><organization>University of California, Los Angeles</organization></author>
+              <author initials="Y." surname="Yu"><organization>University of California, Los Angeles</organization></author>
+              <author initials="T." surname="Liang"><organization>University of Arizona</organization></author>
+              <author initials="B." surname="Zhang"><organization>University of Arizona</organization></author>
+              <author initials="L." surname="Zhang"><organization>University of California, Los Angeles</organization></author>
+              <date year="2015"/>
+          </front>
+          <seriesInfo name="NDN Technical Report" value="NDN-0036"/>
+      </reference>
+
+<!-- draft-wood-icnrg-ccnxkeyexchange-02: Expired -->
+     <reference anchor="ccnxke">
+          <front>
+              <title>CCNx Key Exchange Protocol Version 1.0</title>
+              <author initials="M." surname="Mosko" fullname="Marc Mosko"><organization>PARC, Inc.</organization></author>
+              <author initials="E." surname="Uzun" fullname="Ersin Uzun"><organization>PARC, Inc.</organization></author>
+              <author initials="C." surname="Wood" fullname="Christopher A. Wood"><organization>University of California, Irvine</organization></author>
+              <date month="March" year="2017"/>
+          </front>
+<seriesInfo name="Work in Progress," value="draft-wood-icnrg-ccnxkeyexchange-02"/>
+      </reference>
+
+<!-- draft-wood-icnrg-esic-01: Expired -->
+     <reference anchor="esic">
+          <front>
+              <title>Encrypted Sessions In CCNx (ESIC)</title>
+              <author initials="M." surname="Mosko" fullname="Marc Mosko"><organization>PARC, Inc.</organization></author>
+              <author initials="C." surname="Wood" fullname="Christopher A. Wood"><organization>University of California, Irvine</organization></author>
+              <date month="September" year="2017"/>
+          </front>
+<seriesInfo name="Work in Progress," value="draft-wood-icnrg-esic-01"/>
+      </reference>
+
+&RFC7927;
+&RFC7945;
+    </references>
+
+  </back>
+</rfc>

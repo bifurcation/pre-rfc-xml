@@ -1,0 +1,1178 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc='yes'?>
+<?rfc tocdepth='5'?>
+<?rfc rfcedstyle='yes'?>
+<?rfc subcompact='no'?>
+<?rfc symrefs='yes'?>
+
+<rfc number="5874" ipr="pre5378Trust200902" category="std">
+
+    <front>
+        <title abbrev="XCAP Diff Format">
+              An Extensible Markup Language (XML) Document Format
+              for Indicating a Change in XML Configuration Access
+              Protocol (XCAP) Resources </title>
+
+        <author initials="J.R." surname="Rosenberg"
+                fullname="Jonathan Rosenberg">
+            <organization>Cisco</organization>
+
+            <address>
+                <postal>
+                    <city>Edison</city> <region>NJ</region>
+                    <country>USA</country>
+                </postal>
+
+                <email>jdrosen@cisco.com</email>
+                <uri>http://www.jdrosen.net</uri>
+            </address>
+        </author>
+
+	<author fullname="Jari Urpalainen" surname="Urpalainen" initials="J.">
+		<organization>Nokia</organization>
+		<address>
+			<postal>
+				<street>Itamerenkatu 11-13</street>
+				<code>00180</code>
+				<city>Helsinki</city>
+				<country>Finland</country>
+			</postal>
+			<phone>+358 7180 37686</phone>
+			<email>jari.urpalainen@nokia.com</email>
+		</address>
+	</author>
+
+        <date month="May" year="2010"/>
+
+        <area>RAI</area>
+        <workgroup>SIMPLE</workgroup>
+        <keyword>SIP</keyword>
+        <keyword>Instant Messaging</keyword>
+        <abstract>
+            <t> This specification defines a document format that can be used
+to indicate that a change has occurred in a document managed by the Extensible
+Markup Language (XML) Configuration Access Protocol (XCAP). This format reports
+which document has changed and its former and new entity tags. It can report
+the differences between versions of the document, using an XML patch format. It
+can report existing element and attribute content when versions of an XCAP
+server document change. XCAP diff documents can be delivered to diff clients
+using a number of means, including a Session Initiation Protocol (SIP) event
+package. </t> 
+        </abstract>
+    </front>
+
+<middle>
+
+
+<section title="Introduction">
+
+<t> 
+The Extensible Markup Language (XML) Configuration Access Protocol <xref
+target="RFC4825">(XCAP)</xref> is a protocol that allows XCAP clients to
+manipulate XML documents stored on a server. These XML documents serve as
+configuration information for application protocols. As an example, <xref
+target="RFC4662">resource list</xref> subscriptions (also known as presence
+lists) allow a SIP client to have a single SIP
+subscription to a list of users, where the list is maintained on a server. The
+server will obtain presence for those users and report it back to the SIP
+client. This application requires the server, called a Resource List Server
+(RLS), to have access to the list of <xref
+target="RFC2778">presentities</xref>. This list needs to be manipulated by XCAP
+clients so they can add and remove their friends as they desire.  
+</t>
+
+<t> 
+Complexities arise when multiple XCAP clients attempt to simultaneously
+manipulate a document, such as a presence list. Frequently, an XCAP client will
+keep a copy of the current list in memory, so it can render it to
+users. However, if another XCAP client modifies the document, the cached
+version becomes stale. This modification event must be made known to all
+clients that have cached copies of the document, so that they can fetch the
+most recent one.   
+</t>
+
+<t> 
+To deal with this problem, clients can use a <xref target="RFC3261">Session
+Initiation Protocol (SIP)</xref> <xref target="RFC3265">event package</xref> to
+subscribe to <xref target="RFC5875">change events</xref> in XCAP
+documents. This notification needs to indicate the specific resource that
+changed and how it changed. One solution for the format of such a change
+notification would be a content indirection object <xref
+target="RFC4483"/>. Though content indirection can tell a client that a
+document has changed, it provides it with a MIME Content-ID indicating the new
+version of the document. The MIME Content-ID is not the same as the entity tag,
+which is used by XCAP for document versioning. As such, a client cannot easily
+ascertain whether an indication of a change in a document is due to a change it
+just made or due to a change another XCAP client made at around the same
+time. Furthermore, content indirections don't indicate how a document changed;
+they are only able to indicate that it did change.  
+</t>
+
+<t> 
+To resolve these problems, this document defines a data format that can convey
+the fact that an XML document managed by XCAP has changed. This data format is
+an XML document format, called an XCAP diff document. This format reports which
+document has changed and its former and new entity tags. It can report the
+differences between versions of the document, using an XML patch format <xref
+target="RFC5261"/>, which indicate how to transform the locally cached XCAP
+document from the version prior to the change to the version after it. Its
+intent is to reduce the required overall bandwidth and the number of separate
+transmissions. It can also report existing element and attribute content when
+versions of an XML document change at an XCAP server. 
+</t>
+
+<t>
+XML documents that are equivalent for the purposes of many applications may
+differ in their physical representation. Similar to XCAP, the canonical form
+with comments <xref target="W3C.REC-xml-c14n-20010315"/> of an XML document
+determines the logical equivalence when this format is used to patch locally
+cached XCAP documents. 
+</t>
+</section>
+
+<section title="Terminology">
+
+<t>
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in <xref target="RFC2119">RFC 2119</xref> and indicate
+requirement levels for compliant implementations. 
+</t>
+
+<t>
+This specification also defines the following additional terms:
+</t>
+
+<t><list style="hanging">
+
+<t hangText="Document:"> 
+When the term document is used without the "(XCAP) diff" in front of it, it
+refers to the XCAP document resource about which the XCAP diff document is
+reporting a change. 
+</t>
+
+<t hangText="Diff document:"> 
+The XML document defined by this specification that reports on a set of changes
+in an XCAP document resource. It is delivered from a server to a diff client by
+a transport that is not defined by this specification.  
+</t>
+
+<t hangText="XCAP server:"> 
+A protocol entity that manages XCAP documents and their entity tags. It usually
+contains an integrated diff notifier. 
+</t>
+
+<t hangText="Diff notifier:"> 
+This is the entity of a server that generates XCAP diff documents based on its
+knowledge of a set of XCAP documents and their changes, and it transmits the
+generated diff documents to a diff client within a session.  
+</t>
+
+<t hangText="Diff client:"> 
+A client that consumes XCAP diff documents in order to construct a locally
+cached document that is equivalent to a specific version of a document resource
+stored at an XCAP server. It is typically a SIP User Agent (UA) and an XCAP
+client.  
+</t>
+
+<t hangText="XCAP Client:"> 
+A client that updates and retrieves documents stored at an XCAP server. It can
+also patch element and attribute content of XCAP documents located at an XCAP
+server.  
+</t>
+
+<t hangText="Locally cached resource:"> 
+A resource that has typically been downloaded by HTTP from an XCAP server to a
+diff client. It may have been patched locally by a diff client based on the
+XCAP diff document information. It is equivalent to a single version in its
+change history at an XCAP server. Version history of XCAP documents is
+indicated by HTTP entity tags (ETags). 
+</t>
+
+<t hangText="ETag:"> 
+A strong HTTP entity tag whose value is set by an XCAP server. Documents at an
+XCAP server are updated by XCAP clients. The XCAP server assigns a new ETag
+value to each document version according to the HTTP specification.  
+</t>
+
+</list></t>
+
+</section>
+<section anchor="sec:struc" title="Structure of an XCAP Diff Document">
+
+<t>
+An XCAP diff document is an <xref target="W3C.REC-xml-20060816">XML</xref>
+document that MUST be well-formed and SHOULD be valid. XCAP diff documents MUST
+be based on XML 1.0 and MUST be encoded using UTF-8. This specification makes
+use of XML namespaces for identifying XCAP diff documents and document
+fragments. The namespace URI for elements defined by this specification is a
+<xref target="RFC2141">URN</xref>, using the namespace identifier 'ietf'
+defined by <xref target="RFC2648"/> and extended by <xref target="RFC3688"/>.
+This URN is: 
+</t>
+
+<t>
+<list style="hanging"><t>
+urn:ietf:params:xml:ns:xcap-diff
+</t></list>
+</t>
+
+<t>
+An XCAP diff document begins with the root element tag &lt;xcap-diff&gt;. This
+element has a single mandatory attribute, "xcap-root". The value of this
+attribute is the XCAP root URI for the documents in which the changes have
+taken place. A single XCAP diff document can only represent changes in
+documents within the same XCAP root. The content of the &lt;xcap-diff&gt;
+element is a sequence of &lt;document&gt;, &lt;element&gt;, and
+&lt;attribute&gt; elements followed by any number of elements from other
+namespaces for the purposes of extensibility. Wherever the XML schema (see
+<xref target="sec:schema"/>) allows extension elements or attributes, any such
+unknown content MUST be ignored by the diff client. 
+</t>
+
+<t>
+Each &lt;document&gt; element specifies changes in a specific document within
+the XCAP root. If several &lt;document> elements pinpoint the same specific
+document, i.e., for example, the full entity tag (ETag) change history is
+indicated, the corresponding patches MUST be able to be applied in the given
+XCAP diff document order. 
+</t>
+
+<t><list style="hanging"><t>
+Note: This requirement simplifies applications that process XCAP diff documents
+since there's no need to sort patch instructions when applying them. 
+</t></list>
+</t>
+
+<t>
+The &lt;document&gt; element has one mandatory attribute, "sel", and two
+optional attributes, "new-etag" and "previous-etag". The "sel" attribute of the
+&lt;document&gt; element identifies the specific document within the XCAP root
+for which changes are indicated. Its content MUST be a relative path reference,
+with the base URI being equal to the XCAP root URI. The "new-etag" attribute
+provides the entity tag (ETag) for the document after the application of the
+changes, assuming the document exists after those changes. The "previous-etag"
+attribute provides an identifier for the document instance prior to the
+change. If the change being reported is the removal of a document, only the
+"previous-etag" MUST be included and the "new-etag" attribute MUST NOT be
+present. The "new-etag" attribute MUST only exist alone when the document
+either exists or it was just created (no patch included). Both attributes are
+present when a patch (or series of XCAP operations) has been applied to the
+resource. Also, both attributes MAY be used to indicate an ETag change without
+any document modifications (patches). 
+</t>
+
+<t>
+The "previous-etag" and "new-etag" need not have been sequentially assigned
+ETags at the server. An XCAP diff document can indicate changes that have
+occurred over a series of XCAP operations. The only requirement then is that
+the sequence of events, when executed serially, will result in the
+transformation of the document with the ETag "previous-etag" to the one whose
+ETag is "new-etag". Also, the series of operations do not have to be the same
+exact series of operations that occurred at the server. 
+</t>
+
+<t>
+Each &lt;document&gt; element contains either a sequence of patching
+instructions or an indication that the body hasn't semantically changed. The
+latter means that the document has been assigned a new ETag but its content is
+unchanged and it is indicated by the &lt;body-not-changed&gt; element. Patching
+instructions are described by the &lt;add&gt;, &lt;replace&gt;, and
+&lt;remove&gt; elements. These elements use the corresponding add, replace, and
+remove types defined in <xref target="RFC5261"/>, and define a set of patch
+operations that can be applied to transform the locally cached document. See
+<xref target="RFC5261"/> for instructions on how this transformation is
+effected. The &lt;document> element can also contain elements from other
+namespaces for the purposes of extensibility. The &lt;add&gt;, &lt;replace&gt;,
+and &lt;remove&gt; elements allow extension attributes from any namespace. 
+</t>
+
+<t>
+<figure anchor="Figure" title="&lt;document&gt; element content / corresponding resource changes">
+
+<preamble><xref target="Figure"/> shows &lt;document&gt; element content and
+how the corresponding resource or metadata changes. In practice, an external
+document retrieval means HTTP GET requests for target resources. The
+asterisk character '*' means that a &lt;document> element has child element(s):
+&lt;add&gt;, &lt;replace&gt;, or &lt;remove&gt;, or alternatively only a
+&lt;body-not-changed&gt; element. The hyphen character '-' means that the
+corresponding content (attribute or element) doesn't exist in a
+&lt;document&gt; element. The 'xxx' and 'yyy' are values of entity tags (ETag)
+of an XCAP document.</preamble> 
+
+<artwork>
+<![CDATA[
++-----------+----------+-----------+----------+-------------------+
+| previous- | new-     | <add>     | <body-   | locally cached    |
+| etag      | etag     | <replace> | not-     | XCAP resource/    |
+|           |          | <remove>  | changed> | metadata change   |
++-----------+----------+-----------+----------+-------------------+
+| xxx       | yyy      | *         | -        | resource patched, |
+|           |          |           |          | patch included    |
++-----------+----------+-----------+----------+-------------------+
+| xxx       | yyy      | -         | -        | resource patched, |
+|           |          |           |          | external document |
+|           |          |           |          | retrieval         |
++-----------+----------+-----------+----------+-------------------+
+| xxx       | yyy      | -         | *        | only ETag changed |
++-----------+----------+-----------+----------+-------------------+
+| -         | yyy      | -         | -        | resource created  |
+|           |          |           |          | or exists,        |
+|           |          |           |          | external document |
+|           |          |           |          | retrieval         |
++-----------+----------+-----------+----------+-------------------+
+| xxx       | -        | -         | -        | resource removed  |
++-----------+----------+-----------+----------+-------------------+
+]]>
+</artwork>
+</figure>
+</t>
+
+<t>
+Each &lt;element&gt; element indicates the existing element content of an XCAP
+document. It has one mandatory attribute, "sel", and optionally, an "exists"
+attribute and extension attributes from any namespace. The "sel" attribute of
+the &lt;element&gt; element identifies an XML element of an XCAP document. It
+is a percent-encoded relative URI following XCAP conventions when selecting
+elements. The XCAP Node Selector MUST always locate a unique node, the "exists"
+attribute thus shows whether an element exists or not in the XCAP
+document. When the "exists" attribute is absent from the &lt;element&gt;
+element, the indicated element still exists in the XCAP document. The located
+element exists as a child element of the &lt;element&gt; element. In a corner
+case where the content of this element cannot be presented for some reason
+(e.g., the payload is too large) although it exists in the XCAP document, the
+&lt;element&gt; element MUST NOT have any child nodes. 
+</t>
+
+<t>
+As the located XML element is typically namespace qualified, all needed
+namespace declarations MUST exist within the &lt;xml-diff> document. The
+possible local namespace declarations within the located element exist
+unmodified as in the source document, similar to XCAP conventions. Other
+namespace references MUST be resolved from the context of the &lt;element> or
+its parent elements. The prefixes of qualified names (QNames) <xref
+target="W3C.REC-xml-names-20060816"/> of XML nodes also remain as they
+originally exist in the source XCAP document. 
+</t>
+
+<t>
+Each &lt;attribute&gt; element indicates the existing attribute content of an
+XCAP document. It has one mandatory attribute, "sel", and optionally, an
+"exists" attribute and extension attributes from any namespace. The "sel"
+attribute of the &lt;attribute&gt; element identifies an XML attribute of an
+XCAP document. It is a percent-encoded relative URI following XCAP conventions
+when selecting attributes. The "exists" attribute indicates whether or not an
+attribute exists in the XCAP document. When the "exists" attribute is absent
+from the &lt;attribute&gt; element, the indicated attribute still exists in the
+XCAP document. The child text node of the &lt;attribute&gt; element indicates
+the value of the located attribute. Note that if the attribute is namespace
+qualified, the query parameter of the XCAP URI indicates the attached namespace
+URI and the prefix in the XCAP source document. 
+</t>
+
+<t>
+Namespaces of the "sel" attribute of the &lt;attribute&gt; and &lt;element&gt;
+elements MUST also be resolved properly. Section 6.4. of <xref
+target="RFC4825"/> describes the rules when using namespace prefixes in XCAP
+Node Selectors. Without a namespace prefix in an element selector, an XCAP
+Default Document Namespace MUST be applied. The namespace resolving rules of
+Patch operation elements: &lt;add&gt;, &lt;replace&gt;, and &lt;remove&gt; are
+described in Section 4.2.1 of <xref target="RFC5261"/>. 
+</t>
+
+</section>
+
+<section anchor="sec:schema" title="XML Schema">
+			<t>
+The XML Schema for the XCAP diff format.
+			</t>
+<figure>
+      <artwork><![CDATA[
+   <?xml version="1.0" encoding="UTF-8"?>
+   <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns="urn:ietf:params:xml:ns:xcap-diff"
+    targetNamespace="urn:ietf:params:xml:ns:xcap-diff"
+    elementFormDefault="qualified"
+    attributeFormDefault="unqualified">
+
+    <!-- include patch-ops -->
+    <xs:include
+     schemaLocation="urn:ietf:params:xml:schema:patch-ops"/>
+
+    <!-- document root -->
+    <xs:element name="xcap-diff">
+     <xs:complexType>
+      <xs:sequence minOccurs="0">
+       <xs:sequence minOccurs="0" maxOccurs="unbounded">
+        <xs:choice>
+         <xs:element name="document" type="documentType"/>
+         <xs:element name="element" type="elementType"/>
+         <xs:element name="attribute" type="attributeType"/>
+        </xs:choice>
+       </xs:sequence>
+       <xs:any namespace="##other" processContents="lax"
+               minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="xcap-root" type="xs:anyURI" use="required"/>
+      <xs:anyAttribute processContents="lax"/>
+     </xs:complexType>
+    </xs:element>
+
+    <!-- xcap document type -->
+    <xs:complexType name="documentType">
+     <xs:choice minOccurs="0">
+      <xs:element name="body-not-changed" type="emptyType"/>
+      <xs:sequence minOccurs="0" maxOccurs="unbounded">
+       <xs:choice>
+        <xs:element name="add">
+         <xs:complexType mixed="true">
+          <xs:complexContent>
+           <xs:extension base="add">
+            <xs:anyAttribute processContents="lax"/>
+           </xs:extension>
+          </xs:complexContent>
+         </xs:complexType>
+        </xs:element>
+        <xs:element name="remove">
+         <xs:complexType>
+          <xs:complexContent>
+           <xs:extension base="remove">
+            <xs:anyAttribute processContents="lax"/>
+           </xs:extension>
+          </xs:complexContent>
+         </xs:complexType>
+        </xs:element>
+        <xs:element name="replace">
+         <xs:complexType mixed="true">
+          <xs:complexContent>
+           <xs:extension base="replace">
+            <xs:anyAttribute processContents="lax"/>
+           </xs:extension>
+          </xs:complexContent>
+         </xs:complexType>
+        </xs:element>
+        <xs:any namespace="##other" processContents="lax"/>
+       </xs:choice>
+      </xs:sequence>
+     </xs:choice>
+     <xs:attribute name="sel" type="xs:anyURI" use="required"/>
+     <xs:attribute name="new-etag" type="xs:string"/>
+     <xs:attribute name="previous-etag" type="xs:string"/>
+     <xs:anyAttribute processContents="lax"/>
+    </xs:complexType>
+
+    <!-- xcap element type -->
+    <xs:complexType name="elementType">
+     <xs:complexContent mixed="true">
+      <xs:restriction base="xs:anyType">
+       <xs:sequence>
+        <xs:any processContents="lax" namespace="##any"
+                minOccurs="0" maxOccurs="1"/>
+       </xs:sequence>
+       <xs:attribute name="sel" type="xs:string"
+                     use="required"/>
+       <xs:attribute name="exists" type="xs:boolean"/>
+       <xs:anyAttribute processContents="lax"/>
+      </xs:restriction>
+     </xs:complexContent>
+    </xs:complexType>
+
+    <!-- xcap attribute type -->
+    <xs:complexType name="attributeType">
+     <xs:simpleContent>
+      <xs:extension base="xs:string">
+       <xs:attribute name="sel" type="xs:string"
+                     use="required"/>
+       <xs:attribute name="exists" type="xs:boolean"/>
+       <xs:anyAttribute processContents="lax"/>
+      </xs:extension>
+     </xs:simpleContent>
+    </xs:complexType>
+
+    <!-- empty type -->
+    <xs:complexType name="emptyType"/>
+   </xs:schema>
+]]></artwork>
+</figure>
+
+</section>
+
+<section title="Example Document">
+
+<t>
+The following is an example of a document compliant to the schema.
+</t>
+
+<figure>
+      <artwork><![CDATA[
+   <?xml version="1.0" encoding="UTF-8"?>
+   <d:xcap-diff xmlns:d="urn:ietf:params:xml:ns:xcap-diff"
+                xmlns="urn:ietf:params:xml:ns:rls-services"
+                xcap-root="http://xcap.example.com/root/">
+
+    <d:document new-etag="7ahggs"
+              sel="resource-lists/users/sip:joe@example.com/coworkers"
+              previous-etag="8a77f8d"/>
+
+    <d:element sel="rls-services/users/sip:joe@example.com/index/~~
+   /*/service%5b@uri='sip:marketing@example.com'%5d"
+             xmlns:rl="urn:ietf:params:xml:ns:resource-lists"
+       ><service uri="sip:marketing@example.com">
+         <list name="marketing">
+           <rl:entry uri="sip:joe@example.com"/>
+           <rl:entry uri="sip:sudhir@example.com"/>
+         </list>
+         <packages>
+           <package>presence</package>
+         </packages>
+       </service></d:element>
+
+    <d:attribute
+    sel="rls-services/users/sip:joe@example.com/index/~~/*/service/@uri"
+         >sip:marketing@example.com</d:attribute>
+
+   </d:xcap-diff>
+]]></artwork>
+</figure>
+
+<t>
+This indicates that the document with the URI
+"http://xcap.example.com/root/resource-lists/users/sip:joe@example.com/coworkers"
+has changed. Its previous entity tag is "8a77f8d" and its new one is "7ahggs",
+but actual changes are not shown. The &lt;service> element exists in the
+rls-services "index" document and its full content is shown. Note that the
+&lt;service> element is attached with a default namespace declaration within
+the original document. Similarly, "uri" attribute content is shown from the
+same "index" document as an illustrative example. 
+</t>
+
+</section>
+
+<section title="Basic Requirements for a System Exchanging XCAP Diff Documents">
+<t>
+Documents at an XCAP server are identified by URIs, and updated by XCAP clients
+with HTTP (PUT and DELETE) methods. The XCAP server assigns a new entity tag
+value for each document version. An entity tag value is defined by Section 3.11
+of <xref target="RFC2616">RFC 2616</xref>: "An entity tag MUST be unique across
+all versions of all entities associated with a particular resource". These
+entity tags are used to protect requests from making overriding changes when
+multiple XCAP clients update the same XCAP document. An entity tag value can be
+interpreted as a unique identifier to a specific version of an XCAP document in
+its change history.  
+</t>
+
+<t>
+The entity tag values of XCAP resources also enable a reliable way to update
+the locally cached XCAP resource copies in an XCAP diff implementation. When a
+diff client applies XCAP diff document changes, it MUST apply a resource state
+change only if entity tag values match with octet-by-octet equivalence
+according to the table defined in <xref target="Figure"/>. If a diff client
+notices inconsistencies and/or errors when it applies reported resource
+changes, it SHOULD tear down the session.  
+</t>
+
+<t>
+State changes of an XCAP document MUST be delivered reliably from a diff
+notifier to a diff client, and a diff client MUST be able to apply all changes
+of an XCAP document in the same chronological order that occurred at an XCAP
+server. When using an unreliable transport with retransmissions, the
+application protocol used with the XCAP diff MUST ensure that duplicates are
+dropped. If an XCAP diff delivery is lost, the diff session MUST be torn
+down. Note that a diff notifier can easily notice a lost notification when a
+diff client must respond to each XCAP diff delivery. 
+</t>
+
+<t>
+A diff notifier doesn't necessarily report all of these XCAP document updates
+with ETags; it MAY skip over some intermediate version of a document, for
+example, with rapidly changing resources. However, it MUST always report
+changes consistently to a diff client so that it can properly update the latest
+state (content and ETag) of its locally cached resources. 
+</t>
+
+<t><list style="hanging"><t>
+As an example, an XCAP document is updated by different 'a', 'b', and 'c'
+versions identified with the same corresponding ETag values in a relatively
+short period. The first reported notification contains the 'a' "new-tag"
+information (no "previous-etag" attribute), and the diff notifier decides to
+skip the update notification identified by the 'b' ETag value. The second
+notification to a diff client MUST then contain the 'a' "previous-etag" and 'c'
+"new-etag" values with optional corresponding content changes (from version 'a'
+to 'c').  
+</t></list>
+</t>
+
+
+<t>
+Since XCAP documents are typically confidential, diff notifiers MUST obey the
+XCAP authorization rules. In practice, this means following the read privilege
+rules of XCAP resources when notifying the authenticated diff
+clients of changes. Transport SHOULD be secured by encryption. 
+</t>
+
+<t><list style="hanging"><t>
+Note: This format specification doesn't define how to select the resources
+whose differences a diff notifier should report. It also doesn't define whether
+actual content changes should be reported. Typically, however, a diff client
+starts a session by sending a resource listing request. Then it compares the
+remote resource listings with locally cached ones, and probably downloads those
+resources that aren't locally cached or whose entity tags differ. When a diff
+client receives an XCAP diff with a "previous-etag" value that matches its
+current cached copy of a document, it can apply the diffs to the cached
+copy. As it takes some time to download reference documents, and diff
+notifications appear after actual resource state changes, several round trips
+may be needed before a full synchronization is achieved, especially with
+rapidly changing resources. 
+</t></list></t>
+
+</section>
+
+<section anchor="sec:security" title="Security Considerations">
+
+<t>
+XCAP diff documents can include changes from one version of a document to
+another version. As a consequence, if the document itself is sensitive and
+requires confidentiality, integrity, or authentication, then the same applies
+to the XCAP diff format. Therefore, protocols that transport XCAP diff
+documents must provide sufficient security capabilities for transporting the
+document itself. Confidential XCAP documents are typically transported using
+<xref target="RFC5246"> TLS-encrypted (Transport Layer Security) </xref>
+communication; see <xref target="RFC4825"> RFC 4825 </xref> for further
+security details. 
+</t>
+
+<t>
+When this format is used to report content changes of XCAP documents, all
+security considerations of <xref target="RFC5261"> RFC 5261 </xref> apply. 
+<!-- Especially Denial-of-Service attacks are possible with diff-generation algorithms that try to optimize the required bandwidth usage to extremes. --> 
+Very frequent updates of XCAP documents and/or many diff clients per subscribed resource impose a Denial-of-Service attack possibility to the servers processing XCAP diff documents. An efficient patch processing and throttling can, however, decrease the required overall processings and transactions.
+</t>
+
+<t>
+The SIP event package framework specified in <xref target="RFC3265"> RFC 3265
+</xref> is the most typical use-case for this format. Then, an end-to-end SIP
+encryption mechanism, such as Secure/Multipurpose Internet Mail Extensions
+(S/MIME) described in Section 26.2.4 of RFC 3261 <xref
+target="RFC3261"></xref>, SHOULD be used. If that is not available, it is
+RECOMMENDED that TLS <xref target="RFC5246"></xref> be used between elements to
+provide hop-by-hop authentication and encryption mechanisms as described in
+Section 26.2.2 ("SIPS URI Scheme") and Section 26.3.2.2 ("Interdomain Requests") of
+RFC 3261 <xref target="RFC3261"></xref>. Event packages MAY also have other
+specific threats that MUST be considered on an application-by-application
+basis. 
+</t>
+
+</section>
+
+<section title="IANA Considerations">
+
+<t>
+There are several IANA considerations associated with this specification.
+</t>
+
+
+<section title="application/xcap-diff+xml MIME Type">
+<t>
+<list style="hanging">
+
+<t>MIME media type name: application</t>
+
+<t>MIME subtype name: xcap-diff+xml</t>
+
+<t>Mandatory parameters: none</t>
+
+<t>Optional parameters: Same as the charset parameter application/xml
+as specified in <xref target="RFC3023">RFC 3023</xref>.</t>
+
+<t>Encoding considerations: Same as the encoding considerations of
+application/xml as specified in <xref target="RFC3023">RFC
+3023</xref>.</t>
+
+<t>Security considerations: See Section 10 of <xref
+target="RFC3023">RFC 3023</xref> and
+<xref target="sec:security"/> of RFC &rfc.number;.</t>
+
+<t>Interoperability considerations: none.</t>
+
+<t>Published specification: This document.</t>
+
+<t>Applications that use this media type: This document type has
+been used to support manipulation of <xref target="RFC4826">resource
+lists</xref> using XCAP.</t> 
+
+<t>Additional Information:
+<list style="hanging">
+
+<t>Magic Number: None</t>
+
+<t>File Extension: .xdf</t>
+
+<t>Macintosh file type code: "TEXT"</t>
+
+<t>Personal and email address for further information: Jonathan
+Rosenberg, jdrosen@jdrosen.net</t>
+
+<t>Intended usage: COMMON</t>
+
+<t>Author/Change controller: The IETF.</t>
+
+</list>
+</t>
+</list>
+</t>
+</section>
+
+<section title="URN Sub-Namespace Registration for urn:ietf:params:xml:ns:xcap-diff">
+
+<t>This section registers a new XML namespace, as per the guidelines
+in <xref target="RFC3688"/>.</t>
+
+<t>
+<list style="hanging">
+
+<t>URI: The URI for this namespace is
+urn:ietf:params:xml:ns:xcap-diff.</t>
+
+<t>Registrant Contact: IETF, SIMPLE working group,
+(simple@ietf.org), Jonathan Rosenberg
+(jdrosen@jdrosen.net).</t>
+
+<t>XML:
+<figure><artwork>
+<![CDATA[
+             BEGIN
+             <?xml version="1.0"?>
+             <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML Basic 1.0//EN"
+                  "http://www.w3.org/TR/xhtml-basic/xhtml-basic10.dtd">
+             <html xmlns="http://www.w3.org/1999/xhtml">
+             <head>
+               <meta http-equiv="content-type"
+                  content="text/html;charset=iso-8859-1"/>
+               <title>XCAP Diff Namespace</title>
+             </head>
+             <body>
+               <h1>Namespace for XCAP Diff</h1>
+               <h2>urn:ietf:params:xml:ns:xcap-diff</h2>
+               <p>See <a href="http://www.rfc-editor.org/rfc/rfc5874.txt">RFC5874</a>.</p>
+             </body>
+             </html>
+             END
+]]></artwork></figure></t>
+
+</list>
+</t>
+
+</section>
+
+<section title="Schema Registration">
+
+<t>This section registers a new XML schema per the procedures in
+<xref target="RFC3688"/>.
+</t>
+
+<t>
+<list style="hanging">
+
+<t>URI: urn:ietf:params:xml:schema:xcap-diff</t>
+
+<t>Registrant Contact: IETF, SIMPLE working group,
+(simple@ietf.org), Jonathan Rosenberg
+(jdrosen@jdrosen.net).</t>
+
+<t>The XML for this schema can be found as the sole content of <xref
+target="sec:schema"/>.</t>
+
+</list>
+</t>
+</section>
+
+</section>
+
+		<section title="Acknowledgments" anchor="Acknowledgments">
+			<t>
+The authors would like to thank Pavel Dostal, Jeroen van Bemmel, Martin Hynar, Anders Lindgren, Mary Barnes, Ben Campbell, Francis Dupont, David Harrington, Alexey Melnikov, Dan Romascanu, and Robert Sparks for their valuable comments.
+			</t>
+		</section>
+
+</middle>
+<?rfc rfcstyle="no" ?>
+<back>
+<references title="Normative References">
+	<?rfc include='reference.W3C.REC-xml-20060816'?>
+	<?rfc include='reference.W3C.REC-xml-c14n-20010315'?>
+	<?rfc include='reference.W3C.REC-xml-names-20060816'?>
+	<?rfc include="reference.RFC.2141"?>
+	<?rfc include="reference.RFC.2616"?>
+	<?rfc include="reference.RFC.3023"?>
+	<?rfc include="reference.RFC.2648"?>
+	<?rfc include="reference.RFC.3688"?>
+	<?rfc include="reference.RFC.2119"?>
+	<?rfc include="reference.RFC.4825"?>
+	<?rfc include="reference.RFC.5261"?>
+	<?rfc include="reference.RFC.5246"?>
+</references>
+
+<references title="Informative References">
+
+<!--	<?rfc include="reference.I-D.ietf-sip-xcapevent"?> -->
+<reference anchor='RFC5875'>
+<front>
+<title>An Extensible Markup Language (XML) Configuration Access Protocol (XCAP) Diff Event Package</title>
+
+<author initials='J' surname='Urpalainen' fullname='Jari Urpalainen'>
+    <organization />
+</author>
+
+<author initials='D' surname='Willis' fullname='Dean Willis'>
+    <organization />
+</author>
+
+<date month='May' year='2010' />
+
+<abstract><t>This document describes an "xcap-diff" SIP (Session Initiation Protocol) event package for the SIP Event Notification Framework, which clients can use to receive notifications of changes to Extensible Markup Language (XML) Configuration Access Protocol (XCAP) resources.  The initial synchronization information exchange and document updates are based on the XCAP Diff format.</t></abstract>
+
+</front>
+
+<seriesInfo name='RFC' value='5875' />
+
+</reference>
+
+	<?rfc include="reference.RFC.2778"?>
+	<?rfc include="reference.RFC.3261"?>
+	<?rfc include="reference.RFC.3265"?>
+	<?rfc include="reference.RFC.4662"?>
+	<?rfc include="reference.RFC.4826"?>
+	<?rfc include="reference.RFC.4483"?>
+</references>
+
+<?rfc rfcedstyle="yes" ?>
+   <section anchor="appendix" title="Informative Examples">
+      <t>These informative examples illustrate basic features of XCAP diff format.</t>
+
+      <t>The following documents exist at an XCAP server (xcap.example.com)
+        with an imaginary "tests" application usage (there's no default
+        document namespace defined in this imaginary application usage).</t>
+
+        <t>http://xcap.example.com/tests/users/sip:joe@example.com/index: <!--<vspace blankLines="0"/>-->
+        <figure>
+            <artwork>
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<doc id="bar">
+  <note>This is a sample document</note>
+</doc>
+]]>
+	    </artwork>
+          </figure></t>
+
+        <t>and then</t>
+
+        <t>http://xcap.example.com/tests/users/sip:john@example.com/index:
+        <!--<vspace blankLines="0"/>--> <figure>
+            <artwork>
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<doc>
+  <note>This is another sample document</note>
+</doc>
+]]>
+	    </artwork>
+          </figure></t>
+
+      <section title="Indicating Existing, Changed, or Removed Documents">
+        <t>Firstly, an XCAP diff document can indicate what documents exist in a collection. An XCAP diff document may then be:</t>
+
+        <t><figure>
+            <artwork>
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<xcap-diff xmlns="urn:ietf:params:xml:ns:xcap-diff"
+           xcap-root="http://xcap.example.com/">
+
+ <document new-etag="7ahggs"
+           sel="tests/users/sip:joe@example.com/index"/>
+
+ <document new-etag="terteer"
+           sel="tests/users/sip:john@example.com/index"/>
+
+</xcap-diff>
+]]>
+	    </artwork>
+          </figure>This listing indicates current ETags of existing documents and their relative URIs.</t>
+
+
+       <t>Let's say that Joe adds a new document to his collection:
+        <figure>
+	    <artwork>
+
+PUT /tests/users/sip:joe@example.com/another_document HTTP/1.1
+Host: xcap.example.com
+....
+Content-Type: application/xml
+Content-Length: [XXX]
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<doc>
+  <note>This is another sample document</note>
+</doc>
+]]>
+	    </artwork>
+          </figure>The requests result header has
+        an HTTP ETag "terteer" for this new document.</t>
+
+        <t>Then an XCAP diff document may then indicate only the creation of this single new document:
+
+        <figure>
+          <artwork>
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<xcap-diff xmlns="urn:ietf:params:xml:ns:xcap-diff"
+           xcap-root="http://xcap.example.com/">
+
+ <document new-etag="terteer"
+           sel="tests/users/sip:joe@example.com/another_document"/>
+
+</xcap-diff>
+]]>
+	 </artwork>
+        </figure>A "new-etag" without a "previous-etag" attribute indicates a creation of a new document.</t>
+
+       <t>Then Joe decides to modify an existing resource:
+        <figure>
+            <artwork>
+
+PUT /tests/users/sip:joe@example.com/another_document HTTP/1.1
+Host: xcap.example.com
+....
+Content-Type: application/xml
+Content-Length: [XXX]
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<doc>
+  <note>This is a modified document</note>
+</doc>
+]]>
+			</artwork>
+          </figure>The reported new HTTP ETag is "huwiias".</t>
+
+        <t>Then an XCAP diff document may be:
+
+        <figure>
+          <artwork>
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<xcap-diff xmlns="urn:ietf:params:xml:ns:xcap-diff"
+           xcap-root="http://xcap.example.com/">
+
+ <document previous-etag="terteer" new-etag="huwiias"
+           sel="tests/users/sip:joe@example.com/another_document"/>
+
+</xcap-diff>
+]]>
+	 </artwork>
+        </figure>Both "previous-etag" and "new-etag" attributes signal that a modification has happened to a resource, but actual changes are not shown.</t>
+
+
+       <t>Let's say that Joe then removes a document from his collection:
+        <figure>
+            <artwork>
+
+DELETE /tests/users/sip:joe@example.com/another_document HTTP/1.1
+Host: xcap.example.com
+	</artwork>
+          </figure>
+	</t>
+        <t> This HTTP DELETE request results in the unlinking of the resource, and the XCAP diff may be:
+
+        <figure>
+          <artwork>
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<xcap-diff xmlns="urn:ietf:params:xml:ns:xcap-diff"
+           xcap-root="http://xcap.example.com/">
+
+ <document previous-etag="huwiias"
+           sel="tests/users/sip:joe@example.com/another_document"/>
+
+</xcap-diff>
+]]>
+	 </artwork>
+        </figure>Thus, a "previous-etag" without a "new-etag" attribute indicates the removal of a resource.</t>
+
+      </section>
+
+      <section title="Indicating Actual Changes of Documents">
+        <t>Secondly, XCAP diff documents are capable of showing actual changes to documents with <xref target="RFC5261"/> patching semantics.</t>
+
+	   <t>
+Now Joe's XCAP client utilizes the XCAP patching capability to add a new element to a document: <figure>
+            <artwork>
+
+PUT /tests/users/sip:joe@example.com/index/~~/doc/foo HTTP/1.1
+Host: xcap.example.com
+....
+Content-Type: application/xcap-el+xml
+Content-Length: [XXX]
+
+<![CDATA[
+<foo>this is a new element</foo>
+]]>
+	    </artwork>
+          </figure> Since the insertion of the element is successful, Joe's
+        XCAP client receives the new HTTP ETag "fgherhryt3" of the updated "index"
+        document.</t>
+
+        <t>Immediately thereafter, Joe's XCAP client issues another HTTP request
+        (this request could even be pipelined): <figure>
+            <artwork>
+
+PUT /tests/users/sip:joe@example.com/index/~~/doc/bar HTTP/1.1
+Host: xcap.example.com
+....
+Content-Type: application/xcap-el+xml
+Content-Length: [XXX]
+
+<![CDATA[
+<bar>this is a bar element
+</bar>
+]]>
+	    </artwork>
+          </figure> The reported new HTTP ETag of "index" is now
+        "dgdgdfgrrr".</t>
+
+        <t>And then Joe's XCAP client issues yet another HTTP request: <figure>
+            <artwork>
+
+PUT /tests/users/sip:joe@example.com/index/~~/doc/foobar HTTP/1.1
+Host: xcap.example.com
+....
+Content-Type: application/xcap-el+xml
+Content-Length: [XXX]
+
+<![CDATA[
+<foobar>this is a foobar element</foobar>
+]]>
+	    </artwork>
+
+          </figure> The reported new ETag of "index" is now "63hjjsll".</t>
+
+        <t>XCAP diff format document may then indicate these XCAP component changes by:
+	<figure>
+            <artwork>
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<d:xcap-diff xmlns:d="urn:ietf:params:xml:ns:xcap-diff"
+             xcap-root="http://xcap.example.com/">
+
+ <d:document previous-etag="7ahggs3"
+             sel="tests/users/sip:joe@example.com/index"
+             new-etag="63hjjsll">
+  <d:add sel="*"
+    ><foo>this is a new element</foo><bar>this is a bar element
+</bar><foobar>this is a foobar element</foobar></d:add>
+ </d:document>
+
+</d:xcap-diff>
+]]>
+	    </artwork>
+          </figure>Note how several XCAP component modifications were
+        aggregated together, and full history information got lost.</t>
+
+        <t>Alternatively, the content could have been: <figure>
+            <artwork>
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<d:xcap-diff xmlns:d="urn:ietf:params:xml:ns:xcap-diff"
+           xcap-root="http://xcap.example.com/">
+
+ <d:document previous-etag="7ahggs"
+             sel="tests/users/sip:joe@example.com/index"
+             new-etag="fgherhryt3">
+   <d:add sel="*"
+    ><foo>this is a new element</foo></d:add></d:document>
+
+ <d:document previous-etag="fgherhryt3"
+             sel="tests/users/sip:joe@example.com/index"
+             new-etag="dgdgdfgrrr">
+   <d:add sel="*"
+    ><bar>this is a bar element
+</bar></d:add></d:document>
+
+ <d:document previous-etag="dgdgdfgrrr"
+             sel="tests/users/sip:joe@example.com/index"
+             new-etag="63hjjsll">
+   <d:add sel="*"
+    ><foobar>this is a foobar element</foobar></d:add></d:document>
+
+</d:xcap-diff>
+]]>
+</artwork>
+          </figure>This shows the full ETag change history of a document, and ETags change chronologically in the reported XML document order.</t>
+
+      </section>
+
+      <section title="Indicating XCAP Component Contents">
+
+        <t>Lastly, the XCAP diff format can also indicate the existing full contents of XCAP components, i.e., elements or attributes: <figure>
+            <artwork>
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<d:xcap-diff xmlns:d="urn:ietf:params:xml:ns:xcap-diff"
+           xcap-root="http://xcap.example.com/">
+
+ <d:attribute sel="tests/users/sip:joe@example.com/index/~~/doc/@id"
+  >bar</d:attribute>
+
+ <d:element sel="tests/users/sip:joe@example.com/index/~~/*/foo"
+    ><foo>this is a new element</foo></d:element>
+
+</d:xcap-diff>
+]]>
+	    </artwork>
+          </figure> Note that the HTTP ETag value of the new document is not
+        shown as it is irrelevant for this use-case.</t>
+
+        <t>Then Joe's XCAP client removes the "id" attribute: <figure>
+            <artwork>
+
+DELETE /tests/users/sip:joe@example.com/index/~~/doc/@id HTTP/1.1
+Host: xcap.example.com
+....
+Content-Length: 0
+
+	    </artwork>
+          </figure></t>
+
+        <t>And the XCAP diff document may then be: <figure>
+            <artwork>
+
+<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<xcap-diff xmlns="urn:ietf:params:xml:ns:xcap-diff"
+           xcap-root="http://xcap.example.com/">
+
+ <attribute sel="tests/users/sip:joe@example.com/index/~~/doc/@id"
+  exists="0"/>
+
+</xcap-diff>
+]]>
+	    </artwork>
+          </figure> This indicates that the subscribed attribute was removed from the document. The element content in this use-case may be discarded from the XCAP diff document, for example, when the size of XCAP diff document would be impractically large to the transport layer.</t>
+      </section>
+
+    </section>
+
+</back>
+</rfc>
+
+
+

@@ -1,0 +1,1360 @@
+<?xml version="1.0" encoding="US-ASCII" ?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes" ?>
+<?rfc rfcedstyle="yes" ?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc toc='yes'?>
+
+<rfc category="exp" number="5504" >
+
+<front>
+  <title abbrev="UTF8SMTP Downgrade">
+    Downgrading Mechanism for Email Address Internationalization
+  </title>
+  <author initials="K.F." surname="Fujiwara" fullname="Kazunori Fujiwara" role="editor">
+    <organization abbrev="JPRS">Japan Registry Services Co., Ltd.</organization>
+    <address>
+	<postal>
+	<street>Chiyoda First Bldg. East 13F, 3-8-1 Nishi-Kanda</street>
+	<city>Chiyoda-ku</city>
+	<region>Tokyo</region>
+	<code>101-0065</code>
+	<country>Japan</country>
+	</postal>
+	<phone>+81 3 5215 8451</phone>
+	<email>fujiwara@jprs.co.jp</email>
+    </address>
+  </author>
+  <author initials="Y.Y." surname="Yoneya" fullname="Yoshiro Yoneya" role="editor">
+    <organization abbrev="JPRS">Japan Registry Services Co., Ltd.</organization>
+    <address>
+	<postal>
+	<street>Chiyoda First Bldg. East 13F, 3-8-1 Nishi-Kanda</street>
+	<city>Chiyoda-ku</city>
+	<region>Tokyo</region>
+	<code>101-0065</code>
+	<country>Japan</country>
+	</postal>
+	<phone>+81 3 5215 8451</phone>
+	<email>yone@jprs.co.jp</email>
+    </address>
+  </author>
+  <date month="March" year="2009" />
+  <area>Applications</area>
+  <workgroup>Email Address Internationalization (EAI)</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in
+    the title) for use on http://www.rfc-editor.org/rfcsearch.html. -->
+<!-- [fujiwara] Added some keywords. -->
+  <keyword>EAI</keyword>
+  <keyword>Email Address Internationalization</keyword>
+  <keyword>Downgrade</keyword>
+  <keyword>MAIL</keyword>
+
+  <abstract>
+    <t>
+	Traditional mail systems handle only ASCII characters in SMTP
+	envelope and mail header fields.
+	The Email Address Internationalization (UTF8SMTP) extension allows
+	UTF-8 characters in SMTP envelope and mail header fields.
+	To avoid rejecting internationalized email messages when a server
+	in the delivery path does not support the UTF8SMTP extension,
+	some sort of converting mechanism is required.
+	This document describes a downgrading mechanism
+	for Email Address Internationalization.
+	Note that this is a way to downgrade, not tunnel.  There is no
+	associated up-conversion mechanism,
+        although internationalized
+	email clients might use original internationalized addresses or
+	other data when displaying or replying to downgraded messages.
+    </t>
+  </abstract>
+</front>
+
+<middle>
+  <section title="Introduction" anchor="intro">
+    <t>
+	Traditional mail systems, which are defined by
+	<xref target="RFC5321" /> and <xref target="RFC5322" />,
+	allow ASCII characters in SMTP envelope and mail header field values.
+	The UTF8SMTP extension
+		(<xref target="RFC4952" />,
+		<xref target="RFC5335" />, and
+		<xref target="RFC5336" />)
+	allows UTF-8 characters in SMTP envelope and mail header field values.
+    </t>
+    <t>
+
+If an envelope address or header field contains non-ASCII 
+characters, the message cannot be delivered unless every system
+in the delivery path supports UTF8SMTP. 
+
+This document describes a downgrading mechanism to avoid rejection of
+such messages when a server that does not support the UTF8SMTP
+extension is encountered.
+
+This downgrading mechanism converts envelope and mail header fields to an
+all-ASCII representation.
+    </t>
+    <t>     
+<xref target="RFC5335" />
+allows UTF-8 characters to be used in
+mail header fields and MIME header fields.  The downgrading
+mechanism specified here converts mail header fields and MIME
+header fields to ASCII.
+    </t>
+    <t>
+	This document does not change any protocols
+	except by defining new header fields. It describes the conversion
+	method from the internationalized email envelopes/messages
+	that are defined in 
+		<xref target="RFC4952" />,
+		<xref target="RFC5335" />, and
+		<xref target="RFC5336" />
+	to the traditional email envelopes/messages
+	defined in
+		<xref target="RFC5321" /> and
+		<xref target="RFC5322" />.
+    </t>
+    <t>
+	Section 3.2 of <xref target="RFC5336"/> defines when
+	downgrading occurs.
+<!--[rfced] There is no Section 2.2 in RFC 5336 or RFC 5335. 
+	 Which section/document should be cited here?
+-->
+<!--[fujiwara] changed section number   2.2 to 3.2 -->
+
+	If the SMTP client has a UTF8SMTP envelope or an internationalized message
+	and the SMTP server doesn't support the UTF8SMTP extension,
+	then the SMTP client MUST NOT send a UTF8SMTP envelope
+	or an internationalized message to the SMTP server.
+	The section lists 4 choices in this case.
+	The fourth choice is downgrading, as described here.
+    </t>
+    <t>
+	Downgrading may be implemented
+	in Mail User Agents (MUAs), Mail Submission Agents (MSAs), and
+	Mail Transport Agents (MTAs) that act as SMTP clients. It
+	may also be implemented	in Message Delivery Agents (MDAs),
+	Post Office Protocol (POP) servers, and IMAP servers that store or offer
+	UTF8SMTP envelopes or internationalized messages to non-UTF8SMTP-compliant systems,
+	which include message stores.
+    </t>
+    <t>
+	This document tries to define the downgrading process clearly and
+	it preserves the original internationalized email information as much as possible.
+
+<!--[rfced] The "original information" refers to information from which
+	documents? --> 
+<!--[fujiwara] changed it to "original internationalized email information" -->
+
+    </t>
+    <t>
+	Downgrading in UTF8SMTP consists of the following four parts:
+	<list style="symbols">
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	<t>New header field definitions</t>
+	<t>SMTP downgrading</t>
+	<t>Email header field downgrading</t>
+	<t>MIME header field downgrading</t>
+	</list>
+<?rfc subcompact="no" ?>
+    </t>
+    <t>
+	In <xref target="downgradedheader" /> of this document,
+	many header fields starting with "Downgraded-" are introduced.
+	They preserve the original envelope information and the original header fields.
+	</t>
+    <t>
+	SMTP downgrading is described in <xref target="smtpdowngrading" />.
+	It generates ASCII-only envelope information from a UTF8SMTP envelope.
+    </t>
+    <t>
+	Email header field downgrading is described in <xref target="HeaderDowngrading" />.
+	It generates ASCII-only header fields.
+    </t>
+    <t>
+	MIME header fields are expanded in <xref target="RFC5335" />.
+	MIME header field downgrading is described in <xref target="MIMEheaderdowngrading" />.
+	It generates ASCII-only MIME header fields.
+    </t>
+    <t>
+	Displaying downgraded messages that originally contained internationalized email addresses
+	or internationalized header fields is described in an another
+	document (<xref target="DISPLAY" />).
+    </t>
+  </section>
+
+  <section title="Terminology">
+    <t>
+      The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", 
+	"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL"
+      in this document are to be interpreted as described in RFC
+      2119 <xref target="RFC2119" />.
+    </t>
+    <t>
+   All specialized terms used in this specification are defined in the
+   Email Address Internationalization (EAI) overview
+   <xref target="RFC4952" />, in the mail specifcations <xref target="RFC5321" /> <xref target="RFC5322" />, or in the MIME documents
+<xref target="RFC2045" /> <xref target="RFC2047" /> <xref target="RFC2183" /> <xref target="RFC2231" />.
+   The terms "ASCII address", "internationalized email address", "non-ASCII
+   address", "i18mail address", "UTF8SMTP", "message", and "mailing list"
+   are used with the definitions from <xref target="RFC4952" />.
+    </t>
+    <t>
+	This document depends on <xref target="RFC5335" />,
+	<xref target="RFC5336" />, and
+	<xref target="RFC5337" />.
+	Key words used in those documents are used in this document, too.
+    </t>
+    <t>
+	The term "non-ASCII" refers to a UTF-8 string that contains at least
+	one non-ASCII character. 
+    </t>
+    <t>
+	A "UTF8SMTP envelope" has email originator/recipient addresses
+	expanded by <xref target="RFC5336"/> and
+	<xref target="RFC5337"/>.
+    </t>
+    <t>
+	A "UTF8SMTP message" is an email message expanded by
+	<xref target="RFC5335" />.
+    </t>
+  </section>
+
+  <section title="New Header Fields Definition" anchor="downgradedheader">
+  <t>
+New header fields starting with "Downgraded-" are defined here to
+preserve those original envelope and mail header field values that contain
+UTF-8 characters.  During downgrading, one new "Downgraded-"
+header field is added for each original envelope or mail header field
+that cannot be passed as-is to a server that does not support
+UTF8SMTP.  The original envelope or mail header field is removed or
+rewritten.  Only those envelope and mail header fields that contain
+non-ASCII characters are affected.  The result of this process
+is a message that is compliant with existing email
+specifications <xref target="RFC5321" /> and <xref target="RFC5322" />.
+The original internationalized information can be retrieved by examining the
+"Downgraded-" header fields that were added.
+    </t>
+	<section title="Envelope Information Preservation Header Fields">
+    <t>
+	SMTP envelope downgraded information &lt;downgraded-envelope-addr&gt; 
+	consists of
+	the original non-ASCII address and the downgraded all-ASCII
+address. The ABNF <xref target="RFC5234"/> syntax is as follows:</t>
+<figure>
+  <artwork><![CDATA[
+downgraded-envelope-addr = [FWS] "<" [ A-d-l ":" ] uMailbox
+                           FWS "<" Mailbox ">" ">" [CFWS]
+  ]]></artwork>
+</figure>
+	<t>&lt;uMailbox&gt; is defined in <xref target="RFC5336" />;
+	&lt;Mailbox&gt; and &lt;A-d-l&gt; are defined in
+	Section 4.1.2 of <xref target="RFC5321" />.	</t>
+	<t>
+	Two header fields, "Downgraded-Mail-From:" and "Downgraded-Rcpt-To:", are defined
+	to preserve SMTP envelope downgraded information.
+	The header field syntax is specified as follows: </t>
+<figure>
+  <artwork><![CDATA[
+fields             =/ downgradedmailfrom / downgradedrcptto
+
+downgradedmailfrom =  "Downgraded-Mail-From:" unstructured CRLF
+
+downgradedrcptto   =  "Downgraded-Rcpt-To:"   unstructured CRLF
+  ]]></artwork>
+</figure>
+<t>The unstructured content is downgraded-envelope-addr and treated as if it were
+unstructured, with <xref target="RFC2047" /> encoding (and charset UTF-8) as needed.
+     </t>
+	</section>
+    <section title="Address Header Fields' Preservation Header Fields" anchor="AddressHeaderPreservationHeaders">
+    <t>
+      The address header fields' preservation header fields are defined
+
+<!--[rfced]
+  Should the title of this section and the text above be possessive as follows?
+
+Suggested:
+ "address header fields' preservation header fields"
+-->
+<!--[fujiwara] I changed as your suggestion -->
+
+      to preserve the original header field.
+      Their value field holds the original header field value.
+	  The header field syntax is specified as follows: </t>
+<figure>
+  <artwork>
+<![CDATA[
+fields                   =/ known-downgraded-headers ":"
+                            unstructured CRLF
+
+known-downgraded-headers =  "Downgraded-" original-headers
+
+original-headers         =  "From" / "Sender" /
+                            "To" / "Cc" / "Bcc" /
+                            "Reply-To" /
+                            "Resent-From" / "Resent-Sender" /
+                            "Resent-To" / "Resent-Cc" / 
+                            "Resent-Bcc" / "Resent-Reply-To" /
+                            "Return-Path" /
+                            "Disposition-Notification-To"
+]]>
+  </artwork>
+</figure>
+	<t>To preserve a header field in a "Downgraded-" header field:</t>
+	<list style="numbers">
+	<t>Generate a new "Downgraded-" header field whose value is the
+	original header field value.</t>
+	<t>
+	  Treat the generated header field content as if it were unstructured,
+      and then apply <xref target="RFC2047" /> encoding with charset
+      UTF-8 as necessary so that the result is ASCII.
+    </t>
+	</list>
+
+    </section>
+    <section title="Unknown Header Fields' Preservation Header Fields" anchor="unknownencapsulation">
+    <t>
+	The unknown header fields' preservation header fields are
+	defined to
+
+<!--[rfced]
+  Similar to the question above.
+  Should the title of this section and the text above be possessive as follows?
+
+Suggested:
+ "unknown header fields' preservation header fields"
+-->
+<!--[fujiwara] reworte as your suggestion -->
+	encapsulate those original header fields that contain non-ASCII
+	characters and are not otherwise provided for in this
+	specification. The encapsulation header field name is the
+	concatenation of "Downgraded-" and the original name.  The value
+	field holds the original header field value.
+    </t>
+    <t>
+	The header field syntax is specified as follows: </t>
+<figure>
+  <artwork>
+<![CDATA[
+fields     =/ unknown-downgraded-headers ":" unstructured CRLF
+
+unknown-downgraded-headers = "Downgraded-" original-header-field-name
+
+original-header-field-name = field-name
+
+field-name =  1*ftext
+
+ftext      =  %d33-57 /           ; Any character except
+              %d59-126            ;  controls, SP, and ":".
+]]>
+  </artwork>
+</figure>
+
+	<t>
+	To encapsulate a header field in a "Downgraded-" header field:</t>
+
+<!-- [rfced] Terminology: "Downgraded-" header field vs. downgraded header field
+
+Both are used throughout the document (for example, compare above
+"To preserve a header field in a downgraded header field"). Can they be made consistent?
+-->
+
+	<list style="numbers">
+	<t>Generate a new "Downgraded-" header field whose value is the
+	original header field value.</t>
+	<t>
+	  Treat the generated header field content as if it were unstructured,
+      and then apply <xref target="RFC2047" /> encoding with charset UTF-8
+	  as necessary so the result is ASCII.
+	</t>
+	<t>Remove the original header field.</t>
+	</list>
+    </section>
+  </section>
+
+  <section title="SMTP Downgrading" anchor="smtpdowngrading">
+    <t>
+	The targets of downgrading elements in an SMTP envelope are below:
+    </t>
+	<list style="symbols">
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	 <t>&lt;reverse-path&gt; of MAIL FROM command</t>
+	 <t>&lt;forward-path&gt; of RCPT TO command</t>
+	 <t>ORCPT parameter of RCPT TO command</t>
+	</list>
+<!--[fujiwara] I added two lines reference below. If these lines are not necessary, please remove. Please check and fix added lines. -->
+	<t>
+	&lt;reverse-path&gt; and &lt;forward-path&gt; are described in <xref target="RFC5321"/> and <xref target="RFC5336"/>.
+	The ORCPT parameter is described in <xref target="RFC3461"/> and <xref target="RFC5337" />.
+	</t>
+
+<?rfc subcompact="no" ?>
+    <section title="Path Element Downgrading" anchor="pathdowngrading">
+    <t>
+	Downgrading the &lt;path&gt; of MAIL FROM and RCPT TO commands
+	uses the ALT-ADDRESS parameter defined in
+	<xref target="RFC5336"/>.  An SMTP command is downgradable if
+	the &lt;path&gt; contains a non-ASCII address and the command
+	has an ALT-ADDRESS parameter that specifies an ASCII address.
+	Since only non-ASCII addresses are downgradable, specifying an
+	ALT-ADDRESS value for an all-ASCII address is invalid for use
+	with this specification, and no interpretation is assigned to
+	it. This restriction allows for future extension of the
+	specification even though no such extensions are currently
+	anticipated.
+    </t>
+    <t>
+	Note that even if no downgrading is performed on the envelope,
+	message header fields and message body MIME header fields
+	 that contain non-ASCII characters MUST be downgraded.
+	This is described in Sections <xref target="HeaderDowngrading"
+	format="counter"/> and <xref target="MIMEheaderdowngrading" format="counter" />.
+    </t>
+    <t>
+	When downgrading, replace each &lt;path&gt; that contains a non-ASCII mail address
+	with its specified alternative ASCII address,
+	and preserve the original information using "Downgraded-Mail-From"
+	and "Downgraded-Rcpt-To" header fields as defined in <xref target="downgradedheader" />.
+	Before replacing, decode the ALT-ADDRESS parameter
+	value because it is encoded as xtext <xref target="RFC3461" />.
+     </t>
+     <t>
+	To avoid disclosing recipient addresses,
+	the downgrading process MUST NOT add the "Downgraded-Rcpt-To:" header field
+	if the SMTP downgrading targets multiple recipients.
+	See <xref target="security" /> for more details.
+     </t>
+     <t>
+	As a result of the recipient address downgrading,
+	the domain part of the recipient address prior to downgrading
+	might be different from the domain part of the new recipient address.
+	If the result of address resolution
+	for the domain part of the new recipient address contains
+	the server at the connection destination of the SMTP session for the
+	recipient address prior to downgrading,
+	the SMTP connection is valid for the new recipient address.
+	Otherwise, the downgrading process MUST NOT send the downgraded message
+	to the new recipient address via the connection
+	and MUST try to send the downgraded message to the new recipient address.
+     </t>
+     </section>
+     <section title="ORCPT downgrading" anchor="orcptdowngrading">
+     <t>
+	The "RCPT TO" command can have an ORCPT parameter if the
+	Delivery Status Notification (DSN) extension <xref target="RFC3461" /> is supported.
+	If the ORCPT parameter contains a "utf-8" type address
+	and the address contains raw non-ASCII characters,
+	the address MUST be converted to utf-8-addr-xtext form.
+	Those forms are described in <xref target="RFC5337"/> and
+	clarified by successor documents such as
+	<xref target="DSNBIS" />.
+     </t>
+	 <t>
+	Before converting to utf-8-addr-xtext form, remove xtext encoding.
+	</t>
+    </section>
+  </section>
+
+  <section title="Email Header Fields Downgrading" anchor="HeaderDowngrading">
+    <t>
+	This section defines the conversion method to ASCII for each header field
+	that may contain non-ASCII characters.
+    </t>
+    <t>
+	<xref target="RFC5335" /> expands
+	"Received:" header fields;
+	<xref target="RFC5322" /> describes ABNF elements
+	&lt;mailbox&gt;, &lt;word&gt;, &lt;comment&gt;, &lt;unstructured&gt;;
+	<xref target="RFC2045" /> describes ABNF element &lt;value&gt;.
+    </t>
+    <section title="Downgrading Method for Each ABNF Element" anchor="DowngradeElements">
+    <t>
+	Header field downgrading is defined below for each ABNF element.
+	Downgrading an unknown header field is also defined as ENCAPSULATION downgrading.
+	Converting the header field terminates when no non-ASCII characters
+	remain in the header field.
+    </t>
+    <section title="RECEIVED Downgrading" anchor="element:received">
+	<t>If the header field name is "Received:" and
+	the FOR clause contains a non-ASCII address, 
+	remove the FOR clause from the header field.
+	Other parts (not counting &lt;comment&gt;s) should not contain non-ASCII values.
+    </t></section>
+    <section title="UNSTRUCTURED Downgrading" anchor="element:unstructured">
+	<t>If the header field has an &lt;unstructured&gt; field that
+	contains non-ASCII characters,
+	apply <xref target="RFC2047" /> encoding with charset UTF-8.
+    </t></section>
+    <section title="WORD Downgrading" anchor="element:word">
+	<t>If the header field has any &lt;word&gt;
+	fields that contain non-ASCII characters,
+	apply <xref target="RFC2047" /> encoding with charset UTF-8.
+    </t></section>
+    <section title="COMMENT Downgrading" anchor="element:comment">
+	<t>If the header field has any &lt;comment&gt;
+	fields that contain non-ASCII characters,
+	apply <xref target="RFC2047" /> encoding with charset UTF-8.
+    </t></section>
+    <section title="MIME-VALUE Downgrading" anchor="element:mimevalue">
+	<t>If the header field has any &lt;value&gt; elements defined by <xref target="RFC2045" />
+	and the elements contain non-ASCII characters,
+	encode the &lt;value&gt; elements
+	according to <xref target="RFC2231" /> with charset UTF-8 and
+	leave the language information empty.
+	If the &lt;value&gt; element is &lt;quoted-string&gt;
+		and it contains &lt;CFWS&gt; outside the DQUOTE,
+	remove the &lt;CFWS&gt; before this conversion.
+    </t></section>
+    <section title="DISPLAY-NAME Downgrading" anchor="element:display-name">
+	<t>If the header field has any &lt;address&gt; (&lt;mailbox&gt;
+	or &lt;group&gt;) elements and
+	they have &lt;display-name&gt; elements that contain non-ASCII characters,
+	encode the &lt;display-name&gt; elements
+	according to <xref target="RFC2047" /> with charset UTF-8.
+	DISPLAY-NAME downgrading is the same algorithm as WORD downgrading.
+    </t></section>
+    <section title="MAILBOX Downgrading" anchor="element:mailbox">
+	<t>The &lt;mailbox&gt; elements have no equivalent format for non-ASCII addresses.
+	If the header field has any &lt;mailbox&gt; elements that contain non-ASCII characters,
+<!-- [fujiwara] rewrote "each address header fields" to "correspnding Downgraded- header field" and removed "and" -->
+	preserve the header field in the corresponding "Downgraded-"
+	header field, which is defined in
+	<xref target="AddressHeaderPreservationHeaders" />,
+	and rewrite each &lt;mailbox&gt; element to ASCII-only format.
+	The &lt;mailbox&gt; element that contains non-ASCII characters is one of three formats.</t>
+
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	<list style="symbols">
+	<t>[ Display-name ] &quot;&lt;&quot; Utf8-addr-spec 1*FCS
+	&quot;&lt;&quot; Addr-spec &quot;&gt;&gt;&quot;</t>
+        <list style="empty">
+
+<vspace blankLines="1" />
+		<t>Rewrite it as:</t>
+                <t>[ Display-name ] "&lt;" Addr-spec "&gt;"</t>
+	</list>
+<vspace blankLines="1" />
+	<t>[ Display-name ] &quot;&lt;&quot; Utf8-addr-spec &quot;&gt;&quot;</t>
+	<t>Utf8-addr-spec</t>
+        <list style="empty">
+<vspace blankLines="1" />
+		<t>Rewrite both as:</t>
+		<t>[ Display-name ] "Internationalized Address " Encoded-word</t>
+		<t>" Removed:;"</t>
+		<t>where the &lt;Encoded-word&gt; is the original &lt;Utf8-addr-spec&gt; encoded
+		according to <xref target="RFC2047" />.</t>
+        </list>
+<?rfc subcompact="no" ?>
+	</list>
+    </section>
+
+    <section title="ENCAPSULATION Downgrading">
+	<t>If the header field contains non-ASCII characters
+	and is such that no rule is given above,
+	encapsulate it in a "Downgraded-" header field as
+	described in <xref target="unknownencapsulation" />
+	as a last resort.</t>
+
+		<t>Applying this procedure to "Received:" header field is prohibited.
+    </t></section>
+    <section title="TYPED-ADDRESS Downgrading"><t>
+	If the header field contains &lt;utf-8-type-addr&gt;
+	 and the &lt;utf-8-type-addr&gt; contains raw non-ASCII characters,
+	it is in utf-8-address form. Convert it to utf-8-addr-xtext form
+	as described in <xref target="orcptdowngrading" />.
+	COMMENT downgrading is also performed in this case.
+	If the address type is unrecognized and the header field contains non-ASCII characters,
+	then fall back to using ENCAPSULATION downgrading on the entire header field.
+    </t></section>
+    </section>
+    <section title="Downgrading Method for Each Header Field" anchor="DowngradeEachHeader">
+    <t>
+	Header fields are listed in <xref target="RFC4021" />.
+	This section describes the downgrading method for each header field.
+    </t>
+    <t>
+	If the whole mail header field does not contain non-ASCII characters,
+	email header field downgrading is not required.
+	Each header field's downgrading method is described below.
+    </t>
+    <section title="Address Header Fields That Contain <address>s"
+	anchor="header:address">
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	<list style="hanging">
+	<t hangText="From:" />
+	<t hangText="Sender:" />
+	<t hangText="To:" />
+	<t hangText="Cc:" />
+	<t hangText="Bcc:" />
+	<t hangText="Reply-To:" />
+	<t hangText="Resent-From:" />
+	<t hangText="Resent-Sender:" />
+	<t hangText="Resent-To:" />
+	<t hangText="Resent-Cc:" />
+	<t hangText="Resent-Bcc:" />
+	<t hangText="Resent-Reply-To:" />
+	<t hangText="Return-Path:" />
+	<t hangText="Disposition-Notification-To:" />
+	</list>
+<?rfc subcompact="no" ?>
+	<t>If the header field contains &lt;mailbox&gt; elements
+	 that contain non-ASCII addresses,
+	preserve the header field in a "Downgraded-" header field before the conversion.
+	Then perform COMMENT downgrading, DISPLAY-NAME downgrading, and MAILBOX downgrading.
+    </t></section>
+    <section title="Address Header Fields with Typed Addresses"
+	     anchor="header:typedaddress">
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	<list style="hanging">
+	<t hangText="Original-Recipient:" />
+	<t hangText="Final-Recipient:" />
+	</list>
+<?rfc subcompact="no" ?>
+	<t>If the header field contains non-ASCII characters, perform TYPED-ADDRESS downgrading.
+    </t></section>
+    <section title="Downgrading Non-ASCII in Comments"
+	     anchor="header:comments">
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	<list style="hanging">
+	<t hangText="Date:" />
+	<t hangText="Message-ID:" />
+	<t hangText="Resent-Message-ID:" />
+	<t hangText="In-Reply-To:" />
+	<t hangText="References:" />
+	<t hangText="Resent-Date:" />
+	<t hangText="Resent-Message-ID:" />
+	<t hangText="MIME-Version:" />
+	<t hangText="Content-ID:" />
+	<t hangText="Content-Transfer-Encoding:" />
+	<t hangText="Content-Language:" />
+	<t hangText="Accept-Language:" />
+	<t hangText="Auto-Submitted:" />
+	</list>
+<?rfc subcompact="no" ?>
+	<t>These header fields do not contain non-ASCII characters except in comments.
+	If the header field contains UTF-8 characters in comments, perform COMMENT downgrading.
+    </t></section>
+    <section title="Received Header Field" anchor="header:received">
+	<list style="hanging">
+	<t hangText="Received:" />
+	</list>
+
+	<t>Perform COMMENT downgrading and RECEIVED downgrading.</t>
+    </section>
+    <section title="MIME Content Header Fields" anchor="header:mime"><t>
+	<list style="hanging">
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	<t hangText="Content-Type:" />
+	<t hangText="Content-Disposition:" />
+	</list>
+<?rfc subcompact="no" ?>
+<vspace blankLines="1" />
+	Perform MIME-VALUE downgrading and COMMENT downgrading.
+    </t></section>
+    <section title="Non-ASCII in <unstructured>" anchor="header:unstructured"><t>
+	<list style="hanging">
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	<t hangText="Subject:" />
+	<t hangText="Comments:" />
+	<t hangText="Content-Description:" />
+	</list>
+<?rfc subcompact="no" ?>
+	<vspace blankLines="1" />
+	Perform UNSTRUCTURED downgrading.
+    </t></section>
+    <section title="Non-ASCII in <phrase>" anchor="header:phrase"><t>
+	<list style="hanging">
+	<t hangText="Keywords:" />
+	</list>
+	Perform WORD downgrading.
+    </t></section>
+
+    <section title="Other Header Fields" anchor="header:undefined">
+	<t>For all other header fields that contain non-ASCII characters,
+	are user-defined, and are missing from this document or future defined header fields,
+	perform ENCAPSULATION downgrading.</t>
+
+	<t>If the software understands the header field's structure and a downgrading
+algorithm other than ENCAPSULATION is applicable, that software SHOULD use
+that algorithm; ENCAPSULATION downgrading is used as a last resort.</t>
+
+	<t>Mailing list header fields (those that start in "List-")
+	are part of this category.</t>
+    </section>
+    </section>
+  </section>
+  <section title="MIME Body-Part Header Field Downgrading" anchor="MIMEheaderdowngrading">
+    <t>
+	MIME body-part header fields may contain non-ASCII characters
+	<xref target="RFC5335" />.
+	This section defines the conversion method to ASCII-only header fields
+	 for each MIME header field that contains non-ASCII characters.
+	Parse the message body's MIME structure at all levels and
+	check each MIME header field to see whether it contains non-ASCII characters.
+	If the header field contains non-ASCII characters in the header field value,
+	the header field is a target of the MIME body-part header field's downgrading.
+	Each MIME header field's downgrading method is described below.
+	COMMENT downgrading, MIME-VALUE downgrading, and UNSTRUCTURED downgrading
+	are described in <xref target="HeaderDowngrading" />.
+
+	<list style="hanging">
+	<t hangText="Content-ID:">
+	  <vspace />
+	  The "Content-ID:" header field does not contain non-ASCII
+	  characters except in comments. If the header field contains
+	  UTF-8 characters in comments, perform COMMENT downgrading.
+	</t>
+	<t hangText="Content-Type:" />
+<list style="hanging" hangIndent="22">
+	<t hangText="Content-Disposition:">
+		Perform MIME-VALUE downgrading and
+		COMMENT downgrading.
+	</t>
+	<t hangText="Content-Description:">
+		Perform UNSTRUCTURED downgrading.
+	</t>
+        </list>
+	</list>
+    </t>
+  </section>
+
+	<section title="Security Considerations" anchor="security">
+	<t>
+	A downgraded message's header fields contain ASCII characters only.
+	But they still contain MIME-encapsulated header fields that contain
+	non-ASCII UTF-8 characters. Furthermore, the body part may contain UTF-8 characters.
+	Implementations parsing Internet messages need
+	 to accept UTF-8 body parts and UTF-8 header fields that are MIME-encoded.
+	Thus, this document inherits the security considerations of
+	MIME-encoded header fields (<xref target="RFC2047" /> and
+	<xref target="RFC3629" />).
+	</t>
+	<t>
+		Rewriting header fields increases the opportunities for
+		undetected spoofing by malicious senders.
+		However, rewritten header fields are preserved into Downgraded-*
+		header fields, and parsing Downgraded-* header fields enables
+		the detection of spoofing caused by downgrading.
+	</t>
+	<t>
+   Addresses that do not appear in the message header fields may appear in the
+   RCPT commands to an SMTP server for a number of reasons.  Copying
+   information from the envelope into the header fields risks inadvertent information
+   disclosure (see <xref target="RFC5321" /> and 
+		<xref target="smtpdowngrading" /> of this document).
+   Mitigating inadvertent information disclosure is also discussed in
+   these locations.
+	</t>
+	<t>
+	The techniques described here invalidate methods that depend
+	on digital signatures over the envelope or any part of the message,
+	which includes the top-level header fields and body-part header fields.
+	Depending on the specific message being downgraded, the following techniques are likely to break: DomainKeys Identified Mail (DKIM), and possibly S/MIME and Pretty Good Privacy (PGP).
+	The two obvious mitigations are to stick to 7-bit transport when using these techniques
+	(as most/all of them presently require)
+	or to make sure to have UTF8SMTP end-to-end when needed.
+	</t>
+	<t>
+	Many gateways and servers on the Internet will
+	discard header fields with which they are not familiar.
+	To the extent to which the downgrade procedures depend on
+	new header fields (e.g., "Downgraded-") to avoid information
+	loss, the risk of having those header fields dropped and 
+	subsequent implications must be identified.  In particular,
+	if the "Downgraded-" header fields are dropped, there is no possibility of
+	reconstructing the original information	at any point (before, during, or after delivery).
+	Such gateways violate <xref target="RFC2979" /> and can be upgraded to correct the problem.
+	</t>
+	<t>
+	  Even though the information is not lost, the original
+	  message cannot be perfectly reconstructed
+	  because some downgrading methods remove information 
+	  (see Sections <xref target="element:received" format="counter" /> and
+	  <xref target="element:mimevalue" format="counter" />).
+	  Hence, downgrading is a one-way process.
+	</t>
+	<t>
+   While information in any email header field should usually be treated with
+   some suspicion, current email systems commonly employ various
+   mechanisms and protocols to make the information more trustworthy.
+   Currently, information in the new Downgraded-* header fields is usually
+   not inspected by these mechanisms, and may be even less trustworthy
+   than the traditional header fields.
+   Note that the Downgraded-* header fields could have been inserted with malicious intent
+   (and with content unrelated to the traditional header fields).
+	</t>
+	<t>
+   If an internationalized MUA would simply try to "upgrade" the message for
+   display purposes (that is, display the information in the
+   Downgraded-* header fields instead of the traditional header fields), the
+   effectiveness of the deployed mechanisms and protocols is likely to
+   be reduced, and the user may be exposed to additional risks.
+   More guidance on how to display downgraded messages is given
+   in <xref target="DISPLAY" />.
+	</t>
+	<t>
+   Concerns about the trustworthiness of the Downgraded-* header fields
+   are not limited to displaying and replying in MUAs, and should be carefully
+   considered before using such header fields for other purposes as well.
+   </t>
+    <t>
+See the "Security Considerations" section in <xref target="RFC4952"/> for more discussion.
+    </t>
+  </section>
+
+  <section title="Implementation Notes">
+    <section title="RFC 2047 Encoding">
+    <t>
+  While <xref target="RFC2047" /> has a specific algorithm to deal with whitespace in
+  adjacent encoded words, there are a number of deployed implementations
+  that fail to implement the algorithm correctly.  As a result, whitespace
+  behavior is somewhat unpredictable in practice when multiple encoded words
+  are used.  While RFC 5322 states that implementations SHOULD limit lines
+  to not more than 78 characters, implementations MAY choose to allow
+  overly long encoded words in order to work around faulty <xref target="RFC2047" /> 
+  implementations.  Implementations that choose to do so SHOULD have an
+  optional mechanism to limit line length to 78 characters.
+     </t>
+    </section>
+    <section title="Trivial Downgrading">
+    <t>
+Downgrading is an alternative to avoid the rejection of messages
+that require UTF8SMTP support by a server that does not provide
+such support. Implementing the full specification of this document is
+desirable, but a partial implementation is also possible.
+    </t>
+    <t>
+If a partial downgrading implementation confronts an unsupported
+downgrading target, the implementation MUST NOT send the message
+to a server that does not support UTF8SMTP.  Instead, it MUST either
+reject the message or generate a notification of non-deliverability.
+    </t>
+    <t>
+	A partial downgrading, trivial downgrading, is discussed.
+	It does not support non-ASCII addresses
+	   in SMTP envelope and address header fields,
+	   unknown header field downgrading, or the MIME body-part header field downgrading.
+	It supports:
+	  <list style="symbols">
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+	    <t>some simple header field downgrading: Subject</t>
+	    <t>comments and display name downgrading: From, To, Cc</t>
+	    <t>trace header field downgrading: Received</t>
+	  </list>
+<?rfc subcompact="no" ?>
+	</t>
+	<t>
+	Otherwise, the downgrading fails.
+    </t>
+	<t>
+	Trivial downgrading targets mail messages that are generated by
+	UTF8SMTP-aware MUAs and contain	non-ASCII characters in
+	comments, display names, and unstructured parts
+	without using non-ASCII email addresses.
+	These mail messages usually do not contain non-ASCII email addresses
+in the SMTP envelope and its header fields.
+
+<!--[rfced] Which mail message is being referred to here? -->
+<!--[fujiwara] changed as "these mail messages usually" -->
+
+But it is not deliverable via a UTF8SMTP-unaware SMTP server.
+	Implementing full specification downgrading may be hard,
+	but trivial downgrading saves mail messages without using non-ASCII 
+	addresses.
+	</t>
+    </section>
+    <section title="7bit Transport Consideration">
+	<t>
+	The SMTP client may encounter a SMTP server that does not
+	support the 8BITMIME SMTP extension <xref target="RFC1652" />.
+	The server does not support "8bit" or "binary" data.
+	Implementers need to consider converting "8bit" data to
+	"base64" or "quoted-printable" encoded form and adjust the
+	"Content-Transfer-Encoding" header field accordingly.
+	If the body contains multiple MIME parts, this conversion MUST
+	be performed for each MIME part.
+	</t>
+    </section>
+  </section>
+
+  <section title="IANA Considerations" anchor="iana">
+    <t>
+	 IANA has registered the following header fields in the
+	 Permanent Message Header Field registry, in accordance with the
+	 procedures set out in <xref target="RFC3864" />.
+
+<?rfc subcompact="yes" ?>
+<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Mail-From</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Rcpt-To</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-From</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Sender</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-To</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Cc</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Bcc</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Reply-To</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Resent-From</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Resent-Sender</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Resent-To</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Resent-Cc</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Resent-Bcc</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Resent-Reply-To</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Return-Path</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+
+	<vspace blankLines="1" />
+    <list style="hanging">
+	<t hangText="Header field name:">Downgraded-Disposition-Notification-To</t>
+	<t hangText="Applicable protocol:">mail</t>
+	<t hangText="Status:">experimental</t>
+	<t hangText="Author/change controller:">IETF</t>
+	<t hangText="Specification document(s):">This document (<xref target="downgradedheader" />)</t>
+    </list>
+<?rfc subcompact="no" ?>
+
+    </t>
+    <t>
+	Furthermore, IANA is requested to refuse registration of all field names
+	that start with "Downgraded-". For unknown header fields, use
+	the downgrading method described in <xref target="unknownencapsulation" />
+	to avoid conflicts with existing IETF activity (Email Address Internationalization).
+    </t>
+  </section>
+
+  <section title="Acknowledgements">
+    <t>
+
+	Significant comments and suggestions were received from John
+	Klensin, Harald Alvestrand, Chris Newman, Randall Gellens,
+	Charles Lindsey,
+	Marcos Sanz, Alexey Melnikov, Frank Ellermann, Edward Lewis,
+	S. Moonesamy, and JET members.
+
+    </t>
+  </section>
+
+</middle>
+
+<back>
+  <references title="Normative References">
+<?rfc include="reference.RFC.4952" ?>
+<?rfc include="reference.RFC.5234" ?>
+<?rfc include="reference.RFC.5335" ?>
+<?rfc include="reference.RFC.5336" ?>
+<?rfc include="reference.RFC.5337" ?>
+<?rfc include="reference.RFC.1652" ?>
+<?rfc include="reference.RFC.2045" ?>
+<?rfc include="reference.RFC.2047" ?>
+<?rfc include="reference.RFC.2183" ?>
+<?rfc include="reference.RFC.2231" ?>
+<?rfc include="reference.RFC.5321" ?>
+<?rfc include="reference.RFC.5322" ?>
+<?rfc include="reference.RFC.3461" ?>
+<?rfc include="reference.RFC.3629" ?>
+<?rfc include="reference.RFC.3864" ?>
+<?rfc include="reference.RFC.2979" ?>
+<?rfc include="reference.RFC.4021" ?>
+<?rfc include="reference.RFC.2119" ?>
+
+
+  </references>
+
+  <references title="Informative References">
+<reference anchor="DSNBIS">
+	<front>
+	<title>
+Internationalized Delivery Status and Disposition Notifications
+</title>
+	<author initials="C" surname="Newman" fullname="Chris  Newman">
+<organization/>
+</author>
+	<author initials="A" surname="Melnikov" fullname="Alexey Melnikov">
+<organization/>
+</author>
+<date month="December" day="16" year="2008"/>
+</front>
+<seriesInfo name="Work in" value="Progress"/>
+</reference>
+
+
+<reference anchor="DISPLAY">
+	<front>
+	<title>
+Displaying Downgraded Messages for Email Address Internationalization
+</title>
+	<author initials="K" surname="Fujiwara" fullname="Kazunori Fujiwara">
+<organization/>
+</author>
+<date month="March" day="9" year="2009"/>
+</front>
+<seriesInfo name="Work in" value="Progress"/>
+</reference>
+  </references>
+
+  <section title="Examples">
+    <section title="Downgrading Example 1">
+	<t>
+	This appendix shows an SMTP downgrading example.
+	Consider a mail message where:
+	<list style="symbols">
+	  <t>
+	    The sender address is "NON-ASCII-local@example.com", which is a non-ASCII
+	    address. Its ASCII alternative is
+	    "ASCII-local@example.com" and its display-name is
+	    "DISPLAY-local".
+	  </t>
+	  <t>
+	    The "To:" address is "NON-ASCII-remote1@example.net", which is a non-ASCII address. Its
+	    ASCII alternative is "ASCII-remote1@example.net" and its
+	    display-name is "DISPLAY-remote1".
+	  </t>
+	  <t>
+	    The "Cc:" address is a non-ASCII address, "NON-ASCII-remote2@example.org",
+		without an alternative ASCII address.
+		Its display-name is "DISPLAY-remote2".
+	  </t>
+	  <t>Three display names contain non-ASCII characters.</t>
+	  <t>
+	    The Subject header field is "NON-ASCII-SUBJECT", which contains non-ASCII
+	    characters.
+	  </t>
+	  <t>Assume the "To:" recipient's MTA (example.net) does not support UTF8SMTP.</t>
+	  <t>Assume the "Cc:" recipient's MTA (example.org) supports UTF8SMTP.</t>
+	</list>
+	The first example SMTP envelope/message is shown in <xref target="example-originaleaismtpsession" />.
+	In this example, the "To:" recipient's session is the focus.
+	</t>
+
+	<t>
+	<figure title="Original envelope/message (example 1)" anchor="example-originaleaismtpsession">
+	  <artwork>
+<![CDATA[MAIL FROM: <NON-ASCII-local@example.com>
+            ALT-ADDRESS=ASCII-local@example.com
+RCPT TO: <NON-ASCII-remote1@example.net>
+          ALT-ADDRESS=ASCII-remote1@example.net
+RCPT TO: <NON-ASCII-remote2@example.org>
+-------------------------------------------------------------
+Message-Id: MESSAGE_ID
+Mime-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Subject: NON-ASCII-SUBJECT
+From: DISPLAY-local <NON-ASCII-local@example.com
+ <ASCII-local@example.com>>
+To: DISPLAY-remote1 <NON-ASCII-remote1@example.net
+ <ASCII-remote1@example.net>>
+Cc: DISPLAY-remote2 <NON-ASCII-remote2@example.org>
+Date: DATE
+
+MAIL_BODY]]>
+	  </artwork>
+	</figure>
+	</t>
+
+	<t>
+	In this example, there are two SMTP recipients; one is "To:", the other is "Cc:".
+	The SMTP downgrading uses To: session downgrading.
+	<xref target="example-smtpdowngrading" /> shows an SMTP downgraded example.
+
+	<figure title="SMTP downgraded envelope/message (example 1)" anchor="example-smtpdowngrading">
+	  <artwork>
+<![CDATA[MAIL FROM: <ASCII-local@example.com>
+RCPT TO: <ASCII-remote1@example.net>
+-------------------------------------------------------------
+Downgraded-Mail-From: =?UTF-8?Q?<NON-ASCII-local@example.com_?=
+ =?UTF-8?Q?<ASCII-local@example.com>>?=
+Downgraded-Rcpt-To: =?UTF-8?Q?<NON-ASCII-remote1@example.net_?=
+ =?UTF-8?Q?<ASCII-remote1@example.net>>?=
+Message-Id: MESSAGE_ID
+Mime-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Subject: NON-ASCII-SUBJECT
+From: DISPLAY-local <NON-ASCII-local@example.com
+ <ASCII-local@example.com>>
+To: DISPLAY-remote1 <NON-ASCII-remote1@example.net
+ <ASCII-remote1@example.net>>
+Cc: DISPLAY-remote2 <NON-ASCII-remote2@example.org>
+Date: DATE
+
+MAIL_BODY]]>
+	  </artwork>
+	</figure>
+	</t>
+
+	<t>
+	After SMTP downgrading, header field downgrading is performed.
+	The final downgraded message is shown in
+	<xref target="example-headerconversiondowngrading" />.
+	A Return-Path header field will be added by the final destination MTA.
+	<figure title="Downgraded message (example 1)" anchor="example-headerconversiondowngrading">
+
+	  <artwork>
+<![CDATA[Return-Path: <ASCII-local@example.com>
+Downgraded-Mail-From: =?UTF-8?Q?<NON-ASCII-local@example.com_?=
+ =?UTF-8?Q?<ASCII-local@example.com>>?=
+Downgraded-Rcpt-To: =?UTF-8?Q?<NON-ASCII-remote1@example.net_?=
+ =?UTF-8?Q?<ASCII-remote1@example.net>>?=
+Message-Id: MESSAGE_ID
+Mime-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Subject: =?UTF-8?Q?NON-ASCII-SUBJECT?=
+From: =?UTF-8?Q?DISPLAY-local?= <ASCII-local@example.com>
+Downgraded-From: =?UTF-8?Q?DISPLAY-local_<NON-ASCII-local@example.com_?=
+ =?UTF-8?Q?<ASCII-local@example.com>>?=
+To: =?UTF-8?Q?DISPLAY-remote1?= <ASCII-remote1@example.net>
+Downgraded-To: =?UTF-8?Q?DISPLAY-remote1_?=
+ =?UTF-8?Q?<NON-ASCII-remote1@example.net_<ASCII-remote1@example.net>>?=
+Cc: =?UTF-8?Q?DISPLAY-remote2?= Internationalized address
+ =?UTF-8?Q?NON-ASCII-remote2@example.org?= removed:;
+Downgraded-Cc: =?UTF-8?Q?DISPLAY-remote2_?=
+ =?UTF-8?Q?<NON-ASCII-remote2@example.org>?=
+Date: DATE
+
+MAIL_BODY]]>
+	  </artwork>
+	</figure>
+      </t>
+    </section>
+
+    <section title="Downgrading Example 2">
+      <t>
+	In many cases, the sender wants to use a non-ASCII address and
+	the recipient is a traditional mail user.
+	The SMTP server handing mail for the recipient and/or the recipient's MUA does not support UTF8SMTP extension.
+	Consider a mail message where:  
+	<list style="symbols">
+	  <t>
+	    The sender address is "NON-ASCII-local@example.com", which is a non-ASCII
+	    address. Its ASCII alternative is
+	    "ASCII-local@example.com". It has a display-name
+	    "DISPLAY-local", which contains non-ASCII characters.
+	  </t>
+	  <t>
+	    The "To:" address is "ASCII-remote1@example.net", which is
+	    ASCII-only. It has a display-name, "DISPLAY-remote1",
+	    which contains non-ASCII characters.
+	  </t>
+	  <t>
+	    The "Subject:" header field is "NON-ASCII-SUBJECT", which contains non-ASCII
+	    characters.
+	  </t>
+	</list>
+	The second example envelope/message is shown in
+	<xref target="example-originaleaismtpsession2" />.
+      </t>
+
+      <t>
+	<figure title="Original message (example 2)" anchor="example-originaleaismtpsession2">
+	  <artwork>
+<![CDATA[MAIL From: <NON-ASCII-local@example.com>
+            ALT-ADDRESS=ASCII-local@example.com
+RCPT TO: <ASCII-remote1@example.net>
+-------------------------------------------------------------
+Message-Id: MESSAGE_ID
+Mime-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Subject: NON-ASCII-SUBJECT
+From: DISPLAY-local <NON-ASCII-local@example.com
+ <ASCII-local@example.com>>
+To: DISPLAY-remote1 <ASCII-remote1@example.net>
+Date: DATE
+
+MAIL_BODY]]>
+	  </artwork>
+	</figure>
+      </t>
+
+      <t>
+	In this example, SMTP session is downgradable.
+	<xref target="example-smtpdowngrading2" /> shows an SMTP downgraded envelope/message.
+      </t>
+
+      <t>
+	<figure title="SMTP downgraded envelope/message (example 2)" anchor="example-smtpdowngrading2">
+	  <artwork>
+<![CDATA[MAIL From: <ASCII-local@example.com>
+RCPT TO: <ASCII-remote1@example.net>
+-------------------------------------------------------------
+Downgraded-Mail-From: =?UTF-8?Q?<NON-ASCII-local@example.com_?=
+ ?=UTF8?Q?<ASCII-local@example.com>>?=
+Message-Id: MESSAGE_ID
+Mime-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Subject: NON-ASCII-SUBJECT
+From: DISPLAY-local <NON-ASCII-local@example.com
+ <ASCII-local@example.com>>
+To: DISPLAY-remote1 <ASCII-remote1@example.net>
+Date: DATE
+
+MAIL_BODY]]>
+	  </artwork>
+	</figure>
+      </t>
+
+      <t>
+	After SMTP downgrading, header field downgrading is performed.
+	The downgraded example is shown in <xref target="example-headerconversiondowngrading2" />.
+	<figure title="Downgraded message (example 2)" anchor="example-headerconversiondowngrading2">
+	  <artwork>
+<![CDATA[Return-Path: <ASCII-local@example.com>
+Downgraded-Mail-From: =?UTF-8?Q?<NON-ASCII-local@example.com_?=
+ =?UTF8?Q?<ASCII-local@example.com>>?=
+Message-Id: MESSAGE_ID
+Mime-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+Subject: =?UTF-8?Q?NON-ASCII-SUBJECT?=
+Downgraded-From: =?UTF-8?Q?DISPLAY-local_<NON-ASCII-local@example.com_?=
+ =?UTF-8?Q?<ASCII-local@example.com>>?=
+From: =?UTF-8?Q?DISPLAY-local?= <ASCII-local@example.com>
+To: =?UTF-8?Q?DISPLAY-remote1?= <ASCII-remote1@example.net>
+Date: DATE
+
+MAIL_BODY]]>
+	  </artwork>
+	</figure>
+      </t>
+    </section>
+
+  </section>
+
+</back>
+
+</rfc>

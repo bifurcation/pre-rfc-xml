@@ -1,0 +1,772 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc tocindent="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc comments="yes"?>
+<?rfc inline="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<rfc category="info" consensus="yes" ipr="trust200902" number="8161"
+     submissionType="IETF">
+  <front>
+    <title abbrev="NDP Benchmarking">Benchmarking the Neighbor Discovery
+    Protocol</title>
+
+    <author fullname="Bill Cerveny" initials="W.J." surname="Cerveny">
+      <organization>Arbor Networks</organization>
+
+      <address>
+        <postal>
+          <street>2727 South State Street</street>
+
+          <city>Ann Arbor</city>
+
+          <region>MI</region>
+
+          <code>48104</code>
+
+          <country>United States of America</country>
+        </postal>
+
+        <email>wcerveny@arbor.net</email>
+
+        <uri/>
+      </address>
+    </author>
+
+    <author fullname="Ron Bonica" initials="R." surname="Bonica">
+      <organization>Juniper Networks</organization>
+
+      <address>
+        <postal>
+          <street>2251 Corporate Park Drive</street>
+
+          <city>Herndon</city>
+
+          <region>VA</region>
+
+          <code>20170</code>
+
+          <country>United States of America</country>
+        </postal>
+
+        <email>rbonica@juniper.net</email>
+      </address>
+    </author>
+
+    <author fullname="Reji Thomas" initials="R." surname="Thomas">
+      <organization>Juniper Networks</organization>
+
+      <address>
+        <postal>
+          <street>Elnath-Exora Business Park Survey</street>
+
+          <city>Bangalore</city>
+
+          <region>KA</region>
+
+          <code>560103</code>
+
+          <country>India</country>
+        </postal>
+
+        <email>rejithomas@juniper.net</email>
+      </address>
+    </author>
+
+    <date month="May" year="2017"/>
+
+    <keyword>IPv6</keyword>
+
+    <keyword>Scaling</keyword>
+
+    <keyword>NDP</keyword>
+
+    <abstract>
+      <t>This document provides benchmarking procedures for the Neighbor
+      Discovery Protocol (NDP). It also proposes metrics by which an NDP
+      implementation's scaling capabilities can be measured.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t>When an IPv6 node forwards a packet, it executes the following
+      procedure:</t>
+
+      <t>
+        <list style="symbols">
+          <t>Identifies the outbound interface and IPv6 next hop.</t>
+
+          <t>Queries a local Neighbor Cache (NC) to determine the IPv6 next
+          hop's link-layer address.</t>
+
+          <t>Encapsulates the packet in a link-layer header. The link-layer
+          header includes the IPv6 next hop's link-layer address.</t>
+
+          <t>Forwards the packet to the IPv6 next hop.</t>
+        </list>
+      </t>
+
+      <t>IPv6 nodes use the <xref target="RFC4861">Neighbor Discovery Protocol
+      (NDP) </xref> to maintain the NC. <xref target="RFC6583"> Operational
+      experience</xref> shows that when an implementation cannot maintain a
+      sufficiently complete NC, its ability to forward packets is
+      impaired.</t>
+
+      <t>NDP, like any other protocol, consumes processing, memory, and
+      bandwidth resources. Its ability to maintain a sufficiently complete NC
+      depends upon the availability of the above-mentioned resources.</t>
+
+      <t>This document provides benchmarking procedures for NDP. Benchmarking
+      procedures include a Baseline Test and an NDP Scaling Test. In both
+      tests, the Device Under Test (DUT) is an IPv6 router. Two physical links
+      (A and B) connect the DUT to a Tester. The Tester sends traffic through
+      Link A to the DUT. The DUT forwards that traffic, through Link B, back
+      to the Tester.</t>
+
+      <t>The above-mentioned traffic stream contains one or more interleaved
+      flows. An IPv6 Destination Address uniquely identifies each flow. Or,
+      said another way, every packet within a flow has the same IPv6
+      Destination Address.</t>
+
+      <t>In the Baseline Test, the traffic stream contains exactly one flow.
+      Because every packet in the stream has the same IPv6 Destination
+      Address, the DUT can forward the entire stream using exactly one NC
+      entry. NDP is exercised minimally, and no packet loss should be
+      observed.</t>
+
+      <t>The NDP Scaling Test is identical to the Baseline Test, except that
+      the traffic stream contains many flows. In order to forward the stream
+      without loss, the DUT must maintain one NC entry for each flow. If the
+      DUT cannot maintain one NC entry for each flow, packet loss will be
+      observed and attributed to NDP scaling limitations.</t>
+
+      <t>This document proposes an NDP scaling metric, called
+      NDP-MAX-NEIGHBORS. NDP-MAX-NEIGHBORS is the maximum number of neighbors
+      to which an IPv6 node can send traffic during periods of high NDP
+      activity.</t>
+
+      <t>The procedures described herein reveal how many IPv6 neighbors an NDP
+      implementation can discover. They also provide a rough estimate of the
+      time required to discover those neighbors. However, that estimate does
+      not reflect the maximum rate at which the implementation can discover
+      neighbors. Maximum rate discovery is a topic for further
+      exploration.</t>
+
+      <t>The test procedures described herein assume that NDP does not compete
+      with other applications for resources on the DUT. When NDP competes for
+      resources, its scaling characteristics may differ from those reported by
+      the benchmarks described and may vary over time.</t>
+
+      <section title="Requirements Language">
+        <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+        "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+        document are to be interpreted as described in <xref
+        target="RFC2119">RFC 2119</xref>.</t>
+      </section>
+    </section>
+
+    <section anchor="Setup" title="Test Setup" toc="default">
+      <figure align="center" anchor="setup" suppress-title="false"
+              title="Test Setup">
+        <artwork align="center" name="Test Setup"><![CDATA[+---------------+             +-----------+
+|               |             |           |
+|               |   Link A    |   Device  | 
+|               |------------>|   Under   |
+|    Tester     |             |   Test    |
+|               |<------------|   (DUT)   |
+|               |   Link B    |           |
++---------------+             +-----------+
+               ]]></artwork>
+      </figure>
+
+      <t>The DUT is an IPv6 router. Two links (A and B) connect the DUT to the
+      Tester. Link A capabilities must be identical to Link B capabilities.
+      For example, if the interface to Link A is a 10 Gigabit Ethernet port,
+      the interface to Link B must also be a 10 Gigabit Ethernet port.</t>
+
+      <section title="Device Under Test (DUT)">
+        <section title="Interfaces">
+          <t>DUT interfaces are numbered as follows:</t>
+
+          <t><list style="symbols">
+              <t>Link A - 2001:2:0:0::2/64</t>
+
+              <t>Link B - 2001:2:0:1::1/64</t>
+            </list>Both DUT interfaces should be configured with a 1500-byte
+          MTU. However, if they cannot support a 1500-byte MTU, they may be
+          configured with a 1280-byte MTU.</t>
+        </section>
+
+        <section title="Neighbor Discovery Protocol (NDP)">
+          <t>NDP is enabled on both DUT interfaces. Therefore, the DUT emits
+          both solicited and unsolicited Router Advertisement (RA) messages.
+          The DUT emits an RA message at least once every 600 seconds and no
+          more frequently than once every 200 seconds.</t>
+
+          <t>When the DUT sends an RA message, it includes the following
+          information:</t>
+
+          <t>
+            <list style="symbols">
+              <t>Router Lifetime - 1800 seconds</t>
+
+              <t>Reachable Time - 0 seconds</t>
+
+              <t>Retrans Time - 0 seconds</t>
+
+              <t>Source Link-Layer Address - link-layer address of DUT
+              interface</t>
+
+              <t>M-bit is clear (0)</t>
+
+              <t>O-bit is clear (0)</t>
+            </list>
+          </t>
+
+          <t>The above-mentioned values are chosen because they are the
+          default values specified in RFC 4861.</t>
+
+          <t>NDP manages the NC. Each NC entry represents an on-link neighbor
+          and is identified by the neighbor's on-link unicast IP address. As
+          per RFC 4861, each NC entry needs to be refreshed periodically. NDP
+          refreshes NC entries by exchanging Neighbor Solicitation (NS) and
+          Neighbor Advertisement (NA) messages.</t>
+
+          <t>No static NC entries are configured on the DUT.</t>
+        </section>
+
+        <section title="Routing">
+          <t>The DUT maintains a direct route to 2001:2:0:0/64 through Link A.
+          It also maintains a direct route to 2001:2:0:1/64 through Link B. No
+          static routes or dynamic routing protocols are configured on the
+          DUT.</t>
+        </section>
+      </section>
+
+      <section title="Tester">
+        <section anchor="tface" title="Interfaces">
+          <t>Interfaces are numbered as follows:</t>
+
+          <t><list style="symbols">
+              <t>Link A - 2001:2:0:0::1/64</t>
+
+              <t>Link B - Multiple addresses are configured on Link B. These
+              addresses are drawn sequentially from the 2001:2:0:1::/64
+              address block. The first address is 2001:2:0:1::2/64. Subsequent
+              addresses are 2001:2:0:1::3/64, 2001:2:0:1::4/64,
+              2001:2:0:1::5/64, etc. The number of configured addresses should
+              be the expected value of NDP-MAX-NEIGHBORS times 1.1.</t>
+            </list>Both Tester interfaces should be configured with a
+          1500-byte MTU. However, if they cannot support a 1500-byte MTU, they
+          may be configured with a 1280-byte MTU.</t>
+        </section>
+
+        <section title="Neighbor Discovery Protocol (NDP)">
+          <t>NDP is enabled on both Tester interfaces. Therefore, upon
+          initiation, the Tester sends Router Solicitation (RS) messages and
+          waits for Router Advertisement (RA) messages. The Tester also
+          exchanges Neighbor Solicitation (NS) and Neighbor Advertisement (NA)
+          messages with the DUT.</t>
+
+          <t>No static NC entries are configured on the Tester.</t>
+        </section>
+
+        <section title="Routing">
+          <t>The Tester maintains a direct route to 2001:2:0:0/64 through Link
+          A. It also maintains a direct route to 2001:2:0:1/64 through Link B.
+          No static routes or dynamic routing protocols are configured on the
+          Tester.</t>
+        </section>
+
+        <section anchor="stream" title="Test Traffic">
+          <t>The Tester sends a stream of test traffic through Link A to the
+          DUT. The test traffic stream contains one or more interleaved flows.
+          Flows are numbered 1 through N, sequentially.</t>
+
+          <t>Within each flow, each packet contains an IPv6 header, and each
+          IPv6 header contains the following information:</t>
+
+          <t>
+            <list style="symbols">
+              <t>Version - 6</t>
+
+              <t>Traffic Class - 0</t>
+
+              <t>Flow Label - 0</t>
+
+              <t>Payload Length - 0</t>
+
+              <t>Next Header - IPv6-NoNxt (59)</t>
+
+              <t>Hop Limit - 255</t>
+
+              <t>Source Address - 2001:2:0:0::1</t>
+
+              <t>Destination Address - The first 64 bits of the Destination
+              Address are 2001:2:0:1::.&nbsp;&nbsp;The next 64 are uniquely
+              associated with the flow. Every packet in the first flow carries
+              the Destination Address 2001:2:0:1::2. Every subsequent flow has
+              an IP address one greater than the last (i.e., 2001:2:0:1::3,
+              2001:2:0:1::4, etc.).</t>
+            </list>
+          </t>
+
+          <t>In order to avoid link congestion, test traffic is offered at a
+          rate not to exceed 50% of available link bandwidth. In order to
+          avoid burstiness and buffer occupancy, every packet in the stream is
+          exactly 40 bytes long (i.e., the length of an IPv6 header with no
+          IPv6 payload). Furthermore, the gap between packets is
+          identical.</t>
+
+          <t>During the course of a test, the number of flows that the test
+          stream contains may increase. When this occurs, the rate at which
+          test traffic is offered remains constant. For example, assume that a
+          test stream is offered at a rate of 1,000 packets per second. This
+          stream contains two flows, each contributing 500 packets per second
+          to the 1,000 packet per second aggregate. When a third stream is
+          added to the flow, all three streams must contribute 333 packets per
+          second in order to maintain the 1,000 packet per second limit. (As
+          in this example, rounding error is acceptable.)</t>
+
+          <t>The DUT attempts to forward every packet in the test stream
+          through Link B to the Tester. It does this because:<list
+              style="symbols">
+              <t>Every packet in the test stream has a Destination Address
+              drawn from the 2001:2:0:1::/64 address block.</t>
+
+              <t>The DUT has a direct route to 2001:2:0:1/64 through Link
+              B.</t>
+            </list></t>
+        </section>
+
+        <section title="Counters">
+          <t>On the Tester, two counters are configured for each flow. One
+          counter, configured on Link A, increments when the Tester sends a
+          packet belonging to the flow. The other counter, configured on Link
+          B, increments when the Tester receives a packet from the flow. In
+          order for a packet to be associated with a flow, the following
+          conditions must all be true:</t>
+
+          <t>
+            <list style="symbols">
+              <t>The IPv6 Destination Address must be that of the flow.</t>
+
+              <t>The IPv6 Next Header must be IPv6-NoNxt (59).</t>
+            </list>
+          </t>
+
+          <t>The following counters also are configured on both Tester
+          Interfaces:</t>
+
+          <t>
+            <list style="symbols">
+              <t>RS packets sent</t>
+
+              <t>RA packets received</t>
+
+              <t>NS packets sent</t>
+
+              <t>NS packets received</t>
+
+              <t>NA packets sent</t>
+
+              <t>NA packets received</t>
+
+              <t>Total packets sent</t>
+
+              <t>Total packets received</t>
+            </list>
+          </t>
+        </section>
+      </section>
+    </section>
+
+    <section anchor="tests" title="Tests">
+      <section title="Baseline Test">
+        <t>The purpose of the Baseline Test is to ensure that the DUT can
+        forward every packet in the test stream, without loss, when NDP is
+        minimally exercised and not operating near its scaling limit.</t>
+
+        <section title="Procedure">
+          <t>
+            <list style="symbols">
+              <t>On the DUT, clear the NC.</t>
+
+              <t>On the Tester, clear all counters.</t>
+
+              <t>On the Tester, set a timer to expire in 60 seconds.</t>
+
+              <t>On the Tester, start the test stream with exactly one flow
+              (i.e., IPv6 Destination Address equals 2001:2:0:1::2).</t>
+
+              <t>Wait for either the timer to expire or the packets-received
+              counter associated with the flow to increment.</t>
+
+              <t>If the timer expires, stop the test stream and end the
+              test.</t>
+
+              <t>If the packets-received counter increments, pause the traffic
+              stream, log the initial counter values, clear the counters,
+              reset the timer to expire in 1800 seconds, and restart the
+              traffic stream.</t>
+
+              <t>When the timer expires, stop the test stream, wait sufficient
+              time for any queued packets to exit, log the final counter
+              values, and end the test.</t>
+            </list>
+          </t>
+        </section>
+
+        <section title="Baseline Test Procedure Flow Chart" toc="default">
+          <figure align="center" anchor="baseline-procedure"
+                  suppress-title="false"
+                  title="Baseline Test Procedure Flow Chart">
+            <artwork align="center" name="Baseline Test Procedure Flow Chart"><![CDATA[
+                +--------------------------+
+                | On the DUT, clear the NC |
+                +-------------|------------+
+                              |
+           +------------------v------------------+
+           |  On the Tester, clear all counters  |
+           +------------------|------------------+
+                              |
+           +------------------v-----------------+
+           |        On the Tester, set a        |
+           |        timer to expire in          |
+           |        60 seconds                  |
+           +------------------|-----------------+
+                              |
+           +------------------v-----------------+
+           |On the Tester, start the test stream|
+           |with exactly one flow (i.e., IPv6   |
+           |Destination Address equals          |
+           |2001:2:0:0:1::2)                    |
+           +------------------|-----------------+
+                              |
+           +------------------v-----------------+
+           |Wait for either the timer to expire |
+           |or packets-received counter         |
+           |associated with the flow to         |
+           |increment                           |
+           +------------------|-----------------+
+                              |
+                      /-------v-------\
+                     /                 \  Yes  +--------------+
+                     |Did timer expire?|-------| End the test |
+                     \                 /       +--------------+
+                      \-------|-------/        
+                              | No
+                              |
+                    /---------v--------\
+                   /                    \  No  +--------------+
+                   |Did packets-received|------| End the test |
+                   |counter increment?  |      +--------------+
+                   \                    /      
+                    \---------|--------/
+                              | Yes
+                              |
+           +------------------v-----------------+
+           |Pause traffic stream, log initial   |
+           |counter values, clear the counters, |
+           |reset the timer to expire in 1800   |
+           |seconds, and restart traffic stream |
+           +------------------|-----------------+
+                              |
+           +------------------v-----------------+
+           |When timer expires, stop the test   |
+           |stream, wait sufficient time for    |
+           |any queued packets to exit, log the |
+           |final counter values                |
+           +------------------|-----------------+
+                              |
+                         +----v---+
+                         |End test|
+                         +--------+
+                   ]]></artwork>
+          </figure>
+        </section>
+
+        <section title="Results">
+          <t>The log contains initial and final values for the following
+          counters:</t>
+
+          <t>
+            <list style="symbols">
+              <t>packets-sent</t>
+
+              <t>packets-received</t>
+            </list>
+          </t>
+
+          <t>The initial values of packets-sent and packets-received may be
+          equal to one another. If these values are identical, none of the
+          initial packets belonging to the flow were lost. However, if the
+          initial value of packets-sent is greater than the initial value of
+          packets-received, initial packets were lost. This loss of initial
+          packets is acceptable.</t>
+
+          <t>The final values of packets-sent and packets-received should be
+          equal to one another. If they are not, an error has occurred.
+          Because this error is likely to affect Scaling Test results, the
+          error must be corrected before the Scaling Test is executed.</t>
+        </section>
+      </section>
+ <section title="Scaling Test">
+        <t>The purpose of the Scaling Test is to discover the number of                                                                                                                                                                                               
+        neighbors to which an IPv6 node can send traffic during periods of                                                                                                                                                                                            
+        high NDP activity. We call this number NDP-MAX-NEIGHBORS.</t>
+
+        <section title="Procedure">
+          <t>Execute the following procedure:</t>
+
+          <t>
+            <list style="symbols">
+              <t>On the DUT, clear the NC.</t>
+
+              <t>On the Tester, clear all counters.</t>
+
+              <t>On the Tester, set a timer to expire in 60 seconds.</t>
+
+              <t>On the Tester, start the test stream with exactly one flow                                                                                                                                                                                           
+              (i.e., IPv6 Destination Address equals 2001:2:0:1::2).</t>
+
+              <t>Wait for either the timer to expire or the packets-received                                                                                                                                                                                          
+              counter associated with the flow to increment.</t>
+
+              <t>If the timer expires, stop the test stream and end the                                                                                                                                                                                               
+              test.</t>
+
+              <t>If the packets-received counter increments, execute the                                                                                                                                                                                              
+              following procedure N times, starting at 2 and ending                                                                                                                                                                                                   
+          at the expected value of NDP-MAX-NEIGHBORS times 1.1.                                                                                                                                                                                                       
+                                                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                                                      
+          <list>
+              <t>Pause the test stream.</t>
+
+              <t>Log the time and the value of N minus one.</t>
+
+              <t>Clear the packets-sent and packets-received counters                                                                                                                                                                                                 
+              associated with the previous flow (i.e., N minus one).</t>
+
+              <t>Reset the timer to expire in 60 seconds.</t>
+
+              <t>Add the next flow to the test stream (i.e., IPv6 Destination                                                                                                                                                                                         
+              Address is a function of N).</t>
+
+              <t>Restart the test stream.</t>
+
+              <t>Wait for either the timer to expire or the packets-received                                                                                                                                                                                          
+              counter associated with the new flow to increment.</t>
+            </list></t>
+</list>                                                                                                                                                                                                                                                               
+After the procedure described above has been executed N                                                                                                                                                                                                               
+          times, clear the timer and reset it to expire in 1800 seconds. When                                                                                                                                                                                         
+          the timer expires, stop the stream, log all counters, and end the                                                                                                                                                                                           
+          test (after waiting sufficient time for any queued packets to                                                                                                                                                                                               
+          exit).</t>
+        </section>
+
+        <section title="Scaling Test Procedure Flow Chart" toc="default">
+
+          <figure align="center" anchor="scaling-test-procedure"
+                  suppress-title="false"
+                  title="Scaling Test Procedure Flow Chart">
+            <artwork align="center" name="Scaling Test Procedure Flow Chart"><![CDATA[
+                +--------------------------+
+                | On the DUT, clear the NC |
+                +-------------|------------+
+                              |
+           +------------------v------------------+
+           |  On the Tester, clear all counters  |
+           +------------------|------------------+
+                              |
+           +------------------v-----------------+
+           |        On the Tester, set a        |
+           |        timer to expire in          |
+           |        60 seconds                  |
+           +------------------|-----------------+
+                              |
+           +------------------v-----------------+
+           |On the Tester, start the test stream|
+           |with exactly one flow (i.e., IPv6   |
+           |Destination Address equals          |
+           |2001:2:0:0:1::2)                    |
+           +------------------|-----------------+
+                              |
+           +------------------v-----------------+
+           |Wait for either the timer to expire |
+           |or packets-received counter         |
+           |associated with the flow to         |
+           |increment                           |
+           +------------------|-----------------+
+                              |
+                      /-------v-------\
+                     /                 \  Yes  +--------------+
+                     |Did timer expire?|-------|   End test   |
+                     \                 /       |   and return |
+                      \-------|-------/        +--------------+
+                              | No
+                              |
+                    /---------v--------\
+                   /                    \  No  +--------------+
+                   |Did packets-received|------|   End test   |
+                   |counter increment?  |      |   and return |
+                   \                    /      +--------------+
+                    \---------|--------/
+                              |  Yes
+                              |
+                       +------v------+
+                       |     N=2     |
+                       +------|------+
+                              |
+               /--------------v-------------\
+              /              Is              \ No +----------+
+              |      N < NDP-MAX-NEIGHBORS   |----| End test |
+       -------|         times 1.1            |    +----------+
+       |      \                              /
+       |       \--------------|-------------/
+       |                      |    Yes
+       |          +-----------v----------+
+       |          |Pause the test stream |
+       |          +-----------|----------+
+       |                      |
+       |           +----------v----------+
+       |           |Log the time and the |
+       |           |value of N minus one |
+       |           +----------|----------+
+       |                      |
+       |          +-----------v-----------+
+       |          |Clear the packets-sent |
+       |          |and packets-received   |
+       |          |counters associated    |
+       |          |with the previous flow |
+       |          |(i.e., N minus one)    |
+       |          +-----------|-----------+
+       |                      |
+       |           +----------v----------+
+       |           |Reset the timer to   |
+       |           |expire in 60 seconds |
+       |           +----------|----------+
+       |                      |
+       |       +--------------v---------------+
+       |       |Add the next flow to the test |
+       |       |stream (i.e., IPv6 Destination|
+       |       |Address is a function of N)   |
+       |       +--------------|---------------+
+       |                      |                     
+       |               +------v------+
+       |               |     N=N+1   |
+       |               +------|------+
+       |                      |
+       |           +----------v------------+
+       ------------|Restart the test stream|
+                   +-----------------------+
+                   ]]></artwork>
+          </figure>
+        </section>
+
+        <section title="Results">
+          <t>The test report includes the following:</t>
+
+          <t>
+            <list style="symbols">
+              <t>A description of the DUT (make, model, processor, memory, and
+              interfaces)</t>
+
+              <t>Rate at which the Tester offers test traffic to the DUT
+              (measured in packets per second)</t>
+
+              <t>A log that records the time at which each flow was introduced
+              to the test stream and the final value of all counters</t>
+
+              <t>The expected value of NDP-MAX-NEIGHBORS</t>
+
+              <t>The actual value of NDP-MAX-NEIGHBORS</t>
+            </list>
+          </t>
+
+          <t>NDP-MAX-NEIGHBORS is equal to the number of counter pairs where
+          packets-sent is equal to packets-received. Two counters are members
+          of a pair if they are both associated with the same flow. If
+          packets-sent is equal to packets-received for every counter pair,
+          the test should be repeated with a larger expected value of
+          NDP-MAX-NEIGHBORS.</t>
+
+          <t>If an implementation abides by the recommendation of Section 7.1
+          of RFC 6583, for any given counter pair, packets-received will
+          either be equal to zero or packets-sent.</t>
+
+          <t>The log documents the time at which each flow was introduced to
+          the test stream. This log reveals the effect of NC size to the time
+          required to discover a new IPv6 neighbor.</t>
+        </section>
+      </section>
+    </section>
+
+    <section title="Measurements Explicitly Excluded">
+      <t>These measurements aren't recommended because of the itemized reasons
+      below:</t>
+
+      <section title="DUT CPU Utilization">
+        <t>This measurement relies on the DUT to provide utilization
+        information, which is not externally observable (not black-box).
+        However, some testing organizations may find the CPU utilization is
+        useful auxiliary information specific to the DUT model, etc.</t>
+      </section>
+
+      <section title="Malformed Packets">
+        <t>This benchmarking test is not intended to test DUT behavior in the
+        presence of malformed packets.</t>
+      </section>
+    </section>
+
+    <section anchor="IANA" title="IANA Considerations">
+      <t>This document does not require any IANA actions.</t>
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+      <t>Benchmarking activities as described in this memo are limited to
+      technology characterization using controlled stimuli in a laboratory
+      environment, with dedicated address space and the constraints specified
+      in the sections above.</t>
+
+      <t>The benchmarking network topology will be an independent test setup
+      and MUST NOT be connected to devices that may forward the test traffic
+      into a production network or misroute traffic to the test management
+      network.</t>
+
+      <t>Further, benchmarking is performed on a "black-box" basis, relying
+      solely on measurements observable external to the DUT or System Under
+      Test (SUT). Special capabilities SHOULD NOT exist in the DUT/SUT
+      specifically for benchmarking purposes.</t>
+
+      <t>Any implications for network security arising from the DUT/SUT SHOULD
+      be identical in the lab and in production networks.</t>
+    </section>
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2119"?>
+
+      <?rfc include='reference.RFC.6583"?>
+
+      <?rfc include='reference.RFC.4861'?>
+    </references>
+
+    <section anchor="Acknowledgements" numbered="no" title="Acknowledgments">
+      <t>Helpful comments and suggestions were offered by Al Morton, Joel
+      Jaeggli, Nalini Elkins, Scott Bradner, and Ram Krishnan on the BMWG
+      email list and at BMWG meetings. Precise grammatical corrections and
+      suggestions were offered by Ann Cerveny.</t>
+    </section>
+
+  </back>
+</rfc>

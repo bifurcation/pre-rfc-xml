@@ -1,0 +1,500 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc1661 PUBLIC "" "reference.RFC.1661.xml">
+<!ENTITY rfc2119 PUBLIC "" "reference.RFC.2119.xml">
+<!ENTITY rfc2328 PUBLIC "" "reference.RFC.2328.xml">
+<!ENTITY rfc3971 PUBLIC "" "reference.RFC.3971.xml">
+<!ENTITY rfc4086 PUBLIC "" "reference.RFC.4086.xml">
+<!ENTITY rfc4429 PUBLIC "" "reference.RFC.4429.xml">
+<!ENTITY rfc4861 PUBLIC "" "reference.RFC.4861.xml">
+<!ENTITY rfc4862 PUBLIC "" "reference.RFC.4862.xml">
+<!ENTITY rfc6620 PUBLIC "" "reference.RFC.6620.xml">
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc rfcedstyle="yes"?>
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="7527" category="std" submissionType="IETF" consensus="yes"
+     ipr="trust200902" updates="4429, 4861, 4862">
+  <front>
+    <title abbrev="Enhanced DAD">Enhanced Duplicate Address Detection</title>
+
+    <author fullname="Rajiv Asati" initials="R." surname="Asati">
+      <organization>Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street>7025 Kit Creek road</street>
+
+          <city>Research Triangle Park</city>
+
+          <region>NC</region>
+
+          <code>27709-4987</code>
+
+          <country>United States</country>
+        </postal>
+
+        <email>rajiva@cisco.com</email>
+
+        <uri>http://www.cisco.com/</uri>
+      </address>
+    </author>
+
+    <author fullname="Hemant Singh" initials="H." surname="Singh">
+      <organization>Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street>1414 Massachusetts Ave.</street>
+
+          <city>Boxborough</city>
+
+          <region>MA</region>
+
+          <code>01719</code>
+
+          <country>United States</country>
+        </postal>
+
+        <phone>+1 978 936 1622</phone>
+
+        <email>shemant@cisco.com</email>
+
+        <uri>http://www.cisco.com/</uri>
+      </address>
+    </author>
+
+    <author fullname="Wes Beebee" initials="W." surname="Beebee">
+      <organization>Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street>1414 Massachusetts Ave.</street>
+
+          <city>Boxborough</city>
+
+          <region>MA</region>
+
+          <code>01719</code>
+
+          <country>United States</country>
+        </postal>
+
+        <phone>+1 978 936 2030</phone>
+
+        <email>wbeebee@cisco.com</email>
+
+        <uri>http://www.cisco.com/</uri>
+      </address>
+    </author>
+
+    <author fullname="Carlos Pignataro" initials="C." surname="Pignataro">
+      <organization>Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street>7200-12 Kit Creek Road</street>
+
+          <city>Research Triangle Park</city>
+
+          <region>NC</region>
+
+          <code>27709</code>
+
+          <country>United States</country>
+        </postal>
+
+        <email>cpignata@cisco.com</email>
+
+        <uri>http://www.cisco.com/</uri>
+      </address>
+    </author>
+
+    <author fullname="Eli Dart" initials="E." surname="Dart">
+      <organization>Lawrence Berkeley National Laboratory</organization>
+
+      <address>
+        <postal>
+          <street>1 Cyclotron Road, Berkeley, CA 94720</street>
+
+          <country>United States</country>
+        </postal>
+
+        <email>dart@es.net</email>
+
+        <uri>http://www.es.net/</uri>
+      </address>
+    </author>
+
+    <author fullname="Wesley George" initials="W." surname="George">
+      <organization>Time Warner Cable</organization>
+
+      <address>
+        <postal>
+          <street>13820 Sunrise Valley Drive</street>
+
+          <city>Herndon</city>
+
+          <region>VA</region>
+
+          <code>20171</code>
+
+          <country>United States</country>
+        </postal>
+
+        <email>wesley.george@twcable.com</email>
+      </address>
+    </author>
+
+    <date month="April" year="2015"/>
+
+    <area>Internet</area>
+
+<keyword>Automated DAD, loopback detection</keyword>
+
+    <abstract>
+      <t>IPv6 Loopback Suppression and Duplicate Address Detection (DAD) are
+      discussed in Appendix A of RFC 4862. That specification mentions a
+      hardware-assisted mechanism to detect looped back DAD messages. If
+      hardware cannot suppress looped back DAD messages, a software solution
+      is required. Several service provider communities have expressed a need
+      for automated detection of looped back Neighbor Discovery (ND) messages
+      used by DAD. This document includes mitigation techniques and outlines
+      the Enhanced DAD algorithm to automate the detection of looped back IPv6
+      ND messages used by DAD. For network loopback tests, the Enhanced DAD
+      algorithm allows IPv6 to self-heal after a loopback is placed and
+      removed. Further, for certain access networks, this document automates
+      resolving a specific duplicate address conflict. This document updates
+      RFCs 4429, 4861, and 4862.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t>IPv6 Loopback Suppression and Duplicate Address Detection (DAD) are
+      discussed in Appendix A of <xref target="RFC4862"/>. That specification
+      mentions a hardware-assisted mechanism to detect looped back DAD
+      messages. If hardware cannot suppress looped back DAD messages, a
+      software solution is required. One specific DAD message is the Neighbor
+      Solicitation (NS), specified in <xref target="RFC4861"/>. The NS is
+      issued by the network interface of an IPv6 node for DAD. Another message
+      involved in DAD is the Neighbor Advertisement (NA). The Enhanced DAD
+      algorithm specified in this document focuses on detecting an NS looped
+      back to the transmitting interface during the DAD operation. Detecting a
+      looped back NA does not solve the looped back DAD problem. Detection of
+      any other looped back ND messages during the DAD operation is outside
+      the scope of this document. This document also includes a section on
+      mitigation that discusses means already available to mitigate the DAD
+      loopback problem. This document updates RFCs 4429, 4861, and 4862. It
+      updates RFCs 4429 and 4862 to use the Enhanced DAD 
+      algorithm to detect looped back DAD probes, and it updates RFC 4861 as described 
+      in <xref target="changes_to_4861"/> below.</t>
+
+      <section title="Requirements Language">
+        <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+        "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+        document are to be interpreted as described in <xref
+        target="RFC2119"/>.</t>
+      </section>
+
+      <section title="Terminology">
+        <t><list style="symbols">
+            <t>DAD-failed state - Duplication Address Detection failure as
+            specified in <xref target="RFC4862"/>. Note even Optimistic DAD as
+            specified in <xref target="RFC4429"/> can fail due to a looped
+            back DAD probe. This document covers looped back detection for
+            Optimistic DAD as well.</t>
+
+            <t>Looped back message - also referred to as a reflected message.
+            The message sent by the sender is received by the sender due to
+            the network or an upper-layer protocol on the sender looping the
+            message back.</t>
+
+            <t>Loopback - A function in which the router's Layer 3 interface
+            (or the circuit to which the router's interface is connected) is
+            looped back or connected to itself. Loopback causes packets sent
+            by the interface to be received by the interface and results in
+            interface unavailability for regular data traffic forwarding. See
+            more details in Section 9.1 of <xref target="RFC2328"/>. The
+            Loopback function is commonly used in an interface context to gain
+            information on the quality of the interface, by employing
+            mechanisms such as ICMPv6 pings and bit-error tests. In a circuit
+            context, this function is used in wide-area environments including
+optical Dense Wavelength Division Multiplexing (DWDM) and Synchronous Optical
+Network / Synchronous Digital Hierarchy (SONET/SDH)
+ for
+            fault isolation (e.g., by placing a loopback at different
+            geographic locations along the path of a wide-area circuit to help
+            locate a circuit fault). The Loopback function may be employed
+            locally or remotely.</t>
+
+            <t>NS(DAD) - shorthand notation to denote a Neighbor Solicitation
+            (NS) (as specified in <xref target="RFC4861"/>) that has an unspecified
+            IPv6 source address and was issued during DAD.</t>
+          </list></t>
+      </section>
+    </section>
+
+    <section title="Problem Statement">
+      <t>Service providers have reported a problem with DAD that arises in a few 
+         scenarios. In the first scenario, loopback testing for troubleshooting purposes 
+         is underway on a circuit connected to an IPv6-enabled interface on a router. 
+         The interface issues an NS for the IPv6 link-local address DAD. The NS is reflected 
+         back to the router interface due to the loopback condition of the circuit, and the 
+         router interface enters a DAD-failed state. After the loopback condition is
+         removed, IPv4 will return to operation without further manual
+         intervention. However, IPv6 will remain in DAD-failed state until manual
+         intervention on the router restores IPv6 to operation.</t> 
+
+      <t>In the second scenario, two broadband modems are served by the same 
+         service provider and terminate to the same Layer 3 interface on an 
+         IPv6-enabled access concentrator. In this case, the two modems' Ethernet 
+         interfaces are also connected to a common local network (collision domain). 
+         The access concentrator serving the modems is the first-hop IPv6 router for 
+         the modems and issues a NS(DAD) message for the IPv6 link-local address of
+         its Layer 3 interface. The NS message reaches one modem first, and this
+         modem sends the message to the local network, where the second modem
+         receives the message and then forwards it back to the access
+         concentrator. The looped back NS message causes the network interface on
+         the access concentrator to be in a DAD-failed state.
+         Such a network interface typically serves thousands of broadband 
+         modems, and all would have their IPv6 connectivity affected until 
+         the DAD-failed state is cleared. Additionally, it may be difficult 
+         for the user of the access concentrator to determine the source of 
+         the looped back DAD message.  Thus, in order to avoid IPv6 outages 
+         that can potentially affect multiple users, there is a need for automated 
+         detection of looped back NS messages during DAD operations by a node.</t>
+
+      <t>Note: In both examples above, the IPv6 link-local address DAD
+      operation fails due to a looped back DAD probe. However, the problem of
+      a looped back DAD probe exists for any IPv6 address type including
+      global addresses.</t>
+    </section>
+
+    <section title="Operational Mitigation Options">
+      <t>Two mitigation options are described below that do not require any
+      change to existing implementations.</t>
+
+      <section title="Disable DAD on an Interface">
+        <t>One can disable DAD on an interface so that there are no NS(DAD)
+        messages issued. While this mitigation may be the simplest, the
+        mitigation has three drawbacks: 1) care is needed when making such
+        configuration changes on point-to-point interfaces, 2) this is a
+        one-time manual configuration on each interface, and 3) genuine
+        duplicates on the link will not be detected.</t>
+
+        <t>A service provider router, such as an access concentrator, or
+        network core router, SHOULD support the DAD deactivation per
+        interface.</t>
+      </section>
+
+      <section title="Dynamic Disable/Enable of DAD Using Layer 2 Protocol">
+        <t>Some Layer 2 protocols include provisions to detect the existence
+        of a loopback on an interface circuit, usually by comparing protocol
+        data sent and received. For example, the Point-to-Point Protocol (PPP)
+        uses a magic number (Section 6.4 of <xref target="RFC1661"/>) to
+        detect a loopback on an interface.</t>
+
+        <t>When a Layer 2 protocol detects that a loopback is present on an
+        interface circuit, the device MUST temporarily disable DAD on the
+        interface. When the protocol detects that a loopback is no longer
+        present (or the interface state has changed), the device MUST
+        (re-)enable DAD on that interface.</t>
+
+        <t>This mitigation has several benefits. It leverages the Layer 2
+        protocol's built-in hardware loopback detection capability, if available. Being
+	a hardware solution, it
+        scales better than the software solution proposed in this
+	document. This mitigation also scales better since it relies on an event-driven model that requires
+        no additional state or timer. This may be significant on devices with
+        hundreds or thousands of interfaces that may be in loopback for long
+        periods of time (e.g., awaiting turn-up).</t>
+
+        <t>Detecting looped back DAD messages using a Layer 2 protocol SHOULD be 
+           enabled by default, and it MUST be a configurable option if the Layer 2 
+           technology provides means for detecting loopback messages on an interface 
+           circuit.</t>
+      </section>
+
+      <section title="Operational Considerations">
+        <t>The mitigation options discussed above do not require the devices
+        on both ends of the circuit to support the mitigation functionality
+        simultaneously and do not propose any capability negotiation. They
+        are effective for unidirectional circuit or interface loopback (i.e.
+        the loopback is placed in one direction on the circuit, rendering
+        the other direction nonoperational), but they may not be effective
+        for a bidirectional loopback (i.e., the loopback is placed in both
+        directions of the circuit interface, so as to identify the faulty
+        segment). This is because, unless both ends followed a mitigation
+        option specified in this document, the noncompliant device would
+        follow current behavior and disable IPv6 on that interface due to DAD
+        until manual intervention restores it.</t>
+      </section>
+    </section>
+
+    <section title="The Enhanced DAD Algorithm">
+      <t>The Enhanced DAD algorithm covers detection of a looped back NS(DAD)
+      message. This document proposes use of a random number in the Nonce
+      Option specified in SEcure Neighbor Discovery (SEND) <xref target="RFC3971"/>. Note <xref
+      target="RFC3971"/> does not provide a recommendation for pseudorandom
+      functions. Pseudorandom functions are covered in <xref
+      target="RFC4086"/>. Since a nonce is used only once, the NS(DAD) for
+      each IPv6 address of an interface uses a different nonce. Additional
+      details of the algorithm are included in <xref target="processing_rules"/>.</t>
+
+      <t>If there is a collision because two nodes used the
+      same Target Address in their NS(DAD) and generated the same random
+      nonce, then the algorithm will incorrectly detect a looped back NS(DAD)
+      when a genuine address collision has occurred. Since each looped back
+      NS(DAD) event is logged to system management, the administrator of the
+      network will have access to the information necessary to intervene
+      manually. Also, because the nodes will have detected what appear to be
+      looped back NS(DAD) messages, they will continue to probe, and it is
+      unlikely that they will choose the same nonce the second time (assuming
+      quality random number generators).</t>
+
+      <t>The algorithm is capable of detecting any ND solicitation (NS and
+      Router Solicitation) or advertisement (NA and Router Advertisement) that
+      is looped back. However, there may be increased implementation
+      complexity and memory usage for the sender node to store a nonce and
+      nonce-related state for all ND messages. Therefore, this document does
+      not recommend using the algorithm outside of the DAD operation by an
+      interface on a node.</t>
+
+      <section title="Processing Rules for Senders" anchor="processing_rules">
+        <t>If a node has been configured to use the Enhanced DAD algorithm,
+        when sending an NS(DAD) for a tentative or optimistic interface
+        address, the sender MUST generate a random nonce associated with the
+        interface address, MUST store the nonce internally, and MUST include
+        the nonce in the Nonce option included in the NS(DAD). If the
+        interface does not receive any DAD failure indications within
+        RetransTimer milliseconds (see <xref target="RFC4861"/>) after having
+        sent DupAddrDetectTransmits Neighbor Solicitations, the interface
+        moves the Target Address to the assigned state.</t>
+
+        <t>If any probe is looped back within RetransTimer milliseconds after
+        having sent DupAddrDetectTransmits NS(DAD) messages, the interface
+        continues with another MAX_MULTICAST_SOLICIT number of NS(DAD)
+        messages transmitted RetransTimer milliseconds apart. Section 2 of
+        <xref target="RFC3971"/> defines a single-use nonce, so each Enhanced
+        DAD probe uses a different nonce. If no probe is looped back within
+        RetransTimer milliseconds after MAX_MULTICAST_SOLICIT NS(DAD) messages
+        are sent, the probing stops. The probing MAY be stopped via manual
+        intervention. When probing is stopped, the interface moves the Target
+        Address to the assigned state.</t>
+      </section>
+
+      <section title="Processing Rules for Receivers">
+        <t>If the node has been configured to use the Enhanced DAD algorithm
+        and an interface on the node receives any NS(DAD) message where the
+        Target Address matches the interface address (in tentative or
+        optimistic state), the receiver compares the nonce included in the
+        message, with any stored nonce on the receiving interface. If a match
+        is found, the node SHOULD log a system management message, SHOULD
+        update any statistics counter, and MUST drop the received message. If
+        the received NS(DAD) message includes a nonce and no match is found
+        with any stored nonce, the node SHOULD log a system management message
+        for a DAD-failed state and SHOULD update any statistics counter.</t>
+      </section>
+
+      <section title="Changes to RFC 4861" anchor="changes_to_4861">
+
+        <t>The following text is appended to the Source Address definition in
+        Section 4.3 of <xref target="RFC4861"/>:</t>
+
+        <t>If a node has been configured to use the Enhanced DAD algorithm, an
+        NS with an unspecified source address adds the Nonce option to the
+        message and implements the state machine of the Enhanced DAD
+        algorithm.</t>
+
+        <t>The following text is appended to the RetransTimer variable
+        description in Section 6.3.2 of <xref target="RFC4861"/>:</t>
+
+        <t>The RetransTimer MAY be overridden by a link-specific document if a
+        node supports the Enhanced DAD algorithm.</t>
+
+      </section>
+    </section>
+
+    <section title="Action to Perform on Detecting a Genuine Duplicate">
+      <t>As described in the paragraphs above, the nonce can also serve to
+      detect genuine duplicates even when the network has potential for
+      looping back ND messages. When a genuine duplicate is detected, the node
+      follows the manual intervention specified in Section 5.4.5 of <xref
+      target="RFC4862"/>. However, in certain cases, if the genuine duplicate
+      matches the tentative or optimistic IPv6 address of a network interface
+      of the access concentrator, additional automated action is
+      recommended.</t>
+
+      <t>Some networks follow a trust model where a trusted router serves
+      untrusted IPv6 host nodes. Operators of such networks have a desire to
+      take automated action if a network interface of the trusted router has a
+      tentative or optimistic address duplicated by a host. One example of a
+      type of access network is cable broadband deployment where the access
+      concentrator is the first-hop IPv6 router to multiple broadband modems
+      and supports proxying of DAD messages. The network interface on the
+      access concentrator initiates DAD for an IPv6 address and detects a
+      genuine duplicate due to receiving an NS(DAD) or an NA message. On
+      detecting such a duplicate, the access concentrator SHOULD log a system
+      management message, drop the received ND message, and block the modem on
+      whose Layer 2 service identifier the duplicate NS(DAD) or NA message was
+      received. Any other network that follows the same trust model MAY use
+      the automated action proposed in this section.</t>
+    </section>
+
+    <section title="Security Considerations">
+      <t>This document does not improve or reduce the security posture of
+      <xref target="RFC4862"/>. The nonce can be exploited by a rogue
+      deliberately changing the nonce to fail the looped back detection
+      specified by the Enhanced DAD algorithm. SEND is recommended to
+      circumvent this exploit. Additionally, the nonce does not protect
+      against the DoS caused by a rogue node replying by a fake NA to all DAD
+      probes. SEND is recommended to circumvent this exploit also. Disabling
+      DAD has an obvious security issue before a remote node on the link can
+      issue reflected NS(DAD) messages. Again, SEND is recommended for this
+      exploit. Source Address Validation Improvement (SAVI) <xref
+      target="RFC6620"/> also protects against various attacks by on-link
+      rogues.</t>
+    </section>
+
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      &rfc1661;
+
+      &rfc2119;
+
+      &rfc2328;
+
+      &rfc3971;
+
+      &rfc4086;
+
+      &rfc4429;
+
+      &rfc4861;
+
+      &rfc4862;
+
+      &rfc6620;
+    </references>
+
+    <section title="Acknowledgements" numbered="no">
+      <t>Thanks (in alphabetical order by first name) to Adrian Farrel, Benoit Claise,
+          Bernie Volz, Brian Haberman, Dmitry Anipko, Eric Levy-Abegnoli, Eric Vyncke, 
+          Erik Nordmark, Fred Templin, Hilarie Orman, Jouni Korhonen, Michael Sinatra, 
+          Ole Troan, Pascal Thubert, Ray Hunter, Suresh Krishnan, Tassos Chatzithomaoglou, 
+          and Tim Chown for their guidance and review of the document. Thanks to Thomas 
+          Narten for encouraging this work. Thanks to Steinar Haug and Scott Beuker for 
+          describing some of the use cases.</t>
+    </section>
+
+  </back>
+</rfc>

@@ -1,0 +1,1121 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+
+<!ENTITY RFC2119 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY RFC2629 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2629.xml">
+<!ENTITY RFC3550 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3550.xml">
+<!ENTITY rfc3551 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3551.xml">
+<!ENTITY RFC3552 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3552.xml">
+<!ENTITY rfc3711 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3711.xml">
+<!ENTITY rfc4585 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4585.xml">
+<!ENTITY RFC4855 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4855.xml">
+<!ENTITY rfc6838 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6838.xml">
+<!ENTITY rfc8083 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8083.xml">
+<!ENTITY RFC8085 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8085.xml">
+<!ENTITY RFC8174 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8174.xml">
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<rfc category="std" ipr="trust200902" number="8450" submissionType="IETF" consensus="yes">
+
+  <front>
+
+    <title abbrev="VC-2 HQ RTP Payload">RTP Payload Format for VC-2 High Quality (HQ) Profile</title>
+    <author fullname="James P. Weaver" initials="J"
+            surname="Weaver">
+      <organization>BBC</organization>
+
+      <address>
+        <email>james.barrett@bbc.co.uk</email>
+
+      </address>
+    </author>
+
+    <date month="October" year="2018" />
+
+    <area>General</area>
+    <workgroup>Payload Working Group</workgroup>
+
+
+    <keyword>rtp</keyword>
+    <keyword>vc-2</keyword>
+    <keyword>VC2</keyword>
+    <keyword>dirac</keyword>
+
+    <abstract>
+
+      <t>This memo describes an RTP payload format for the High
+      Quality (HQ) profile of Society of Motion Picture and Television
+      Engineers Standard ST 2042-1, known as
+      VC-2. This document describes the transport of HQ Profile VC-2 in RTP
+      packets and has applications for low-complexity, high-bandwidth
+      streaming of both lossless and lossy compressed video.
+      </t>
+
+      <t>
+        The HQ profile of VC-2 is intended for low-latency video compression
+        (with latency potentially on the order of lines of video) at high data
+        rates (with compression ratios on the order of 2:1 or 4:1).
+      </t>
+    </abstract>
+  </front>
+
+  <middle>
+      <section title="Introduction">
+        <t>This memo specifies an RTP payload format for the video
+        coding standard <xref target="VC2">Society of Motion Picture and Television
+      Engineers ST 2042-1:2017</xref>, also known as VC-2</t>
+
+        <t>The VC-2 codec is a wavelet-based codec intended primarily
+        for professional video use with high bit-rates and only low
+        levels of compression. It has been designed to have a low level
+	of complexity and potentially a very low latency
+        through both encoder and decoder: with some choices of
+        parameters, this latency may be as low as a few lines of
+        video.</t>
+
+        <t>The low level of complexity in the VC-2 codec allows for
+        this low-latency operation but also means that it lacks many of
+        the more powerful compression techniques used in other codecs.
+        As such, it is suitable for low compression ratios that produce
+        coded data rates around half to a quarter of that of uncompressed
+        video, at a similar visual quality.</t>
+
+        <t>The primary use for VC-2 is likely to be in professional video
+        production environments.</t>
+
+      </section>
+
+      <section title="Conventions, Definitions, and Acronyms">
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+      </section>
+
+      <section title="Media Format Description">
+        <t>The VC-2 specification defines a VC-2 Stream as being
+        composed of one or more Sequences. Each Sequence is
+        independently decodable, containing all of the needed
+        parameters and metadata for configuring the decoder.</t>
+
+        <t>Each Sequence consists of a series of 13-octet Parse Info
+        Headers and variable-length Data Units. The Sequence begins
+        and ends with a Parse Info Header, and each Data Unit is
+        preceded by a Parse Info Header. Data Units come in a variety
+        of types, and the type of a Data Unit is signaled in the
+        preceding Parse Info Header. The most important types are the
+        Sequence Header, which contains configuration data needed by
+        the decoder, and several types of Coded Picture, which contain
+        the coded data for the pictures themselves. Each picture
+        represents a frame in a progressively scanned video Sequence
+        or a field in an interlaced video Sequence.</t>
+
+        <t>
+ The first Data Unit in a Sequence as produced by an encoder is always
+ a Sequence Header; however, Sequences can be joined in the middle,
+ so it should not be assumed that the first Data Unit received will always
+ be a Sequence Header.
+	</t>
+        <t>The High Quality (HQ) profile for VC-2 restricts the types of
+        Parse Info Headers that may appear in the Sequence (and hence
+        also the types of Data Unit) to only:
+        <list style="symbols">
+          <t>Sequence Headers (which are always followed by a Data Unit),</t>
+          <t>High Quality Pictures (which are always followed by a Data Unit),</t>
+          <t>High Quality Fragments (which are always followed by a Data Unit),</t>
+          <t>Auxiliary Data (which are always followed by a Data Unit),</t>
+          <t>Padding Data (which are always followed by a Data Unit), and</t>
+          <t>End of Sequence (which are never followed by a Data Unit).</t>
+        </list>
+        At the time of writing, there is no definition for the use of Auxiliary
+        Data in VC-2, and Padding Data is required to be ignored by
+        all receivers.</t>
+
+        <t>Each High Quality Picture Data Unit contains a set of parameters
+        for the picture followed by a series of
+        Coded Slices, each representing a rectangular region of the transformed
+        picture. Slices within a picture may vary in coded length, but
+        all represent the same shape and size of rectangle in the
+        picture.</t>
+
+        <t>Each High Quality Fragment Data Unit contains either a set
+        of parameters for a picture or a series of Coded
+        Slices. Fragments carry the same data as pictures, but broken
+        up into smaller units to facilitate transmission via
+        packet-based protocols such as RTP.</t>
+
+        <t>This payload format only makes use of Fragments, not
+        pictures.</t>
+      </section>
+
+      <section title="Payload Format">
+        <t>In this specification, each RTP packet is used to carry data
+        corresponding to a single Parse Info Header and its following
+        Data Unit (if it has one). A single packet MAY NOT contain
+        data from more than one Parse Info Header or Data Unit. A
+        single Parse Info Header and Data Unit pair MUST NOT be split
+        across more than one packet. The sole exception to this rule
+        is that an Auxiliary Data Unit MAY be split between multiple
+        packets, using the B and E flags to indicate start and end.</t>
+        
+        <t>This specification only covers the transport of Sequence
+        Headers (together with their accompanying Data Unit), High
+        Quality Fragments (together with their accompanying Data
+        Unit), Auxiliary Data (together with their accompanying Data
+        Unit), and (optionally) End Sequence Headers and Padding Data
+        (for which no Data Unit it carried).</t>
+
+        <t>High Quality Pictures can be transported by converting them
+        into an equivalent set of High Quality Fragments. The size of
+        Fragments should be chosen so as to fit within the MTU of the
+        network in use.</t>
+
+        <t>For this reason, this document defines six types of RTP packets in a VC-2
+        media stream:
+        <list style="symbols">
+          <t>a <xref target="rtp_hdr_seq">VC-2 Sequence
+          Header</xref> (see <xref target="VC2">Section 11 of the VC-2
+            specification</xref>),</t>
+          <t>a <xref
+        target="rtp_hdr_preamble">Picture Fragment containing the VC-2 Transform Parameters for a
+          Picture</xref> (see <xref target="VC2">Section 14 of the VC-2
+            specification</xref>),</t>
+          <t><xref
+        target="rtp_hdr_slices">a Picture Fragment containing VC-2
+          Coded Slices</xref> for a picture (see <xref target="VC2">Section 14 of the VC-2
+            specification</xref>),</t>
+          <t><xref
+        target="rtp_hdr_eos">the end of a VC-2
+          Sequence</xref> (see <xref target="VC2">Section 10.5.2 of the VC-2
+            specification</xref>),</t>
+          <t>the <xref
+        target="rtp_hdr_aux">contents of an Auxiliary Data
+          Unit</xref> (see <xref target="VC2">Section 10.4.4 of the VC-2
+            specification</xref>), and</t>
+          <t>an <xref target="rtp_hdr_pad">indication of the presence of a padding
+          Data Unit</xref> (see <xref target="VC2">Section 10.4.5 of the VC-2
+            specification</xref>).</t>
+        </list></t>
+
+        <t>These six packet types can be distinguished by the fact that
+        they use different codes in the Parse Code ("PC") field, except for the two
+        types of Picture Fragment that use the same value in PC but
+        have different values in the "No. of Slices" field.</t>
+
+        <t>The options for PC codes are explained in more detail in <xref
+        target="pc_choice"/>.</t>
+
+
+      <figure align="center" anchor="rtp_hdr_seq" title="RTP Payload
+                                                         Format for
+                                                         Sequence Header">
+        <artwork align="left"><![CDATA[
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| V |P|X|   CC  |M|    PT       |       Sequence Number         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           synchronization source (SSRC) identifier            |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|            contributing source (CSRC) identifiers             |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|                 Optional Extension Header                     |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|   Extended Sequence Number    |    Reserved   |   PC = 0x00   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-|
+.                                                               .
+.               Variable-Length Coded Sequence Header           .
+.                                                               .
++---------------------------------------------------------------+
+            ]]></artwork>
+      </figure>
+      <figure align="center" anchor="rtp_hdr_preamble" title="RTP
+                                                              Payload
+                                                              Format
+                                                              for
+                                                              Transform
+                                                              Parameters
+                                                              Fragment">
+        <artwork align="left"><![CDATA[
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| V |P|X|   CC  |M|    PT       |       Sequence Number         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           synchronization source (SSRC) identifier            |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|            contributing source (CSRC) identifiers             |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|                 Optional Extension Header                     |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|   Extended Sequence Number    |  Reserved |I|F|   PC = 0xEC   |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|                       Picture Number                          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-|
+|       Slice Prefix Bytes      |        Slice Size Scaler      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-|
+|       Fragment Length         |         No. of Slices = 0     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-|
+.                                                               .
+.         Variable-Length Coded Transform Parameters            .
+.                                                               .
++---------------------------------------------------------------+
+            ]]></artwork>
+      </figure>
+      <figure align="center" anchor="rtp_hdr_slices" title="RTP
+                                                            Payload
+                                                            Format
+                                                            for
+                                                            Fragment
+                                                            Containing
+                                                            Slices">
+        <artwork align="left"><![CDATA[
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| V |P|X|   CC  |M|    PT       |       Sequence Number         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           synchronization source (SSRC) identifier            |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|            contributing source (CSRC) identifiers             |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|                 Optional Extension Header                     |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|   Extended Sequence Number    |  Reserved |I|F|   PC = 0xEC   |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|                       Picture Number                          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-|
+|       Slice Prefix Bytes      |        Slice Size Scaler      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-|
+|       Fragment Length         |          No. of Slices        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-|
+|        Slice Offset X         |         Slice Offset Y        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-|
+.                                                               .
+.                          Coded Slices                         .
+.                                                               .
++---------------------------------------------------------------+
+            ]]></artwork>
+      </figure>
+      <figure align="center" anchor="rtp_hdr_eos" title="RTP Payload
+                                                         Format for
+                                                         End of Sequence">
+        <artwork align="left"><![CDATA[
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| V |P|X|   CC  |M|    PT       |       Sequence Number         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           synchronization source (SSRC) identifier            |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|            contributing source (CSRC) identifiers             |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|                 Optional Extension Header                     |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|   Extended Sequence Number    |    Reserved   |   PC = 0x10   |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+            ]]></artwork>
+      </figure>
+      <figure align="center" anchor="rtp_hdr_aux" title="RTP Payload
+                                                         Format for
+                                                         Auxiliary Data">
+        <artwork align="left"><![CDATA[
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| V |P|X|   CC  |M|    PT       |       Sequence Number         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           synchronization source (SSRC) identifier            |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|            contributing source (CSRC) identifiers             |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|                 Optional Extension Header                     |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|   Extended Sequence Number    |B|E|  Reserved |   PC = 0x20   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Data Length                         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+.                                                               .
+.                      Uncoded Payload Data                     .
+.                                                               .
++---------------------------------------------------------------+
+            ]]></artwork>
+      </figure>
+      <figure align="center" anchor="rtp_hdr_pad" title="RTP Payload
+                                                         Format for
+                                                         Padding Data">
+        <artwork align="left"><![CDATA[
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| V |P|X|   CC  |M|    PT       |       Sequence Number         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Timestamp                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|           synchronization source (SSRC) identifier            |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|            contributing source (CSRC) identifiers             |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|                 Optional Extension Header                     |
+|                             ....                              |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|   Extended Sequence Number    |B|E|  Reserved |   PC = 0x30   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Data Length                         |
++---------------------------------------------------------------+
+            ]]></artwork>
+      </figure>
+
+      <t>All fields in the headers longer than a single bit are
+      interpreted as unsigned integers in network byte order.</t>
+
+      <section title="RTP Header Usage">
+        <t>The fields of the RTP header have the following additional
+        notes on their usage:
+        <list style="hanging" hangIndent="6">
+          <t hangText="Marker Bit (M): 1 bit.">
+            The marker bit MUST be set on any packet that contains
+            the final slice in a coded picture and MUST NOT be set
+            otherwise.
+          </t>
+          
+          <t hangText="Payload Type (PT): 7 bits.">
+            A dynamically allocated payload type field that designates
+            the payload as VC-2-coded video.
+          </t>
+
+          <t hangText="Sequence Number: 16 bits.">
+            Because the data rate of VC-2-coded Streams can often be
+            very high, in the order of gigabits rather than megabits
+            per second, the standard 16-bit RTP sequence number can
+            cycle very quickly. For this reason, the sequence number is
+            extended to 32 bits, and this field MUST hold the low-order
+            16 bits of this value.
+          </t>
+
+          <t hangText="Timestamp: 32 bits.">
+            
+            If the packet contains Transform Parameters or Coded Slice
+            data for a coded picture, then the timestamp corresponds to
+            the sampling instant of the coded picture. A 90kHz clock
+            SHOULD be used. A single RTP packet MUST NOT contain coded
+            data for more than one coded picture, so there is no
+            ambiguity here.</t>
+            
+            <t>A Sequence Header packet SHOULD have the same timestamp as
+            the picture that will follow it in the Stream. An
+            End of Sequence packet SHOULD have the same timestamp as
+            the previous picture that appeared in the Stream.
+          </t>
+        </list>
+        </t>
+
+        <t>The remaining RTP header fields are used as specified in
+        <xref target="RFC3550">RTP</xref>.</t>
+      </section>
+
+      <section title="Payload Header">
+        <t>The fields of the extended headers are defined as follows: 
+        <list style="hanging" hangIndent="6">
+          <t hangText="Extended Sequence Number: 16 bits.">
+            
+            MUST contain the high-order 16 bits of the 32-bit packet
+            sequence number. This is needed since the high data rates of VC-2
+            Sequences mean that it is highly likely that the 16-bit
+            sequence number will roll over too frequently to be of use
+            for Stream synchronization.
+          </t>
+          <t hangText="B: 1 bit.">
+            
+            MUST be set to 1 if the packet contains the first byte of
+            an Auxiliary Data Unit and otherwise MUST
+            be 0. If the recommendations in <xref
+            target="stream_constraints" /> ("Stream Constraints") are followed, then every Auxiliary
+            Data Unit will be small enough to fit in a single packet,
+            and so this bit (where present) will always be 1.
+          </t>
+          <t hangText="E: 1 bit.">
+            
+            MUST be set to 1 if the packet contains the final byte of
+            an Auxiliary Data Unit and otherwise MUST
+            be 0. If the recommendations in <xref
+            target="stream_constraints" /> ("Stream Constraints") are followed, then every Auxiliary
+            Data Unit will be small enough to fit in a single packet,
+            and so this bit (where present) will always be 1.
+          </t>
+          <t hangText="I: 1 bit.">
+            
+            MUST be set to 1 if the packet contains coded picture
+            parameters or slice data from a field in an interlaced
+            frame. MUST be set to 0 if the packet contains data from any part
+            of a progressive frame.
+          </t>
+          <t hangText="F: 1 bit.">
+            
+            MUST be set to 1 if the packet contains coded picture
+            parameters or slice data from the second field of an
+            interlaced frame. MUST be set to 0 if the packet contains data
+            from the first field of an interlaced frame or any part of
+            a progressive frame.
+          </t>
+          <t hangText="Parse Code (PC): 8 bits.">
+            
+            Contains a Parse Code that MUST be the value indicated
+            for the type of data in the packet.
+          </t>
+          <t hangText="Data Length: 32 bits.">
+            
+            For an auxiliary Data Unit, this contains the number of
+            bytes of data contained in the payload section of
+            this packet. If the recommendations in <xref
+            target="stream_constraints" /> ("Stream Constraints") are followed, then no Auxiliary
+            Data Unit will be large enough to cause a packet to exceed
+            the MTU of the network.</t>
+
+          <t hangText="Picture Number: 32 bits.">
+            
+            MUST contain the Picture Number for the coded picture this
+            packet contains data for, as described in <xref
+            target="VC2">Section 12.1 of the VC-2
+            specification</xref>.</t>
+
+            <t>The sender MUST send at least one transform-parameters packet
+	    for each coded picture and MAY include
+            more than one as long as they contain identical data. The
+            sender MUST NOT send a packet from a new picture until all
+            the coded data from the current picture has been sent.</t>
+
+<t>
+    If the receiver receives Coded Slices packets for a picture
+    but does not receive a Transform Parameters packet for that
+    picture, then this is an indication of either packet loss,
+    joining a Stream mid-picture, or a non-compliant transmitter.
+    In this case, the receiver MAY assume that the parameters are
+    unchanged since the last picture, or it MAY discard the
+    picture. Choosing between these two options is left up to the
+    implementation as it will be dependent on intended use.  The
+    former may result in malformed pictures, while the latter will
+    result in dropped frames.
+	</t>
+
+          <t hangText="Slice Prefix Bytes: 16 bits.">
+            
+            MUST contain the Slice Prefix Bytes value for the coded picture this
+            packet contains data for, as described in <xref
+            target="VC2">Section 12.3.4 of the VC-2
+          specification</xref>.</t>
+
+            <t> In the VC-2 specification, this value is not restricted
+            to 16 bits, but the <xref target="stream_constraints">
+            constraints on Streams specified in this document</xref>
+            do require this.</t>
+
+          <t hangText="Slice Size Scaler: 16 bits.">
+            
+            MUST contain the Slice Size Scaler value for the coded picture this
+            packet contains data for, as described in <xref
+            target="VC2">Section 12.3.4 of the VC-2
+            specification</xref>.</t>
+
+            <t> In the VC-2 specification, this value is not restricted
+            to 16 bits, but the <xref target="stream_constraints">
+            constraints on Streams specified in this document</xref>
+            do require this.</t>
+
+          <t hangText="Fragment Length: 16 bits.">
+            
+            MUST contain the number of bytes of data contained in the coded
+            payload section of this packet.
+          </t>
+
+          <t hangText="No. of Slices: 16 bits.">
+            
+            MUST contain the number of Coded Slices contained in this
+            packet, which MUST be 0 for a packet containing
+            Transform Parameters. In a packet containing Coded Slices,
+            this number MUST be the number of whole slices contained
+            in the packet, and the packet MUST NOT contain any partial
+            slices.
+          </t>
+
+          <t hangText="Slice Offset X: 16 bits.">
+            
+            MUST contain the X coordinate of the first slice in this
+            packet, in slices, starting from the top left corner of
+            the picture.
+          </t>
+
+          <t hangText="Slice Offset Y: 16 bits.">
+            
+            MUST contain the Y coordinate of the first slice in this
+            packet, in slices, starting from the top left corner of
+            the picture.
+          </t>
+        </list>
+        </t>
+      </section>
+
+      <section title="The Choice of Parse Codes (Informative)"
+               anchor="pc_choice">
+        <t>The "PC" field in the packets is used to carry the Parse
+        Code, which identifies the type of content in the packet.
+        This code matches the value of the Parse Code used to identify
+        each Data Unit in a VC-2 Stream, as defined in the VC-2
+        specification, and each packet contains the entire Data
+        Unit.</t>
+
+        <t><xref target="parse_codes" /> lists all of the Parse Codes currently
+        allowed in a VC-2 Sequence. The final column indicates whether
+        the code in question can be present in a Stream transmitted
+        using this specification.</t>
+
+        <figure align="center" anchor="parse_codes" title="Parse Codes
+                                                           and Meanings">
+          <artwork align="left"><![CDATA[
++----------+-----------+---------------------+---------------+
+| PC (hex) | Binary    | Description         | Valid         |
++----------+-----------+---------------------+---------------+
+| 0x00     | 0000 0000 | Sequence Header     | Yes           |
+| 0x10     | 0001 0000 | End of Sequence     | Yes           |
+| 0x20     | 0010 0000 | Auxiliary Data      | Yes           |
+| 0x30     | 0011 0000 | Padding Data        | Yes           |
++----------+-----------+---------------------+---------------+
+| 0xC8     | 1100 1000 | LD Picture          | No            |
+| 0xE8     | 1110 1000 | HQ Picture          | No            |
+| 0xEC     | 1110 1100 | HQ Picture Fragment | Yes           |
++----------+-----------+---------------------+---------------+
+          ]]></artwork>
+        </figure>
+
+      </section>
+
+      <section title="Stream Constraints" anchor="stream_constraints">
+        <t>A Sequence needs to conform to certain constraints in
+	order to be transmissible with this specification.</t>
+
+        <t>
+          <list style="symbols">
+            <t>The Sequence MUST NOT contain Parse Info Headers with a
+            Parse Code other than 0x00 (Sequence Header), 0x10 (End
+            of Sequence), 0x20 (Auxiliary Data), 0x30 (Padding Data), or
+            0xEC (High Quality Picture Fragment). Some other
+            Streams MAY be convertible to meet this restriction (see
+            below).</t>
+
+            <t>Every High Quality Picture Fragment MUST be no longer
+            than 65535 bytes. This can usually be ensured by splitting
+            large Fragments into several smaller Fragments, except in
+            the case where an individual slice is too large, in which
+            case see the notes below on conversion.</t>
+
+            <t>Informative note: this requirement ensures that every
+            High Quality Picture Fragment will always contain no more
+            than 65535 slices.</t>
+
+            <t>Every High Quality Picture Fragment SHOULD be small
+            enough that the RTP packet carrying it will fit within
+            the network MTU size. This can usually be ensured by splitting
+            large Fragments into several smaller Fragments, except in
+            the case where an individual slice is too large, in which
+            case see the notes below on conversion.</t>
+
+            <t>Every High Quality Picture Fragment MUST be encoded
+            using values for Slice Prefix Bytes and Slice Size Scaler
+            no greater than 65535.</t>
+          </list>
+        </t>
+
+        <t>If a Sequence intended for transmission does not conform to
+        these restrictions, then it MAY be possible to simply convert
+        it into a form that does by splitting pictures and/or large
+        Fragments into suitably sized Fragments. This can be done provided
+        that the following (weaker) constraints are met:</t>
+
+        <t>
+          <list style="symbols">
+            <t>The Sequence does not contain Parse Info Headers with a
+            Parse Code other than 0x00 (Sequence Header), 0x10 (End
+            of Sequence), 0x20 (Auxiliary Data), 0x30 (Padding Data),
+            0xE8 (High Quality Picture), or 0xEC (High Quality
+            Picture Fragment).</t>
+
+            <t>None of the High Quality Pictures or High Quality Picture
+            Fragments contain slices that are individually longer
+            than 65535 bytes. Note: When this is the case, the values
+            of Slice Prefix Bytes and Slice Size Scaler will
+            necessarily also be smaller than 65535.</t>
+
+            <t>None of the High Quality Pictures or High Quality Picture
+            Fragments contain slices that are individually so
+            large that an RTP packet carrying a Fragment containing
+            that single slice will fit within the network MTU
+            size.</t>
+          </list>
+        </t>
+        
+        <t>It is not possible to send a Stream that does not meet the above requirements via
+        this mechanism unless the Stream is re-encoded
+        by a VC-2 Encoder so as to meet them.</t>
+
+        <t>In addition, every Auxiliary Data Unit SHOULD be small enough that
+        a single RTP packet carrying it will fit within the network MTU
+        size. Since there is currently no specification for the
+        format of Auxiliary Data in VC-2, the mechanism for
+        ensuring this with an encoder implementation that includes
+        Auxiliary Data Units will be dependent upon the
+        implementation's use for them.</t>
+
+        <t>When encoding VC-2 video intended to be transported via RTP,
+        a VC-2 profile and level that ensures these requirements are
+        met SHOULD be used.</t>
+      </section>
+
+      <section title="Payload Data">
+        <t>For the Sequence Header packet type (PC = 0x00), the payload
+        data MUST be the coded Sequence Header exactly as it appears
+        in the VC-2 Sequence.</t>
+
+        <t>For the Transform Parameters packet type (PC = 0xEC and
+        No. of Slices = 0), the payload data MUST be the variable-length
+        coded Transform Parameters. This MUST NOT include the Fragment
+        header (since all data in the picture header is already
+        included in the packet header).</t>
+
+        <t>For the Auxiliary Data packet type (PC = 0x20), the payload
+        data MUST be a portion of the auxiliary data bytes contained
+        in the Auxiliary Data Unit being transmitted. The B flag
+        MUST be set on the packet that contains the first byte, the E
+        flag MUST be set on the packet that contains the last byte,
+        the bytes MUST be included in order, and the packets MUST have
+        contiguous sequence numbers.</t>
+
+        <t>For the Picture Fragment packet type (PC = 0xEC and
+        No. of Slices > 0), the payload data MUST be a specified number of
+        Coded Slices in the same order that they appear in the VC-2
+        Stream. Which slices appear in the packet is identified using
+        the Slice Offset X and Slice Offset Y fields in the payload
+        header.</t>
+
+        <t>For the End of Sequence packet type (PC = 0x10), there is no
+        payload data.</t>
+
+        <section title="Reassembling the Data">
+          <figure align="center" anchor="parse_info" title="VC-2 Parse
+                                                            Info
+                                                            Header">
+            <artwork align="left"><![CDATA[
+ 0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|      0x42     |      0x42     |      0x43     |      0x44     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Parse Code   |                       Next Parse Offset 
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                |                       Prev Parse Offset
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                |
++-+-+-+-+-+-+-+-+
+            ]]></artwork>
+          </figure>
+          <t>To reassemble the data in the RTP packets into a valid VC-2
+          Sequence:
+          <list style="symbols">
+
+<t>The receiver SHOULD
+take the data from each packet with a Parse Code of 0x00 and
+    prepend a valid <xref target="parse_info">VC-2 Parse Info Header</xref> with the same
+    Parse Code (0x00).  The resulting Sequence Header Parse Info Header
+    and Data Unit MUST be included in the output stream before any coded
+    pictures that followed the packet being processed in the RTP stream,
+    unless an identical Sequence Header has already been included, and
+    they MAY be repeated (with apropriate modifications to the next and
+    previous header offsets) at any point that results in a valid VC-2
+    Stream.
+	  </t>
+
+            <t>The receiver SHOULD
+              take the data from each packet with a Parse Code of 0xEC
+              and No. of Slices set to 0 (which together indicate that
+              this packet contains the Transform Parameters for a coded
+              picture) and prepend with the same Parse Code a valid <xref
+              target="parse_info">VC-2 Parse Info Header</xref>
+              followed by the picture number, Fragment data length,
+              and slice count (0).
+            </t>
+            <t>The receiver SHOULD
+              take the data from each packet with a Parse Code of 0xEC
+              and No. of Slices not set to 0 (which together indicate that
+              this packet contains Coded Slices) and prepend with the same
+	      Parse Code a valid <xref
+              target="parse_info">VC-2 Parse Info Header</xref>
+              followed by the picture number, Fragment data length,
+              slice count, x offset and y offset taken from the packet
+              header.
+            </t>
+            <t>
+              A receiver MAY combine all Fragment Data Units (with
+              Parse Code 0xEC) and the same picture number into a
+              single picture Data Unit with Parse Code 0xE8. If the
+              Stream is required to comply with major versions 1 or 2
+              of the VC-2 specification, then this MUST be done.
+            </t>
+            <t>The receiver SHOULD
+              take the data from each packet with a Parse Code of 0x20
+              and the B bit set and prepend a valid <xref
+              target="parse_info">VC-2 Parse Info Header</xref> with
+              the Parse Code 0x20, and then take each subsequent packet
+              with Parse Code 0x20 without the B bit set and append
+              its payload to the growing Data Unit. When all packets
+              for a particular Data Unit have been received, it SHOULD
+              be included in the output stream. The final packet for a
+              Data Unit will have the E bit set.
+            </t>
+            <t>
+              Once a Data Unit has been assembled, whether a Sequence
+              Header, Coded Picture Fragment, Coded Picture, or
+              Auxiliary Data Unit, the next parse offset and previous
+              parse offset values in its Parse Info Header SHOULD be
+              filled with the offset between the start of the header
+              and the start of the next or previous header.
+            </t>
+            <t>
+              An End of Sequence Parse Info Header MAY be inserted when a
+              packet with Parse Code set to 0x10 is encountered, or at any
+              other time that is allowed in a valid VC-2 Stream. After an
+              End of Sequence Parse Info Header is included in the output
+              stream, either the Stream must end, or it MUST be followed
+              by a Sequence Header indicating the start of a new
+              Sequence. The next parse offset of the End of Sequence
+              header MUST be set to 0, and the previous parse offset
+              SHOULD be filled with the offset from the start of the
+              previous Parse Info Header in the Stream.
+            </t>
+            <t>
+              A Padding Data Parse Info Header MAY be inserted when a
+              packet with Parse Code set to 0x30 and the B bit set is
+              encountered, or at any other time that is allowed in a
+              valid VC-2 Stream. The length of the accompanying Data
+              Unit MAY have any value, and its contents MUST be set to
+              a series of zero bytes. The next parse offset and previous
+              parse offset values in its Parse Info Header SHOULD be
+              filled with the offset between the start of the header
+              and the start of the next or previous header.
+            </t>
+          </list>
+          </t>
+        </section>
+      </section>
+      </section>
+
+      <section title="Forward Error Correction (FEC) Considerations">
+        <t>VC-2 provides no underlying protection against data loss,
+        so it may be useful to employ Forward Error Correction to the
+        Stream. A mechanism for doing this to a generic RTP stream is
+        specified in <xref target="RFC5109">RFC 5109</xref>. If making
+        use of this mechanism to provide multilevel protection, then
+        the packets SHOULD be assigned to layers based upon their
+        packet type, with the packet types being, in order of importance:
+        <list style="numbers">
+          <t>Sequence Headers</t>
+          <t>Fragments containing Transform Parameters</t>
+          <t>Fragments containing Coded Slices</t>
+          <t>Auxiliary Data and end of Sequence</t>
+          <t>Padding</t>
+        </list>
+        It is RECOMMENDED that if multilevel protection is to be
+        used, then one layer will protect all Sequence Header packets,
+        and a second will protect Sequence Headers and
+        all Fragments. If desired, a third layer MAY protect Auxiliary Data
+        and End of Sequence packets. Padding data SHOULD NOT be
+        protected by FEC.</t>
+      </section>
+
+      <section title="Congestion Control Considerations">
+        <t>Congestion control for RTP SHALL be used in accordance with <xref
+        target="RFC3550">RFC 3550</xref> and any applicable RTP profile --
+        e.g., <xref target="RFC3551">RFC 3551</xref>. An additional
+        requirement if best-effort service is being used is: users of this
+        payload format MUST monitor packet loss to ensure that the packet loss
+        rate is within acceptable parameters. <xref
+        target="RFC8083">Circuit Breakers</xref>
+        are an update to <xref target="RFC3550">RTP</xref> that defines
+        criteria for when one is required to stop sending RTP Packet
+        Streams, and applications implementing this standard MUST
+        comply with it. <xref target="RFC8085">RFC 8085</xref> provides
+        additional information on the best practices for applying
+        congestion control to UDP streams.</t>
+
+        <t>In particular, it should be noted that the expected data
+        rate for RTP sessions that use this profile is likely to be
+        in the range of gigabits per second. If used on a
+        closed network that has been correctly provisioned for the
+        expected data rates, this might not pose a problem, but there
+        is always the risk of data getting out onto the open
+        internet.</t>
+      </section>
+
+      <section title="Payload Format Parameters">
+        <t>This RTP payload format is identified using the 'video/vc2' media type,
+        which is registered in accordance with <xref target="RFC4855">RFC
+        4855</xref>, using the template of <xref target="RFC6838">RFC
+        6838</xref>.</t>
+
+        <section anchor="media-type" title="Media Type Definition">
+
+          <t>Type name:</t>
+
+          <t><list style="empty">
+            <t>video</t>
+          </list>Subtype name:</t>
+
+          <t><list style="empty">
+            <t>vc2</t>
+          </list>Required parameters:</t>
+
+          <t><list style="empty">
+            <t>rate: The RTP timestamp clock rate. Applications using this payload format SHOULD use a value of 90000.</t>
+            <t>profile: The VC-2 profile in use. The only value currently allowed is "HQ".</t>
+          </list>Optional parameters:</t>
+
+          <t><list style="empty">
+            <t>version: the VC-2 specification version in use. The
+            only currently allowed value is "3" since all Sequences
+            transported using this mechanism will contain HQ Picture
+            Fragment Data Units, which <xref target="VC2">the VC-2
+            specification</xref> defines as requiring version 3.</t>
+            <t>level: The VC-2 level in use. Any integer may be used.</t>
+          </list>Encoding considerations:</t>
+
+          <t><list style="empty">
+              <t>This media type is framed and binary; see Section 4.8 in
+              <xref target="RFC6838">RFC 6838</xref>.</t>
+            </list>Security considerations:</t>
+
+          <t><list style="empty">
+              <t>Please see the security considerations in RFC 8450.</t>
+            </list></t>
+
+          <t>Interoperability considerations: N/A</t>
+
+          <t>Published specification:</t>
+
+          <t><list style="empty">
+            <t>RFC 8450</t>
+          </list>Applications that use this media type:</t>
+
+          <t><list style="empty">
+            <t>Video Communication.</t>
+          </list>Fragment identifier considerations: N/A</t>
+
+          <t>Additional information: N/A</t>
+
+          <t>Person &amp; email address to contact for further
+          information:</t>
+
+          <t><list style="empty">
+            <t>James P.&nbsp;Weaver &lt;james.barrett@bbc.co.uk&gt;</t>
+          </list>Intended usage:</t>
+
+          <t><list style="empty">
+              <t>COMMON</t>
+            </list>Restrictions on usage:</t>
+
+          <t><list style="empty">
+            <t>This media type depends on RTP framing and hence is only
+            defined for transfer via RTP <xref target="RFC3550" />. Transport within other
+            framing protocols is not defined at this time.</t>
+
+          </list>Author:
+<list style="empty">
+            <t>James P.&nbsp;Weaver &lt;james.barrett@bbc.co.uk&gt;</t>
+</list>
+</t>
+
+          <t>Change controller:</t>
+
+          <t><list style="empty">
+            <t>IETF PAYLOAD Working Group delegated from the IESG.</t>
+          </list>Provisional registration? (standards tree only):</t>
+
+          <t><list style="empty">
+              <t>No</t>
+            </list></t>
+
+        </section>
+
+        <section title="Mapping to the Session Description Protocol (SDP)">
+          <t>The mapping of the above-defined payload format media type and
+          its parameters SHALL be done according to Section 3 of <xref
+          target="RFC4855">RFC 4855</xref>.</t>
+
+          <t><list style="symbols">
+            <t>The type name ("video") goes in SDP "m=" as the media name.</t>
+
+            <t>The subtype name ("vc2") goes in SDP "a=rtpmap" as
+            the encoding name, followed by a slash ("/") and the rate parameter.</t>
+
+            <t>The required parameter profile and the optional
+            parameters version and level, when present, are included
+            in the "a=fmtp" attribute line of SDP as a
+            semicolon-separated list of parameter=value pairs.</t>
+          </list></t>
+
+          <t>Version and level SHALL be specified in decimal when
+          present.</t>
+
+          <t>For example, a sample SDP mapping for VC-2 could be as
+          follows:</t>
+          <figure><artwork>
+          m=video 30000 RTP/AVP 112
+          a=rtpmap:112 vc2/90000
+          a=fmtp:112 profile=HQ;version=3;level=0</artwork>
+          </figure>
+          <t>In this example, a dynamic payload type 112 is used for vc-2
+          data.  The 90 kHz RTP timestamp rate is specified in the "a=rtpmap"
+          line after the subtype.  In the "a=fmtp:" line, profile HQ,
+          version 3, and level 0 (unknown or non-standard level) are
+          specified.</t>
+        </section>
+
+        <section title="Offer/Answer Considerations">
+          <t>All parameters are declarative.</t>
+        </section>
+      </section>
+
+      <section title="IANA Considerations">
+        <t>IANA has registered 'video/vc2' as specified in
+        <xref target="media-type"></xref>. The media
+        type has been added to the IANA registry for "RTP
+        Payload Format Media Types"
+        &lt;https://www.iana.org/assignments/rtp-parameters&gt;.</t>
+      </section>
+
+      <section title="Security Considerations">
+
+        <t>RTP packets using the payload format defined in this specification
+        are subject to the security considerations discussed in the <xref
+        target="RFC3550">RTP specification</xref> and any applicable RTP
+        profile such as <xref target="RFC3551">RTP/&wj;AVP</xref>, RTP/<xref
+        target="RFC4585">AVPF</xref>, <xref target="RFC3711">RTP/SAVP</xref>,
+        or <xref target="RFC5124">RTP/&wj;SAVPF</xref>. However, as <xref
+        target="RFC7202">"Securing the RTP Framework: Why RTP Does
+        Not Mandate a Single Media Security Solution"</xref> discusses, it is
+        not an RTP payload format's responsibility to discuss or mandate what
+        solutions are used to meet the basic security goals like
+        confidentiality, integrity, and source authenticity for RTP in general.
+        This responsibility lies with anyone using RTP in an application. They
+        can find guidance on available security mechanisms and important
+        considerations in <xref target="RFC7201">"Options for Securing RTP
+        Sessions"</xref>. Applications SHOULD use one or more appropriate
+        strong security mechanisms. The rest of this section discusses the
+	security-impacting properties of the payload format itself.</t>
+
+        <t>This RTP payload format and its media decoder do not exhibit any
+        significant non-uniformity in the receiver-side computational
+        complexity for packet processing and thus are unlikely to pose a
+        denial-of-service threat due to the receipt of pathological data. Nor
+        does the RTP payload format contain any active content.</t>
+
+        <t>To avoid buffer overruns when processing these packets,
+        the receiver MUST consider both the reported Fragment length
+        and the actual received size of a packet containing slice
+        data.</t>
+
+        <t>In some cases, the transmitter may need to decode variable-length
+	coded headers in order to extract some data from the
+        VC-2 bitstream before assembling packets. This process is
+        potentially subject to buffer overruns if not implemented
+        carefully.</t>
+
+      </section>
+
+  </middle>
+
+  <back>
+
+    <references title="Normative References">
+      &RFC2119;
+
+      &RFC3550;
+
+      &rfc3551;
+
+      &RFC4855;
+
+      &rfc6838;
+
+      &rfc8083;
+
+      &RFC8085;
+
+      &RFC8174;
+
+      <reference anchor="VC2" target="https://ieeexplore.ieee.org/servlet/opac?punumber=7967894">
+        <front>
+          <title>SMPTE Standard - VC-2 Video Compression</title>
+          <author>
+            <organization>SMPTE</organization>
+          </author>
+            <date month="June" year="2017" />
+        </front>
+	<seriesInfo name="ST" value="2042-1:2017"/>
+	<seriesInfo name="DOI" value="10.5594/SMPTE.ST2042-1.2017" />
+
+      </reference>
+
+    </references>
+
+    <references title="Informative References">
+
+      
+      &rfc3711;
+
+      &rfc4585;
+
+      <?rfc include='reference.RFC.7202'?>
+
+      <?rfc include='reference.RFC.7201'?>
+
+      <?rfc include='reference.RFC.5109'?>
+
+      <?rfc include='reference.RFC.5124'?>
+
+    </references>
+
+
+
+  </back>
+</rfc>

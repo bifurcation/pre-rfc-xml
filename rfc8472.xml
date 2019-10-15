@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="us-ascii"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+
+<!ENTITY RFC2119 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY RFC8174 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8174.xml">
+<!ENTITY RFC5246 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5246.xml">
+<!ENTITY RFC5705 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5705.xml">
+<!ENTITY RFC7627 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7627.xml">
+<!ENTITY RFC5746 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5746.xml">
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc strict="yes" ?>
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="8472" 
+     category="std" 
+     submissionType="IETF"
+     consensus="yes"
+     ipr="trust200902">
+
+
+  <front>
+
+    <title abbrev="Token Binding Negotiation TLS Extension">
+      Transport Layer Security (TLS) Extension for Token&nbsp;Binding&nbsp;Protocol&nbsp;Negotiation
+    </title>
+
+    <author fullname="Andrei Popov" initials="A." 
+            surname="Popov" role="editor">
+      <organization>Microsoft Corp.</organization>
+
+      <address>
+        <postal>
+          <street></street>
+          <city></city>
+
+          <region></region>
+
+          <code></code>
+
+          <country>United States of America</country>
+        </postal>
+
+        <email>andreipo@microsoft.com</email>
+
+      </address>
+    </author>
+
+    <author fullname="Magnus Nystroem" initials="M."
+            surname="Nystroem">
+      <organization>Microsoft Corp.</organization>
+
+      <address>
+        <postal>
+          <street></street>
+          <city></city>
+          <region></region>
+          <code></code>
+          <country>United States of America</country>
+        </postal>
+        <email>mnystrom@microsoft.com</email>
+      </address>
+    </author>
+
+    <author fullname="Dirk Balfanz" initials="D."
+            surname="Balfanz">
+      <organization>Google Inc.</organization>
+
+      <address>
+        <postal>
+          <street></street>
+          <city></city>
+
+          <region></region>
+
+          <code></code>
+
+          <country>United States of America</country>
+        </postal>
+
+        <email>balfanz@google.com</email>
+      </address>
+    </author>
+
+    <date month="September" year="2018" />
+
+    <area>General</area>
+
+    <workgroup>Internet Engineering Task Force</workgroup>
+
+<keyword>Cookie, TLS, export, replay</keyword>
+
+    <abstract>
+      <t>This document specifies a Transport Layer Security (TLS) extension
+      for the negotiation of Token Binding protocol version and key
+      parameters. Negotiation of Token Binding in TLS 1.3 and later
+      versions is beyond the scope of this document.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t>In order to use the Token Binding protocol <xref target="RFC8471"/>,
+      the client and server need to agree on the Token Binding protocol
+      version and the parameters (signature algorithm and length) of the Token
+      Binding key. This document specifies a new TLS <xref target="RFC5246" />
+      extension to accomplish this negotiation without introducing additional
+      network round trips in TLS 1.2 and earlier versions.
+      <xref target="TOKENBIND-TLS13"/> addresses Token Binding in TLS 1.3.
+      The negotiation of the Token Binding protocol and key parameters in
+      combination with TLS 1.3 and later versions is beyond the scope of
+      this document. (Note:  This document deals with TLS 1.2 and therefore
+      refers to RFC 5246 (which has been obsoleted by RFC 8446).
+      <xref target="TOKENBIND-TLS13"/> addresses Token Binding in TLS 1.3).</t>
+
+      <section title="Requirements Language">
+       <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+       "SHALL&nbsp;NOT", "SHOULD", "SHOULD&nbsp;NOT", "RECOMMENDED",
+       "NOT&nbsp;RECOMMENDED", "MAY", and "OPTIONAL" in this document
+       are to be interpreted as described in BCP&nbsp;14
+       <xref target="RFC2119"/> <xref target="RFC8174"/> when,
+       and only when, they appear in all capitals, as shown here.</t>
+      </section>
+    </section>
+
+    <section title="Token Binding Negotiation ClientHello Extension">
+      <t>The client uses the "token_binding" TLS extension to indicate the
+      highest supported Token Binding protocol version and key parameters.</t>
+
+        <figure>
+        <artwork align="left"><![CDATA[
+enum {
+    token_binding(24), (65535)
+} ExtensionType;
+        ]]></artwork>
+        </figure>
+
+        <t>The "extension_data" field of this extension contains a "TokenBindingParameters" value.</t>
+
+        <figure>
+        <artwork align="left"><![CDATA[
+struct {
+    uint8 major;
+    uint8 minor;
+} TB_ProtocolVersion;
+
+enum {
+    rsa2048_pkcs1.5(0), rsa2048_pss(1), ecdsap256(2), (255)
+} TokenBindingKeyParameters;
+
+struct {
+    TB_ProtocolVersion token_binding_version;
+    TokenBindingKeyParameters key_parameters_list<1..2^8-1>
+} TokenBindingParameters;
+        ]]></artwork>
+        </figure>
+
+      <t>"token_binding_version" indicates the version of the Token Binding
+      protocol the client wishes to use during this connection. If the client
+      supports multiple Token Binding protocol versions, it SHOULD indicate
+      the latest supported version (the one with the highest
+      TB_ProtocolVersion.major and TB_ProtocolVersion.minor) in
+      TokenBindingParameters.token_binding_version. For example, if the client
+      supports versions {1, 0} and {0, 13} of the Token Binding protocol, it
+      SHOULD indicate version {1, 0}. Please note that the server MAY select
+      any lower protocol version; see <xref target="Server"/> ("<xref
+      target="Server" format="title"/>") for more details. If the client does
+      not support the Token Binding protocol version selected by the server,
+      then the connection proceeds without Token Binding. <xref
+      target="RFC8471"/> describes version {1, 0} of the protocol.</t>
+
+      <t>Please note that the representation of the Token Binding protocol version using two octets 
+      ("major" and "minor") is for human convenience only and carries no protocol significance.</t>
+
+      <t>"key_parameters_list" contains the list of identifiers of the Token Binding key 
+      parameters supported by the client, in descending order of preference. 
+      <xref target="RFC8471"/> establishes an IANA registry for Token Binding key 
+      parameters identifiers.</t>
+    </section>
+
+    <section anchor="Server" title="Token Binding Negotiation ServerHello Extension">
+      <t>The server uses the "token_binding" TLS extension to indicate support for the Token 
+      Binding protocol and to select the protocol version and key parameters.</t>
+
+      <t>The server that supports Token Binding and receives a ClientHello message containing the 
+      "token_binding" extension will include the "token_binding" extension in the ServerHello if 
+      all of the following conditions are satisfied:
+      <list style="numbers">
+        <t>The server supports the Token Binding protocol version offered by the client, or a lower version.</t>
+        <t>The server finds acceptable Token Binding key parameters in the client's list.</t>
+        <t>The server is also negotiating the extended master secret <xref target="RFC7627" /> and 
+        renegotiation indication <xref target="RFC5746" /> TLS extensions. This requirement applies 
+        when TLS 1.2 or an older TLS version is used (see <xref
+	target="Security"/> ("<xref target="Security" format="title"/>") for more details).</t>
+      </list></t>
+
+      <t>The server will ignore any key parameters that it does not recognize. The 
+      "extension_data" field of the "token_binding" extension is structured the same as described 
+      above for the client "extension_data".</t>
+
+
+
+      <t>"token_binding_version" contains the lower of: 
+        <list style="symbols">
+          <t>the Token Binding protocol version offered by the client in the "token_binding" 
+          extension, and</t>
+          <t>the highest Token Binding protocol version supported by the server.</t>
+        </list>
+      </t>
+
+      <t>"key_parameters_list" contains exactly one Token Binding key parameters identifier 
+      selected by the server from the client's list.</t>
+    </section>
+
+    <section anchor="Negotiating" title="Negotiating Token Binding Protocol Version and Key Parameters">
+      <t>It is expected that a server will have a list of Token Binding key parameters identifiers 
+      that it supports, in preference order. The server MUST only select an identifier that the 
+      client offered. The server SHOULD select the most highly preferred key parameters identifier 
+      it supports, which is also advertised by the client. In the event that the server supports 
+      none of the key parameters that the client advertises, then the server MUST NOT include 
+      the "token_binding" extension in the ServerHello.</t>
+
+      <t>The client receiving the "token_binding" extension MUST terminate the handshake with a 
+      fatal "unsupported_extension" alert if any of the following conditions are true:
+      <list style="numbers">
+        <t>The client did not include the "token_binding" extension in the ClientHello.</t>
+        <t>"token_binding_version" is higher than the Token Binding protocol version advertised by 
+        the client.</t>
+        <t>"key_parameters_list" includes more than one Token Binding key parameters 
+        identifier.</t>
+        <t>"key_parameters_list" includes an identifier that was not advertised by the client.</t>
+        <t>TLS 1.2 or an older TLS version is used, but the extended master secret 
+        <xref target="RFC7627" /> and TLS renegotiation indication <xref target="RFC5746" /> 
+        extensions are not negotiated (see <xref target="Security"/>
+        ("<xref target="Security" format="title"/>") for more details).</t>
+      </list></t>
+
+      <t>If the "token_binding" extension is included in the ServerHello and the client supports 
+      the Token Binding protocol version selected by the server, it means that the version and key 
+      parameters have been negotiated between the client and the server and SHALL be definitive for 
+      the TLS connection. TLS 1.2 and earlier versions support renegotiation,
+      which allows the client 
+      and server to renegotiate the Token Binding protocol version and key parameters on the same 
+      connection. The client MUST use the negotiated key parameters in the "provided_token_binding" 
+      as described in <xref target="RFC8471"/>.</t>
+
+      <t>If the client does not support the Token Binding protocol version selected by the server, 
+      then the connection proceeds without Token Binding. There is no requirement for the client to 
+      support any Token Binding versions other than the one advertised in the client's 
+      "token_binding" extension.</t>
+
+      <t>Client and server applications can choose to handle failure to negotiate Token Binding in 
+      a variety of ways: continue using the connection as usual, shorten the lifetime of 
+      tokens issued during this connection, require stronger authentication, terminate the 
+      connection, etc.</t>
+
+      <t>The Token Binding protocol version and key parameters are negotiated for each TLS 
+      connection, which means that the client and server include their "token_binding" 
+      extensions in both the full TLS handshake that establishes a new TLS session and the 
+      subsequent abbreviated TLS handshakes that resume the TLS session.</t>
+    </section>
+
+    <section title="IANA Considerations">
+      <t>This document updates the "TLS ExtensionType Values" registry. The registration for the "token_binding" TLS extension is as follows:
+        <list style="empty">
+          <t>Value: 24</t>
+          <t>Extension name: token_binding</t>
+          <t>Recommended: Yes</t>
+	  <t>Reference: This document</t>
+        </list>
+      </t>
+
+      <t>This document uses the "Token Binding Key Parameters" registry created by
+      <xref target="RFC8471"/>. This document creates no new registrations in 
+      the registry.</t>
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+      <section title="Downgrade Attacks">
+        <t>The Token Binding protocol version and key parameters are negotiated via the 
+        "token_binding" extension  within the TLS handshake. TLS detects handshake message 
+        modification by active attackers; therefore, it is not possible for an attacker to remove 
+        or modify the "token_binding" extension without breaking the TLS handshake. The signature 
+        algorithm and key length used in the Token Binding of type "provided_token_binding" MUST 
+        match the parameters negotiated via the "token_binding" extension.</t>
+      </section>
+      <section title="Triple Handshake Vulnerability in TLS 1.2 and Older TLS Versions">
+        <t>The Token Binding protocol relies on the TLS exporters <xref target="RFC5705" /> to 
+        associate a TLS connection with a Token Binding. The triple handshake attack 
+        <xref target="TRIPLE-HS" /> is a known vulnerability in TLS 1.2 and
+	older TLS versions; it allows an attacker to synchronize keying
+	material between TLS connections. The attacker 
+        can then successfully replay bound tokens. For this reason, the Token Binding protocol MUST 
+        NOT be negotiated with these TLS versions, unless the extended master secret 
+        <xref target="RFC7627" /> and renegotiation indication <xref target="RFC5746" /> TLS 
+        extensions have also been negotiated.</t>
+      </section>
+    </section>
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      &RFC2119;
+      &RFC8174;
+      &RFC5246;
+      &RFC5705;
+      &RFC7627;
+      &RFC5746;
+
+<!--draft-ietf-tokbind-protocol-19 (RFC 8471) -->
+<reference anchor="RFC8471" target="https://www.rfc-editor.org/info/rfc8471">
+<front>
+<title>The Token Binding Protocol Version 1.0</title>
+
+<author initials='A' surname='Popov' fullname='Andrey Popov' role="editor">
+  <organization/>
+</author>
+
+<author initials="M" surname="Nystroem" fullname="Magnus Nystroem">
+<organization/>
+</author>
+
+<author initials="D" surname="Balfanz" fullname="Dirk Balfanz">
+<organization/>
+</author>
+
+<date month='September' year='2018'/>
+</front>
+<seriesInfo name="RFC" value="8471"/>
+<seriesInfo name="DOI" value="10.17487/RFC8471"/>
+</reference>
+
+    </references>
+
+    <references title="Informative References">
+
+<!--draft-ietf-tokbind-tls13-01 (I-D Exists)-->
+<reference anchor='TOKENBIND-TLS13'>
+<front>
+<title>Token Binding for Transport Layer Security (TLS) Version 1.3 Connections</title>
+<author initials='N' surname='Harper' fullname='Nick Harper'>
+    <organization />
+</author>
+<date month='May' year='2018' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-tokbind-tls13-01' />
+</reference>
+
+      <reference anchor="TRIPLE-HS">
+        <front>
+          <title>Triple Handshakes and Cookie Cutters: Breaking and Fixing Authentication over 
+          TLS</title>
+          <author initials="K." surname="Bhargavan">
+            <organization>Inria Paris-Rocquencourt</organization>
+          </author>
+          <author initials="A." surname="Delignat-Lavaud">
+            <organization>Inria Paris-Rocquencourt</organization>
+          </author>
+          <author initials="C." surname="Fournet">
+            <organization>Inria Paris-Rocquencourt</organization>
+          </author>
+          <author initials="A." surname="Pironti">
+            <organization>Inria Paris-Rocquencourt</organization>
+          </author>
+          <author initials="P." surname="Strub">
+            <organization>Inria Paris-Rocquencourt</organization>
+          </author>
+          <date month="May" year="2014" />
+        </front>
+	<seriesInfo name="IEEE Symposium on" value="Security and Privacy"/>
+	<seriesInfo name="DOI" value="10.1109/SP.2014.14"/>
+      </reference>
+    </references>
+
+<section anchor="Acknowledgements" title="Acknowledgements" numbered="no">
+<t>This document incorporates comments and suggestions offered by Eric
+   Rescorla, Gabriel Montenegro, Martin Thomson, Vinod Anupam, Anthony
+   Nadalin, Michael B.&nbsp;Jones, Bill Cox, Nick Harper, Brian Campbell,
+   Benjamin Kaduk, Alexey Melnikov, and others.</t>
+<t>This document was produced under the chairmanship of John Bradley and
+   Leif Johansson.  The area directors included Eric Rescorla, Kathleen
+   Moriarty, and Stephen Farrell.</t>
+</section>
+  </back>
+</rfc>

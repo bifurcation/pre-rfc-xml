@@ -1,0 +1,732 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="7739" ipr="trust200902" category="info" submissionType="IETF" consensus="yes">
+  <front>
+    <title abbrev="Implications of Predictable Fragment IDs">Security Implications of Predictable Fragment Identification Values</title>
+
+<author fullname="Fernando Gont"
+        initials="F."
+        surname="Gont">
+        <organization abbrev="Huawei Technologies">Huawei Technologies</organization>
+	
+        <address>
+
+            <postal>    
+			<street>Evaristo Carriego 2644</street>
+		<code>1706</code><city>Haedo</city>
+ 		<region>Provincia de Buenos Aires</region>
+		<country>Argentina</country>
+            </postal>
+            <phone>+54 11 4650 8472</phone>
+
+            <email>fgont@si6networks.com</email>
+
+		<uri>http://www.si6networks.com</uri>
+        </address>
+    </author>
+
+
+    <date month="January" year="2016" />
+    <area>Internet</area>
+    <workgroup>IPv6 maintenance Working Group (6man)</workgroup>
+
+<keyword>attack</keyword>
+<keyword>vulnerability</keyword>
+<keyword>Denial of Service</keyword>
+<keyword>protocol identifiers</keyword>
+
+
+    <abstract>
+    <t>
+
+IPv6 specifies the Fragment Header, which is employed for the fragmentation and reassembly mechanisms. The Fragment Header contains an "Identification" field that, together with the IPv6 Source Address and the IPv6 Destination Address of a packet, identifies fragments that correspond to the same original datagram, such that they can be reassembled together by the receiving host. The only requirement for setting the Identification field is that the corresponding value must be different than that employed for any other fragmented datagram sent recently with the same Source Address and Destination Address. Some implementations use a simple global counter for setting the Identification field, thus leading to predictable Identification values. This document analyzes the security implications of predictable Identification values, and provides implementation guidance for setting the Identification field of the Fragment Header, such that the aforementioned security implications are mitigated.
+    </t>
+    </abstract>
+  </front>
+
+  <middle>
+  
+   
+<section title="Introduction" anchor="intro">
+<t>
+IPv6 specifies the Fragment Header, which is employed for the fragmentation and reassembly mechanisms. The Fragment Header contains an "Identification" field that, together with the IPv6 Source Address and the IPv6 Destination Address of a packet, identifies fragments that correspond to the same original datagram, such that they can be reassembled together by the receiving host. The only requirement for setting the Identification field is that its value must be different than that employed for any other fragmented datagram sent recently with the same Source Address and Destination Address.</t>
+
+<t>The most trivial algorithm to avoid reusing Identification values too quickly is to maintain a global counter that is incremented for each fragmented datagram that is transmitted. However, this trivial algorithm leads to predictable Identification values that can be leveraged to perform a variety of attacks.</t>
+
+<t><xref target="sec-implications"/> of this document analyzes the security implications of predictable Identification values. <xref target="constraints"/> discusses constraints in the possible algorithms for selecting Identification values. <xref target="recommended-algorithms"/> specifies a number of algorithms that could be used for generating Identification values that mitigate the issues discussed in this document. Finally, <xref target="survey"/> contains a survey of the algorithms employed by popular IPv6 implementations for generating the Identification values.</t>
+</section>
+
+
+<section title="Terminology" anchor="terminology">
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+   NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   RFC 2119 <xref target="RFC2119"/>.</t>
+</section>
+
+
+<section title="Security Implications of Predictable Fragment Identification Values" anchor="sec-implications">
+<t>
+Predictable Identification values result in an information leakage that can be exploited in a number of ways. Among others, they may potentially be exploited to:
+
+<list style="symbols">
+<t>determine the packet rate at which a given system is transmitting information</t>
+<t>perform stealth port scans to a third party</t>
+<t>uncover the rules of a number of firewalls</t>
+<t>count the number of systems behind a middle-box </t>
+<t>perform Denial-of-Service (DoS) attacks, or</t>
+<t>perform data injection attacks against transport or application protocols</t>
+</list>
+</t>
+
+
+<t>
+The security implications introduced by predictable Identification values in IPv6 are very similar to those of predictable Identification values in IPv4.
+</t>
+
+
+<t>
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />
+<xref target="Sanfilippo1998a"/> originally pointed out how the IPv4 Identification field could be examined to determine the packet rate at which a given system is transmitting information. Later, <xref target="Sanfilippo1998b"/> described how a system with such an implementation could be used to perform a stealth port scan to a third (victim) host. <xref target="Sanfilippo1999"/> explained how to exploit this implementation strategy to uncover the rules of a number of firewalls. <xref target="Bellovin2002"/> explained how the IPv4 Identification field could be exploited to count the number of systems behind a NAT. <xref target="Fyodor2004"/> is an entire paper on most (if not all) the ways to exploit the information provided by the Identification field of the IPv4 header (and these results apply in a similar way to IPv6). <xref target="Zalewski2003"/> originally envisioned the exploitation of IP fragmentation/reassembly for performing data injection attacks against upper-layer protocols. <xref target="Herzberg2013"/> explores the use of IPv4/IPv6 fragmentation and predictable Identification values for performing DNS cache poisoning attacks in great detail. <xref target="RFC6274"/> covers the security implications of the IPv4 case in detail.
+</t>
+</list>
+</t>
+
+<t>
+One key difference between the IPv4 case and the IPv6 case is that, in IPv4, the Identification field is part of the fixed IPv4 header (and thus usually set for all packets), while in IPv6 the Identification field is present only in those packets that carry a Fragment Header. As a result, successful exploitation of the Identification field depends on two different factors:
+
+<list style="symbols">
+<t>
+vulnerable Identification generators, and
+</t>
+<t>
+the ability of an attacker to trigger the use of IPv6 fragmentation for packets sent from/to the victim node
+</t>
+</list>
+</t>
+
+<t>The scenarios in which an attacker may successfully perform the
+aforementioned attacks depend on the specific attack type. For example, in
+order to perform a DoS attack on communications between two hosts, an attacker would need to know
+the IPv6 addresses employed by the aforementioned two nodes. Such knowledge
+may be readily available if the target of the attack is the communication
+between two specific BGP peers, two specific SMTP servers, or one specific
+primary DNS server and one of its secondary DNS servers, but may not be easily
+available if the goal is a DoS attack on all communications between
+arbitrary IPv6 hosts (e.g., the goal is to perform a DoS attack on all communications
+involving one specific node with arbitrary/unknown hosts). Other attacks, such
+as performing stealth port scans to a third party or determining the packet rate at which a given system is transmitting information, only require the attacker to know the IPv6 address of a vulnerable implementation.
+</t>
+
+<t>
+As noted in <xref target="intro"/>, some implementations have been known to use predictable Identification values. For instance, <xref target="survey"/> of this document shows that recent versions of a number of popular IPv6 implementations employ predictable values for the Identification field of the Fragment Header.</t>
+
+
+
+<t>
+Additionally, we note that <xref target="RFC2460"/> states that when an ICMPv6 Packet Too Big (PTB) error
+message advertising a Maximum Transfer Unit (MTU) smaller than 1280 bytes is
+received, the receiving host is not required to reduce the Path-MTU for the
+corresponding Destination Address, but must simply include a Fragment Header
+in all subsequent packets sent to that destination. This triggers the use of
+the so-called IPv6 &quot;atomic fragments&quot; <xref target="RFC6946"/>: IPv6
+fragments with a Fragment Offset equal to 0, and the "M" ("More fragments")
+bit clear. <xref target="DEPGEN" /> documents the motivation of deprecating the generation of IPv6 atomic fragments in <xref target="RFC2460"/>.
+</t>
+<t>
+Thus, an attacker can usually cause a victim host to &quot;fragment&quot; its outgoing packets by sending it a forged ICMPv6 Packet Too Big (PTB) error message that advertises an MTU smaller than 1280 bytes.</t>
+
+<t>There are a number of aspects that should be considered, though:
+
+<list style="symbols">
+<t>
+All the implementations the author is aware of record the Path-MTU information
+on a per-destination basis. Thus, an attacker can only cause the victim to
+enable fragmentation for those packets sent to the Source Address of IPv6
+packet embedded in the payload of the ICMPv6 PTB message. However, we note
+that Section 5.2 of <xref target="RFC1981"/> notes that an implementation
+could maintain a single system-wide Path MTU (PMTU) value to be used for all
+packets sent to that node. Clearly, such implementations would exacerbate the
+problem of any attacks based on Path MTU Discovery (PMTUD) <xref target="RFC5927"/> or IPv6 fragmentation.
+</t>
+<t>
+If the victim node implements some of the counter-measures for ICMP attacks described in RFC 5927 <xref target="RFC5927"/>, it might be difficult for an attacker to cause the victim node to employ fragmentation for its outgoing packets. However, many current implementations fail to enforce these validation checks. For example, Linux 2.6.38-8 does not even require received ICMPv6 error messages to correspond to an ongoing communication instance.
+</t>
+<t>Some implementations (notably Linux) have already been updated according to <xref target="DEPGEN"/> such that ICMPv6 PTB messages do not result in the generation of IPv6 atomic fragments.</t>
+</list>
+</t>
+
+<t>
+Implementations that employ predictable Identification values and also fail to enforce validation checks on ICMPv6 error messages become vulnerable to the same type of attacks that can be exploited with IPv4 fragmentation, discussed earlier in this section.
+</t>
+
+
+<t>One possible way in which predictable Identification values could be leveraged for performing a DoS attack is as follows: Let us assume that Host A is communicating with Host B, and that an attacker wants to perform a DoS attack such communication. The attacker would learn the Identification value currently in use by Host A, possibly by sending any packet that would elicit a fragmented response (e.g., an ICPMv6 echo request with a large payload). The attacker would then send a forged ICMPv6 PTB error message to Host A (with the IPv6 Source Address of the embedded IPv6 packet set to the IPv6 address of Host A, and the Destination Address of the embedded IPv6 packet set to the IPv6 address of a Host B), such that any subsequent packets sent by Host A to Host B include a Fragment Header. Finally, the attacker would send forged IPv6 fragments to Host B, with their IPv6 Source Address set to that of Host A, and Identification values that would result in collisions with the Identification values employed for the legitimate traffic sent by Host A to Host B. If Host B discards fragments that result in collisions of Identification values (e.g., such fragments overlap, and the host implements <xref target="RFC5722"/>), the attacker could simply trash the Identification space by sending multiple forged fragments with different Identification values, such that any subsequent packets from Host A to Host B are discarded at Host B as a result of the malicious fragments sent by the attacker.
+
+
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />
+For example, Linux 2.6.38-10 is vulnerable to the aforementioned issue.
+</t>
+<t>
+<xref target="RFC6946"/> describes an improved processing of these packets that would eliminate this specific attack vector, at least in the case of TCP connections that employ the Path-MTU Discovery mechanism.</t>
+</list>
+</t>
+
+
+<t>The aforementioned attack scenario is simply included to illustrate the
+problem of employing predictable Identification values. We note that
+regardless of the attacker's ability to cause a victim host to employ
+fragmentation when communicating with third parties, use of predictable Identification values makes communication flows that employ fragmentation vulnerable to any fragmentation-based attacks.</t>
+</section>
+
+
+<section title="Constraints for the Selection of Fragment Identification Values" anchor="constraints">
+
+<t>The Identification field of the Fragment Header is 32-bits long. However, when translators (e.g. <xref target="RFC6145"/>) are employed, the high-order 16 bits of the Identification field are effectively ignored.
+
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />
+<xref target="RFC6145"/> notes that, when translating in the IPv6-to-IPv4 direction, "if there is a Fragment Header in the IPv6 packet, the last 16 bits of its value MUST be used for the IPv4 identification value".
+</t>
+<t>Additionally, Section 3.3 of <xref target="RFC6052"/> encourages operators to use a Network-Specific Prefix (NSP) that maps the IPv4 address space into IPv6.  Thus, when an NSP is being used, IPv6 addresses representing IPv4 nodes (reached through a stateless translator) are indistinguishable from native IPv6 addresses.
+</t>
+</list>
+</t>
+
+<t>
+Thus, when translators are employed, the "effective" length of the Identification field is 16 bits and, as a result, at least during the IPv6/IPv4 transition/co-existence phase, it is probably safer to assume that only the low-order 16 bits of the Identification field are of use to the destination system.</t>
+
+
+<t>Regarding the selection of Identification values, the only requirement specified in <xref target="RFC2460"/> is that the Identification value must be different than that of any other fragmented packet sent recently with the same Source Address and Destination Address. 
+Failure to comply with this requirement could lead to the interoperability problems discussed in <xref target="RFC4963"/>.
+</t>
+
+<t>
+From a security standpoint, unpredictable Identification values are desirable.  However, this is somewhat at odds with the "reuse" requirements specified in <xref target="RFC2460"/>, that specifies that an Identification value must be different than that employed for any other fragmented packet sent recently with the same Source Address and Destination Address.
+</t>
+
+
+<t>Finally, since Identification values need to be selected for each outgoing datagram that requires fragmentation, the performance impact should be considered when choosing an algorithm for the selection of Identification values.</t>
+
+</section> 
+
+<section title="Algorithms for Selecting Fragment Identification Values" anchor="recommended-algorithms">
+
+<t>There are a number of algorithms that may be used for setting the Identification field such that the security issues discussed in this document are avoided. This section presents three of those.</t>
+
+<t>The algorithm in <xref target="recommended-algorithm"/> typically leads to
+a low Identification reuse frequency at the expense of keeping
+per-destination state; this algorithm only uses a Pseudorandom Number
+Generator (PNRG) when the host communicates with a new destination. The
+algorithm in <xref target="randomized"/> may result in a higher Identification
+reuse frequency. It also uses a PRNG for each datagram that needs to be fragmented. Hence, the algorithm in <xref target="recommended-algorithm"/> will likely result in better performance properties. Finally, the algorithm in <xref target="hash-based"/> achieves a similar Identification reuse frequency to that of the algorithm in <xref target="recommended-algorithm"/> without the need of keeping state, but possibly at the expense of lower per-packet performance.
+
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />Since the specific algorithm to be employed for the PRNGs in <xref target="recommended-algorithm"/> and <xref target="randomized"/>, and the specific algorithms to be employed for the hash functions in <xref target="hash-based"/> have not been specified, it is impossible to provide a quantitative performance comparison of the algorithms described in this section.
+</t>
+</list>
+</t>
+
+
+<section title="Per-Destination Counter (Initialized to a Random Value)" anchor="recommended-algorithm">
+
+<t>
+This algorithm consists of the following steps:
+<list style="numbers">
+<t>Whenever a packet must be sent with a Fragment Header, the sending host
+should look up in the Destination Cache an entry corresponding to the
+Destination Address of the packet.
+</t>
+<t>If such an entry exists, it contains the last Identification value
+used for that Destination Address. Therefore, such a value should be incremented by 1 and used for setting the Identification field of the outgoing packet. Additionally, the updated value should be recorded in the corresponding entry of the Destination Cache <xref target="RFC4861"/>.</t>
+<t>If such an entry does not exist, it should be created, and the Identification value for that destination should be initialized with a random value (e.g., with a Pseudorandom Number Generator), and used for setting the Identification field of the Fragment Header of the outgoing fragmented datagram. 
+</t>
+</list>
+</t>
+
+<t>The advantages of this algorithm are:
+<list style="symbols">
+<t>It is simple to implement, with the only complexity residing in the PRNG used to initialize the Identification value contained in each entry of the Destination Cache.
+</t>
+<t>The Identification reuse frequency will typically be lower than that achieved by a global counter (when sending traffic to multiple destinations), since this algorithm uses per-destination counters (rather than a single system-wide counter).
+</t>
+<t>It has good performance properties (once the corresponding entry in the Destination Cache has been created and initialized, each subsequent Identification value simply involves the increment of a counter).
+</t>
+</list>
+</t>
+
+<t>The possible drawbacks of this algorithm are:
+<list style="symbols">
+<t>If, as a result of resource management, an entry of the Destination Cache must be removed, the last Identification value used for that Destination will be lost. Thus, subsequent traffic to that destination would cause that entry to be recreated and reinitialized to random value, thus possibly leading to Identification "collisions".</t>
+
+<t>Since the Identification values are predictable by the destination
+host, a vulnerable host might possibly leak to third parties the Identification values used by other hosts to send traffic to it (i.e., Host B could leak to Host C the Identification values that Host A is using to send packets to Host B). <xref target="oracle"/> describes one possible scenario for such leakage in detail.
+</t>
+</list>
+</t>
+</section>
+
+
+<section title="Randomized Identification Values" anchor="randomized">
+<t>Clearly, use of a Pseudorandom Number Generator for selecting the Identification would be desirable from a security standpoint. With such a scheme, the Identification of each fragmented datagram would be selected as:
+
+          <figure align="center">
+            <artwork><![CDATA[
+               Identification = random()
+]]></artwork>
+          </figure>
+</t>
+
+<t>
+where "random()" is the PRNG.</t>
+<t>
+The specific properties of such scheme would clearly depend on the specific PRNG employed. For example, some PRNGs may result in higher Identification reuse frequencies than others, in the same way that some PRNGs may be more expensive (in terms of processing requirements and/or implementation complexity) than others.</t>
+
+<t>Discussion of the properties of possible PRNGs is considered out of the scope of this document. However, we do note that some PRNGs employed in the past by some implementations have been found to be predictable <xref target="Klein2007"/>. Please see <xref target="RFC4086"/> for randomness requirements for security.</t>
+</section>
+
+<section title="Hash-Based Fragment Identification Selection Algorithm" anchor="hash-based">
+<t>Another alternative is to implement a hash-based algorithm similar to that specified in <xref target="RFC6056"/> for the selection of transport port numbers. With such a scheme, the Identification value of each fragmented datagram would be selected with the expression:
+
+          <figure align="center">
+            <artwork><![CDATA[
+Identification = F(Src IP, Dst IP, secret1)  +
+                 counter[G(Src IP, Dst Pref, secret2)]
+]]></artwork>
+          </figure>
+where:</t>
+<t>
+<list style="hanging">
+<t hangText="Identification:">
+<vspace blankLines="0" />Identification value to be used for the fragmented datagram.</t>
+<t hangText="F():">
+<vspace blankLines="0" />Hash function.</t>
+<t hangText="Src IP:">
+<vspace blankLines="0" />IPv6 Source Address of the datagram to be fragmented.</t>
+<t hangText="Dst IP:">
+<vspace blankLines="0" />IPv6 Destination Address of the datagram to be fragmented.</t>
+<t hangText="secret1:">
+<vspace blankLines="0" />Secret data unknown to the attacker. This value can
+be initialized to a pseudo-random value during the system bootstrapping
+sequence. It should remain constant at least while there could be previously sent fragments still in the network or at the fragment reassembly buffer of the corresponding destination system(s).</t>
+<t hangText="counter[]:">
+<vspace blankLines="0" />System-wide array of 32-bit counters (e.g. with 8K elements or more). Each counter should be initialized to a pseudo-random value during the system bootstrapping sequence.</t>
+<t hangText="G():">
+<vspace blankLines="0" />Hash function. It may or may not be the same hash function as that used for F().</t>
+<t hangText="Dst Pref:">
+<vspace blankLines="0" />IPv6 "Destination Prefix" of the datagram to be fragmented (can be assumed to be the first eight bytes of the Destination Address of such packet). Note: the "Destination Prefix" (rather than Destination Address) is used, such that the ability of an attacker of searching the "increments" space by using multiple addresses of the same subnet is reduced.</t>
+<t hangText="secret2:">
+<vspace blankLines="0" />Secret data unknown to the attacker. This value can
+be initialized to a pseudo-random value during the system bootstrapping
+sequence. It should remain constant at least while there could be previously sent fragments still in the network or at the fragment reassembly buffer of the corresponding destination system(s).</t>
+</list>
+
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />counter[G(src IP, Dst Pref, secret2)] should be incremented by one each time an Identification value is selected.
+</t>
+</list>
+</t>
+
+<t>The output of F() will be constant for each (Src IP, Dst IP)
+pair. Similarly, the output of G() will be constant for each (Src IP, Dst
+Pref) pair. Thus, the resulting Identification value will be the result of a
+random offset plus a linear function (provided by counter[]), therefore
+resulting in a monotonically increasing sequence of Identification values for each (src IP, Dst IP) pair.
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />
+F() essentially provides the unpredictability (by off-path attackers) of the resulting Identification values, while counter[] provides a linear function such that the Identification values are different for each fragmented packet while the Identification reuse frequency is minimized.
+</t>
+</list>
+</t>
+
+<t>The advantages of this algorithm are:
+<list style="symbols">
+<t>The Identification reuse frequency will typically be lower than that achieved by a global counter (when sending traffic to multiple destinations), since this algorithm uses multiple system-wide counters (rather than a single system-wide counter). The extent to which the reuse frequency will be lower depends on the number of elements in counter[], and the number of other active flows that result in the same value of G() (and hence cause the same counter to be incremented for each datagram that is fragmented).</t>
+
+
+<t>It is possible to implement the algorithm such that good performance is achieved. For example, the result of F() could be stored in the Destination Cache (such that it need not be recomputed for each packet that must be sent) along with the computed index/argument for counter[].
+	<list style="hanging">
+
+	<t hangText="NOTE:">
+<vspace blankLines="0" />If this implementation approach is followed, and an entry of the Destination Cache must be removed as a result of resource management, the last Identification value used for that Destination will *not* be lost. This is an improvement over the algorithm specified in <xref target="recommended-algorithm"/>.
+	</t>
+	</list>
+</t>
+</list>
+</t>
+
+<t>The possible drawbacks of this algorithm are:
+<list style="symbols">
+<t>Since the Identification values are predictable by the destination
+host, a vulnerable host could possibly leak to third parties the Identification values used by other hosts to send traffic to it (i.e., Host B could leak to Host C the Identification values that Host A is using to send packets to Host B). <xref target="oracle"/> describes a possible scenario in which that information leakage could take place. We note, however, that this algorithm makes the aforementioned attack less reliable for the attacker, since each counter could be possibly shared by multiple traffic flows (i.e., packets destined to other destinations might cause the same counter to be incremented).
+
+</t>
+</list>
+</t>
+
+<t>This algorithm might be preferable (over the one specified in <xref target="recommended-algorithm"/>) in those scenarios in which a node is expected to communicate with a large number of destinations, and thus it is desirable to limit the amount of information to be maintained in memory.
+
+
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />
+In such scenarios, if the algorithm specified in <xref target="recommended-algorithm"/> were implemented, entries from the Destination Cache might need to be pruned frequently, thus increasing the risk of Identification "collisions".
+</t>
+</list>
+</t>
+
+</section>
+
+</section>
+
+    <section title="Security Considerations">
+
+	<t>This document discusses the security implications of predictable Identification values, and provides implementation guidance such that the aforementioned security implications can be mitigated.</t>
+
+<t>A number of possible algorithms are described, to provide some implementation alternatives to implementers. We note that the selection of such an algorithm usually implies a number of trade-offs (security, performance, implementation complexity, interoperability properties, etc.).</t>
+
+    </section>
+
+
+
+  </middle>
+
+  <back>
+  <references title='Normative References'>
+	<?rfc include="reference.RFC.1981" ?>
+    <?rfc include="reference.RFC.2119" ?>
+	<?rfc include="reference.RFC.2460" ?>
+	<?rfc include="reference.RFC.4086" ?>
+	<?rfc include="reference.RFC.4861" ?>
+	<?rfc include="reference.RFC.5722" ?>
+	<?rfc include="reference.RFC.6052" ?>
+	<?rfc include="reference.RFC.6056" ?>
+	<?rfc include="reference.RFC.6145" ?>
+	<?rfc include="reference.RFC.6946" ?>
+  </references>
+
+  <references title='Informative References'>
+	<?rfc include="reference.RFC.4963" ?>
+	<?rfc include="reference.RFC.5927" ?>
+	<?rfc include="reference.RFC.6274" ?>
+
+<!-- draft-ietf-6man-deprecate-atomfrag-generation-04: I-D Exists -->
+
+<reference anchor='DEPGEN'>
+<front>
+<title>Deprecating the Generation of IPv6 Atomic Fragments</title>
+
+<author initials='F' surname='Gont' fullname='Fernando Gont'>
+    <organization />
+</author>
+
+<author initials='S' surname='Liu' fullname='Shucheng Liu'>
+    <organization />
+</author>
+
+<author initials='T' surname='Anderson' fullname='Tore Anderson'>
+    <organization />
+</author>
+
+<date month='July' day='4' year='2015' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-6man-deprecate-atomfrag-generation-04' />
+</reference>
+
+	<reference anchor="Bellovin2002">
+		<front>
+			<title>A Technique for Counting NATted Hosts</title>
+			<author initials="S. M." surname="Bellovin" fullname= "Bellovin, S. M.">
+				<organization></organization>
+			</author>
+			<date year="2002"/>
+		</front>
+		<seriesInfo name="IMW'02" value="Nov. 6-8, 2002, Marseille,
+						 France"/>
+<seriesInfo name="DOI" value="10.1145/637201.637243"/>
+	</reference>
+
+
+	<reference anchor="Fyodor2004" target="http://www.insecure.org/nmap/idlescan.html">
+		<front>
+			<title>TCP Idle Scan</title>
+			<author initials="G" surname="Lyon">
+				<organization/>
+			</author>
+			<date year="2004"/>
+		</front>
+<seriesInfo name="from Chapter 5 of" value="&quot;Nmap Network Scanning&quot;"/>
+	
+	</reference>
+
+
+	<reference anchor="Herzberg2013" target="http://u.cs.biu.ac.il/~herzbea/security/13-03-frag.pdf">
+		<front>
+			<title>Fragmentation Considered Poisonous</title>
+			<author initials="A." surname="Herzberg" fullname="Amir Herzberg">
+				<organization></organization>
+			</author>
+			<author initials="H." surname="Shulman" fullname="Haya Shulman">
+				<organization></organization>
+			</author>
+			<date/>
+		</front>
+		<seriesInfo name="Technical Report 13-03," value="March 2013" />
+	</reference>
+
+
+
+	<reference anchor="Klein2007" target="http://www.trusteer.com/files/OpenBSD_DNS_Cache_Poisoning_and_Multiple_OS_Predictable_IP_ID_Vulnerability.pdf">
+		<front>
+			<title>OpenBSD DNS Cache Poisoning and Multiple O/S Predictable IP ID Vulnerability</title>
+			<author initials="A." surname="Klein" fullname="Amit Klein">
+				<organization></organization>
+			</author>
+			<date year="2007"/>
+		</front>
+	
+	</reference>
+
+	<reference anchor="Sanfilippo1998a" target="http://diswww.mit.edu/menelaus.mit.edu/bt/8704">
+		<front>
+			<title>Subject: about the ip header id</title>
+			<author initials="S." surname="Sanfilippo" fullname="S. Sanfilippo">
+				<organization></organization>
+			</author>
+			<date month="14 December" year="1998"/>
+		</front>
+		<seriesInfo name="message to" value="Bugtraq mailing list" />
+	</reference>
+
+	<reference anchor="Sanfilippo1998b" target="http://diswww.mit.edu/menelaus.mit.edu/bt/8736">
+		<front>
+			<title>Subject: new tcp scan method</title>
+			<author initials="S." surname="Sanfilippo" fullname="S. Sanfilippo">
+				<organization></organization>
+			</author>
+			<date month="18 December" year="1998"/>
+		</front>
+		<seriesInfo name="message to" value="Bugtraq mailing list" />
+	</reference>
+
+
+
+	<reference anchor="Sanfilippo1999" target="http://diswww.mit.edu/menelaus.mit.edu/bt/12686">
+		<front>
+			<title>Subject: more about IP ID</title>
+			<author initials="S." surname="Sanfilippo" fullname="S. Sanfilippo">
+				<organization></organization>
+			</author>
+			<date month="20 November" year="1999"/>
+		</front>
+		<seriesInfo name="message to" value="Bugtraq mailing list" />
+	</reference>
+
+	<reference anchor="SI6-IPv6" target="http://www.si6networks.com/tools/ipv6toolkit">
+		<front>
+			<title>SI6 Networks' IPv6 Toolkit</title>
+			<author>
+				<organization>SI6 Networks</organization>
+			</author>
+			<date/>
+		</front>
+	</reference>
+
+	<reference anchor="Zalewski2003" target="http://lcamtuf.coredump.cx/ipfrag.txt">
+		<front>
+			<title>Subject: A new TCP/IP blind data injection technique?</title>
+			<author initials="M." surname="Zalewski" fullname="Michal Zalewski">
+				<organization></organization>
+			</author>
+			<date month="11 December" year="2003"/>
+		</front>
+		<seriesInfo name="message to Bugtraq" value="mailing list" />
+	</reference>
+
+
+</references>
+
+
+<section title="Information Leakage Produced by Vulnerable Implementations" anchor="oracle">
+<t><xref target="sec-implications"/> provides a number of references describing a number of ways in which a vulnerable implementation may reveal the Identification values to be used in subsequent packets, thus opening the door to a number of attacks. In all of those scenarios, a vulnerable implementation leaks/reveals its own Identification number.</t>
+
+<t>This section presents a different attack scenario, in which a vulnerable implementation leaks/reveals the Identification number of a non-vulnerable implementation. That is, a vulnerable implementation (Host A) leaks the current Identification value in use by a third-party host (Host B) to send fragmented datagrams from Host B to Host A.
+
+
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />
+For the most part, this section is included to illustrate how a vulnerable
+implementation might be leveraged to leak out the Identification value of an otherwise non-vulnerable implementation.
+</t>
+</list>
+</t>
+
+<t>The following scenarios assume:
+<list style="hanging">
+<t hangText="Host A:">
+<vspace blankLines="0" />An IPv6 host that implements the algorithm specified in <xref target="recommended-algorithm"/>, implements <xref target="RFC5722"/>, but does not implement <xref target="RFC6946"/>.</t>
+<t hangText="Host B:">
+<vspace blankLines="0" />Victim node. Selects the Identification values from a global counter.</t>
+<t hangText="Host C:">
+<vspace blankLines="0" />Attacker. Can forge the IPv6 Source Address of his packets at will.</t>
+</list>
+</t>
+
+<t>In the following scenarios, large ICMPv6 Echo Request packets are employed to "sample" the Identification value of a host. We note that while the figures show only one packet for the ICMPv6 Echo Request and the ICMPv6 Echo Reply packets, each of those packets will typically comprise two fragments, such that the corresponding unfragmented datagram is larger than the MTU of the networks to which Host B and Host C are attached. Additionally, the following scenarios assume that Host A employs a Fragment Header when sending traffic to Host B (typically the so-called "IPv6 atomic fragments" <xref target="RFC6946"/>): this behavior may be triggered by forged ICMPv6 PTB messages that advertise an MTU smaller than 1280 bytes (assuming the victim still generates atomic fragments <xref target="DEPGEN"/>).
+</t>
+
+
+<t>
+In lines #1-#2 (and lines #7-#8), the attacker samples the current Identification value at Host B. In line #3, the attacker sends a forged TCP SYN segment to Host A. In line 4, the attacker sends a forged TCP segment to Host B as an incomplete IPv6 fragmented datagram (e.g., a single fragment with Fragment Offset=0, More fragments=1). If corresponding TCP port is closed, and the attacker fails when trying to produce a collision of Identification values (see line #4), the following packet exchange might take place:
+</t>
+          <figure align="center">
+            <artwork><![CDATA[
+    A                          B                              C
+
+#1                              <------ Echo Req #1 -----------
+#2                              --- Echo Repl #1, FID=5000 --->
+#3  <------------------- SYN #1, src= B -----------------------
+#4                              <--- SYN/ACK, FID=42 src=A ----
+#5  ---- SYN/ACK, FID=9000 --->
+#6  <----- RST, FID= 5001 -----
+#7                              <-------- Echo Req #2 ---------
+#8                              --- Echo Repl #2, FID=5002 --->
+]]></artwork>
+          </figure>
+
+<t>
+The RST segment in line #6 is elicited by the SYN/ACK segment from line #5 (illegitimately elicited by the SYN segment from line #3). The packet from line #4, sent as an incomplete IPv6 datagram, eventually times out.</t>
+
+<t>
+On the other hand, if the attacker succeeds to produce a collision of Identification values, the following packet exchange could take place:
+</t>
+<figure align="center">
+<artwork><![CDATA[
+    A                          B                              C
+
+#1                              <------- Echo Req #1 ----------
+#2                              --- Echo Repl #1, FID=5000 --->
+#3  <------------------- SYN #1, src= B -----------------------
+#4                              <-- SYN/ACK, FID=9000 src=A ---
+#5  ---- SYN/ACK, FID=9000 --->
+                        ... (RFC5722) ...
+#6                              <------- Echo Req #2 ----------
+#7                              ---- Echo Repl #2, FID=5001 -->
+]]></artwork>
+          </figure>
+
+
+
+<t>Clearly, the Identification value sampled from the second ICMPv6 Echo Reply packet ("Echo Repl #2") implicitly indicates whether the Identification value in the forged SYN/ACK (see line #4 in both figures) was the current Identification value in use by Host A.</t>
+
+<t>As a result, the attacker could employ this technique to learn the current Identification value used by host A to send packets to host B, even when Host A itself has a non-vulnerable implementation.</t>
+
+
+</section>
+
+
+<section title="Survey of Fragment Identification Selection Algorithms Employed by Popular IPv6 Implementations" anchor="survey">
+<t>This section includes a survey of the Identification selection algorithms employed by some popular operating systems.
+
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />
+The survey was produced with the SI6 Networks' IPv6 toolkit <xref target="SI6-IPv6"/>.</t>
+</list>
+</t>
+
+
+    <texttable title="Fragment Identification algorithms employed by different OSs" style="all" anchor="survey-table">
+        <ttcol align="center">Operating System</ttcol>
+        <ttcol align="center">Algorithm</ttcol>
+
+        <c>Cisco IOS 15.3</c>
+        <c>Predictable (Global Counter, Init=0, Incr=1)</c>
+
+        <c>FreeBSD 9.0</c>
+        <c>Unpredictable (Random)</c>
+
+        <c>Linux 3.0.0-15</c>
+        <c>Predictable (Global Counter, Init=0, Incr=1)</c>
+
+        <c>Linux-current</c>
+        <c>Unpredictable (Per-dest Counter, Init=random, Incr=1)</c>
+
+        <c>NetBSD 5.1</c>
+        <c>Unpredictable (Random)</c>
+
+        <c>OpenBSD-current</c>
+        <c>Unpredictable (Random, SKIP32)</c>
+
+        <c>Solaris 10</c>
+        <c>Predictable (Per-dst Counter, Init=0, Incr=1)</c>
+
+        <c>Windows XP SP2</c>
+        <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+<c>Windows XP Professional 32bit, SP3</c>  <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+
+        <c>Windows Vista (Build 6000)</c> <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+ <c>Windows Vista Business 64bit, SP1</c>  <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+        <c>Windows 7 Home Premium</c>
+        <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+
+<c>Windows Server 2003 R2 Standard 64bit, SP2</c>   <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+<c>Windows Server 2008 Standard 32bit, SP1</c>  <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+<c>Windows Server 2008 R2 Standard 64bit, SP1</c> <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+<c>Windows Server 2012 Standard 64bit</c> <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+
+
+<c>Windows 7 Home Premium 32bit, SP1</c>  <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+<c>Windows 7 Ultimate 32bit, SP1</c>  <c>Predictable (Global Counter, Init=0, Incr=2)</c>
+<c>Windows 8 Enterprise 32 bit</c>  <c>Unpredictable (Alg. from <xref target="hash-based"/>)</c>
+
+    </texttable>
+
+<t>
+<list style="hanging">
+<t hangText="NOTE:">
+<vspace blankLines="0" />
+In the text above, "predictable" should be taken as "easily guessable by an off-path attacker, by sending a few probe packets".</t>
+</list>
+</t>
+
+</section>
+
+    <section title="Acknowledgements" numbered="no">
+
+<t>The author would like to thank Ivan Arce for proposing the attack scenario described in <xref target="oracle"/>.</t>
+
+<t>The author would like to thank Ivan Arce, Stephen Bensley, Ron Bonica,
+Tassos Chatzithomaoglou, Guillermo Gont, Brian Haberman, Bob Hinden, Sheng Jiang, Tatuya
+Jinmei, Merike Kaeo, Will Liu, Juan Antonio Matos, Simon Perreault, Hosnieh
+Rafiee, Meral Shirazipour, Mark Smith, Dave Thaler, and Klaas Wierenga, for
+providing valuable comments on earlier draft versions of this document.</t>
+
+<t>This document is based on work performed by Fernando Gont on behalf of the UK Centre for the Protection of National Infrastructure (CPNI).</t>
+
+<t>The author would like to thank Buffy for her love and support.</t>
+
+    </section>
+
+  </back>
+</rfc>

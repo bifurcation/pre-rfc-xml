@@ -1,0 +1,649 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc category="std" number="7648" ipr="trust200902" submissionType="IETF"
+     consensus="yes">
+
+  <front>
+    <title abbrev="PCP Proxy">Port Control Protocol (PCP) Proxy
+    Function</title>
+
+    <author fullname="Simon Perreault" initials="S." surname="Perreault">
+      <organization>Jive Communications</organization>
+      <address>
+        <postal>
+          <street></street>
+          <city>Quebec</city>
+          <region>QC</region>
+          <country>Canada</country>
+        </postal>
+        <email>sperreault@jive.com</email>
+      </address>
+    </author>
+
+    <author fullname="Mohamed Boucadair" initials="M." surname="Boucadair">
+      <organization>France Telecom</organization>
+      <address>
+        <postal>
+          <street></street>
+          <city>Rennes</city>
+          <code>35000</code>
+          <country>France</country>
+        </postal>
+        <email>mohamed.boucadair@orange.com</email>
+      </address>
+    </author>
+
+    <author fullname="Reinaldo Penno" initials="R." surname="Penno">
+      <organization>Cisco</organization>
+      <address>
+        <postal>
+          <street></street>
+          <code></code>
+          <country>United States</country>
+        </postal>
+        <email>repenno@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Dan Wing" initials="D." surname="Wing">
+      <organization abbrev="Cisco">Cisco Systems, Inc.</organization>
+      <address>
+        <postal>
+          <street>170 West Tasman Drive</street>
+          <city>San Jose</city>
+          <region>California</region>
+          <code>95134</code>
+          <country>United States</country>
+        </postal>
+        <email>dwing@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Stuart Cheshire" initials="S." surname="Cheshire">
+      <organization abbrev="Apple">Apple Inc.</organization>
+      <address>
+        <postal>
+          <street>1 Infinite Loop</street>
+          <city>Cupertino</city>
+          <region>California</region>
+          <code>95014</code>
+          <country>United States</country>
+        </postal>
+        <phone>+1 408 974 3207</phone>
+        <email>cheshire@apple.com</email>
+      </address>
+    </author>
+
+    <date month="September" year="2015"/>
+
+    <abstract>
+      <t>This document specifies a new Port Control Protocol (PCP)
+      functional element: the PCP proxy. The PCP proxy relays PCP
+      requests received from PCP clients to upstream PCP server(s). A
+      typical deployment usage of this function is to help establish
+      successful PCP communications for PCP clients that cannot be
+      configured with the address of a PCP server located more than one
+      hop away.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t><?rfc subcompact="no" ?>This document defines a new
+      Port Control Protocol (PCP) <xref target="RFC6887"></xref> functional
+      element: the PCP&nbsp;proxy. As shown in
+      <xref target="Reference_Architecture"></xref>, the PCP&nbsp;proxy is
+      logically equivalent to a PCP&nbsp;client back-to-back with a
+      PCP&nbsp;server. The "glue" between the two is what is specified in
+      this document. Other than that "glue", the server and the client
+      behave exactly like their regular counterparts.</t>
+
+      <t>The PCP&nbsp;proxy is responsible for relaying PCP messages
+      received from PCP&nbsp;clients to upstream PCP&nbsp;servers and
+      vice versa.</t>
+
+      <t>Whether or not the PCP&nbsp;proxy is co-located with a flow-aware
+      function (e.g., NAT, firewall) is deployment specific.</t>
+
+      <t><figure align="center" anchor="Reference_Architecture"
+          title="Reference Architecture">
+          <artwork><![CDATA[
+                           .................
+           +------+       : +------+------+ :    +------+
+           |Client|-------:-|Server|Client|-:----|Server|
+           +------+       : +------+------+ :    +------+
+                          :      Proxy      :
+                           .................
+]]></artwork>
+        </figure></t>
+
+      <t>This document assumes a hop-by-hop PCP authentication scheme. That
+      is, referring to <xref target="Reference_Architecture"></xref>, the
+      leftmost PCP&nbsp;client authenticates with the PCP&nbsp;proxy, while the
+      PCP&nbsp;proxy authenticates with the upstream server. Note that in some
+      deployments, PCP authentication may only be enabled between the
+      PCP&nbsp;proxy and an upstream PCP&nbsp;server (e.g., a customer premises
+      host may not authenticate with the PCP&nbsp;proxy, but the
+      PCP&nbsp;proxy may authenticate with the PCP&nbsp;server). The
+      hop-by-hop authentication scheme is more suitable from a deployment
+      standpoint. Furthermore, it allows implementations to easily
+      support a PCP&nbsp;proxy that alters PCP messages (e.g., strips a
+      PCP option, modifies a PCP&nbsp;field).</t>
+
+      <section title="Use Case: The NAT Cascade">
+        <t>In today's world, with public routable IPv4 addresses becoming less
+        readily available, it is increasingly common for customers to receive
+        a private address from their Internet Service Provider (ISP), and the
+        ISP uses a NAT gateway of its own to translate those packets before
+        sending them out onto the public Internet. This means that there is
+        likely to be more than one NAT on the path between client machines and
+        the public Internet: <list style="symbols">
+            <t>If a residential customer receives a translated address from
+            their ISP and then installs their own residential NAT gateway to
+            share that address between multiple client devices in their home,
+            then there are at least two NAT gateways on the path between
+            client devices and the public Internet.</t>
+
+            <t>If a mobile phone customer receives a translated address from
+            their mobile phone carrier and uses "Personal Hotspot" or
+            "Internet Sharing" software on their mobile phone to make Wireless
+            LAN (WLAN) Internet access available to other client devices, then
+            there are at least two NAT gateways on the path between those
+            client devices and the public Internet.</t>
+
+            <t>If a hotel guest connects a portable WLAN gateway to their
+            hotel room's Ethernet port to share their room's Internet
+            connection between their phone and their laptop computer,
+            then packets from the client devices may traverse the hotel
+            guest's portable NAT, the hotel network's NAT, and the ISP's
+            NAT before reaching the public Internet.</t>
+          </list></t>
+
+        <t>While it is possible, in theory, that client devices could somehow
+        discover all the NATs on the path and communicate with each one
+        separately using PCP <xref target="RFC6887"></xref>, in practice
+        it is not clear how client devices would reliably learn this
+        information. Since the NAT gateways are installed and operated by
+        different individuals and organizations, no single entity has
+        knowledge of all the NATs on the path. Also, even if a client device
+        could somehow know all the NATs on the path, requiring a client device
+        to communicate separately with all of them imposes unreasonable
+        complexity on PCP&nbsp;clients, many of which are expected to be simple
+        low-cost devices.</t>
+
+        <t>In addition, this goes against the spirit of NAT gateways. The main
+        purpose of a NAT gateway is to make multiple downstream client devices
+        appear, from the point of view of everything upstream of the NAT
+        gateway, to be a single client device. In the same spirit, it makes
+        sense for a PCP-capable NAT gateway to make multiple downstream client
+        devices requesting port mappings appear, from the point of view of
+        everything upstream of the NAT gateway, to be a single client device
+        requesting port mappings.</t>
+      </section>
+
+      <section title="Use Case: The PCP Relay">
+        <t>Another envisioned use case of the PCP&nbsp;proxy is to help
+        establish successful PCP communications for PCP&nbsp;clients that
+        cannot be configured with the address of a PCP&nbsp;server
+        located more than one hop away. A PCP&nbsp;proxy can, for instance,
+        be embedded in a CPE (Customer Premises Equipment) while the
+        PCP&nbsp;server is located in a network operated by an ISP.
+        This is illustrated in <xref target="pcp_relay"></xref>.</t>
+
+        <figure align="center" anchor="pcp_relay" title="PCP Relay Use Case">
+          <artwork><![CDATA[
+              |
+    +------+  |
+    |Client|--+
+    +------+  |  +-----+                               +------+
+              +--|Proxy|--------<ISP network>----------|Server|
+    +------+  |  +-----+                               +------+
+    |Client|--+    CPE
+    +------+  |
+              |
+             LAN
+]]></artwork>
+        </figure>
+
+        <t>This works because the proxy's server side is listening on the
+        address used as a default gateway by the clients. The clients use that
+        address as a fallback when discovering the PCP&nbsp;server's address.
+        The proxy picks up the requests and forwards them upstream to the ISP's
+        PCP&nbsp;server, with whose address it has been provisioned through
+        regular PCP&nbsp;client provisioning means.</t>
+
+        <t>This particular use case assumes that provisioning the server's
+        address on the CPE is feasible while doing it on the clients in the
+        LAN is not, which is what makes the PCP&nbsp;proxy valuable.</t>
+
+        <t>An alternative way to contact an upstream PCP server that
+        may be several hops away is to use a well-known anycast address
+        <xref target="PCP-ANYCAST"/>, but that technique can be problematic when
+        multiple PCP&nbsp;servers are to be contacted <xref target="PCP-DEPLOY"/>.</t>
+      </section>
+    </section>
+
+    <section title="Terminology">
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+      "OPTIONAL" in this document are to be interpreted as described in <xref
+      target="RFC2119">"Key words for use in RFCs to Indicate Requirement Levels"</xref>.</t>
+
+      <t>Where this document uses the terms "upstream" and "downstream", the
+      term "upstream" refers to the direction outbound packets travel towards
+      the public Internet, and the term "downstream" refers to the direction
+      inbound packets travel from the public Internet towards client systems.
+      Typically, when a home user views a web site, their computer sends an
+      outbound TCP SYN packet upstream towards the public Internet, and an
+      inbound downstream TCP SYN ACK reply comes back from the public
+      Internet.</t>
+    </section>
+
+    <section title="Operation of the PCP Proxy">
+      <t>Upon receipt of a PCP mapping-creation request from a downstream
+      PCP&nbsp;client, a PCP&nbsp;proxy first examines its local mapping
+      table to see if it already has a valid active mapping matching the
+      internal address and internal port (and in the case of PEER requests,
+      the remote peer) given in the request.</t>
+
+      <t>If the PCP&nbsp;proxy does not already have a valid active mapping for
+      this mapping-creation request, then it allocates an available port on
+      its external interface. We assume for the sake of this description that
+      the address of its external interface is itself a private address,
+      subject to translation by an upstream NAT. The PCP&nbsp;proxy then
+      constructs an appropriate corresponding PCP&nbsp;request of its own
+      (as described below) and sends it to its upstream NAT, and the newly
+      created local mapping is considered temporary until a confirming
+      reply is received from the upstream PCP&nbsp;server.</t>
+
+      <t>If the PCP&nbsp;proxy does already have a valid active mapping for
+      this mapping-creation request and the lifetime remaining on the local
+      mapping is at least 3/4 of the lifetime requested by the PCP&nbsp;client,
+      then the PCP&nbsp;proxy SHOULD send an immediate reply giving
+      the outermost external address and port (previously learned using
+      PCP recursively, as described below) and the actual lifetime
+      remaining for this mapping. If the lifetime remaining on the local
+      mapping is less than 3/4 of the lifetime requested by the
+      PCP&nbsp;client, then the PCP&nbsp;proxy MUST generate an upstream
+      request as described below.</t>
+
+      <t>For mapping-deletion requests (lifetime = 0), the local mapping, if
+      any, is deleted, and then (regardless of whether or not a local mapping
+      existed) a corresponding upstream request is generated.</t>
+
+      <t>The PCP&nbsp;proxy knows the destination IP address for its
+      upstream PCP&nbsp;request using the same means that are available
+      for provisioning a PCP&nbsp;client. In particular, the
+      PCP&nbsp;proxy MUST follow the procedure defined in
+      Section 8.1 of <xref target="RFC6887">the PCP specification</xref> to discover its
+      PCP&nbsp;server. This does not preclude other means from being used
+      in addition.</t>
+
+      <t>In the upstream PCP request: <list style="symbols">
+        <t>The PCP&nbsp;client's IP address and internal port are the
+          PCP&nbsp;proxy's own external address and port just allocated
+          for this mapping.</t>
+
+          <t>The suggested external address and port in the upstream
+          PCP&nbsp;request SHOULD be copied from the original
+          PCP&nbsp;request.
+          On a typical renewal request, this will be the outermost
+          external address and port previously learned by the client.</t>
+
+          <t>The requested lifetime is as requested by the client if it falls
+          within the acceptable range for this PCP&nbsp;server; otherwise,
+          it SHOULD be capped to appropriate minimum and maximum values
+          configured for this PCP&nbsp;server.</t>
+
+          <t>The mapping nonce is copied from the original
+          PCP&nbsp;request.</t>
+
+          <t>For PEER requests, the remote peer IP address and port are copied
+          from the original PCP&nbsp;request.</t>
+        </list></t>
+
+      <t>Upon receipt of a PCP reply giving the outermost (i.e., publicly
+      routable) external address, port, and lifetime, the
+      PCP&nbsp;proxy records this information in its own mapping table
+      and relays the information to the requesting downstream PCP&nbsp;client
+      in a PCP reply. The PCP&nbsp;proxy therefore records, among other
+      things, the following information in its mapping table:
+        <list style="symbols">
+          <t>Client's internal address and port.</t>
+
+          <t>External address and port allocated by this PCP&nbsp;proxy.</t>
+
+          <t>Outermost external address and port allocated by the upstream
+          PCP&nbsp;server.</t>
+
+          <t>Mapping lifetime (also dictated by the upstream
+          PCP&nbsp;server).</t>
+
+          <t>Mapping nonce.</t>
+        </list></t>
+
+      <t>In the downstream PCP reply: <list style="symbols">
+          <t>The lifetime is as granted by the upstream PCP&nbsp;server, or
+          less if the granted lifetime exceeds the maximum lifetime this
+          PCP&nbsp;server is configured to grant. If the proxy chooses to grant a downstream
+          lifetime greater than the lifetime granted by the upstream PCP&nbsp;server
+          (which is NOT&nbsp;RECOMMENDED), then this PCP&nbsp;proxy MUST
+          take responsibility for renewing the upstream mapping itself.</t>
+
+          <t>The Epoch&nbsp;Time is this PCP&nbsp;proxy's Epoch&nbsp;Time,
+          not the Epoch&nbsp;Time of the upstream PCP&nbsp;server. Each
+          PCP&nbsp;server has its own independent Epoch&nbsp;Time.
+          However, if the Epoch&nbsp;Time received from the upstream
+          PCP&nbsp;server indicates a loss of state in that
+          PCP&nbsp;server, the PCP&nbsp;proxy can either (1)&nbsp;recreate
+          the lost mappings itself or (2)&nbsp;reset its own
+          Epoch&nbsp;Time to cause its downstream clients to perform such
+          state repairs themselves. A PCP&nbsp;proxy MUST NOT simply copy
+          the upstream PCP&nbsp;server's Epoch&nbsp;Time into its downstream
+          PCP replies, because if it suffers its own state loss it needs
+          the ability to communicate that state loss to clients. Thus, each
+          PCP&nbsp;server has its own independent Epoch&nbsp;Time.
+          However, as a convenience, a downstream PCP&nbsp;proxy may
+          simply choose to reset its own Epoch&nbsp;Time whenever it
+          detects that its upstream PCP&nbsp;server has lost state. Thus,
+          in this case, the PCP&nbsp;proxy's Epoch&nbsp;Time always resets
+          whenever its upstream PCP&nbsp;server loses state; it may reset
+          at other times as well.</t>
+
+          <t>The mapping nonce is copied from the reply received from the
+          upstream PCP&nbsp;server.</t>
+
+          <t>The assigned external port and assigned external IP address are
+          copied from the reply received from the upstream PCP&nbsp;server
+          (i.e., they are the outermost external IP address and port, not the
+          locally assigned external address and port).
+          By recursive application of this procedure, the outermost external IP
+          address and port are relayed from the outermost NAT, through one or more
+          intervening PCP proxies, until they ultimately reach the downstream client.</t>
+
+          <t>For PEER requests, the remote peer IP address and port are copied
+          from the reply received from the upstream PCP&nbsp;server.</t>
+        </list></t>
+
+      <section title="Optimized Hairpin Routing">
+        <t>A PCP&nbsp;proxy SHOULD implement optimized hairpin routing.
+        What this means is the following: <list style="symbols">
+            <t>If a PCP&nbsp;proxy observes an outgoing packet arriving on its
+            internal interface that is addressed to an external address and
+            port appearing in the NAT gateway's own mapping table, then the
+            NAT gateway SHOULD (after creating a new outbound mapping if one
+            does not already exist) rewrite the packet appropriately and
+            deliver it to the internal client to which that external address
+	    and port are currently allocated.</t>
+
+            <t>Similarly, if a PCP&nbsp;proxy observes an outgoing packet arriving on its
+            internal interface that is addressed to an *outermost* external
+            address and port appearing in the NAT gateway's own mapping table,
+            then the NAT gateway SHOULD do as described above: create a new outbound
+            mapping if one does not already exist, and then rewrite the packet
+            appropriately and deliver it to the internal client to which
+            that outermost external address and port are currently
+            allocated. This is not necessary for successful communication,
+            but it provides efficiency. Without this optimized hairpin
+            routing, the packet will be delivered all the way to the
+            outermost NAT gateway, which will then perform standard
+            hairpin translation and send it back. Using knowledge of the
+            outermost external address and port, this rewriting can be
+            anticipated and performed locally. This rewriting technique 
+            will typically offer higher throughput and lower latency
+            than sending packets all the way to the outermost NAT gateway
+            and back.
+           </t>
+          </list>Note that traffic counters maintained by an upstream PCP
+        server will differ from the counters of a PCP&nbsp;proxy implementing
+        optimized hairpin routing.</t>
+      </section>
+
+      <section title="Termination of Recursion">
+        <t>Any recursive algorithm needs a mechanism to terminate the
+        recursion at the appropriate point. This termination of recursion can
+        be achieved in a variety of ways. The following (non-exhaustive)
+        examples are provided for illustration purposes: <list style="symbols">
+            <t>An ISP's PCP-controlled gateway (which may embed a NAT,
+            firewall, or any function that can be controlled with PCP) could
+            be configured to know that it is the outermost PCP-controlled
+            gateway, and consequently it does not need to relay
+            PCP&nbsp;requests upstream.</t>
+
+            <t>A PCP-controlled gateway could determine automatically that if
+            its external address is not one of the known private addresses
+            <xref target="RFC1918"></xref> <xref target="RFC6598"></xref>,
+            then its external address is a public routable IP address, and
+            consequently it does not need to relay PCP&nbsp;requests upstream.</t>
+
+            <t>Recursion may be terminated if there is no explicit list of
+            PCP&nbsp;servers configured (manually, using
+            <xref target="RFC7291">DHCP</xref>, or otherwise) or if its default router
+            is not responsive to PCP&nbsp;requests.</t>
+
+            <t>Recursion may also be terminated if the upstream
+            PCP-controlled device does not embed a PCP&nbsp;proxy.</t>
+          </list></t>
+      </section>
+
+      <section anchor="third_party"
+               title="Source Address for PCP Requests Sent Upstream">
+        <t>As with a regular PCP&nbsp;server, the PCP-controlled device
+        can be a NAT, a firewall, or even some sort of hybrid.
+        In particular, a PCP&nbsp;proxy that simply relays all requests
+        upstream can be thought of as the degenerate case of a
+        PCP&nbsp;server controlling a wide-open firewall back-to-back
+        with a regular PCP&nbsp;client.</t>
+
+        <t>One important property of the PCP-controlled device will affect the
+        PCP&nbsp;proxy's behavior: when the proxy's server part instructs the
+        device to create a mapping, that mapping's external address may or may
+        not be one that belongs to the proxy node. <list style="symbols">
+            <t>When the mapping's external address belongs to the proxy node,
+            as would presumably be the case for a NAT, then the proxy's client
+            side sends out an upstream PCP&nbsp;request using the mapping's
+            external IP address as the source.</t>
+
+            <t>When the mapping's external address does not belong to the
+            proxy node, as would presumably be the case for a firewall, then
+            the proxy's client side needs to install upstream mappings on
+            behalf of its downstream clients. To do this, it MUST insert a
+            THIRD_PARTY option in its upstream PCP&nbsp;request carrying the
+            mapping's external address.</t>
+          </list></t>
+
+        <t>Note that hybrid PCP-controlled devices may create NAT-like
+        mappings in some circumstances and firewall-like mappings in others. A
+        proxy controlling such a device would adjust its behavior dynamically,
+        depending on the kind of mapping created.</t>
+      </section>
+
+      <section title="Unknown Opcodes and Options">
+        <section anchor="nonat"
+                 title="No NAT Is Co-located with the PCP Proxy">
+          <t>When no NAT is co-located with the PCP&nbsp;proxy, the
+          port numbers included in received PCP messages (from the
+          PCP&nbsp;server or PCP&nbsp;client(s)) are not altered by the
+          PCP&nbsp;proxy. The PCP&nbsp;proxy relays to the PCP&nbsp;server
+          unknown options and Opcodes because there is no reachability
+          failure risk.</t>
+        </section>
+
+        <section anchor="embedded_NAT"
+                 title="PCP Proxy Co-located with a NAT Function">
+          <t>By default, the proxy MUST relay unknown Opcodes and
+          mandatory-to-process unknown options. Rejecting unknown options and
+          Opcodes has the drawback of preventing a PCP&nbsp;client from making
+          use of new capabilities offered by the PCP&nbsp;server but not
+          supported by the PCP&nbsp;proxy, even if no IP address and/or port
+          is included in the option/Opcode.</t>
+
+          <t>Because PCP messages with an unknown Opcode or
+          mandatory-to-process unknown options can carry a hidden internal
+          address or internal port that will not be translated, a
+          PCP&nbsp;proxy MUST be configurable to disable relaying unknown
+          Opcodes and mandatory-to-process unknown options. If the
+          PCP&nbsp;proxy is configured to disable relaying unknown
+          Opcodes and mandatory-to-process unknown options, the
+          PCP&nbsp;proxy MUST behave as follows:</t>
+
+          <t><list style="symbols">
+              <t>a PCP&nbsp;proxy co-located with a NAT MUST reject, via an
+              UNSUPP_OPCODE error response, a received request with an
+              unknown Opcode.</t>
+
+              <t>a PCP&nbsp;proxy co-located with a NAT MUST reject, via an
+              UNSUPP_OPTION error response, a received request with a
+              mandatory-to-process unknown option.</t>
+            </list></t>
+        </section>
+      </section>
+
+      <section title="Mapping Repair">
+        <t>ANNOUNCE requests received from PCP&nbsp;clients are handled
+        locally; as such, these requests MUST NOT be relayed to the
+        provisioned PCP&nbsp;server.</t>
+
+        <t>Upon receipt of an unsolicited ANNOUNCE response from a
+        PCP&nbsp;server, the PCP&nbsp;proxy proceeds to renew the mappings
+        and checks to see whether or not there are changes compared to a
+        local cache if it is maintained by the PCP&nbsp;proxy. If no
+        change is detected, no unsolicited ANNOUNCE is generated towards
+        PCP&nbsp;clients. If a change is detected, the PCP&nbsp;proxy MUST
+        generate unsolicited ANNOUNCE message(s) to appropriate
+        PCP&nbsp;clients. If the PCP&nbsp;proxy does not maintain a
+        local cache for the mappings, unsolicited multicast ANNOUNCE messages
+        are sent to PCP&nbsp;clients.</t>
+
+        <t>Upon change of its external IP address, the PCP&nbsp;proxy
+        SHOULD renew the mappings it maintained. If the PCP&nbsp;server
+        assigns a different external port, the PCP&nbsp;proxy SHOULD
+        follow the PCP mapping repair procedure
+        <xref target="RFC6887"></xref>. This can be achieved only if a
+        full state table is maintained by the PCP&nbsp;proxy.</t>
+      </section>
+
+      <section title="Multiple PCP Servers">
+        <t>A PCP&nbsp;proxy MAY handle multiple PCP&nbsp;servers at the same
+        time. Each PCP&nbsp;server is associated with its own epoch value.
+        PCP&nbsp;clients are not aware of the presence of multiple
+        PCP&nbsp;servers.</t>
+
+        <t>Following <xref target="RFC7488">the PCP Server Selection process</xref>, if several
+        PCP&nbsp;servers are configured to the PCP&nbsp;proxy, it will
+        contact in parallel all these PCP&nbsp;servers.</t>
+
+        <t>In some contexts (e.g., PCP-controlled Carrier-Grade NATs (CGNs)),
+        the PCP&nbsp;proxy MAY load-balance the PCP&nbsp;clients among
+        available PCP&nbsp;servers. The PCP&nbsp;proxy MUST ensure that
+        requests of a given PCP&nbsp;client are relayed to the same
+        PCP&nbsp;server.</t>
+
+        <t>The PCP&nbsp;proxy MAY rely on some fields (e.g., Zone-ID <xref
+        target="PCP-ZONES"></xref>) in the PCP&nbsp;request to redirect
+        the request to a given PCP&nbsp;server.</t>
+      </section>
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+      <t>The PCP&nbsp;proxy MUST follow the security considerations detailed in
+      <xref target="RFC6887">the PCP specification</xref> for both the client and server side.</t>
+
+      <t><xref target="third_party"></xref> specifies the cases where a
+      THIRD_PARTY option is inserted by the PCP&nbsp;proxy. In those cases,
+      ways to prevent a malicious user from creating mappings on behalf of
+      a third party must be employed as discussed in Section 13.1 of <xref
+      target="RFC6887">the PCP specification</xref>. In particular, THIRD_PARTY options MUST NOT be
+      enabled unless the network on which the PCP messages are to be sent is
+      fully trusted (via physical or cryptographic security, or both)
+      -- for example, if access control lists (ACLs) are
+      installed on the PCP&nbsp;proxy, the PCP&nbsp;server, and the
+      network between them so that those ACLs allow only communications
+      from a trusted PCP&nbsp;proxy to the PCP&nbsp;server.</t>
+
+      <t>A received request carrying an unknown Opcode or option SHOULD be
+      dropped (or, in the case of an unknown option that is not
+      mandatory to process, the option SHOULD be removed) if it is not
+      compatible with security controls provisioned to the PCP&nbsp;proxy.</t>
+
+      <t>The device embedding the PCP&nbsp;proxy MAY block PCP&nbsp;requests
+      directly sent to the upstream PCP&nbsp;server(s). This can be enforced using ACLs.</t>
+    </section>
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2119"?>
+
+      <?rfc include="reference.RFC.6887"?>
+    </references>
+
+    <references title="Informative References">
+      <?rfc include="reference.RFC.1918"?>
+
+      <?rfc include="reference.RFC.6598"?>
+
+      <?rfc include='reference.RFC.7488'?>
+
+      <?rfc include='reference.RFC.7291'?>
+
+<!-- draft-penno-pcp-zones (Expired) -->
+<reference anchor='PCP-ZONES'>
+<front>
+<title>PCP Support for Multi-Zone Environments</title>
+<author initials='R' surname='Penno' fullname='Reinaldo Penno'>
+    <organization />
+</author>
+<date month='October' year='2011' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-penno-pcp-zones-01' />
+</reference>
+
+<!-- draft-ietf-pcp-anycast (IESG Eval.) -->
+<reference anchor='PCP-ANYCAST'>
+<front>
+<title>Port Control Protocol (PCP) Anycast Addresses</title>
+<author initials='S' surname='Kiesel' fullname='Sebastian Kiesel'>
+    <organization />
+</author>
+<author initials='R' surname='Penno' fullname='Reinaldo Penno'>
+    <organization />
+</author>
+<author initials='S' surname='Cheshire' fullname='Stuart Cheshire'>
+    <organization />
+</author>
+<date month='August' year='2015' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-pcp-anycast-07' />
+</reference>
+
+<!-- draft-boucadair-pcp-deployment-cases (Expired) -->
+<reference anchor='PCP-DEPLOY'>
+<front>
+<title>Port Control Protocol (PCP) Deployment Models</title>
+<author initials='M' surname='Boucadair' fullname='Mohamed Boucadair'>
+    <organization />
+</author>
+<date month='July' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-boucadair-pcp-deployment-cases-03' />
+</reference>
+
+    </references>
+
+    <section anchor="Acknowledgements" title="Acknowledgements" numbered="no">
+      <t>Many thanks to C.&nbsp;Zhou, T.&nbsp;Reddy, and D.&nbsp;Thaler
+      for their review and comments.</t>
+
+      <t>Special thanks to F.&nbsp;Dupont, who contributed to this
+      document.</t>
+    </section>
+  </back>
+</rfc>

@@ -1,0 +1,1251 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY RFC2119 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY RFC6513 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.6513.xml">
+<!ENTITY RFC6514 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.6514.xml">
+<!ENTITY RFC6515 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.6515.xml">
+<!ENTITY RFC6625 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.6625.xml">
+<!ENTITY RFC7524 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.7524.xml">
+<!ENTITY RFC7582 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.7582.xml">
+<!ENTITY RFC7900 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.7900.xml">
+<!ENTITY RFC7902 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.7902.xml">
+<!ENTITY RFC8174 SYSTEM
+"http://xml.resource.org/public/rfc/bibxml/reference.RFC.8174.xml">
+
+
+]>
+
+<?rfc strict="yes" ?>
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<rfc category="std" number="8534" submissionType="IETF" consensus="yes"
+     ipr="trust200902" updates="6514, 6625, 7524, 7582, 7900"> 
+
+  <front>
+
+    <title abbrev="MVPN: Explicit Tracking and Wildcards">Explicit Tracking
+    with Wildcard Routes in Multicast VPN</title>
+
+    <author fullname="Andrew Dolganow" initials="A." 
+            surname="Dolganow">
+      <organization>Nokia</organization>
+      <address>
+        <postal>
+          <street>438B Alexandra Rd #08-07/10</street>
+          <street>Alexandra Technopark</street>
+          <code>119968</code>
+          <region></region>
+          <country>Singapore</country>
+        </postal>
+        <email>andrew.dolganow@nokia.com</email>
+      </address>
+    </author>
+
+    <author fullname="Jayant Kotalwar" initials="J." 
+            surname="Kotalwar">
+      <organization>Nokia</organization>
+      <address>
+        <postal>
+          <street>701 East Middlefield Rd</street>
+          <city>Mountain View</city>
+          <region>California</region>
+          <code>94043</code>
+          <country>United States of America</country>
+        </postal>
+        <email>jayant.kotalwar@nokia.com</email>
+      </address>
+    </author>
+
+    <author fullname="Eric C. Rosen" initials="E." role="editor"
+            surname="Rosen">
+      <organization>Juniper Networks, Inc.</organization>
+      <address>
+        <postal>
+          <street>10 Technology Park Drive</street>
+          <city>Westford</city>
+          <region>Massachusetts</region>
+          <code>01886</code>
+          <country>United States of America</country>
+        </postal>
+        <email>erosen52@gmail.com</email>
+
+
+
+      </address>
+    </author>
+
+        <author fullname="Zhaohui Zhang" initials="Z."
+            surname="Zhang">
+      <organization>Juniper Networks, Inc.</organization>
+      <address>
+        <postal>
+          <street>10 Technology Park Drive</street>
+          <city>Westford</city>
+          <region>Massachusetts</region>
+          <code>01886</code>
+          <country>United States of America</country>
+        </postal>
+        <email>zzhang@juniper.net</email>
+      </address>
+    </author>
+
+
+    <date year="2019" month="February" />
+
+    <area>Routing</area>
+
+    <workgroup>BESS WG</workgroup>
+
+    <keyword>Multicast MVPN</keyword>
+
+    <abstract>
+      <t>
+
+        The base Multicast VPN (MVPN) specifications (RFCs 6513 and 6514)
+        provide procedures to allow a multicast ingress node to invoke
+        "explicit tracking" for a multicast flow or set of flows, thus
+        learning the egress nodes for that flow or set of flows.  However,
+        the specifications are not completely clear about how the explicit
+        tracking procedures work in certain scenarios. This document
+        provides the necessary clarifications.  It also specifies a new,
+        optimized explicit-tracking procedure.  This new procedure allows an
+        ingress node, by sending a single message, to request explicit
+        tracking of each of a set of flows, where the set of flows is
+        specified using a wildcard mechanism.  This document updates RFCs
+        6514, 6625, 7524, 7582, and 7900.
+      </t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction" anchor="introduction">
+      <t>
+        The base Multicast VPN (MVPN) specifications, <xref
+        target="RFC6513"/> and <xref target="RFC6514"/>, define the
+        "Selective Provider Multicast Service Interface Auto-Discovery
+        route" (S&nbhy;PMSI A&nbhy;D route).
+      </t>
+      <t>
+        Per those RFCs, the S&nbhy;PMSI A&nbhy;D route contains a Network
+        Layer Reachability Information (NLRI) field that identifies a
+        particular multicast flow.  In the terminology of those RFCs, each
+        flow is denoted by (C&nbhy;S,C&nbhy;G), where C&nbhy;S is an IP
+        source address and C&nbhy;G is an IP multicast address, both in the
+        address space of a VPN customer.  The (C&nbhy;S,C&nbhy;G) of the
+        multicast flow is encoded into the NLRI field.
+      </t>
+
+      <t>
+        An S&nbhy;PMSI A&nbhy;D route also carries a PMSI Tunnel attribute (PTA).
+        Typically, the PTA is used to identify a tunnel through the provider
+        backbone network (a "P&nbhy;tunnel").
+      </t>
+      <t>
+        By originating an S&nbhy;PMSI A&nbhy;D route identifying a particular
+        multicast flow and a particular P&nbhy;tunnel, a node is advertising the
+        following:
+        <list>
+          <t>
+            If the node has to transmit packets of the identified flow over
+            the backbone, it will transmit them through the identified
+            tunnel.
+          </t>
+        </list>
+      </t>
+      <t>
+        <xref target="RFC6513"/> and <xref target="RFC6514"/> also define a
+        procedure that allows an ingress node of a particular multicast flow
+        to determine the set of egress nodes that have requested to receive
+        that flow from that ingress node.  The ability of an ingress node to
+        identify the egress nodes for a particular flow is known as
+        "explicit tracking".  An ingress node requests explicit tracking by
+        setting a flag (the "Leaf Information Required" flag, or LIR flag)
+        in the PTA.  When an egress node receives an S&nbhy;PMSI A&nbhy;D
+        route with the LIR flag set, the egress node originates a Leaf
+        A&nbhy;D route whose NLRI field contains the NLRI from the
+        corresponding S&nbhy;PMSI A&nbhy;D route.  In this way, the egress
+        node advertises that it has requested to receive the particular flow
+        identified in the NLRI of that S&nbhy;PMSI A&nbhy;D route.
+      </t>
+      <t>
+        <xref target="RFC6513"/> and <xref target="RFC6514"/> also allow an
+        ingress node to originate an S&nbhy;PMSI A&nbhy;D route whose PTA
+        has the LIR flag set but that does not identify any P&nbhy;tunnel.
+        This mechanism can be used when desired to do explicit tracking of a
+        flow without at the same time binding that flow to a particular
+        P&nbhy;tunnel.
+      </t>
+      <t>
+        <xref target="RFC6625"/> (and other RFCs that update it) extends the
+        specification of S&nbhy;PMSI A&nbhy;D routes and allows an
+        S&nbhy;PMSI A&nbhy;D route to encode a wildcard in its NLRI.  Either
+        the C&nbhy;S or the C&nbhy;G or both can be replaced by wildcards.
+        These routes are known as (C&nbhy;*,C&nbhy;S) S&nbhy;PMSI A&nbhy;D
+        routes, (C&nbhy;S,C&nbhy;*) S&nbhy;PMSI A&nbhy;D routes, or
+        (C&nbhy;*,C&nbhy;*) S&nbhy;PMSI A&nbhy;D routes, depending on
+        whether the C&nbhy;S or C&nbhy;G or both have been replaced by
+        wildcards.  These routes are known jointly as "wildcard S&nbhy;PMSI
+        A&nbhy;D routes".
+      </t>
+      <t>
+        One purpose of this document is to clarify the way that the explicit
+        tracking procedures of <xref target="RFC6513"/> and <xref
+        target="RFC6514"/> are applied when wildcard S&nbhy;PMSI A&nbhy;D
+        routes are used.
+      </t>
+      <t>
+        In addition, this document addresses the following scenario, which
+        is not addressed in <xref target="RFC6513"/>, <xref
+        target="RFC6514"/>, or <xref target="RFC6625"/>.  Suppose an ingress
+        node originates an S&nbhy;PMSI A&nbhy;D route whose NLRI specifies,
+        for example, (C&nbhy;*,C&nbhy;*) (i.e., both C&nbhy;S and C&nbhy;G
+        are replaced by wildcards) and whose PTA identifies a particular
+        P&nbhy;tunnel.  Now suppose that the ingress node wants explicit
+        tracking for each individual flow that it transmits (following the
+        procedures of <xref target="RFC6625"/>) on that P&nbhy;tunnel.
+      </t>
+      <t>
+        In this example, if the ingress node sets the LIR flag in the PTA of
+        the wildcard S&nbhy;PMSI A&nbhy;D route, each egress node that needs
+        to receive a flow from the ingress node will respond with a Leaf
+        A&nbhy;D route whose NLRI contains the (C&nbhy;*,C&nbhy;*) wildcard.
+        This allows the ingress node to determine the set of egress nodes
+        that are interested in receiving flows from the ingress node.
+        However, it does not allow the ingress node to determine exactly
+        which flows are of interest to which egress nodes.
+      </t>
+      <t>
+        If the ingress node needs to determine which egress nodes are
+        interested in receiving which flows, it needs to originate an
+        S&nbhy;PMSI A&nbhy;D route for each individual (C&nbhy;S,C&nbhy;G)
+        flow that it is transmitting, and it needs to set the LIR flag in
+        the PTA of each such route.  However, since all the flows are being
+        sent through the tunnel identified in the (C&nbhy;*,C&nbhy;*)
+        S&nbhy;PMSI A&nbhy;D route, there is no need to identify a tunnel in
+        the PTA of each (C&nbhy;S,C&nbhy;G) S&nbhy;PMSI A&nbhy;D route.  Per
+        Section 5 of <xref target="RFC6514"/>, the PTA of the
+        (C&nbhy;S,C&nbhy;G) S&nbhy;PMSI A&nbhy;D routes can specify "no
+        tunnel information present".  This procedure allows explicit
+        tracking of individual flows, even though all those flows are
+        assigned to tunnels by wildcard S&nbhy;PMSI A&nbhy;D routes.
+      </t>
+      <t>
+        However, this procedure requires several clarifications:
+        <list style="symbols">
+          <t>
+            The procedures of <xref target="RFC6625"/> do not address the
+            case of an S&nbhy;PMSI A&nbhy;D route whose NLRI contains
+	    wildcards but whose PTA specifies "no tunnel information present".
+          </t>
+          <t>
+            If it is desired to send a set of flows through the same tunnel
+            (where that tunnel is advertised in a wildcard S&nbhy;PMSI
+            A&nbhy;D route), but it is also desired to explicitly track each
+            individual flow transmitted over that tunnel, one has to send an
+            S&nbhy;PMSI A&nbhy;D route (with the LIR flag set in the PTA)
+            for each individual flow.  It would be more optimal if the
+            ingress node could just send a single wildcard S&nbhy;PMSI
+            A&nbhy;D route binding the set of flows to a particular tunnel
+            and have the egress nodes respond with Leaf A&nbhy;D routes for
+            each individual flow.
+          </t>
+          <t> 
+            <xref target="RFC6513"/> and <xref target="RFC6514"/> support
+            the notion of "segmented P&nbhy;tunnels", where "segmentation"
+            occurs at Autonomous System Border Routers (ASBRs); <xref
+            target="RFC7524"/> extends the notion of segmented
+            P&nbhy;tunnels so that segmentation can occur at Area Border
+            Routers (ABRs).  One can think of a segmented P&nbhy;tunnel as
+            passing through a number of "segmentation domains".  In each
+            segmentation domain, a given P&nbhy;tunnel has an ingress node
+            and a set of egress nodes.  The explicit tracking procedures
+            allow an ingress node of a particular segmentation domain to
+            determine, for a particular flow or set of flows, the egress
+            nodes of that segmentation domain. This has given rise to two
+            further problems:
+            <list style="symbols">
+              <t>
+                The explicit tracking procedures do not allow an ingress
+                node to "see" past the boundaries of the segmentation
+                domain.
+              </t>
+              <t>
+                The prior specifications do not make it very clear whether a
+                segmented tunnel egress node, upon receiving an S&nbhy;PMSI
+                A&nbhy;D route whose PTA specifies "no tunnel information
+                present", is expected to forward the S&nbhy;PMSI A&nbhy;D
+                route, with the same PTA, to the next segmentation domain.
+              </t>
+            </list>
+            <vspace/>
+            <vspace/>
+            These problems are addressed in <xref target="egress-asbr"/>.
+          </t>
+        </list>
+      </t>
+      <t>
+        This document clarifies the procedures for originating and receiving
+        S&nbhy;PMSI A&nbhy;D routes and Leaf A&nbhy;D routes.  This document
+        also adds new procedures to allow more efficient explicit tracking.
+        The procedures being clarified and/or extended are discussed in
+        multiple places in the documents being updated.
+      </t>
+<section title="Terminology">
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+</section>
+    </section>
+
+    <section title="The Explicit-Tracking Flags" anchor="flags">
+      <t>
+        <xref target="RFC6514"/> defines one flag in the PTA, the "Leaf
+        Information Required" (LIR) flag, that is used for explicit
+        tracking.
+      </t>
+
+
+      <t>
+        This document defines a new flag in the Flags field of the PMSI
+        Tunnel attribute.  This new flag is known as the "Leaf Information
+        Required per Flow" flag (LIR&nbhy;pF).  This flag may be set in the
+        PTA of a (C&nbhy;*,C&nbhy;*), (C&nbhy;*,C&nbhy;G), or
+        (C&nbhy;S,C&nbhy;*) S&nbhy;PMSI A&nbhy;D route.  The conditions
+        under which it should be set by the originator of the route are
+        discussed in <xref target="ingress"/>. The significance of the flag
+        in a received wildcard S&nbhy;PMSI A&nbhy;D route is discussed in
+        Sections <xref target="track_response" format="counter"/> and <xref
+        target="lir-pf_response" format="counter"/>.
+      </t>
+      <t>
+        The LIR&nbhy;pF flag may also be set in the PTA of a Leaf A&nbhy;D
+        route.  The conditions under which it should be set by the
+        originator of the route are discussed in <xref
+        target="lir-pf_response"/>.  The significance of the flag in a
+        received Leaf A&nbhy;D route is discussed in <xref
+        target="ingress-response"/>.
+      </t>
+      <t>
+        Note that support for the LIR&nbhy;pF flag is OPTIONAL.  This flag
+        SHOULD NOT be set in a route's PTA unless it is known that the flag
+        is supported by all the Provider Edge (PE) routers that are to
+        receive that route.  Typically, this might mean that the ability to
+        set this flag would be controlled by a configuration knob, and
+        operators would not set this knob unless they know that all the
+        relevant PEs support this feature.  How this is known is outside the
+        scope of this document.
+      </t>
+
+
+      <t>
+        This document only defines procedures for the LIR&nbhy;pF flag when
+        that flag is in the PTA of a wildcard S&nbhy;PMSI A&nbhy;D route or
+        a Leaf A&nbhy;D route.  In all other cases, the flag SHOULD be
+        clear, and its value SHOULD be ignored.  Use of the flag in these
+        other cases is outside the scope of this document.
+      </t>
+      <t>
+        Section 5 of <xref target="RFC6514"/> lists a number of tunnel
+        types.  We will refer to these as "6514-tunnel-types".  Other tunnel
+        types will be referred to as "non-6514-tunnel-types".  This document
+        specifies procedures for using the LIR&nbhy;pF flag with
+        6514-tunnel-types.  Procedures for using the LIR&nbhy;pF flag with
+        non-6514-tunnel-types are outside the scope of this document.
+      </t>
+      <t>
+        If it is desired to use a particular non-6514-tunnel-type in MVPN,
+        there needs to be a specification for how that tunnel type is used
+        in MVPN.  If it is desired to use that tunnel type along with the
+        LIR&nbhy;pF flag, that specification (or a follow-on specification)
+        will have to specify the rules for using the LIR&nbhy;pF flag with
+        that tunnel type.  As an example, see <xref target="BIER-MVPN"/>.
+        In the absence of such a specification (or in the absence of support
+        for such a specification):
+        <list style="symbols">
+          <t>
+            the originator of a route that carries a PTA SHOULD NOT set
+            the LIR&nbhy;pF flag in any PTA that specifies that tunnel type, and
+          </t>
+          <t>
+            the receiver of a route that carries a PTA specifying that
+            tunnel type SHOULD treat the LIR&nbhy;pF flag as if it were not
+            set.
+          </t>
+        </list>
+      </t>
+      <t>
+        If the LIR&nbhy;pF flag is set in the PTA of an S&nbhy;PMSI A&nbhy;D
+        route, the originator of that route MUST also set the LIR flag.  If
+        the PTA of a received wildcard S&nbhy;PMSI A&nbhy;D route has the
+        LIR&nbhy;pF flag set but does not have the LIR flag set, the
+        receiver MUST log the fact that the flags appear to have been
+        improperly set.  However, the route MUST then be processed normally
+        (as if both flags were set), as specified in this document.
+      </t>
+      <t>
+        It is worth noting what will happen if the LIR&nbhy;pF flag is set
+        in the PTA of, for example, a (C&nbhy;*,C&nbhy;*) S&nbhy;PMSI
+        A&nbhy;D route originated by an ingress node, but one or more of the
+        egress nodes do not support the LIR&nbhy;pF flag:
+        <list style="numbers">
+          <t>
+            The ingress node will not be able to determine the complete set
+            of egress nodes that are expecting a particular multicast flow
+            from that ingress node.
+          </t>
+          <t>
+            Depending upon the tunnel type, the ingress node may send a
+            particular multicast flow only to the egress nodes that do
+            support the LIR&nbhy;pF flag.  From the perspective of egress
+            nodes that do not support the LIR&nbhy;pF flag, certain flows
+            may appear to be "blackholed".
+          </t>
+        </list>
+      </t>
+      <t>
+        It is also worth noting that it is possible for an ingress node that
+        sets the LIR&nbhy;pF flag in an S&nbhy;PMSI A&nbhy;D route to detect
+        the presence of egress nodes that do not support this flag.
+      </t>
+      <t>
+        Since an ingress node that sets the LIR&nbhy;pF flag is also
+        required to set the LIR flag, egress nodes that do not support the
+        LIR&nbhy;pF flag will respond, as specified in <xref
+        target="RFC6514"/>, to the ingress node's (C&nbhy;*,C&nbhy;*)
+        S&nbhy;PMSI A&nbhy;D route with a Leaf A&nbhy;D route.
+      </t>
+      <t>
+        As discussed in <xref target="lir-pf_response"/>, any Leaf A&nbhy;D
+        route originated in response to an S&nbhy;PMSI A&nbhy;D route that
+        has the LIR&nbhy;pF flag set will carry a PTA whose LIR&nbhy;pF flag
+        is set.  If an ingress node receives a Leaf A&nbhy;D route whose
+        Route Key field corresponds to the NLRI of an S&nbhy;PMSI A&nbhy;D
+        route whose PTA has the LIR&nbhy;pF flag set, but the Leaf A&nbhy;D
+        route lacks a PTA or has a PTA where the LIR&nbhy;pF flag is clear,
+        the ingress node can infer that the egress node originating that
+        Leaf A&nbhy;D route does not support the LIR&nbhy;pF flag.  The
+        software at the ingress node MUST detect this and MUST have a way of
+        alerting the operator that the deployment is not properly
+        configured.
+      </t>
+    </section> <!-- flags -->
+
+    <section title="Match for Tracking versus Match for Reception"
+               anchor="tracking_match">
+      <t>
+        Section 3.2 of <xref target="RFC6625"/> specifies a set of rules for
+        finding the S&nbhy;PMSI A&nbhy;D route that is the "match for data
+        reception" (or more simply, the "match for reception") of a given
+        (C&nbhy;S,C&nbhy;G) or (C&nbhy;*,C&nbhy;G) state.  These rules do
+        not take into account the fact that some S&nbhy;PMSI A&nbhy;D routes
+        may not be carrying PTAs at all or may be carrying PTAs that do not
+        identify any P&nbhy;tunnel.  (A PTA that does not identify any
+        P&nbhy;tunnel is one whose Tunnel Type field has been set to "no
+        tunnel information present", as specified in Section 5 of <xref
+        target="RFC6514"/>.)
+      </t>
+      <t>
+        The rules for finding a "match for reception" in <xref
+        target="RFC6625"/> are hereby modified as follows:
+        <list>
+          <t>
+            When applying the rules of Sections 3.2.1 or 3.2.2 of <xref
+            target="RFC6625"/>, it is REQUIRED to ignore any S&nbhy;PMSI
+            A&nbhy;D route that has no PTA, or whose PTA specifies "no
+            tunnel information present".
+          </t>
+        </list>
+      </t>
+      <t>
+        There are other RFCs that update <xref target="RFC6625"/> and
+        modify the rules for finding a "match for reception".  See, e.g.,
+        <xref target="RFC7582"/> and <xref target="RFC7900"/>. When applying
+        those modified rules, it is REQUIRED to ignore any S&nbhy;PMSI
+        A&nbhy;D route that has no PTA, or whose PTA specifies "no tunnel
+        information present".
+      </t>
+      <t>
+        We also introduce a new notion, the "match for tracking":
+        <list>
+          <t>
+            For a given C&nbhy;flow ((C&nbhy;S,C&nbhy;G) or
+            (C&nbhy;*,C&nbhy;G)), the "match for tracking" is chosen as
+            follows.  Ignore any S&nbhy;PMSI A&nbhy;D route that has no PTA.
+            Also ignore any S&nbhy;PMSI A&nbhy;D route whose PTA specifies
+            "no tunnel information present" and has neither the LIR flag nor
+            the LIR&nbhy;pF flag set.
+
+
+	    (That is, *do not* ignore an S&nbhy;PMSI A&nbhy;D route that has
+	    a PTA specifying "no tunnel information present" unless its LIR
+	    and LIR&nbhy;pF flags are both clear).  Then apply the rules
+	    (from <xref target="RFC6625"/> and other documents that update
+	    it) for finding the "match for reception".  The result (if any)
+	    is the "match for tracking".
+            <vspace/>
+            <vspace/>
+            Note that the procedure for finding the match for tracking takes
+            into account S&nbhy;PMSI A&nbhy;D routes whose PTAs specify "no
+            tunnel information present" and that have either the LIR or
+            LIR&nbhy;pf flag set.  The procedure for finding the match for
+            reception ignores such routes.
+          </t>
+        </list>
+      </t>
+      <t>
+        We will clarify this with a few examples.  In these examples, we
+        assume that there is only one segmentation domain.  In this case,
+        the ingress and egress nodes are PE routers.
+      </t>
+      <t>
+        Suppose a given PE router, PE1, has chosen PE2 as the "upstream PE"
+        <xref target="RFC6513"/> for a given flow (C&nbhy;S1,C&nbhy;G1).
+        And suppose PE1 has installed the following two routes that were
+        originated by PE2:
+        <list style="symbols">
+          <t>
+            Route1: A (C&nbhy;*,C&nbhy;*) S&nbhy;PMSI A&nbhy;D route whose
+            PTA specifies a tunnel.
+          </t>
+          <t>
+            Route2: A (C&nbhy;S1,C&nbhy;G1) S&nbhy;PMSI A&nbhy;D route whose
+            PTA specifies "no tunnel information present" and has the LIR
+            flag set.
+          </t>
+        </list>
+      </t>
+      <t>
+        Route1 is the match of (C&nbhy;S1,C&nbhy;G1) for reception, and Route2 is
+        the match of (C&nbhy;S1,C&nbhy;G1) for tracking.
+      </t>
+      <t>
+        Continuing this example, suppose:
+        <list style="symbols">
+          <t>
+            PE1 has chosen PE2 as the upstream PE for a different flow,
+            (C&nbhy;S2,C&nbhy;G2).
+          </t>
+          <t>
+            PE2 has not originated an S&nbhy;PMSI A&nbhy;D route for
+            (C&nbhy;S2,C&nbhy;G2).
+          </t>
+        </list>
+      </t>
+      <t>
+        In this case, PE1 would consider Route1 to be the match of 
+        (C&nbhy;S2,C&nbhy;G2) for tracking as well as its match for
+        reception.
+      </t>
+      <t>
+        Also note that if a match for tracking does not have the LIR flag or
+        the LIR&nbhy;pF flag set, no explicit tracking information will be
+        generated. See <xref target="track_response"/>.
+      </t>
+      <t>
+        As another example, suppose PE1 has installed the following two
+        routes that were originated by PE2:
+        <list style="symbols">
+          <t>
+            Route1: A (C&nbhy;*,C&nbhy;*) S&nbhy;PMSI A&nbhy;D route
+            (irrespective of whether the PTA specifies a tunnel).
+          </t>
+          <t>
+            Route2: A (C&nbhy;S1,C&nbhy;G1) S&nbhy;PMSI A&nbhy;D route whose
+            PTA specifies a tunnel.
+          </t>
+        </list>
+      </t>
+      <t>
+        In this case, Route2 is both the "match for reception" and the "match for
+        tracking" for (C&nbhy;S1,C&nbhy;G1).
+      </t>
+      <t>
+        Note that for a particular C&nbhy;flow, PE1's match for reception
+        might be the same route as its match for tracking, or its match for
+        reception might be a "less specific" route than its match for
+        tracking.  But its match for reception can never be a "more
+        specific" route than its match for tracking.
+      </t>
+    </section> <!-- tracking match -->
+    
+
+    <section title="Ingress Node Initiation of Tracking" anchor="ingress">
+      <t>
+        An ingress node that needs to initiate explicit tracking for a
+        particular flow or set of flows can do so by performing one of the
+        following procedures:
+        <list style="numbers">
+          <t anchor="lir">
+            An ingress node can initiate explicit tracking for
+            (C&nbhy;S1,C&nbhy;G1) by originating an S&nbhy;PMSI A&nbhy;D
+            route that identifies (C&nbhy;S1,C&nbhy;G1) in its NLRI,
+            including a PTA in that route, and setting the LIR flag in that
+            PTA.  The PTA may specify either a particular tunnel or "no tunnel
+	    information present".
+            <vspace/>
+            <vspace/>
+            However, the PTA of the (C&nbhy;S1,C&nbhy;G1) S&nbhy;PMSI
+            A&nbhy;D route SHOULD NOT specify "no tunnel information
+            present" unless the ingress node also originates an A&nbhy;D
+            route carrying a PTA that specifies the tunnel to be used for
+            carrying (C&nbhy;S1,C&nbhy;G1) traffic.  Such a route could be
+            an "Inclusive Provider Multicast Service Interface
+            Auto-Discovery route" (I&nbhy;PMSI A&nbhy;D route), a
+            (C&nbhy;*,C&nbhy;G1) S&nbhy;PMSI A&nbhy;D route, a
+            (C&nbhy;S1,C&nbhy;*) S&nbhy;PMSI A&nbhy;D route, or a
+            (C&nbhy;*,C&nbhy;*) S&nbhy;PMSI A&nbhy;D route.  (There is no
+            point in requesting explicit tracking for a given flow if there
+            is no tunnel on which the flow is being carried.)
+            <vspace/>
+            <vspace/>
+            Note that if the ingress node originates a wildcard S&nbhy;PMSI
+            A&nbhy;D route carrying a PTA specifying the tunnel to be used
+            for carrying (C&nbhy;S1,C&nbhy;G1) traffic, and if that PTA has
+            the LIR&nbhy;pF flag set, then explicit tracking for
+            (C&nbhy;S1,C&nbhy;G1) is requested by that S&nbhy;PMSI A&nbhy;D
+            route.  In that case, the ingress node SHOULD NOT originate a
+            (C&nbhy;S1,C&nbhy;G1) S&nbhy;PMSI A&nbhy;D route whose PTA
+            specifies "no tunnel information present"; such a route would
+            not provide any additional functionality.
+            <vspace/>
+            <vspace/>
+            To terminate explicit tracking that has been initiated by an
+            S&nbhy;PMSI A&nbhy;D route whose PTA specifies "no tunnel
+            information present", the ingress node withdraws the route.
+            <vspace/>
+            <vspace/>
+            To terminate explicit tracking that has been initiated by an
+            S&nbhy;PMSI A&nbhy;D route whose PTA specifies a tunnel, the
+            ingress node re&nbhy;originates the route without the LIR flag
+            set.
+          </t>
+          <t anchor="lirpf">
+            The following procedure can be used if and only if it is known
+            that the egress nodes support the optional LIR&nbhy;pF flag.  If
+            the ingress node originates a wildcard S&nbhy;PMSI A&nbhy;D
+            route, it can initiate explicit tracking for the individual
+            flows that match the wildcard route by setting the LIR&nbhy;pF
+            flag in the PTA of the wildcard route.  If an egress node needs
+            to receive one or more flows for which that wildcard route is a
+            match for tracking, the egress node will originate a Leaf
+            A&nbhy;D route for each such flow, as specified in <xref
+            target="lir-pf_response"/>).
+            <vspace/>
+            <vspace/>
+            When following this procedure, the PTA of the S&nbhy;PMSI
+            A&nbhy;D route may specify either a tunnel or "no tunnel
+            information present".  The choice between these two options is
+            determined by considerations that are outside the scope of this
+            document.
+            <vspace/>
+            <vspace/>
+            To terminate explicit tracking that has been initiated by an
+            S&nbhy;PMSI A&nbhy;D route whose PTA specifies "no tunnel
+            information present", the ingress node withdraws the route.
+            <vspace/>
+            <vspace/>
+            To terminate explicit tracking that has been initiated by an
+            S&nbhy;PMSI A&nbhy;D route whose PTA specifies a tunnel, the
+            ingress node re-originates the route without either the LIR or
+            LIR&nbhy;pF flags set.
+            <vspace/>
+            <vspace/>
+            Note that this procedure (Procedure <xref target="lirpf"
+            format="counter"/> of <xref target="ingress"/>) may not yield
+            the expected results if there are egress nodes that do not
+            support the LIR&nbhy;pF flag; hence, it SHOULD NOT be used in
+            that case.
+          </t>
+        </list>
+      </t>
+        
+    </section> <!-- Ingress node Behavior -->
+    
+    
+    <section title="Egress Node Response to the Match for Tracking"
+               anchor="track_response">
+      
+      <section title="General Egress Node Procedures" anchor="egress_node">
+        <t>
+          There are four cases to consider:
+          <list style="numbers">
+            <t>
+              With regard to a particular (C&nbhy;S,C&nbhy;G) or
+              (C&nbhy;*,C&nbhy;G) multicast state, the egress node's match
+              for tracking is the same as its match for reception, and
+              neither the LIR nor the LIR&nbhy;pF flags are set.
+              <vspace/>
+              <vspace/>
+              In this case, the egress node does not originate a Leaf
+              A&nbhy;D route in response to the match for
+              reception/tracking, and there is no explicit tracking of the
+              flow.  This document specifies no new procedures for this
+              case.
+            </t>
+            <t>
+              With regard to a particular (C&nbhy;S,C&nbhy;G) or
+              (C&nbhy;*,C&nbhy;G) multicast state, the egress node's match
+              for tracking is the same as its match for reception, and the
+              LIR flag is set, but the LIR&nbhy;pF flag is not set.
+              <vspace/>
+              <vspace/>
+              In this case, a Leaf A&nbhy;D route is originated by the egress
+              node, corresponding to the S&nbhy;PMSI A&nbhy;D route that is the
+              match for reception/tracking.  Construction of the Leaf A&nbhy;D
+              route is as specified in <xref target="RFC6514"/>; this
+              document specifies no new procedures for this case.
+            </t>
+            <t>
+              With regard to a particular (C&nbhy;S,C&nbhy;G) or
+              (C&nbhy;*,C&nbhy;G) multicast state, the egress node's match
+              for tracking is the same as its match for reception, and
+              LIR&nbhy;pF is set.  The egress node follows whatever
+              procedures are required by other specifications, based on the
+              match for reception.  However, any Leaf A&nbhy;D route
+              originated by the egress node as a result MUST have the
+              LIR&nbhy;pF flag set in its PTA.  The egress node MUST also
+              follow the procedures of <xref target="lir-pf_response"/>.
+            </t>
+            <t>
+              With regard to a particular (C&nbhy;S,C&nbhy;G) or
+              (C&nbhy;*,C&nbhy;G) multicast state, the egress node's match
+              for tracking is *not* the same as its match for reception.
+              This can only happen if the match for tracking has a PTA
+              specifying "no tunnel information present", with either the
+              LIR flag or the LIR&nbhy;pF flag set.  In this case, the
+              egress node MUST respond, separately, to *both* the match for
+              tracking and the match for reception.
+              <vspace/>
+              <vspace/>
+              If a Leaf A&nbhy;D route is originated in response to the
+              match for reception, the LIR&nbhy;pF flag in the Leaf A&nbhy;D
+              route's PTA MUST have the same value as the LIR&nbhy;pF flag
+              in the match for reception's PTA.  In all other respects, the
+              procedures for responding to the match for reception are not
+              affected by this document.
+              <vspace/>
+              <vspace/>
+              If the match for tracking has the LIR flag set but the
+              LIR&nbhy;pF flag is not set, then the behavior of the egress
+              node is not affected by the procedures of this document.
+              <vspace/>
+              <vspace/>
+              If the match for tracking has the LIR&nbhy;pF flag set, the
+              egress node MUST follow the procedures of <xref
+              target="lir-pf_response"/>.
+              <vspace/>
+              <vspace/>
+              Note that if the LIR flag is set in the PTA of the match for
+              reception, the egress node may need to originate one or more
+              Leaf A&nbhy;D routes corresponding to the match for tracking,
+              as well as originating a Leaf A&nbhy;D route corresponding to
+              the match for reception.
+            </t>
+          </list>
+        </t>
+      </section> <!-- egress node -->
+      
+      <section title="Responding to the LIR-pF Flag"
+               anchor="lir-pf_response">
+        <t>
+          To respond to a match for tracking that has the LIR&nbhy;pF flag
+          set, an egress node originates one or more Leaf A&nbhy;D routes.
+        </t>
+        <t>
+          Suppose the egress node has multicast state for a
+          (C&nbhy;S,C&nbhy;G) or a (C&nbhy;*,C&nbhy;G) flow and has
+          determined a particular S&nbhy;PMSI A&nbhy;D route, which has the
+          LIR&nbhy;pF flag set, to be the match for tracking for that flow.
+          Then if the egress node supports the LIR&nbhy;pF flag, it MUST
+          originate a Leaf A&nbhy;D route whose NLRI identifies that
+          particular flow.  Note that if a single S&nbhy;PMSI A&nbhy;D route
+          (with wildcards) is the match for tracking for multiple flows,
+          the egress node may need to originate multiple Leaf A&nbhy;D
+          routes, one for each such flow.  We say that, from the perspective
+          of a given egress node, a given S&nbhy;PMSI A&nbhy;D route tracks
+          the set of flows for which it is the match for tracking.  Each of
+          the Leaf A&nbhy;D routes originated in response to that
+          S&nbhy;PMSI A&nbhy;D route tracks a single such flow.
+        </t>
+        <t>
+          The NLRI of each Leaf A&nbhy;D route that tracks a particular
+          flow is constructed as follows.  The Route Key field of the NLRI
+          will have the format shown in <xref target="spmsi_nlri"/> (as
+          defined in Sections 4.3 and 4.4 of <xref target="RFC6514"/>).
+        </t>
+        <figure align="center" anchor="spmsi_nlri" title="NLRI of S-PMSI
+                                                          A-D Route">
+          
+          <artwork align="center"><![CDATA[
+      
++------------------------------------+
+|      RD   (8 octets)               |
++------------------------------------+
+|  Multicast Source Length (1 octet) |
++------------------------------------+
+|  Multicast Source (Variable)       |
++------------------------------------+
+|  Multicast Group Length (1 octet)  |
++------------------------------------+
+|  Multicast Group (Variable)        |
++------------------------------------+
+|  Ingress PE's IP Address           |
++------------------------------------+
+]]>
+            </artwork>
+        </figure>
+        <t>
+          <list style="symbols">
+            <t>
+              The "ingress PE" address is taken from the Originating
+              Router field of the NLRI of the S&nbhy;PMSI A&nbhy;D route
+              that is the match for tracking.  Section 2 of <xref
+              target="RFC6515"/> explains how the receiver of a Leaf
+              A&nbhy;D route determines the length of this field and the
+              address family of the PE's IP address.
+            </t>
+
+            <t>
+              The Multicast Source and Multicast Group fields respectively
+              specify a source address (S) and a group address(G) that
+              together identify the flow or flows being tracked by this Leaf
+              A&nbhy;D route.  If a (C&nbhy;*,C&nbhy;G) is being tracked by
+              this Leaf A&nbhy;D route, the Multicast Source field is
+              omitted, and the Multicast Source Length field is set to 0.
+              In this case, the Leaf A&nbhy;D route is known as a "wildcard
+              Leaf A&nbhy;D route".
+            </t>
+            <t>
+              The Route Distinguisher (RD) field is set to the value of the
+              RD field from the NLRI of the S&nbhy;PMSI A&nbhy;D route.
+            </t>
+
+          </list>
+        </t>
+        <t>
+          The encoding of these Leaf A&nbhy;D routes is similar to the
+          encoding of the Leaf A&nbhy;D routes described in Section 6.2.2 of
+          <xref target="RFC7524"/>, which were designed for the support of
+          "global table multicast".  However, that document sets
+          the RD to either 0 or -1; following the procedures of the present
+          document, the RD will never be 0 or -1.  Therefore, Leaf A&nbhy;D
+          routes constructed according to the procedures of this section can
+          always be distinguished from the Leaf A&nbhy;D routes constructed
+          according to the procedures of Section 6.2.2 of <xref
+          target="RFC7524"/>.  Also, Leaf A&nbhy;D routes constructed
+          according to the procedures of this section are VPN-specific
+          routes and will always carry an IP-address-specific Route Target,
+          as specified in <xref target="RFC6514"/>.
+        </t>
+        <t>
+          If a Leaf A&nbhy;D route is originated as a response to a match
+          for tracking whose PTA specifies "no tunnel information present",
+          the Leaf A&nbhy;D route MUST carry a PTA that specifies "no tunnel
+          information present".  The LIR&nbhy;pF flag in this PTA MUST be set.
+        </t>
+        <t>
+          If an egress node originates multiple Leaf A&nbhy;D routes in
+          response to a single S&nbhy;PMSI A&nbhy;D route, and that
+          S&nbhy;PMSI A&nbhy;D route is later withdrawn, then those Leaf
+          A&nbhy;D routes MUST also be withdrawn.
+        </t>
+        <t>
+          Similarly, a Leaf A&nbhy;D route needs to be withdrawn (either
+          implicitly or explicitly) if the egress node changes its Upstream
+          Multicast Hop (UMH) <xref target="RFC6513"/> for the flow that
+          is identified in the Leaf A&nbhy;D route's NLRI, or if the egress
+          node that originated the route no longer needs to receive that flow.
+        </t>
+        <t>
+          It is possible that an egress node will acquire
+          (C&nbhy;S,C&nbhy;G) state or (C&nbhy;*,C&nbhy;G) state after it
+          has already received the S&nbhy;PMSI A&nbhy;D that is the match
+          for tracking for that state.  In this case, a Leaf A&nbhy;D route
+          needs to be originated at that time, and the egress node must
+          remember that the new Leaf A&nbhy;D route corresponds to that
+          match for tracking.
+        </t>
+        <t>
+          If a particular S&nbhy;PMSI A&nbhy;D route is a match for tracking
+          but not a match for reception, the LIR flag in its PTA is ignored
+          if the LIR&nbhy;pF flag is set.
+        </t>
+         
+        <t>
+          When the match for tracking is the same as the match for
+          reception, the PTA of the match for tracking/reception will have
+          specified a tunnel type.  Some of the rules for constructing the
+          PTA of the Leaf A&nbhy;D route depend on the tunnel type, and some
+          are independent of the tunnel type.  No matter what the tunnel
+          type is, the LIR&nbhy;pF flag MUST be set.
+        </t>
+        <t>
+          If the match for tracking/reception is a wildcard S&nbhy;PMSI
+          A&nbhy;D route, the egress node may originate a wildcard Leaf
+          A&nbhy;D route in response, as well as originating one or more
+          non-wildcard Leaf A&nbhy;D routes.  Note that the LIR&nbhy;pF flag
+          MUST be set in the wildcard Leaf A&nbhy;D route as well as in the
+          non-wildcard Leaf A&nbhy;D routes.
+        </t>
+        <t>
+          This document provides additional rules for constructing the PTA
+          when the tunnel type is a 6514-tunnel-type (see <xref
+          target="flags"/>).
+        </t>
+        <t>
+          As discussed in <xref target="flags"/>, if a non-6514-tunnel-type
+          is being used, then presumably there is a specification for how
+          that tunnel type is used in MVPN.  If it is desired to use that
+          tunnel type along with the LIR&nbhy;pF flag, that specification
+          (or a follow-on specification) will have to specify the additional
+          rules for constructing the PTA.  As an example, see <xref
+          target="BIER-MVPN"/>.
+        </t>
+        <t>
+          For 6514-tunnel-types, additional rules for constructing the PTA
+          are as follows:
+          <list style="symbols">
+            <t>
+              If the tunnel type of the PTA attached to the match for
+              tracking/reception is Ingress Replication, the Leaf A&nbhy;D
+              route's PTA MAY specify Ingress Replication.  In this case,
+              the MPLS Label field of the PTA MAY be a non-zero value.  If
+              so, this label value will be used by the ingress PE when it
+              transmits, to the egress PE, packets of the flow identified in
+              the Leaf A&nbhy;D route's NLRI.
+              <vspace/>
+              <vspace/>
+              Alternatively, the egress PE MAY specify an MPLS label value
+              of zero, or it MAY specify a tunnel type of "no tunnel
+              information present".  In either of these cases, when the
+              ingress PE transmits packets of the identified flow to the
+              egress PE, it will use the label that the egress PE specified
+              in the PTA of the Leaf A&nbhy;D route that it originated in
+              response to the LIR flag of the match for reception.
+            </t>
+            <t>
+              If the tunnel type of the PTA attached to the match for
+              tracking/reception is any of the other 6514-tunnel-types, the
+              PTA attached to the Leaf A&nbhy;D route MUST specify a tunnel
+              type of "no tunnel information present".
+            </t>
+          </list>
+        </t>
+        <t>
+          It may happen that the tunnel type is a non-6514-tunnel type, but
+          either (a) there is no specification for how to use that tunnel
+          type with the LIR&nbhy;pF flag or (b) there is such a
+          specification, but the egress node does not support it.  In that
+          case, the egress node MUST treat the match for tracking/reception
+          as if it had the LIR&nbhy;pF flag clear.
+        </t>
+     </section>
+      
+      <section title="When the Egress Node Is an ABR or ASBR"
+               anchor="egress-asbr">
+        <t>
+          When segmented P&nbhy;tunnels are used, the ingress and egress
+          nodes may be ABRs or ASBRs.  An egress ABR/ASBR that receives and
+          installs an S&nbhy;PMSI A&nbhy;D route also forwards that
+          route. If the received PTA of an installed S&nbhy;PMSI A&nbhy;D
+          route specifies a tunnel, the egress ABR/ASBR MAY change the PTA
+          before forwarding the route, in order to specify a different
+          tunnel type (as discussed in <xref target="RFC6514"/> and/or <xref
+          target="RFC7524"/>).  The egress ABR/ASBR may also need to
+          originate a Leaf A&nbhy;D route, as specified in <xref
+          target="RFC6514"/> and/or <xref target="RFC7524"/>.
+        </t>
+        <t>
+          Suppose the S&nbhy;PMSI A&nbhy;D route as received has a PTA
+          specifying a tunnel and also has the LIR&nbhy;pF flag set.  The
+          egress ABR/ASBR originates a corresponding Leaf A&nbhy;D route for
+          a given (C&nbhy;S,C&nbhy;G) only if it knows that it needs to
+          receive that flow.  It will know this by virtue of receiving a
+          corresponding Leaf A&nbhy;D route from downstream.  (In the case
+          where the PTA specifies a tunnel but the LIR&nbhy;pF flag is not
+          set, this document does not specify any new procedures.)
+        </t>
+        <t>
+          The procedures in the remainder of this section apply only when an
+          egress ABR/ASBR has installed an S&nbhy;PMSI A&nbhy;D route whose
+          PTA as received specifies "no tunnel information present" but has
+          the LIR flag or the LIR&nbhy;pF flag set.
+        </t>
+        <t>
+          If the received PTA of the installed S&nbhy;PMSI A&nbhy;D route
+          specifies "no tunnel information present", the egress ABR/ASBR
+          MUST pass the PTA along unchanged when it forwards the S&nbhy;PMSI
+          A&nbhy;D route. (That is, a PTA specifying "no tunnel information
+          present" MUST NOT be changed into a PTA specifying a tunnel.)
+          Furthermore, if the PTA specifies "no tunnel information present",
+          the LIR and LIR&nbhy;pF flags in the PTA MUST be passed along
+          unchanged.
+        </t>
+        <t>
+          As a result of propagating such an S&nbhy;PMSI A&nbhy;D route, the
+          egress ABR/ASBR may receive one or more Leaf A&nbhy;D routes that
+          correspond to that S&nbhy;PMSI A&nbhy;D route. These routes will
+          be received carrying an IP-address-specific Route Target (RT)
+          Extended Community that specifies the address of the egress
+          ABR/ASBR.  The egress ABR/ASBR will propagate these Leaf A&nbhy;D
+          routes after changing the RT as follows.  The Global Administrator
+          field of the modified RT will be set to the IP address taken
+          either from the S&nbhy;PMSI A&nbhy;D route's Next-Hop field <xref
+          target="RFC6514"/> or its Segmented Point-to-Multipoint (P2MP)
+          Next-Hop Extended Community <xref target="RFC7524"/>.  The address
+          from the Segmented P2MP Next-Hop Extended Community is used if
+          that Extended Community is present; otherwise, the address from
+          the Next-Hop field is used.
+        </t>
+        <t>
+          This procedure enables the ingress PE to explicitly track the
+          egress PEs for a given flow, even if segmented tunnels are being
+          used. However, cross-domain explicit tracking utilizes S&nbhy;PMSI
+          A&nbhy;D routes that do not specify tunnel information; therefore,
+          it can only be done when the S&nbhy;PMSI A&nbhy;D route that is a
+          flow's match for tracking is different from the S&nbhy;PMSI
+          A&nbhy;D route that is that flow's match for reception.
+        </t>
+      </section> 
+
+    </section> 
+
+    <section title="Ingress Node Handling of Received Leaf A-D Routes with
+                    LIR-pF Set"
+             anchor="ingress-response">
+      <t>
+        Consider the following situation:
+        <list style="symbols">
+          <t>
+            An ingress node, call it N, receives a Leaf A&nbhy;D route, call
+            it L.
+          </t>
+          <t>
+            L carries an IP-address-specific RT identifying N.
+          </t>
+          <t>
+            The Route Key field of L's NLRI is not identical to the NLRI of
+            any current I&nbhy;PMSI or S&nbhy;PMSI A&nbhy;D route originated
+            by N.
+          </t>
+        </list>
+      </t>
+      <t>
+        Per the procedures of <xref target="RFC6514"/> and <xref
+        target="RFC7524"/>, such a Leaf A&nbhy;D route does not cause any
+        MVPN-specific action to be taken by N.
+      </t>
+      <t>
+        This document modifies those procedures in the case where there is a
+        current wildcard S&nbhy;PMSI A&nbhy;D route, originated by N, to
+        which L is a valid response according to the procedures of <xref
+        target="lir-pf_response"/>.  In this case, L MUST be processed by
+        N.
+      </t>
+      <t>
+        Suppose that L's PTA specifies a tunnel type of Ingress Replication
+        and that it also specifies a non-zero MPLS label.  Then if N needs
+        to send to L a packet belonging to the multicast flow or flows
+        identified in L's NLRI, N MUST use the specified label.
+      </t>
+      <t>
+        If L's PTA meets any of the following conditions:
+        <list style="symbols">
+          <t>
+            It specifies a tunnel type of "no tunnel information present",
+            or
+          </t>
+          <t>
+            It specifies a tunnel type of Ingress Replication, but specifies
+            an MPLS label of zero, or
+          </t>
+          <t>
+            It specifies any other 6514-tunnel-type, 
+          </t>
+        </list>
+        then the action taken by N when it receives L is a local matter.  In
+        this case, the Leaf A&nbhy;D route L provides N with explicit
+        tracking information for the flow identified by L's NLRI.  However,
+        that information is for management/monitoring purposes and does not
+        have any direct effect on the flow of multicast traffic.
+      </t>
+      <t>
+        If L's PTA specifies a non-6514-tunnel-type not mentioned above,
+        presumably there is a specification for how MVPN uses that tunnel
+        type.  If the LIR&nbhy;pF flag is to be used with that tunnel type,
+        that specification must specify the actions that N is to take upon
+        receiving L. As an example, see <xref target="BIER-MVPN"/>. In the
+        absence of such a specification, the LIR&nbhy;pF flag SHOULD BE
+        ignored.  See <xref target="flags"/> for further
+        discussion of non-6514-tunnel-types.
+      </t>
+      
+      
+    </section> 
+
+    
+        
+    <section title="IANA Considerations" anchor="iana">
+      <t>
+        IANA has added the following entry to the "P&nbhy;Multicast
+        Service Interface (PMSI) Tunnel Attribute Flags" registry under the 
+        "Border Gateway Protocol (BGP) Parameters" registry. This registry
+        is defined in <xref target="RFC7902"/>.  The entry appears as:
+        <list style="symbols">
+          <t> Value: 2</t>
+          <t> Name: Leaf Information Required per-Flow (LIR-pF)</t>
+          <t> Reference: RFC 8534</t>
+        </list>
+
+
+      </t>
+    </section>
+    
+    <section title="Security Considerations">
+      <t>
+        The Security Considerations of <xref target="RFC6513"/> and <xref
+        target="RFC6514"/> apply.
+      </t>
+      <t>
+        By setting the LIR&nbhy;pF flag in a single wildcard S&nbhy;PMSI
+        A&nbhy;D route, a large number of Leaf A&nbhy;D routes can be
+        elicited.  If this flag is set when not desired (through either
+        error or malfeasance), a significant increase in control plane
+        overhead can result.  Properly protecting the control plane should
+        prevent this kind of attack.
+      </t>
+      <t>
+        In the event such an attack occurs, mitigating it is unfortunately
+        not very straightforward.  The ingress node can take note of the
+        fact that it is getting, in response to an S&nbhy;PMSI A&nbhy;D
+        route that has LIR&nbhy;pF clear, one or more Leaf A&nbhy;D routes
+        that have LIR&nbhy;pF set. By default, the reception of such a route
+        MUST be logged.  However, it is possible for such log entries to be
+        "false positives" that generate a lot of "noise" in the log;
+        therefore, implementations SHOULD have a knob to disable this
+        logging.
+      </t>
+      <t>
+        In theory, if one or more Leaf A&nbhy;D routes with LIR&nbhy;pF set
+        arrive in response to an S&nbhy;PMSI A&nbhy;D route with LIR&nbhy;pF
+        clear, withdrawing the S&nbhy;PMSI A&nbhy;D route could put a stop
+        to the attack.  In practice, that is not likely to be a very good
+        strategy, because:
+        <list style="symbols">
+          <t>
+            Under normal operating conditions, there are some race conditions
+            that may cause the ingress node to think it is being attacked,
+            when in fact it is not.
+          </t>
+          <t>
+            If some egress nodes have a bug that causes them to set
+            LIR&nbhy;pF when it should be clear, withdrawing the S&nbhy;PMSI
+            A&nbhy;D route will stop the flow of multicast data traffic to
+            all the egress nodes, causing an unnecessary customer-visible
+            disruption.
+          </t>
+          <t>
+            The same situation that caused the S&nbhy;PMSI A&nbhy;D route to
+            be originated in the first place will still exist after the
+            S&nbhy;PMSI A&nbhy;D route is withdrawn, so the route will just
+            be re-originated.
+          </t>
+        </list>
+      </t>
+      <t>
+        In other words, any action that would ameliorate the effects of this
+        sort of attack would likely have a negative effect during normal
+        operation.  Therefore, it is really better to rely on security
+        mechanisms that protect the control plane generally than
+        to have a mechanism that is focused on this one particular type of
+        attack.
+      </t>
+   </section>
+    
+    <?rfc needLines="8" ?>
+    
+</middle>
+
+
+
+  <back>
+
+    <references title="Normative References">
+      &RFC2119;
+      &RFC6513;
+      &RFC6514;
+      &RFC6515;
+      &RFC6625;
+      &RFC7524;
+      &RFC7902;
+      &RFC8174;      
+    </references>
+
+    <references title="Informative References">
+      &RFC7582;
+      &RFC7900;
+
+<!-- draft-ietf-bier-mvpn-11 exists  -->
+<reference anchor='BIER-MVPN'>
+<front>
+<title>Multicast VPN Using BIER</title>
+
+<author initials='E' surname='Rosen' fullname='Eric Rosen'>
+    <organization />
+</author>
+
+<author initials='M' surname='Sivakumar' fullname='Mahesh Sivakumar'>
+    <organization />
+</author>
+
+<author initials='S' surname='Aldrin' fullname='Sam Aldrin'>
+    <organization />
+</author>
+
+<author initials='A' surname='Dolganow' fullname='Andrew Dolganow'>
+    <organization />
+</author>
+
+<author initials='T' surname='Przygienda' fullname='Tony Przygienda'>
+    <organization />
+</author>
+
+<date month='March' day='19' year='2018' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-bier-mvpn-11' />
+
+</reference>
+
+    </references>
+
+    <section title="Acknowledgments" numbered="no">
+      <t>
+        The authors wish to thank Robert Kebler for his ideas and comments
+        and Stephane Litkowski and Benjamin Kaduk for their
+        thorough reviews and useful suggestions. We would also like to thank
+        Mirja Kuhlewind for her attention to the Security Considerations
+        section.
+      </t>
+    </section>
+
+
+  </back> </rfc>

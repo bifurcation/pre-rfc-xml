@@ -1,0 +1,678 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+ <!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+ <?rfc toc="yes"?>
+ <?rfc tocompact="yes"?>
+ <?rfc tocdepth="3"?>
+ <?rfc tocindent="yes"?>
+ <?rfc symrefs="yes"?>
+ <?rfc sortrefs="yes"?>
+ <?rfc comments="yes"?>
+ <?rfc inline="yes"?>
+ <?rfc compact="yes"?>
+ <?rfc subcompact="no"?>
+
+<rfc number="8155" category="std" submissionType="IETF" consensus="yes"
+     ipr="trust200902" updates="5766">
+  <front>
+    <title abbrev="TURN Server Auto Discovery">Traversal Using Relays
+    around NAT (TURN) Server Auto Discovery</title>
+
+    <author fullname="Prashanth Patil" initials="P." surname="Patil">
+      <organization abbrev="Cisco">Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street></street>
+
+          <street></street>
+
+          <city></city>
+
+          <country></country>
+        </postal>
+
+        <email>praspati@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Tirumaleswar Reddy" initials="T." surname="Reddy">
+      <organization abbrev="Cisco">Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street>Cessna Business Park, Varthur Hobli</street>
+
+          <street>Sarjapur Marathalli Outer Ring Road</street>
+
+          <city>Bangalore</city>
+
+          <region>Karnataka</region>
+
+          <code>560103</code>
+
+          <country>India</country>
+        </postal>
+
+        <email>tireddy@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Dan Wing" initials="D." surname="Wing">
+      <address>
+        <postal>
+          <street></street>
+
+          <country>United States America</country>
+        </postal>
+
+        <email>dwing-ietf@fuggles.com</email>
+      </address>
+    </author>
+
+    <date month="April" year="2017"/>
+
+    <workgroup>TRAM</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in 
+the title) for use on https://www.rfc-editor.org/search.
+-->
+
+<keyword>example</keyword>
+
+    <abstract>
+      <t>Current Traversal Using Relays around NAT (TURN) server discovery
+      mechanisms are relatively static and limited to explicit configuration.
+      These are usually under the administrative control of the application or
+      TURN service provider, and not the enterprise, ISP, or the network in
+      which the client is located. Enterprises and ISPs wishing to provide
+      their own TURN servers need auto-discovery mechanisms that a TURN client
+      could use with minimal or no configuration. This document describes
+      three such mechanisms for TURN server discovery.</t>
+
+      <t>This document updates RFC 5766 to relax the
+      requirement for mutual authentication in certain cases.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section anchor="introduction" title="Introduction">
+      <t>TURN <xref target="RFC5766"></xref> is a protocol that is often used
+      to improve the connectivity of Peer-to-Peer (P2P) applications (as
+      defined in Section 2.7 of <xref target="RFC5128"></xref>). TURN allows a
+      connection to be established when one or both sides are incapable of a
+      direct P2P connection. It is an important building block for
+      interactive, real-time communication using audio, video, collaboration,
+      etc.</t>
+
+      <t>While TURN services are extensively used today, the means to
+      automatcially discover TURN servers do not exist. TURN clients are usually explicitly
+      configured with a well-known TURN server. To allow TURN applications to
+      operate seamlessly across different types of networks and encourage the
+      use of TURN without the need for manual configuration, it is important
+      that there exist an auto-discovery mechanism for TURN services. Web
+      Real-Time Communication (WebRTC) <xref
+      target="WebRTC-Overview"></xref> usages and related extensions,
+      which are mostly based on web applications, need TURN server discovery
+      mechanisms.</t>
+
+      <t>This document describes three discovery mechanisms, so as to maximize
+      the opportunity for discovery, based on the network in which the TURN client
+      finds itself. The three discovery mechanisms are:</t>
+
+      <t><list style="symbols">
+          <t>A resolution mechanism based on Straightforward-Naming Authority
+          Pointer (S-NAPTR) resource records in the Domain Name System (DNS).
+          <xref target="RFC5928"></xref> describes details on retrieving a
+          list of server transport addresses from the DNS that can be used to
+          create a TURN allocation.</t>
+
+          <t>DNS Service Discovery.</t>
+
+          <t>A mechanism based on an anycast address for TURN.</t>
+        </list>In general, if a client wishes to communicate using one of its
+      interfaces using a specific IP address family, it SHOULD query the TURN
+      server(s) that has been discovered for that specific interface and
+      address family. How to select an interface and IP address family is out
+      of the scope of this document.</t>
+    </section>
+
+    <section anchor="term" title="Terminology">
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+      "OPTIONAL" in this document are to be interpreted as described in <xref
+      target="RFC2119"></xref>.</t>
+    </section>
+
+    <section title="Discovery Procedure">
+      <t>TURN clients, by default, discover TURN server(s) by means of local
+      or manual TURN configuration (i.e., TURN servers configured at the
+      system level). Configuration discovered from an application, e.g., a
+      JavaScript-specified TURN server for Web Real-Time Communication
+      (WebRTC) <xref target="WebRTC-Overview"></xref> usages and
+      related extensions, is considered a local configuration. An
+      implementation may give the user an opportunity (e.g., by means of
+      configuration file options or menu items) to specify a TURN server for
+      each address family. A client can choose auto-discovery in the absence
+      of local configuration, if local configuration doesn&rsquo;t work or in
+      addition to local configuration. This document does not offer a
+      recommendation on server selection.</t>
+
+      <t>A TURN client that implements the auto-discovery algorithm, to
+      discover TURN servers in the attached network, uses the following
+      mechanisms for discovery:</t>
+
+      <t><list style="symbols">
+          <t>Service Resolution: The TURN client attempts to perform TURN
+          service resolution using the host's DNS domain.</t>
+
+          <t>DNS SD: DNS Service Discovery.</t>
+
+          <t>Anycast: Send TURN Allocation request to the assigned TURN anycast
+          request for each combination of interface and address family.</t>
+        </list></t>
+
+      <t>Not all TURN servers may be discovered using NAPTR records or DNS SD. Similarly, not all TURN servers may support anycast. For best results, a
+      client SHOULD implement all the discovery mechanisms described above.</t>
+
+      <t>The document does not prescribe a strict order that a client must
+      follow for discovery. An implementation may choose to perform all the
+      above steps in parallel for discovery OR choose to follow any desired
+      order and stop the discovery procedure if a mechanism succeeds.</t>
+
+      <t>On hosts with more than one interface or address family (IPv4/v6),
+      the TURN server discovery procedure has to be performed for each
+      combination of interface and address family. A client MAY choose to
+      perform the discovery procedure only for a desired interface/address
+      combination if the client does not wish to discover a TURN server for
+      all combinations of interface and address family.</t>
+    </section>
+
+    <section title="Discovery Using Service Resolution">
+      <t>This mechanism is performed in two steps:</t>
+<t><list style="numbers">
+      <t>A DNS domain name is retrieved for each combination of interface
+      and address family.</t>
+
+      <t>Retrieved DNS domain names are then used for S-NAPTR lookups as
+      per <xref target="RFC5928"></xref>. Further DNS lookups may be necessary
+      to determine TURN server IP address(es).</t>
+</list></t>
+      <section title="Retrieving Domain Name">
+        <t>A client has to determine the domain in which it is located. The
+        following sections provide two possible mechanisms to learn the domain
+        name, but other means of retrieving domain names may be used, which
+        are outside the scope of this document, e.g., local configuration.</t>
+
+        <t>Implementations may allow the user to specify a default name that
+        is used if no specific name has been configured.</t>
+
+        <section title="DHCP">
+          <t>DHCP can be used to determine the domain name related to an
+          interface's point of network attachment. Network operators may
+          provide the domain name to be used for service discovery within an
+          access network using DHCP. Sections 3.2 and 3.3 of <xref
+          target="RFC5986"></xref> define DHCP IPv4 and IPv6 access network
+          domain name options, OPTION_V4_ACCESS_DOMAIN and
+          OPTION_V6_ACCESS_DOMAIN respectively, to identify a domain name that
+          is suitable for service discovery within the access network.</t>
+
+          <t>For IPv4, the discovery procedure MUST request the access network
+          domain name option in a Parameter Request List option, as described
+          in <xref target="RFC2131"></xref>. <xref target="RFC2132"></xref>
+          defines the DHCP IPv4 domain name option; while this option is less
+          suitable, a client MAY request it if the access network domain
+          name defined in <xref target="RFC5986"></xref> is not available.</t>
+
+          <t>For IPv6, the discovery procedure MUST request the access
+          network domain name option in an Options Request Option (ORO) within
+          an Information-request message, as described in <xref
+          target="RFC3315"></xref>.</t>
+
+          <t>If neither option can be retrieved, the procedure fails for this
+          interface. If a result can be retrieved, it will be used as an input
+          for S-NAPTR resolution.</t>
+        </section>
+
+        <section title="From Own Identity">
+          <t>For a TURN client with an understanding of the protocol mechanics
+          of calling applications, the client may wish to extract the domain
+          name from its own identity, i.e, the canonical identifier used to reach
+          the user.</t>
+
+          <t><figure>
+              <artwork><![CDATA[Example:
+
+SIP      : 'sip:alice@example.com'
+Bare JID : 'alice@example.com'
+email    : 'alice@example.com'
+
+'example.com' is retrieved from the above examples.]]></artwork>
+            </figure></t>
+
+          <t>
+   A client may support multiple users, potentially with different
+   domains, or a single user utilizing different domains for different
+   services. The means to choose and extract the domain name may be
+          different based on the type of identifier, service being used, etc.,
+          which are outside the scope of this document.</t>
+        </section>
+      </section>
+
+      <section title="Resolution">
+        <t>Once the TURN discovery procedure has retrieved domain names, the
+        resolution mechanism described in <xref target="RFC5928"></xref> is
+        followed. An S-NAPTR lookup with the 'RELAY' application service and the
+        desired protocol tag is made to obtain the information necessary to
+        connect to the authoritative TURN server within the given domain.</t>
+
+        <t>If no TURN-specific S-NAPTR records can be retrieved, the discovery
+        procedure fails for this domain name (and the corresponding interface
+        and IP protocol version). If more domain names are known, the
+        discovery procedure may perform the corresponding S-NAPTR lookups
+        immediately. However, before retrying a lookup that has failed, a
+        client must wait a time period that is appropriate for the encountered
+        error (NXDOMAIN, timeout, etc.).</t>
+      </section>
+    </section>
+
+    <section title="DNS Service Discovery">
+      <t>DNS-based Service Discovery (DNS-SD) <xref target="RFC6763"></xref>
+      and Multicast DNS (mDNS) <xref target="RFC6762"></xref> provide generic
+      solutions for discovering services available in a local network.
+      DNS-SD/mDNS define a set of naming rules for certain DNS record types
+      that they use for advertising and discovering services.</t>
+
+      <t>Section 4.1 of <xref target="RFC6763"></xref> specifies that a
+      service instance name in DNS-SD has the following structure:</t>
+
+      <t>&lt;Instance&gt; . &lt;Service&gt; . &lt;Domain&gt;</t>
+
+      <t>The &lt;Domain&gt; portion specifies the DNS sub-domain where the
+      service instance is registered. It may be "local.", indicating the mDNS
+      local domain, or it may be a conventional domain name such as
+      "example.com.". The &lt;Service&gt; portion of the TURN service instance
+      name MUST be "_turn._udp" or "_turn._tcp" or "_turns._udp" or
+      "_turns._tcp", as introduced in <xref target="RFC5766"></xref>.</t>
+
+      <section title="mDNS">
+
+        <t>A TURN client can proactively discover TURN servers being
+        advertised in the site by multicasting a PTR query to one or all of
+        the following:</t>
+
+        <t><list style="symbols">
+            <t>"_turn._udp.local."</t>
+
+            <t>"_turn._tcp.local"</t>
+
+            <t>"_turns._udp.local."</t>
+
+            <t>"_turns._tcp.local"</t>
+          </list>A TURN server can send out gratuitous multicast DNS answer
+        packets whenever it starts up, wakes from sleep, or detects a change
+        in network configuration. TURN clients receive these gratuitous
+        packets and cache information contained in it.</t>
+      </section>
+    </section>
+
+    <section title="Discovery Using Anycast">
+      <t>IP anycast can also be used for TURN service discovery. A packet sent
+      to an anycast address is delivered to the "topologically nearest"
+      network interface with the anycast address. Using the TURN anycast
+      address, the only two things that need to be deployed in the network for
+      discovery are the two things that actually use TURN.</t>
+
+      <t>When a client requires TURN services, it sends a TURN Allocation
+      request to the assigned anycast address. A TURN anycast server performs
+      checks 1 through 7 discussed in Section 6.2 of <xref
+      target="RFC5766"></xref>. 
+If all checks pass, the TURN anycast server
+      MUST respond with a 300 (Try Alternate) error as described in Section
+      2.9 of <xref target="RFC5766"></xref>; the response contains the TURN
+      unicast address in the ALTERNATE-SERVER attribute. For subsequent
+      communication with the TURN server, the client uses the responding
+      server's unicast address. This has to be done because two packets
+      addressed to an anycast address may reach two different anycast servers.
+      The client, thus, also needs to ensure that the initial request fits in
+      a single packet. An implementation may choose to send out every new TURN
+      Allocation request to the anycast address to discover the closest and
+      the most optimal unicast address for the TURN server.</t>
+    </section>
+
+    <section title="Deployment Considerations">
+      <section title="Mobility and Changing IP Addresses">
+        <t>A change of IP address on an interface may invalidate the result of
+        the TURN server discovery procedure. For instance, if the IP address
+        assigned to a mobile host changes due to host mobility, it may be 
+        required to re-run the TURN server discovery procedure without relying
+        on earlier gained information. New requests should be made to the
+        newly learned TURN servers that were learned after TURN the discovery
+	was re-run.
+        However, if an earlier learned TURN server is still accessible using
+        the new IP address, procedures described for mobility using TURN
+        defined in <xref target="RFC8016"/> can be
+        used for ongoing streams.</t>
+      </section>
+
+      <section title="Recursively Encapsulated TURN">
+        <t>WebRTC endpoints SHOULD treat any TURN server discovered through
+        the mechanisms described in this specification as an
+        enterprise/gateway or access network server, in accordance with
+        Recursively Encapsulated TURN <xref
+        target="RETURN"></xref>.</t>
+      </section>
+    </section>
+
+    <section anchor="iana" title="IANA Considerations">
+      <section title="IPv4 Anycast">
+        <t>IANA has assigned a single IPv4 address from the 192.0.0.0/24
+        prefix and registered it in the "IANA IPv4 Special-Purpose Address
+        Registry" <xref target="RFC6890"></xref>.</t>
+
+        <t><figure>
+            <artwork><![CDATA[   +----------------------+-------------------------------------------+
+   | Attribute            | Value                                     |
+   +----------------------+-------------------------------------------+
+   | Address Block        | 192.0.0.10/32                             |
+   | Name                 | Traversal Using Relays around NAT Anycast |
+   | RFC                  | RFC 8155                                  |
+   | Allocation Date      | 2017-02                                   |
+   | Termination Date     | N/A                                       |
+   | Source               | True                                      |
+   | Destination          | True                                      |
+   | Forwardable          | True                                      |
+   | Global               | True                                      |
+   | Reserved-by-Protocol | False                                     |
+   +----------------------+-------------------------------------------+]]></artwork>
+          </figure></t>
+      </section>
+
+      <section title="IPv6 Anycast">
+        <t>IANA has assigned a single IPv6 address from the 2001:0000::/23
+        prefix and registered it in the "IANA IPv6 Special-Purpose Address
+        Registry" <xref target="RFC6890"></xref>.</t>
+
+        <t><figure>
+            <artwork><![CDATA[   +----------------------+-------------------------------------------+
+   | Attribute            | Value                                     |
+   +----------------------+-------------------------------------------+
+   | Address Block        | 2001:1::2/128                             |
+   | Name                 | Traversal Using Relays around NAT Anycast |
+   | RFC                  | RFC 8155                                  |
+   | Allocation Date      | 2017-02                                   |
+   | Termination Date     | N/A                                       |
+   | Source               | True                                      |
+   | Destination          | True                                      |
+   | Forwardable          | True                                      |
+   | Global               | True                                      |
+   | Reserved-by-Protocol | False                                     |
+   +----------------------+-------------------------------------------+]]></artwork>
+          </figure></t>
+      </section>
+    </section>
+
+    <section anchor="security" title="Security Considerations">
+      <t>Use of Session Traversal Utilities for NAT (STUN) <xref
+      target="RFC5389"></xref> authentication is OPTIONAL for TURN servers
+      provided by the local network or by the access network. A network-provided TURN server MAY be configured to accept Allocation requests
+      without STUN authentication, and a TURN client MAY be configured to
+      accept Allocation success responses without STUN authentication from a
+      network-provided TURN server.</t>
+
+      <t>Making STUN authentication optional is a downgrade of a MUST level
+      requirement defined in <xref target="RFC5766"></xref>. The downgrade
+      allows TURN servers provided by the local or access network to accept
+      Allocation requests from new and/or guest users in the network who do
+      not necessarily possess long term credentials for STUN authentication.
+      The intention in such deployments is to provide TURN services to
+      all users in the local or access network. However, this opens up a TURN
+      server to a variety of attacks described in Section 17 of <xref
+      target="RFC5766"></xref>. A TURN server in such cases must be configured
+      to only process STUN requests from the trusted local network or
+      subscribers of the access network. Operational measures must be taken in
+      order to protect the TURN server; some of these measures include, but
+      are not
+      limited to, access control by means of access lists, firewalls,
+      subscriber quota limits, ingress filtering, etc.</t>
+
+      <t>A TURN client in the absence of the STUN long-term credential mechanism
+      <xref target="RFC5389"></xref> or the STUN Extension for Third-Party
+      Authorization <xref target="RFC7635"></xref> MUST use (D)TLS unless it
+      trusts the network infrastructure to defend against attacks discussed in
+      <xref target="RFC5766"></xref>. It is RECOMMENDED that the TURN client
+      use one of the following techniques with (D)TLS to validate the TURN
+      server:</t>
+
+      <t><list style="symbols">
+          <t>For certificate-based authentication, a pre-populated trust
+          anchor store <xref target="RFC6024"></xref> allows a TURN client to
+          perform path validation for the server certificate obtained during
+          the (D)TLS handshake. If the client used a domain name to discover
+          the TURN server, that domain name also provides a mechanism for
+          validation of the TURN server. The client MUST use the rules and
+          guidelines given in Section 6 of <xref target="RFC6125"></xref> to
+          validate the TURN server identity.</t>
+
+          <t>Certification authorities that issue TURN server certificates
+          SHOULD support the CN-ID, DNS-ID, SRV-ID, and URI-ID identifier
+          types. TURN service providers SHOULD prefer the use of DNS-ID,
+          SRV-ID, and URI-ID over CN-ID identifier types in certificate
+          requests (as described in Section 2.3 from <xref
+          target="RFC6125"></xref>) and the wildcard character '*' SHOULD NOT
+          be included in the presented identifier.</t>
+
+          <t>For TURN servers that don't have a certificate trust chain (e.g.,
+          because they are on a home network or a corporate network), a
+          configured list of TURN servers can contain the Subject Public Key
+          Info (SPKI) fingerprint of the TURN servers. The public key is used
+          for the same reasons HTTP pinning <xref target="RFC7469"></xref>
+          uses the public key.</t>
+
+          <t>Raw public key-based authentication, as defined in <xref
+          target="RFC7250"></xref>, could also be used to authenticate a TURN
+          server.</t>
+        </list></t>
+
+      <t>An auto-discovered TURN server is considered to be only as trusted as
+      the path between the client and the TURN server. In order to safely use
+      auto-discovered TURN servers for sessions with 'strict privacy'
+      requirements, the user needs to be able to define privacy criteria (e.g.,
+      a trusted list of servers, networks, or domains) that are considered
+      acceptable for such traffic. Any discovered TURN server outside the
+      criteria is considered untrusted and therefore MUST NOT be used for
+      privacy-sensitive communication.</t>
+
+      <t>In some auto-discovery scenarios, it might not be possible for the
+      TURN client to use (D)TLS authentication to validate the TURN server.
+      However, fallback to clear text in such cases could leave the TURN
+      client open to on-path injection of spoofed TURN messages. A TURN client
+      could fall back to encryption-only (D)TLS when (D)TLS authentication is
+      not available but MUST NOT fall back without explicit administrator
+      choice. Another reason to fall back to encryption-only is for privacy,
+      which is analogous to SMTP opportunistic encryption <xref
+      target="RFC7435"></xref> where one does not require privacy but one
+      desires privacy when possible.</t>
+
+      <t>In order to allow the TURN client to fall back to (D)TLS as described
+      above, a TURN server that does not require either STUN long-term
+      authentication <xref target="RFC5389"></xref> or STUN Extension for
+      Third Party Authorization <xref target="RFC7635"></xref> MUST support
+      (D)TLS and, if the network infrastructure is capable of defending against
+      attacks discussed in <xref target="RFC5766"></xref>, then the TURN server
+      MAY allow fallback to clear text.</t>
+
+      <t>A TURN client could fall back to clear text if it does not support
+      unauthenticated (D)TLS but MUST NOT fall back without explicit
+      administrator choice. Fallback to clear text is NOT RECOMMENDED because
+      it makes the client more susceptible to man-in-the-middle attacks and
+      on-path packet injection.</t>
+
+      <section title="Service Resolution">
+        <t>The primary attack against the methods described in this document
+        is one that would lead to impersonation of a TURN server. An attacker
+        could attempt to compromise the S-NAPTR resolution. Security
+        considerations described in <xref target="RFC5928"></xref> are
+        applicable here as well.</t>
+
+        <t>In addition to considerations related to S-NAPTR, it is important
+        to recognize that the output of this is entirely dependent on its
+        input. An attacker who can control the domain name can also control
+        the final result. Because more than one method can be used to
+        determine the domain name, a host implementation needs to consider
+        attacks against each of the methods that are used.</t>
+
+        <t>If DHCP is used, the integrity of DHCP options is limited by the
+        security of the channel over which they are provided. Physical
+        security and separation of DHCP messages from other packets are
+        commonplace methods that can reduce the possibility of attack within
+        an access network; alternatively, DHCP authentication <xref
+        target="RFC3188"></xref> can provide a degree of protection against
+        modification. When using DHCP discovery, clients are encouraged to use
+        unicast DHCP INFORM queries instead of broadcast queries, which are
+        more easily spoofed in insecure networks.</t>
+      </section>
+
+      <section title="DNS Service Discovery">
+        <t>Since DNS-SD is just a specification for how to name and use
+        records in the existing DNS system, it has no specific additional
+        security requirements over and above those that already apply to DNS
+        queries and DNS updates. For DNS queries, DNS Security Extensions
+        (DNSSEC) <xref target="RFC4033"></xref> should be used where the
+        authenticity of information is important. For DNS updates, secure
+        updates <xref target="RFC2136"> </xref> <xref target="RFC3007"></xref>
+        should generally be used to control which clients have permission to
+        update DNS records.</t>
+
+        <t>For mDNS, in addition to what has been described above, a principal
+        security threat is a security threat inherent to IP multicast routing
+        and any application that runs on it. A rogue system can advertise that
+        it is a TURN server. Discovery of such rogue systems as TURN servers,
+        in itself, is not a security threat if there is a means for the TURN
+        client to authenticate and authorize the discovered TURN servers.</t>
+      </section>
+
+      <section title="Anycast">
+        <t>In a network without any TURN server that is aware of the TURN
+        anycast address, outgoing TURN requests could leak out onto the
+        external Internet, possibly revealing information.</t>
+
+        <t>Using an IANA-assigned well-known TURN anycast address enables
+        border gateways to block such outgoing packets. In the default-free
+        zone, routers should be configured to drop such packets. Such
+        configuration can occur naturally via BGP messages advertising that no
+        route exists to said address.</t>
+
+        <t>Sensitive clients that do not wish to leak information about their
+        presence can set an IP TTL on their TURN requests that limits how far
+        they can travel into the public Internet.</t>
+      </section>
+    </section>
+
+  </middle>
+
+  <back>
+    <references title="Normative References">
+
+      <?rfc include="reference.RFC.5766"?>
+
+      <?rfc include="reference.RFC.2119"?>
+
+      <?rfc include="reference.RFC.5986"?>
+
+      <?rfc include="reference.RFC.2132"?>
+
+      <?rfc include="reference.RFC.5928"?>
+
+      <?rfc include="reference.RFC.6762"?>
+
+      <?rfc include="reference.RFC.3315"?>
+
+      <?rfc include="reference.RFC.2131"?>
+
+      <?rfc include="reference.RFC.6763"?>
+
+      <?rfc include="reference.RFC.4033"?>
+
+      <?rfc include="reference.RFC.5389"?>
+
+      <?rfc include="reference.RFC.2136"?>
+
+      <?rfc include="reference.RFC.3007"?>
+
+      <?rfc include="reference.RFC.6890"?>
+
+      <?rfc include="reference.RFC.6024"?>
+
+      <?rfc include="reference.RFC.7250"?>
+
+      <?rfc include="reference.RFC.7635"?>
+    </references>
+
+    <references title="Informative References">
+      <?rfc include="reference.RFC.3188"?>
+
+      <?rfc include="reference.RFC.5128"?>
+
+      <?rfc include="reference.RFC.6125"?>
+
+      <?rfc include="reference.RFC.7469"?>
+
+      <?rfc include="reference.RFC.7435"?>
+
+      <!-- draft-ietf-rtcweb-overview-18 IESG state: Waiting for Writeup -->
+
+<reference anchor='WebRTC-Overview'>
+<front>
+<title>Overview: Real Time Protocols for Browser-based Applications</title>
+
+<author initials='H' surname='Alvestrand' fullname='Harald Alvestrand'>
+    <organization />
+</author>
+
+<date month='March' year='2017' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-rtcweb-overview-18' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-rtcweb-overview-18.txt' />
+</reference>
+
+<?rfc include="reference.RFC.8016"?>
+
+<!-- draft-ietf-rtcweb-return-02 IESG state: ID Exists -->
+
+<reference anchor='RETURN'>
+<front>
+<title>Recursively Encapsulated TURN (RETURN) for Connectivity and Privacy in WebRTC</title>
+
+<author initials='B' surname='Schwartz' fullname='Benjamin M. Schwartz'>
+    <organization />
+</author>
+
+<author initials='J' surname='Uberti' fullname='Justin Uberti'>
+    <organization />
+</author>
+
+<date month='March' day='27' year='2017' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-rtcweb-return-02' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-rtcweb-return-02.txt' />
+</reference>
+
+    </references>
+
+    <section anchor="ack" title="Acknowledgements" numbered="no">
+      <t>The authors would like to thank Simon Perrault, Paul Kyzivat, Troy
+      Shields, Eduardo Gueiros, Ted Hardie, Bernard Aboba, Karl Stahl, Brian
+      Weis, Ralph Dromes, Ben Campbell, Suresh Krishnan, and Brandon Williams
+      for their review and valuable comments. Thanks to Adam Roach for his
+      detailed review and suggesting DNS Service Discovery as an additional
+      discovery mechanism.</t>
+    </section>
+
+  </back>
+</rfc>

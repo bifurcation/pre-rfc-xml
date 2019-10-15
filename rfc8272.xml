@@ -1,0 +1,1650 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+
+<!ENTITY rfc2119         SYSTEM 'reference.RFC.2119.xml'>
+<!ENTITY rfc7011         SYSTEM 'reference.RFC.7011.xml'>
+<!ENTITY rfc7012         SYSTEM 'reference.RFC.7012.xml'> 
+<!ENTITY rfc5153         SYSTEM 'reference.RFC.5153.xml'>
+<!ENTITY rfc5470         SYSTEM 'reference.RFC.5470.xml'> 
+<!ENTITY rfc5982	 SYSTEM 'reference.RFC.5982.xml'>
+<!ENTITY rfc6183	 SYSTEM 'reference.RFC.6183.xml'>
+<!ENTITY rfc4944         SYSTEM 'reference.RFC.4944.xml'>
+]>
+
+
+<?rfc toc="yes"?>
+<?rfc tocompact="no"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc symrefs="yes"?>
+<rfc submissionType="independent" category="info" consensus="no" ipr="trust200902" number="8272">
+    <front>
+     <title abbrev="TinyIPFIX">TinyIPFIX for Smart Meters in Constrained Networks</title>
+
+         <author fullname="Corinna Schmitt" initials="C." surname="Schmitt">
+             <organization abbrev='University of Zurich'>University of Zurich</organization>
+             <address>
+              <postal>
+                  <street>Department of Informatics</street>
+                  <street>Communication Systems Group</street>
+                  <street>Binzmuehlestrasse 14</street>
+                  <code>8050</code>
+                  <city>Zurich</city>
+                  <country>Switzerland</country>
+              </postal>
+              <email>schmitt@ifi.uzh.ch</email>
+          </address>
+      </author>
+      <author fullname="Burkhard Stiller" initials="B." surname="Stiller">
+         <organization abbrev='University of Zurich'>University of Zurich</organization>
+         <address>
+          <postal>
+              <street>Department of Informatics</street>
+              <street>Communication Systems Group</street>
+              <street>Binzmuehlestrasse 14</street>
+          <code>8050</code>
+              <city>Zurich</city>
+             
+              <country>Switzerland</country>
+          </postal>
+          <email>stiller@ifi.uzh.ch</email>
+      </address>
+  </author>
+  <author fullname="Brian Trammell" initials="B." surname="Trammell">
+     <organization abbrev='ETH Zurich'>Swiss Federal Institute of Technology</organization>
+     <address>
+      <postal>
+          <street>Gloriastrasse 35</street>
+ <code>8092</code>
+          <city>Zurich</city>
+          <country>Switzerland</country>
+      </postal>
+      <email>ietf@trammell.ch</email>
+  </address>
+</author>
+
+<date  month="November" year="2017"/>
+
+<keyword>TinyIPFIX, Smart Meters, Constrained Networks</keyword>
+
+
+<abstract>
+   
+    <t>
+        This document specifies the TinyIPFIX protocol that is used for transmitting smart-metering data in constrained networks such as IPv6 over Low-Power Wireless Personal Area Networks  (6LoWPAN, RFC 4944).
+        TinyIPFIX is derived from IP Flow Information Export (RFC 7011) and adopted to the needs of constrained networks.
+        This document specifies how the TinyIPFIX Data and Template Records are transmitted in constrained networks such as 6LoWPAN and how TinyIPFIX data can be converted into data that is not TinyIPFIX in a proxy device.
+    </t>
+</abstract>
+</front>
+
+<middle>
+
+
+    <section title="Introduction">
+        <t>
+            Smart meters that form a constrained wireless network need an application-layer protocol that allows the efficient transmission of metering data from the devices to a central analysis device.
+            The meters used to build such networks are usually equipped with low-cost and low-power hardware.
+            This leads to constraints in computational capacities, available memory, and networking resources.
+        </t>
+        <t>
+            The devices are often battery powered and are expected to run for a long time without having the possibility of recharging themselves.
+            In order to save energy, smart meters often power off their wireless networking device.
+            Hence, they don't have a steady network connection; they are only part of the wireless network as needed when there is data to be exported.
+            A push protocol like TinyIPFIX, where data is transmitted autonomically from the meters to one or more collectors, is suitable for reporting metering data in such networks.
+        </t>
+        <t>
+            TinyIPFIX is derived from IPFIX <xref target="RFC7011"/>; therefore, it inherits most of IPFIX's properties.
+            One of these properties is the separation of data and its data description by encoding the former in Data Sets and the latter in Template Sets.
+        </t>
+        <t>
+            Transforming TinyIPFIX to IPFIX as per <xref target="RFC7011"/> is very simple and can be done on the border between the constrained network and the more general network.
+            The transformation between one form of IPFIX data into another is known as "IPFIX Mediation" <xref target="RFC5982"/>.
+            Hence, smart-metering networks that are based on TinyIPFIX can be easily integrated into an existing IPFIX measurement infrastructure.
+        </t>
+        <section title="Document Structure">
+            <t>
+                <xref target="sec:terminology"/> introduces the
+                terminology used in this document.  Afterwards,
+                hardware and software constraints in constrained
+                networks, which will motivate our modifications to the
+                IPFIX protocol, are discussed in <xref
+                target="sec:constraints"/>.  <xref
+                target="sec:app-scenario"/> describes the application
+                scenarios and <xref target="sec:architecture"/>
+                describes the architecture for TinyIPFIX.  <xref
+                target="sec:compipfix"/> defines the TinyIPFIX
+                protocol itself and discusses the differences between
+                TinyIPFIX and IPFIX.  The Mediation Process from
+                TinyIPFIX to IPFIX is described in <xref
+                target="sec:mediation"/>.  <xref
+                target="sec:template-management"/> defines the process
+                of Template Management on the Exporter and the
+                Collector.  <xref target="sec:security"/> and <xref
+                target="sec:iana"/> discuss the security and IANA
+                considerations for TinyIPFIX.
+            </t>
+        </section>
+    </section>
+
+    <section anchor="sec:terminology" title="Terminology">
+        
+        <t>
+            Most of the terms used in this document are defined in
+            <xref target="RFC7011"/>.  Each of these terms begins with
+            a capital letter.  Most of the terms that are defined for
+            IPFIX can be used to describe TinyIPFIX.  This document
+            uses the term "IPFIX" to refer to IPFIX as defined in
+            <xref target="RFC7011"/> and the term TinyIPFIX for the
+            protocol specified in this draft document assuming
+            constrained networks.  The prefix "Tiny" is added to IPFIX
+            to distinguish between the IPFIX version and the TinyIPFIX
+            version.
+            
+        </t>
+        <t>
+            The terms IPFIX Message, IPFIX Device, Set, Data Set,
+            Template Set, Data Record, Template Record, Collecting
+            Process, Collector, Exporting Process, and Exporter are
+            defined as in <xref target="RFC7011"/>.  The term IPFIX
+            Mediator is defined in <xref target="RFC5982"/>.  The
+            terms Intermediate Process, IPFIX Proxy, IPFIX
+            Concentrator are defined in <xref target="RFC6183"/>.
+        </t>
+        <t>
+            All the terms above have been adapted from the IPFIX
+            definitions. As they keep a similar notion but in a
+            different context of constrained networks, the term
+            "TinyIPFIX" now precedes the defined terms.
+        </t>
+        <t>
+            The term "smart meter" is used to refer to constrained
+            devices like wireless sensor nodes, motes, or any other
+            kind of small constrained device that can be part of a
+            network that is based on IEEE 802.15.4 and 6LoWPAN <xref
+            target="RFC4944"/>.
+        </t>
+        <t>
+            <list style="hanging">
+                <t hangText="TinyIPFIX Exporting Process">
+                    <vspace blankLines='1'/>
+                    The TinyIPFIX Exporting Process is a process that
+                    exports TinyIPFIX Records.
+                </t>
+                <t hangText="TinyIPFIX Exporter">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Exporter is device that contains at
+                    least one TinyIPFIX Exporting Process.
+                </t>
+                <t hangText="TinyIPFIX Collecting Process">
+                    <vspace blankLines='1'/>
+                    The TinyIPFIX Collecting Process is a process
+                    inside a device that is able to receive and
+                    process TinyIPFIX Records.
+                </t>
+                <t hangText="TinyIPFIX Collector">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Collector is a device that contains at
+                    least one TinyIPFIX Collecting Process.
+                </t>
+                <t hangText="TinyIPFIX Device">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Device is a device that contains one
+                    or more TinyIPFIX Collectors or one or more
+                    TinyIPFIX Exporters.
+                </t>
+                <t hangText="TinyIPFIX Smart Meter">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Smart Meter is a device that contains
+                    the functionality of a TinyIPFIX Device. It is
+                    usually equipped with one or more sensors that
+                    meter a physical quantity, like power consumption,
+                    temperature, or physical tampering with the
+                    device. Every TinyIPFIX Smart Meter MUST at least
+                    contain a TinyIPFIX Exporting Process. It MAY
+                    contain a TinyIPFIX Collecting Process in order to
+                    work as a TinyIPFIX Proxy or TinyIPFIX
+                    Concentrator.
+                </t>
+                <t hangText="TinyIPFIX Data Record">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Data Record equals an IPFIX Data
+                    Record in <xref target="RFC7011"/>. The term is
+                    used to distinguish between IPFIX and TinyIPFIX
+                    throughout this document.
+                </t>
+                <t hangText="TinyIPFIX Template Record">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Template Record is similar to an IPFIX
+                    Template Record in <xref target="RFC7011"/>. The
+                    Template Record Header is substituted with a
+                    TinyIPFIX Template Record Header and is otherwise
+                    equal to a Template Record. See <xref
+                    target="sec:compressed-template-record"/>.
+                </t>
+                <t hangText="TinyIPFIX Set">
+                    <vspace blankLines='1'/>
+                    The TinyIPFIX Set is a group of TinyIPFIX Data
+                    Records or TinyIPFIX Template Records with a
+                    TinyIPFIX Set Header. Its format is defined in
+                    <xref target="sec:compressed-set-header"/>.
+                </t>
+                <t hangText="TinyIPFIX Data Set">
+                    <vspace blankLines='1'/>
+                    The TinyIPFIX Data Set is a TinyIPFIX Set that
+                    contains TinyIPFIX Data Records.
+                </t>
+                <t hangText="TinyIPFIX Template Set">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Template Set is a TinyIPFIX Set that
+                    contains TinyIPFIX Template Records.
+                </t>
+                <t hangText="TinyIPFIX Message">
+                    <vspace blankLines='1'/>
+                    The TinyIPFIX Message is a message originated by a
+                    TinyIPFIX Exporter. It is composed of a TinyIPFIX
+                    Message Header and one or more TinyIPFIX Sets. The
+                    TinyIPFIX Message Format is defined in <xref
+                    target="sec:compipfix"/>.
+                </t>
+                <t hangText="TinyIPFIX Intermediate Process">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Intermediate Process is an IPFIX
+                    Intermediate Process that can handle TinyIPFIX
+                    Messages.
+                </t>
+                <t hangText="TinyIPFIX Proxy">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Proxy is an IPFIX Proxy that can
+                    handle TinyIPFIX Messages.
+                </t>
+                <t hangText="TinyIPFIX Concentrator">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Concentrator is device that can handle
+                    TinyIPFIX Messages (e.g., pre-process them) and is
+                    not constrained.
+                </t>
+                <t hangText="TinyIPFIX Proxy">
+                    <vspace blankLines='1'/>
+                    A TinyIPFIX Proxy is an IPFIX Proxy that can
+                    handle TinyIPFIX Messages and is not constrained.
+                </t>
+            </list>
+        </t>
+        <t>
+            A TinyIPFIX Transport Session is defined by the communication between
+            a TinyIPFIX Exporter (identified by an 6LoWPAN-Address, the Transport Protocol, and the
+            Transport Port) and a TinyIPFIX Collector (identified by the same properties).
+        </t>
+                <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+    </section>
+
+
+    <section anchor="sec:constraints" title="Constraints">
+        <section anchor="sec:constraints:hardware" title="Hardware Constraints">
+            <t>
+                The target devices for TinyIPFIX are usually equipped
+                with low-cost hardware; therefore, they face several
+                constraints concerning CPU and memory <xref
+                target="Schmitt09"/>. For example, the IRIS mote from
+                Crossbow Technologies, Inc. has a size of 58 x 32 x 7
+                mm (without a battery pack) <xref target="IRIS"/>.
+                Thus, there is little space for a micro-controller,
+                memory (128 kb program flash, 512 kb measurement
+                serial flash, 8 kb RAM, 4 kb configuration EEPROM),
+                and radio-frequency transceiver, which are located on
+                the board.
+
+The TelosB motes produced by Crossbow Technologies, Inc. <xref target="TelosB"/> and ADVANTIC SISTEMAS Y SERVICIOS S.L. <xref target="Advantic"/> are similar sized, but offering more memory (48 kb flash, 1024 kb serial, flash, 10 kb RAM, 16 kb configuration EEPROM). The same holds for OpenMote, but the offering is 512 kb flash and 32 kb RAM <xref target="openMote"/>.
+            </t>
+            <t>
+                Network protocols used on such hardware need to
+                respect these constraints. They must be simple to
+                implement using little code and little run-time memory
+                and should produce little overhead when encoding the
+                application payload.
+            </t>
+        </section>
+        <section anchor="sec:constraints:energy" title="Energy Constraints">
+            <t>
+                Smart meters that are battery powered have hard energy constraints
+                <xref target="Schmitt09"/>. 
+
+If two AA 2800-mAh batteries power the mote, they contain approximately 30,240 Joule of energy. If they run out of power, their battery has to
+be changed, which means physical manipulation to the device is
+necessary. Therefore, using as little energy as possible for network
+communication is desired.
+            </t>
+            <t>
+                A smart-metering device can save a lot of energy, if
+                it powers down its radio-frequency transceiver. Such
+                devices do not have permanent network connectivity;
+                they are only part of the network as needed. A push
+                protocol, where only one side is sending data, is
+                suitable for transmitting application data under such
+                circumstances. As the communication is unidirectional,
+                a meter can completely power down its radio-frequency
+                transceivers as long as it does not have any data to
+                send. If the metering device is able to keep a few
+                measurements in memory, and if real-time metering is
+                not a requirement, the TinyIPFIX Data Records can be
+                pushed less frequently, therefore saving some more
+                energy on the radio-frequency transceivers.
+            </t>
+        </section>
+        <section anchor="sec:constraints:packet_size" title="Packet Size Constraints">
+            <t>
+                TinyIPFIX is mainly targeted for the use in 6LoWPAN networks,
+                which are based on IEEE 802.15.4 <xref target="RFC4944"/>.
+                However, the protocol can also be used to transmit data in other
+                networks when a mediator is used for translating the TinyIPFIX data
+                into the data format used in the other network (e.g., IPFIX). And the protocol
+                is able to map the 6LoWPAN addresses to the addresses used in
+                the other network. This operation typically consists of
+                per-message re-encapsulation and/or re-encoding. As defined
+                <xref target="RFC4944"/>, IEEE 802.15.4 starts from a maximum
+                physical layer packet size of 127 octets (aMaxPHYPacketSize) and
+                a maximum frame overhead of 25 octets (aMaxFrameOverhead),
+                leaving a maximum frame size of 102 octets at the media access
+                control (MAC) layer. On the other hand, IPv6 defines a minimum
+                MTU of 1280 octets. Hence, fragmentation has to be implemented
+                in order to transmit such large packets. While fragmentation
+                allows the transmission of large messages, its use is
+                problematic in networks with high packet loss because the
+                complete message has to be discarded if only a single fragment
+                gets lost.
+            </t>
+            <t>
+                TinyIPFIX enhances IPFIX by a header-compression
+                scheme, which allows the header size overhead to be
+                significantly reduced.  Additionally, the overall
+                TinyIPFIX Message size is reduced, which reduces the
+                need for fragmentation.
+            </t>
+        </section>
+        <section anchor="sec:constraints:transport" title="Transport Protocol Constraints">
+            <t>
+                The IPFIX standard <xref target="RFC7011"/> defines
+                several transport protocol bindings for the
+                transmission of IPFIX Messages. Stream Control
+                Transmission Protocol (SCTP) support is REQUIRED for
+                any IPFIX Device to achieve standard conformance <xref
+                target="RFC7011"/>, and its use is highly
+                recommended. However, sending IPFIX over UDP and TCP
+                MAY also be implemented.
+            </t>
+            <t>
+                This transport protocol recommendation is not suitable for
+                TinyIPFIX. A header compression scheme that allows a compression
+                of an IPv6 header from 40 octets down to 2 octets is defined in
+                6LoWPAN. There is a similar compression scheme for UDP, but
+                there is no such compression for TCP or SCTP headers. If header
+                compression can be employed, more space for application payload
+                is available.
+            </t>
+            <t>
+                Therefore, using UDP on the transport layer for transmitting TinyIPFIX Messages is
+                RECOMMENDED. Furthermore, TCP or SCTP are
+                currently not supported on some platforms, like on TinyOS <xref
+                target="Harvan08"/>. Hence, UDP may be the only option.
+            </t>
+            <t>
+                Every TinyIPFIX Exporter and Collector MUST implement UDP
+                transport-layer support for transmitting data in a constrained
+                network environment. It MAY also offer TCP or SCTP support. In the 
+                case in which TCP or SCTP MAY be used, power consumption will grow and the
+                available size of application payload compared to the use of UDP
+                May be reduced. 
+If TinyIPFIX is transmitted over a unconstrained network, using SCTP
+as a transport-layer protocol is RECOMMENDED. TinyIPFIX works
+independent of the target environment, because it MUST only be ensured
+that all intermediate devices can understand TinyIPFIX and be able to
+extract needed packet information (e.g., IP destination
+address). TinyIPFIX messages can be included in other transport
+protocols in the payload whenever is necessary, making TinyIPFIX
+highly flexible and usable for different communication protocols
+(e.g., Constrained Application Protocol (CoAP), UDP, TCP). TinyIPFIX
+itself just specifies a messages format for the collected data to be
+transmitted.
+            </t>
+            <t>
+                The constraints on UDP usage given in Section 6.2 of <xref
+                target="RFC5153"/> apply to TinyIPFIX as well. TinyIPFIX is not
+                intended for use over the open Internet. In general, the
+                networks on which it runs are considered dedicated for sensor
+                operations and are under the control of a single administrative
+                domain.
+            </t>
+        </section>
+    </section>
+
+
+    <section anchor="sec:app-scenario" title="Application Scenarios for TinyIPFIX">
+        <t>
+            TinyIPFIX is derived from IPFIX <xref target="RFC7011"/>;
+            therefore, it is a unidirectional push protocol assuming
+            UDP usage.  This means all communication that employs
+            TinyIPFIX is unidirectional from an Exporting Process to a
+            Collecting Process.  Hence, TinyIPFIX only fits for
+            application scenarios where meters transmit data to one or
+            more Collectors. In case pull requests should also be
+            supported by TinyIPFIX, it is RECOMMENDED not to change
+            the code of TinyIPFIX much to get along with the
+            restricted memory available <xref
+            target="Schmitt2017"/>. Meaning including just a one bit
+            field, called type, to distinguish between push and pull
+            messages would be feasible, but the filtering SHOULD be
+            done by the gateway and not by the constrained device;
+            meaning if a pull is performed, the constrained device is
+            triggered to create a TinyIPFIX message immediately as
+            usual, set the type field to one instead of zero (for a
+            push message), and send message to the gateway. At the
+            gateway, the filtering is performed based on the pull
+            request.
+        </t>
+        <t>
+            If TinyIPFIX is used over UDP, as recommended, packet loss
+            can occur.  Furthermore, if an initial Template Message
+            gets lost, and is therefore unknown to the Collector, all
+            TinyIPFIX Data Sets that reference this Template cannot be
+            decoded.  Hence, all these Messages are lost if they are
+            not cached by the Collector.  It should be clear to an
+            application developer that TinyIPFIX can only be used over
+            UDP if these TinyIPFIX Message losses are not a
+            problem. To avoid this loss, it is RECOMMENDED to repeat
+            the Template Message periodically, keeping in mind that a
+            Template never changes for a constrained device after
+            deployment. Even when Template Messages become lost in the
+            network, the data can be manually translated later when
+            the Template Messages is re-sent. Including an
+            acknowledgement mechanism is NOT RECOMMENDED due to
+            overhead, because this would require storage of any sent
+            data on the constrained devices until it was
+            acknowledged. In critical applications, it is RECOMMENDED
+            to repeat the Template Message more often.
+        </t>
+        <t>
+            TinyIPFIX over UDP is especially not a suitable protocol
+            for applications where sensor data trigger policy
+            decisions or configuration updates for which packet loss
+            is not tolerable.
+        </t>
+        <t>
+            Applications that use smart sensors for accounting
+            purposes for long-term measurements can benefit from the
+            use of TinyIPFIX.  One application for IPFIX is long-term
+            monitoring of large physical volumes.  In <xref
+            target="Tolle05"/>, Tolle et al. built a system for
+            monitoring a "70-meter tall redwood tree, at a density
+            interval of 5 minutes in time and 2 meters in space".  The
+            sensor node infrastructure was deployed to measure the air
+            temperature, relative humidity, and photosynthetically
+            active solar radiation over a long-term period.
+        </t>
+        <t>
+            TinyIPFIX is a good fit for such scenarios. Data can be
+            measured by the sensors of the TinyIPFIX Smart Meter over
+            several 5-minute time intervals; the measurements can be
+            accumulated into a single TinyIPFIX Message. As soon as
+            enough measurements are stored in the TinyIPFIX Message,
+            e.g., if the TinyIPFIX Message size fills the available
+            payload in a single IEEE 802.15.4 packet, the wireless
+            transceiver can be activated and the TinyIPFIX Message can
+            be exported to a TinyIPFIX Collector.
+        </t>
+        <t>
+            Similar sensor networks have been built to monitor the
+            habitat of animals, e.g., in the "Great Duck Island
+            Project" <xref target="GreatDuck"/> <xref
+            target="SMPC04"/>. The purpose of the sensor network was
+            to monitor the birds by deploying sensors in and around
+            their burrows.
+
+
+            The measured sensor data was collected and stored in a
+            database for offline analysis and visualization.  Again,
+            the sensors can perform their measurements periodically,
+            accumulate the sensor data, and export them to a TinyIPFIX
+            Collector.
+        </t>
+        <t>
+            Other application scenarios for TinyIPFIX could be
+            applications where sensor networks are used for long-term
+            structural health monitoring in order to investigate
+            long-term weather conditions on the structure of a
+            building.  For example, a smart-metering network has been
+            built to monitor the structural health of the Golden Gate
+            Bridge <xref target="Kim07"/>.  If a sensor network is
+            deployed to perform a long-term measurement of the
+            structural integrity, TinyIPFIX can be used to collect the
+            sensor-measurement data.
+        </t>
+        <t>
+            If an application developer wants to decide whether to use
+            TinyIPFIX for transmitting data from smart meters, he must
+            take the following considerations into account:
+        </t>
+        <t>
+            <list style="numbers">
+                <t>
+                    The application should require a push protocol by default.
+                    The timing intervals of when to push data should be predefined
+                    before deployment. The property above allows a TinyIPFIX
+                    Smart Meter to turn off its wireless device in order to save
+                    energy, as it does not have to receive any data.
+                </t>
+                <t>
+
+                    If real-time reporting is not required, the application
+                    might benefit from combining several measurements into a
+                    single TinyIPFIX Message, causing delay but lowering traffic
+                    in the network. TinyIPFIX easily allow the combination of
+                    several measurements into a single TinyIPFIX Message (or a
+                    single packet). This combination can happen on the
+                    TinyIPFIX Smart Meter that combines several of its own
+                    measurements. Or, it can happen within a multi-hop wireless
+                    network where one IPFIX Proxy combines several TinyIPFIX
+                    Messages into a single TinyIPFIX Message before forwarding
+                    them.
+                </t>
+                <t>
+                    The application must accept potential packet loss. TinyIPFIX
+                    only fits for applications where metering data is stored for
+                    accounting purposes and not for applications where the
+                    sensor data triggers configuration changes or policy
+                    decisions, except when Message loss is acceptable for some
+                    reason.
+                </t>
+                <t>
+                      The application must not require per-message export
+                      timestamps (e.g., for auditing). TinyIPFIX removes export
+                      timestamps, generally only useful for Template Management
+                      operations, which it also does not support, from IPFIX.
+                      This is a minor inconvenience, since per-record timestamp
+                      Information Elements are also available in IPFIX.
+                </t>
+            </list>
+        </t>
+    </section>
+
+
+
+    <section anchor="sec:architecture" title="Architecture for TinyIPFIX">
+        <t>
+            The TinyIPFIX architecture is similar to the IPFIX
+            architecture, which is described in <xref
+            target="RFC5470"/>. The most common deployment of
+            TinyIPFIX Smart Meters is shown in <xref
+            target="fig:appscen1"/>, where each TinyIPFIX Smart Meter
+            can have different sensors available (e.g., IRIS:
+            Temperature, Humidity, Sound; TelosB: Temperature,
+            Bridgeness, Humidity, GPS) building the sensor data.
+            
+            <figure anchor="fig:appscen1" title="Direct Transmission between
+                TinyIPFIX Devices and Applications">
+                <artwork>
+                    <![CDATA[
+     +------------------------+     +------------------------+
+     |     TinyIPFIX Device   | ... |     TinyIPFIX Device   |
+     |   [Exporting Process]  |     |   [Exporting Process]  |
+     +------------------------+     +------------------------+
+               |                                  |
+     TinyIPFIX |                                  | TinyIPFIX
+               |                                  |
+               v                                  v
+               +----------------------------------+
+                               |
+                               v
+                   +----------------------------+
+                   |    TinyIPFIX Collector     |
+                   |  [Collecting Process(es)]  |
+                   +----------------------------+
+                               |
+                               v
+                     +-----------------------+
+                     |                       |
+                     v                       v
+            +----------------+     +----------------+
+            |[*Application 1]| ... |[*Application n]|
+            +----------------+     +----------------+
+
+
+
+                    ]]>
+                </artwork>
+            </figure>
+
+            A TinyIPFIX Smart Meter (S.M.) receives measurement data from its
+            internal sensors to create its TinyIPFIX Messages. Then, it
+            encodes the results into a TinyIPFIX Message using a TinyIPFIX
+            Exporting Process and exports this TinyIPFIX Message to one or more
+            TinyIPFIX Collectors. The TinyIPFIX Collector runs one or more
+            applications that process the collected sensor data. The TinyIPFIX
+            Collector can be deployed on unconstrained devices at the
+            constrained network border.
+        </t>
+        <t>
+            A second way to deploy TinyIPFIX Smart Meter can employ
+            accumulation on TinyIPFIX Messages during their journey
+            through the constrained network as shown in <xref
+            target="fig:appscen2"/>.  This accumulation can be
+            performed by TinyIPFIX Concentrators.  Such devices must
+            have enough resources to perform the accumulation.
+            <figure anchor="fig:appscen2" title="Accumulation of TinyIPFIX">
+                <artwork>
+                <![CDATA[
+                    
+                    
+   +------------------------+     +------------------------+
+   |     TinyIPFIX Device   | ... |     TinyIPFIX Device   |
+   |   [Exporting Process]  |     |   [Exporting Process]  |
+   +------------------------+     +------------------------+
+             |                                  |
+   TinyIPFIX |                                  | TinyIPFIX
+             |                                  |
+             v                                  v
+             +----------------------------------+
+                               |
+                               v
+                   +------------------------+
+                   | TinyIPFIX Concentrator |
+                   |  [Collecting  Process] |
+                   |  [Exporting Process]   |
+                   +------------------------+
+                               |
+                     TinyIPFIX |
+                               |
+                               v
+                  +--------------------------+
+                  |        Collector         |
+                  | [Collecting Process(es)] |
+                  +--------------------------+
+                ]]>
+                </artwork>
+            </figure>
+            TinyIPFIX Smart Meters send their data to a TinyIPFIX
+            Concentrator, which needs to have enough storage space to
+            store the incoming data.  If the TinyIPFIX Concentrator is
+            hosted in a TinyIPFIX Smart Meter, it MAY also be able to
+            collect data from it sensors, if activated.  It may also
+            accumulate the incoming data with its own measurement
+            data.  The accumulated data can then be re-exported 
+            to one or more Collectors. In that case, the TinyIPFIX
+            Concentrator can be viewed as receiving data from multiple
+            Smart Meters: one locally and some remotely.
+        </t>
+        <t>
+            The last deployment, shown in <xref
+            target="fig:appscen3"/>, employs another TinyIPFIX
+            Mediation process.
+            <figure anchor="fig:appscen3" title="TinyIPFIX Mediator">
+                <artwork>
+            <![CDATA[
++-------------------------+     +-------------------------+
+|   Remote Smart Meter    |     |    Local Smart Meter    |
++-------------------------+     +-------------------------+
+|    TinyIPFIX Device     |     |    TinyIPFIX Device     |
+|   [Exporting Process]   |     |   [Exporting Process]   |
++-------------------------+     +-------------------------+
+                     |               |
+           TinyIPFIX |               | TinyIPFIX
+                     |               |
+                     v               v
+                +-------------------------+
+                | TinyIPFIX Concentrator  |
+                |  [Collecting  Process]  |
+                +-------------------------+
+                
+             ]]>
+                </artwork>
+            </figure>
+        </t>
+        <t>
+            In this deployment, the TinyIPFIX Smart Meters transmit
+            their TinyIPFIX Messages to one node, e.g., the base
+            station, which translates the TinyIPFIX Messages to IPFIX
+            Messages.  The IPFIX Messages can then be exported into an
+            existing IPFIX infrastructure.  The Mediation process from
+            TinyIPFIX to IPFIX is described in <xref
+            target="sec:mediation"/>.
+        </t>
+    </section>
+
+
+    <section anchor="sec:compipfix" title="TinyIPFIX Message Format">
+        <t>
+            A TinyIPFIX IFPIX Message starts with a TinyIPFIX Message
+            Header, followed by one or more TinyIPFIX Sets.  The
+            TinyIPFIX Sets can be either of type TinyIPFIX Template
+            Set or of type TinyIPFIX Data Set.  A TinyIPFIX Message
+            MUST only contain one type of TinyIPFIX Set.  The format
+            of the TinyIPFIX Message is shown in <xref
+            target="fig:compressed-ipfix-message-format"/>.
+            <figure anchor="fig:compressed-ipfix-message-format" title="TinyIPFIX Message Format">
+                <artwork>
+                <![CDATA[
++----------------------------------------------------+
+| TinyIPFIX Message Header                           |
++----------------------------------------------------+
+| TinyIPFIX Set                                      |
++----------------------------------------------------+
+| TinyIPFIX Set                                      |
++----------------------------------------------------+
+...
++----------------------------------------------------+
+| TinyIPFIX Set                                      |
++----------------------------------------------------+
+                ]]>
+                </artwork>
+            </figure>
+        </t>
+        <section title="TinyIPFIX Message Header">
+            <t>
+                The TinyIPFIX Message Header is derived from the IPFIX
+                Message Header, with some optimization using field
+                compression.  The IPFIX Message Header from <xref
+                target="RFC7011"/> is shown in <xref
+                target="fig:ipfix-message-header"/>.
+            </t>
+            <t>
+                <figure anchor="fig:ipfix-message-header" title="IPFIX Message Header">
+                    <artwork>
+                <![CDATA[
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|       Version Number          |            Length             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                      Export Time                              |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                     Sequence Number                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                      Observation ID                           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                ]]>
+                    </artwork>
+                </figure>
+            </t>
+            <t>
+                The length of the IPFIX Message Header is 16 octets, and every
+                IPFIX Message has to be started with it. The TinyIPFIX Message
+                Header needs to be smaller due to the packet size constraints
+                discussed in <xref target="sec:constraints:packet_size"/>. The
+                TinyIPFIX Header consists of a fixed part of three octets as
+                shown in <xref target="fig:compression-header"/>, followed by a
+                variable part as shown in Figures <xref
+                target="fig:compression-header1" format="counter"/> to <xref
+                target="fig:compression-header4" format="counter"/>.
+
+                <figure anchor="fig:compression-header" title="Format of the TinyIPFIX Message Header including fixed and optional parts">
+                    <artwork>
+                    <![CDATA[
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |E|E| SetID |        Length     | Sequence      | Ext. Sequence |
+ |1|2|Lookup |                   | Number        |  Number       |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ | Ext. SetID    |
+ +-+-+-+-+-+-+-+-+
+                        
+                        ]]>
+                   </artwork>
+                </figure>
+            </t>
+            <t>
+                The fixed part has a length of 3 octets and
+                consists of the "E1" field (1 bit), the "E2" field (1
+                bit), the "SetID Lookup" field (4 bits), the "Length"
+                field (10 bits), and the "Sequence Number" field (8
+                bits). The variable part has a variable length defined
+                by the "E1" and "E2" fields in the fixed header. The
+                four variants are illustrated in <xref
+                target="fig:compression-header1"/> to <xref
+                target="fig:compression-header4"/> below.
+            </t>
+
+            <t>
+                <figure anchor="fig:compression-header1" title="TinyIPFIX Message Header Format if E1 = E2 = 0">
+                    <artwork>
+                    <![CDATA[
+ 0                   1                   2
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|0|0| SetID |        Length     | Sequence      |
+| | |Lookup |                   | Number        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                    ]]>
+                    </artwork>
+                </figure>
+            </t>
+            <t>
+                <figure anchor="fig:compression-header2" title="TinyIPFIX Message Header Format if E1 = 1 and E2 = 0">
+                    <artwork>
+                        <![CDATA[
+                            
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |1|0| SetID |        Length     | Sequence      | Ext. SetID    |
+ | | |Lookup |                   | Number        |               |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ 
+                        ]]>
+                    </artwork>
+                </figure>
+            </t>
+            <t>
+                <figure anchor="fig:compression-header3" title="TinyIPFIX Message Header Format if E1 = 0 and E2 = 1">
+                    <artwork>
+                        <![CDATA[
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |E|E| SetID |        Length     | Sequence      | Ext. Sequenz  |
+ |1|2|Lookup |                   | Number        |  Number       |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                        ]]>
+                    </artwork>
+                </figure>
+            </t>
+
+            <t>
+                <figure anchor="fig:compression-header4" title="TinyIPFIX Message Header Format if E1 = E2 = 1">
+                    <artwork>
+                        <![CDATA[
+                            
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |1|1| SetID |        Length     | Sequence      | Ext. Sequenz  |
+ | | |Lookup |                   | Number        |  Number       |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ | Ext. SetID    |
+ +-+-+-+-+-+-+-+-+
+
+                        ]]>
+                    </artwork>
+                </figure>
+            </t>
+
+            <t>
+                The fixed header fields are defined as follows <xref target="Kothmayr10"/> <xref target="Schmitt2014"/>:
+            </t>
+
+            <t><list style='hanging'>
+                <t hangText="E1 and E2"><vspace blankLines='1'/> The
+                bits marked "E1" and "E2" control the presence of the
+                field "Ext. SetID" and the presence of the field
+                "Ext. Sequence Number", respectively.</t>
+                    
+                    <t>In case E1 = E2 = 0, the TinyIPFIX Message
+                    Header has the format shown in <xref
+                    target="fig:compression-header1"/>. The fields
+                    Extended Sequence Number and Extended SetID MUST
+                    NOT be present. </t>
+
+                    <t>When E1 = 1, the extended SetID field MUST be
+                    present. Custom SetIDs can be specified in the
+                    extended SetID field, setting all SetID Lookup bits
+                    to 1 (cf. <xref
+                    target="fig:compression-header2"/>.) When
+                    evaluated, the value specified in the extended
+                    SetID field is shifted left by 8 bits to prevent
+                    collisions with the reserved SetIDs 0-255. To
+                    reference these, shifting can be disabled by
+                    setting all SetID lookup bits to 1.</t>
+
+
+                    <t>Depending on the application, sampling rates
+                    might be larger than in typical constrained
+                    networks (e.g., Wireless Sensor Networks (WSNs),
+                    Cyber-Physical-Systems (CPS)); thus, they may
+                    have a large quantity of records per packet. In
+                    order to make TinyIPFIX applicable for those cases,
+                    E2 = 1 is set (cf. <xref
+                    target="fig:compression-header3"/>). This means
+                    the Extended Sequence Number field MUST be present,
+                    offering 8-bit more sequence numbers as
+                    usual. Depending on the constrained network
+                    settings, the combination E1 = E2 = 1 is also
+                    possible, resulting in the maximum TinyIPFIX
+                    Message header shown in <xref
+                    target="fig:compression-header4"/> where the Extended
+                    Sequence Number field and Extended SetID field
+                    MUST both be present.
+                </t>
+                <t hangText="SetID Lookup"><vspace blankLines='1'/>
+                This field acts as a lookup field for the SetIDs and
+                provides shortcuts to often used SetIDs. Four values
+                are defined: </t>
+                <t>Value = 0; Look up extended SetID field,
+                Shifting enabled. </t>
+                <t>Value = 1; SetID = 2 and message contains a
+                Template definition. </t>
+                <t>Value = 2; SetID = 256 and message contains
+                Data Record for Template 256. This places special
+                importance on a single template ID, but, since most
+                sensor nodes only define a single template directly
+                after booting and continue to stream data with this
+                template ID during the whole session lifetime, this
+                shorthand is useful for this case. </t>
+                <t>Value = 3-14; SetIDs are reserved for future extensions. </t>
+                <t>Value = 15; look up extended SetID field, shifting enabled.
+                </t>
+                <t hangText="Length"><vspace blankLines='1'/>
+                    The length field has a fixed length of 10 bits.
+                </t>
+                <t hangText="Sequence Number"><vspace blankLines='1'/>
+                Due to the low sampling rate in typical WSNs, the
+                "Sequence Number" field is only one byte
+                long. However, some applications may have a large
+                quantity of records per packet. In this case, the
+                sequence field can be extended to 16 bit by setting
+                the E2-bit to 1.  </t></list>
+            </t>
+            <t>
+                Since TinyIPFIX packets are always transported via a network
+                protocol, which specifies the source of the packet, the
+                "Observation Domain" can be equated with the source of a
+                TinyIPFIX packet. Therefore, this IPFIX field has been removed
+                from the TinyIPFIX Header. Should an application require
+                explicit Observation Domain information, each Data Record in the
+                TinyIPFIX data message may contain an Observation Domain ID
+                Information Element; see Section 3.1 of <xref
+                target="RFC7011"/>. The version field has been removed since the
+                SetID lookup field provides room for future extensions. The
+                specification of a 32-bit timestamp in seconds would require
+                the time synchronization across a wireless-sensor network and
+                produces too much overhead. Thus, the "Export Time" field has
+                been removed. If applications should require a concrete
+                observation time (e.g., timestamp), it is RECOMMENDED to include
+                it as a separate Information Element in the TinyIPFIX Records.
+            </t>
+        </section>
+        <section anchor="sec:compressed-set-header" title="TinyIPFIX Set">
+            <t>
+                A TinyIPFIX Set is a set of TinyIPFIX Template or TinyIPFIX Data
+                Records. Depending on the TinyIPFIX Record type, the TinyIPFIX
+                Set can be either a TinyIPFIX Template Set or a TinyIPFIX Data
+                Set. Every TinyIPFIX Set starts with a TinyIPFIX Set Header and
+                is followed by one or more TinyIPFIX Records.
+            </t>
+            <t>
+                The IPFIX Set Header consists of a 2-octet "Set ID"
+                field and a 2-octet "Length" field.  These two
+                fields are compressed to 1 octet each for the
+                TinyIPFIX Set Header.  The format of the TinyIPFIX Set
+                Header is shown in <xref
+                target="fig:compressed-set-header"/>.
+                <figure anchor="fig:compressed-set-header" title="TinyIPFIX Set
+                    Header">
+                    <artwork>
+                        <![CDATA[
+                            
+ 0                   1
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Tiny Set ID  |    Length     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+                        ]]>
+                    </artwork>
+                </figure>
+            </t>
+            <t>
+                The two fields are defined as follows:
+                <list style='hanging'>
+                    <t hangText="TinyIPFIX Set ID">
+                        <vspace blankLines='1'/>
+                        The "Tiny Set ID" identifies the type of data that is
+                        transported in the TinyIPFIX Set. A TinyIPFIX Template
+                        Set is identified by TinyIPFIX Set ID 2. This
+                        corresponds to the Template Set IDs that are used by
+                        IPFIX <xref target="RFC7011"/>. TinyIPFIX Set ID
+                        number 3 MUST NOT be used, as Options Templates are not
+                        supported; a TinyIPFIX Collector MUST ignore and SHOULD
+                        log any Set with Set ID 3. All values from 4 to 127 are
+                        reserved for future use. Values above 127 are used for
+                        TinyIPFIX Data Sets.
+                    </t>
+                    <t hangText="Length">
+                        <vspace blankLines='1'/>
+                        The "Length" Field contains the total length of
+                        the TinyIPFIX Set, including the TinyIPFIX Set
+                        Header.
+                    </t>
+                </list>
+            </t>
+        </section>
+        <section anchor="sec:compressed-template-record" title="TinyIPFIX Template Record Format">
+            <t>
+                The format of the TinyIPFIX Template Records is shown
+                in <xref
+                target="fig:compressed-template-format"/>. The
+                TinyIPFIX Template Record starts with a TinyIPFIX
+                Template Record Header and this is followed by one or more
+                Field Specifiers. The Field Specifier format is
+                defined as in <xref target="sec:field-specifier"/> and
+                is identical to the Field Specifier definition in
+                <xref target="RFC7011"/>.
+
+                <figure anchor="fig:compressed-template-format" title="TinyIPFIX Template Format">
+                    <artwork>
+                    <![CDATA[
++--------------------------------------------------+
+| TinyIPFIX Template Record Header                 |
++--------------------------------------------------+
+| Field Specifier                                  |
++--------------------------------------------------+
+| Field Specifier                                  |
++--------------------------------------------------+
+...
++--------------------------------------------------+
+| Field Specifier                                  |
++--------------------------------------------------+
+                    ]]>
+                    </artwork>
+                </figure>
+            </t>
+            <t>
+                The format of the TinyIPFIX Template Record Header is
+                shown in <xref
+                target="fig:compressed-template-header"/>.
+                <figure anchor="fig:compressed-template-header" title="TinyIPFIX Template Record Header">
+                    <artwork>
+                    <![CDATA[
+ 0                   1
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Template ID |  Field Count  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                    ]]>
+                    </artwork>
+                </figure>
+            </t>
+            <t><list style='hanging'>
+                <t hangText="TinyIPFIX Template ID">
+                    <vspace blankLines='1'/>
+                    Each TinyIPFIX Template Record must have a unique
+                    TinyIPFIX Template ID (Comp. Temp ID) between 128
+                    and 255. The TinyIPFIX Template ID must be unique
+                    for the given TinyIPFIX Transport Session.
+                </t>
+                <t hangText="Field Count">
+                    <vspace blankLines='1'/>
+                    The number of fields placed in the TinyIPFIX Template Record.
+                </t>
+            </list></t>
+        </section>
+        <section title="Field Specifier Format" anchor="sec:field-specifier">
+            <t>
+                The type and length of the transmitted data is encoded
+                in Field Specifiers within TinyIPFIX Template
+                Records. The Field Specifier is shown in <xref
+                target="fig:field-specifier"/> and is identical with
+                the Field Specifier that was defined for IPFIX <xref
+                target="RFC7011"/>.
+                <figure anchor="fig:field-specifier" title="TinyIPFIX Data Field Specifier">
+                    <artwork>
+                        <![CDATA[
+ 0                   1                   2                   3 
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|E|  Information Element ident. |        Field Length           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                      Enterprise Number                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                        ]]>
+                    </artwork>
+                </figure>
+                Where:
+                <list style='hanging'>
+                    <t hangText="E">
+                        <vspace blankLines='1'/>
+                        Enterprise bit. This is the first bit of the Field Specifier. If
+                        this bit is zero, the Information Element Identifier identifies an
+                        IETF-specified Information Element, and the four-octet Enterprise
+                        Number field MUST NOT be present. If this bit is one, the
+                        Information Element Identifier identifies an enterprise-specific
+                        Information Element, and the Enterprise Number field MUST be
+                        present.
+                    </t>
+                    <t hangText="Information Element Identifier">
+                        <vspace blankLines='1'/>
+                        A numeric value that represents the type of Information Element.
+                    </t>
+                    <t hangText="Field Length">
+                        <vspace blankLines='1'/>
+                        The length of the corresponding encoded Information
+                        Element, in octets.  Refer to <xref target="RFC7012"/>.
+                        The value 65535 is illegal in TinyIPFIX, as
+                        variable-length Information Elements are not supported.
+                        
+                    </t>
+                    <t hangText="Enterprise Number">
+                        <vspace blankLines='1'/>
+                        IANA Private Enterprise Number of the
+                        authority defining the Information Element
+                        identifier in this Template Record.
+                    </t>
+                </list>
+            </t>
+            <t>
+                Vendors can easily define their own data model by registering a Enterprise ID
+                with IANA. Using their own Enterprise ID, they can use any ID in the way they
+                want them to use.
+            </t>
+        </section>
+        <section title="TinyIPFIX Data Record Format">
+            <t>
+                The Data Records are sent in TinyIPFIX Data Sets. The format of the Data
+                Records is shown in <xref target="fig:data-record-format"/> and matches the
+                Data Record format from IPFIX.
+                <figure anchor="fig:data-record-format" title="Data Record Format">
+                    <artwork>
+                        <![CDATA[
++--------------------------------------------------+
+| Field Value                                      |
++--------------------------------------------------+
+| Field Value                                      |
++--------------------------------------------------+
+...
++--------------------------------------------------+
+| Field Value                                      |
++--------------------------------------------------+
+                        ]]>
+                    </artwork>
+                </figure>
+            </t>
+        </section>
+    </section>
+    <section anchor="sec:mediation" title="TinyIPFIX Mediation">
+        <t>
+            There are two types of TinyIPFIX Intermediate
+            Processes. The first one can occur on the transition
+            between a constrained network (e.g., 6LoWPAN) and the
+            unconstrained network. This mediation changes the
+            network and transport protocol from 6LoWPAN preferring UDP
+            to IP/(SCTP|TCP|UDP) and is shown in <xref
+            target="fig:mediation-transport"/>.
+            <figure anchor="fig:mediation-transport" title="Translation from TinyIPFIX over 6LoWPAN/UDP to TinyIPFIX over IP/(SCTP|TCP|UDP)">
+                <artwork>
+                <![CDATA[
+                    
+ +-----------------------+
+ |    TinyIPFIX Device   |
+ | [Exporting Process]   |
+ +-----------------------+
+                   |
+         TinyIPFIX |
+ over 6LoWPAN/UDP  |
+                   v
++-------------------------+
+|   TinyIPFIX mediator    |
+|   [Collecting Process]  |
+|   [Exporting Process]   |
++-------------------------+
+                   |
+TinyIPFIX          |
+IP/(UDP/SCTP|TCP)  |
+                   v
++--------------------------+
+|      Collector           |
+| [Collecting Process(es)] |
++--------------------------+
+                ]]>
+                </artwork>
+            </figure>
+        </t>
+        <t>
+            The mediator removes the TinyIPFIX Messages from the
+            6LoWPAN/UDP packets and wraps them into the new network
+            and transport protocols.  Templates MUST be managed the
+            same way as in the constrained environment after the
+            translation to IP/(SCTP|UDP|TCP) (see <xref
+            target="sec:template-management"/>).
+        </t>
+        <t>
+            The second type of mediation transforms TinyIPFIX into
+            IPFIX.  This process MUST be combined with the transport
+            protocol mediation as shown in <xref
+            target="fig:mediation-compressed-uncompressed"/>.
+            <figure anchor="fig:mediation-compressed-uncompressed" title="Transformation from TinyIPFIX to IPFIX">
+                <artwork>
+                <![CDATA[
+                    
++-----------------------+
+|    TinyIPFIX Device   |
+| [Exporting Process]   |
++-----------------------+
+                  |
+        TinyIPFIX |
+                  |
+                  v
++-------------------------+
+|   TinyIPFIX mediator    |
+|   [Collecting Process]  |
+|   [Exporting Process]   |
++-------------------------+
+                  |
+      IPFIX       |
+IP/(UDP/SCTP|TCP) |
+                  v
++--------------------------+
+|      Collector           |
+| [Collecting Process(es)] |
++--------------------------+
+
+                ]]>
+                </artwork>
+            </figure>
+        </t>
+        <t>
+            This mediation can also be performed by an IPFIX Collector
+            before parsing the IPFIX message as shown in <xref
+            target="fig:mediation-before-collector"/>. There is no
+            need for a parser from TinyIPFIX to IPFIX if such a
+            mediation process can be employed in front of an existing
+            IPFIX collector.
+            <figure anchor="fig:mediation-before-collector" title="Transformation from TinyIPFIX to IPFIX">
+                <artwork>
+                <![CDATA[
++------------------------+                  +----------------------+
+|     TinyIPFIX Device   |    TinyIPFIX     |     IPFIX Mediator   |
+| [Exporting Processes]  |----------------->| [Collecting Process] |
++------------------------+                  |  [Exporting Process] |
+                                            |         |            |
+                                            |         |IPFIX       |
+                                            |         |            |
+                                            |         v            |
+                                            |   Collector          |
+                                            | [Collecting Process] |
+                                            +----------------------+
+                ]]>
+                </artwork>
+            </figure>
+        </t>
+        <t>
+            The TinyIPFIX Mediation Process has to translate the
+            TinyIPFIX Message Header, the TinyIPFIX Set Headers, and
+            the TinyIPFIX Template Record Header into their
+            counterparts in IPFIX.  Afterwards, the new IPFIX Message
+            Length needs to be calculated and inserted into the IPFIX
+            Message header.
+        </t>
+
+        <section title="Expanding the Message Header">
+            <t>
+                The fields of the IPFIX Message Header that are shown in <xref
+                target="fig:ipfix-message-header"/> can be determined from a
+                TinyIPFIX Message Header as follows:
+
+            <list style='hanging'>
+                <t hangText="Version">
+                    <vspace blankLines='1'/>
+                    This is always 0x000a.
+                </t>
+                <t hangText="Length">
+                    <vspace blankLines='1'/>
+                    The IPFIX Message Length can only be calculated after the
+                    complete TinyIPFIX Message has been translated. The new
+                    length can be calculated by adding the length of the IPFIX
+                    Message Header, which is 16 octets, and the length of all
+                    Sets that are contained in the IPFIX Message.
+                </t>
+                <t hangText="Export Time">
+                    <vspace blankLines='1'/>
+                    The "Export Time" MUST be generated by the Mediator, and
+                    contains the time in seconds since 00:00 UTC Jan 1, 1970, at
+                    which the IPFIX Message leaves the Mediator.
+                </t>
+                <t hangText="Sequence Number">
+                    <vspace blankLines='1'/>
+                    If the TinyIPFIX Sequence Number has a length of 4 octets, the original value
+                    MUST be used for the IPFIX Message. If the TinyIPFIX Sequence Number has a
+                    size of one or two octets, the TinyIPFIX Mediator MUST expand the TinyIPFIX
+                    Sequence Number into a four octet field. If the TinyIPFIX Sequence Number was
+                    omitted, the Mediator needs to calculate the Sequence Number as per <xref
+                    target="RFC7011"/>.
+                </t>
+                <t hangText="Observation Domain ID">
+                    <vspace blankLines='1'/>
+                    Since the Observation Domain ID is used to scope
+                    templates in IPFIX, it MUST be set to a unique
+                    value per TinyIPFIX Exporting Process, using
+                    either a mapping algorithmically determined by the
+                    Intermediate Process or directly configured by an
+                    administrator.
+                </t>
+            </list>
+            </t>
+        </section>
+        <section title="Translating the Set Headers">
+            <t>
+                Both fields in the TinyIPFIX Set Header have a size of
+                1 octet and need to be expanded:
+
+                <list style='hanging'>
+                    <t hangText="Set ID">
+                        <vspace blankLines='1'/>
+                        The field needs to be expanded from 1 octet to 2
+                        octets. If the Set ID is below 128, no recalculation
+                        needs to be performed. This is because all IDs below
+                        128 are reserved for special messages and match the
+                        IDs used in IPFIX. The TinyIPFIX Set IDs starting with
+                        128 identify TinyIPFIX Data Sets. Therefore, every
+                        TinyIPFIX Set ID above number 127 needs to be incremented by
+                        number 128 because IPFIX Data Set IDs are numbered above 255.
+                    </t>
+                    <t hangText="Set Length">
+                        <vspace blankLines='1'/>
+                        The field needs to be expanded from one octet to two
+                        octets. It needs to be recalculated by adding a value
+                        of 2 octets to match the additional size of the Set
+                        Header. For each TinyIPFIX Template Record that is
+                        contained in the TinyIPFIX Set, 2 more octets need to
+                        be added to the length.
+                    </t>
+                </list>
+            </t>
+        </section>
+        <section title="Expanding the Template Record Header">
+            <t>
+                Both fields in the TinyIPFIX Template Record Header
+                have a length of one octet and therefore need
+                translation:
+                <list style='hanging'>
+                    <t hangText="Template ID">
+                        <vspace blankLines='1'/>
+                        The field needs to be expanded from one octet
+                        to two octets. The Template ID needs to be
+                        increased by a value of 128.
+                    </t>
+                    <t hangText="Field Count">
+                        <vspace blankLines='1'/>
+                        The field needs to be expanded from one octet to 2 octets.
+                    </t>
+                </list>
+            </t>
+        </section>
+    </section>
+    <section anchor="sec:template-management" title="Template Management">
+        <t>
+            As with IPFIX, TinyIPFIX Template Management depends on the
+            transport protocol used. If TCP or SCTP is used, it can be ensured
+            that TinyIPFIX Templates are delivered reliably. If UDP is used,
+            reliability cannot be guaranteed: template loss can occur. If
+            a Template is lost on its way to the Collector, any following
+            TinyIPFIX Data Records that refer to this TinyIPFIX Template
+            cannot be decoded. Template Withdrawals are not supported in
+            TinyIPFIX. This is generally not a problem, because most sensor
+            nodes only define a single static template directly after booting.
+        </t>
+        <section title="TCP/SCTP">
+            <t>
+                If TCP or SCTP is used for the transmission of TinyIPFIX,
+                Template Management MUST be performed as defined in <xref
+                target="RFC7011"/> for IPFIX, with the exception of Template
+                Withdrawals, which are not supported in TinyIPFIX. Template
+                Withdrawals MUST NOT be sent by TinyIPFIX Exporters.
+            </t>
+        </section>
+        <section anchor="sec:template-management-udp" title="UDP">
+            <t>
+                All specifications for Template Management from <xref
+                target="RFC7011"/> apply unless specified otherwise in this
+                document.
+            </t>
+            <t>
+                TinyIPFIX Templates MUST be sent by a TinyIPFIX Exporter before
+                any TinyIPFIX Data Set that refers to the TinyIPFIX Template is
+                transmitted. TinyIPFIX Templates are not expected to change over
+                time in TinyIPFIX and, thus, they should be pre-shared.
+                TinyIPFIX Devices have a default setup when deployed; after
+                booting, they announce their TinyIPFIX Template directly to the
+                network and MAY repeat it if UDP is used. Hence, a TinyIPFIX
+                Template that has been sent once MAY NOT be withdrawn and MUST
+                NOT expire. If a TinyIPFIX Smart Meter wants to use another
+                TinyIPFIX Template, it MUST use a new TinyIPFIX Template ID for
+                the TinyIPFIX Template.
+            </t>
+            <t>
+
+         While UDP is used, reliable transport of TinyIPFIX Templates cannot be,  guaranteed and TinyIPFIX Templates can be lost.  A TinyIPFIX
+                Exporter MUST expect TinyIPFIX Template loss. Therefore, it MUST
+                re-send its TinyIPFIX Templates periodically. A TinyIPFIX
+                Template MUST be re-sent after a fixed number N of TinyIPFIX
+                Messages that contain TinyIPFIX Data Sets referring to the
+                TinyIPFIX Template. The number N MUST be configured by the
+                application developer. Retransmission and the specification
+                of N can be avoided if TinyIPFIX Exporter and TinyIPFIX
+                Collector use pre-shared templates.
+            </t>
+            </section>
+        </section>
+        <section anchor="sec:security" title="Security Considerations">
+            <t>
+                The same security considerations as for the IPFIX
+                Protocol <xref target="RFC7011"/> apply.
+            </t>
+        </section>
+        <section anchor="sec:iana" title="IANA Considerations">
+            <t>
+                This document does not require any IANA actions.
+            </t>
+        </section>
+
+
+
+
+
+    </middle>
+
+<back>
+
+	<references title="Normative References">
+        &rfc2119;
+        &rfc4944;
+        &rfc5153;
+        &rfc7011;
+        &rfc7012;
+        &rfc5470;
+        &rfc5982;
+        &rfc6183;
+ <?rfc include="reference.RFC.8174"?>
+    </references>
+    <references title="Informative References">
+
+   <reference anchor="openMote" target="http://openmote.com">
+
+     <front>
+       <title></title>
+
+       <author initials="" surname="" fullname="">
+         <organization>openMote Technologies S.L.</organization>
+       </author>
+
+       <date year="2017" />
+     </front>
+   </reference>
+
+
+      <reference anchor="Schmitt09">
+          <front>
+           <title>Applications for Wireless Sensor Networks</title>
+           <author initials="C." surname="Schmitt"/>
+           <author initials="G." surname="Carle"/>
+           <date year="2010"/>
+       </front>
+       <seriesInfo name='Handbook of Research on P2P and Grid
+          Systems for Service-Oriented Computing: Models, Methodologies
+          and Applications,' value="Edited by Antonopoulos N., Exarchakos G., Li M., and A. Liotta, Information Science Publishing, Chapter 46, pp. 1076-1091, ISBN: 978-1615206865"/>
+      </reference>
+
+
+
+      <reference anchor="Tolle05">
+          <front>
+           <title>A macroscope in the redwoods</title>
+           <author initials="G." surname="Tolle"/>
+           <author initials="J." surname="Polastre"/>
+           <author initials="R." surname="Szewczyk"/>
+   <author initials="D." surname="Culler"/>
+           <author initials="N." surname="Turner"/>
+           <author initials="K." surname="Tu"/>
+ <author initials="S." surname="Burgess"/>
+ <author initials="T." surname="Dawnson"/>
+           <author initials="P." surname="Buonadonna"/>
+           <author initials="D." surname="Gay"/>
+           <author initials="W." surname="Hong"/>
+     
+        
+           <date year="2005" month="November"/>
+       </front>
+       <seriesInfo name='Proceedings of the 3rd international conference on Embedded networked sensor systems' value='(SenSys 05)'/>
+       <seriesInfo name="DOI" value="10.1145/1098918.1098925"/>
+       </reference>
+
+       <reference anchor="Kim07">
+          <front>
+           <title>Health monitoring of civil infrastructures using
+               wireless sensor networks</title>
+               <author initials="S." surname="Kim"/>
+               <author initials="S." surname="Pakzad"/>
+               <author initials="D." surname="Culler"/>
+               <author initials="J." surname="Demmel"/>
+               <author initials="G." surname="Fenves"/>
+               <author initials="S." surname="Glaser"/>
+               <author initials="M." surname="Turon"/>
+               <date year="2007" month="April"/>
+           </front>
+           <seriesInfo name='Proceedings of the 6th international
+              conference on Information processing in sensor networks (IPSN
+              2007),' value="Cambridge, MA, ACM Press, pp. 254-263"/>
+           <seriesInfo name="DOI" value="10.1145/1236360.1236395"/>
+          </reference>
+          <reference anchor="SMPC04">
+              <front>
+               <title>An analysis of a large scale habitat
+                   monitoring application</title>
+                   <author initials="R." surname="Szewczyk"/>
+                   <author initials="A." surname="Mainwaring"/>
+                   <author initials="J." surname="Polastre"/>
+                   <author initials="D." surname="Culler"/>
+                   <date year="2004" month="November"/>
+               </front>
+               <seriesInfo name='Proceedings of the 2nd international conference on Embedded networked sensor systems' value='(SenSys 04)'/>
+              <seriesInfo name="DOI" value="10.1145/1031495.1031521"/>
+              </reference>
+
+
+
+              <reference anchor="GreatDuck">
+                  <front>
+                   <title>Wireless Sensor Networks for Habitat Monitoring</title>
+                   <author initials="" surname=""/>
+<author initials="A" surname="Mainwaring"/>
+<author initials="J" surname="Polastre"/>
+<author initials="R" surname="Szewczyk"/>
+<author initials="D" surname="Culler"/>
+<author initials="J" surname="Anderson"/>
+                       <date year="2002"/>
+                   </front>
+                   <seriesInfo name='In Proceedings of the 1st ACM international workshop on Wireless sensor networks and applications' value='ACM, pp. 88-97'/>
+                  <seriesInfo name="DOI" value="10.1145/570738.570751"/>
+                  </reference>
+                  <reference anchor="Harvan08">
+                      <front>
+                       <title>TinyOS Motes on the Internet: IPv6 over 802.15.4 (6LoWPAN)</title>
+                       <author initials="M." surname="Harvan"/>
+                       <author initials="J." surname="Schoenwaelder"/>
+                       <date month="December" year="2008"/>
+                   </front>
+                  <seriesInfo name="DOI" value="10.1515/piko.2008.0042" />
+               </reference>
+
+
+               <reference anchor="IRIS" target="http://www.memsic.com/userfiles/files/Datasheets/WSN/IRIS_Datasheet.pdf">
+                  <front>
+                   <title>Data Sheet IRIS</title>
+                   <author><organization>Memsic</organization></author>
+                   <date year="2017"/>
+               </front>
+           </reference>
+               <reference anchor="Advantic">
+                   <front>
+                       <title>https://www.advanticsys.com/</title>
+                       <author surname="ADVANTIC SISTEMAS Y SERVICIOS S.L."/>
+                       <date year="2017"/>
+                   </front>
+               </reference>
+
+   <reference anchor="TelosB" target="http://www.memsic.com/userfiles/files/DataSheets/WSN/telosb_datasheet.pdf">
+
+     <front>
+       <title>Data Sheet TelosB</title>
+
+       <author initials="" surname="" fullname="">
+         <organization>Memsic</organization>
+       </author>
+
+       <date year="2017" />
+     </front>
+    
+   </reference>
+
+           <reference anchor="Kothmayr10">
+            <front>
+                <title>Data Collection in Wireless Sensor Networks for Autonomic Home Networking</title>
+                <author initials="T." surname="Kothmayr"/>
+                <date month="January" year="2010"/>
+            </front>
+            <seriesInfo name='Bachelor Thesis,' value="Technical University of Munich, Munich, Germany"/>
+        </reference>
+
+        <reference anchor="Schmitt2014">
+            <front>
+                <title>TinyIPFIX: An efficient application protocol for data exchange in cyber physical systems</title>
+                <author initials="C." surname="Schmitt"/>
+                <author initials="T." surname="Kothmayr"/>
+                <author initials="B." surname="Ertl"/>
+                <author initials="W." surname="Hu"/>
+                <author initials="L." surname="Braun"/>
+                <author initials="G." surname="Carle"/>
+                <date year="2016"/>
+            </front>
+            <seriesInfo name='Computer Communications,' value="ELSEVIER, Vol. 74, pp. 63-76,"/>
+            <seriesInfo name="DOI" value="10.1016/j.comcom.2014.05.012"/>
+        </reference>
+        <reference anchor="Schmitt2017">
+            <front>
+                <title>Efficient and Secure Pull Requests for Emergency Cases Using a Mobile Access Framework</title>
+                <author initials="C." surname="Schmitt"/>
+                <author initials="C." surname="Anliker"/>
+                <author initials="B." surname="Stiller"/>
+                <date year="2017"/>
+            </front>
+
+            <seriesInfo name='Managing the Web of Things: Linking the Real World to the Web, Edited by Sheng, M.,  Qin, Y., Yao, L., and B. Benatallah, Morgen Kaufmann (imprint of Elsevier), Chapter 8, pp. 229-247,' value='ISBN: 978-0-12-809764-9'/>
+        </reference>
+
+    </references>
+
+        <section title="Acknowledgments" numbered="no">
+            <t>Many thanks to Lothar Braun, Georg Carle, and Benoit Claise, who contributed significant work to earlier draft versions of this work, especially to the document titled "Compressed IPFIX for Smart Meters in Constrained Networks".</t>
+            <t>Many thanks to Thomas Kothmayr, Michael Meister, and Livio Sgier, who implemented TinyIPFIX (except the mediator) for TinyOS 2.x and Contiki 2.7/3.0 for 3 different sensor platforms
+ (IRIS, TelosB, and OpenMote). </t>
+        </section>
+
+
+</back>
+</rfc>

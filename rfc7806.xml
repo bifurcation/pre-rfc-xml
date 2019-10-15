@@ -1,0 +1,911 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc strict="yes" ?>
+<?rfc comments="no" ?>
+<?rfc inline="no" ?>
+<?rfc editing="no" ?>
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="7806"
+     category="info" 
+     submissionType="IETF"
+     consensus="yes"
+     ipr="trust200902">
+
+  <front>
+
+    <title>On Queuing, Marking, and Dropping</title>
+
+    <author fullname="Fred Baker" initials="F.J." surname="Baker">
+      <organization>Cisco Systems</organization>
+
+      <address>
+        <postal>
+          <street/>
+
+          <city>Santa Barbara</city>
+
+          <code>93117</code>
+
+          <region>California</region>
+
+          <country>United States</country>
+        </postal>
+
+        <email>fred@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Rong Pan" initials="R." surname="Pan">
+      <organization>Cisco Systems</organization>
+
+      <address>
+        <postal>
+          <street/>
+
+          <city>Milpitas</city>
+
+          <code>95035</code>
+
+          <region>California</region>
+
+          <country>United States</country>
+        </postal>
+
+        <email>ropan@cisco.com</email>
+      </address>
+    </author>
+
+    <date month="March" year="2016"/>
+
+    <area>Transport</area>
+
+    <workgroup>Active Queue Management</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in the
+title) for use on http://www.rfc-editor.org/search/rfc_search.php. -->
+<keyword>example</keyword>
+
+
+    <abstract>
+      <t>This note discusses queuing and marking/dropping algorithms. While
+      these algorithms may be implemented in a coupled manner, this note
+      argues that specifications, measurements, and comparisons should
+      decouple the different algorithms and their contributions to system
+      behavior.</t>
+    </abstract>
+
+
+  </front>
+
+  <middle>
+
+    <section title="Introduction">
+      <t>In the discussion of Active Queue Management (AQM), there has been
+      discussion of the coupling of queue management algorithms such as <xref
+      target="SFQ">Stochastic Fairness Queuing</xref>, <xref
+      target="VirtualClock">Virtual Clock</xref>, or <xref
+      target="DRR">Deficit Round Robin</xref> with mark/drop algorithms such
+      as <xref target="DELAY-AQM">Controlled Delay (CoDel)</xref> or <xref
+      target="AQM-PIE">Proportional Integral controller Enhanced (PIE)</xref>. In the interest of clarifying the
+      discussion, we document possible implementation approaches to that and
+      analyze the possible effects and side effects. The language and model
+      derive from the <xref target="RFC2475">Architecture for Differentiated
+      Services</xref>.</t>
+
+      <t>This note is informational and is  intended to describe reasonable
+      possibilities without constraining outcomes. This is not so much about
+      "right" or "wrong" as it is "what might be reasonable" and discusses
+      several possible implementation strategies. Also, while queuing might be
+      implemented in almost any layer, the note specifically addresses queues
+      that might be used in the Differentiated Services Architecture and are
+      therefore at or below the IP layer.</t>
+
+      <!--
+<section title="Requirements Language">
+	<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+      document are to be interpreted as described in <xref
+      target="RFC2119"></xref>.</t>
+</section>
+    -->
+    </section>
+
+    <section anchor="fq" title="Fair Queuing: Algorithms and History">
+      <t>There is extensive history in the set of algorithms collectively
+      referred to as "fair queuing". The model was initially discussed in
+      <xref target="RFC0970"/>, which proposed it hypothetically as a solution
+      to the TCP Silly Window Syndrome issue in BSD 4.1. The problem was that,
+      due to a TCP implementation bug, some senders would settle into sending
+      a long stream of very short segments, which unnecessarily consumed
+      bandwidth on TCP and IP headers and occupied short packet buffers,
+      thereby disrupting competing sessions. Nagle suggested that if packet
+      streams were sorted by their source address and the sources treated in a
+      round-robin fashion, a sender's effect on end-to-end latency and
+      increased loss rate would primarily affect only itself. This touched off
+      perhaps a decade of work by various researchers on what was and is
+      termed "fair queuing", philosophical discussions of the meaning of the
+      word "fair", operational reasons that one might want a "weighted" or
+      "predictably unfair" queuing algorithm, and so on.</t>
+
+      <section anchor="gps" title="Generalized Processor Sharing">
+        <t>Conceptually, any fair queuing algorithm attempts to implement some
+        approximation to the <xref target="GPS">Generalized Processor
+        Sharing</xref> model.</t>
+
+        <t>The GPS model, in its essence, presumes that a set of identified
+        data streams, called "flows", pass through an interface. Each flow has
+        a rate when measured over a period of time; a voice session might, for
+        example, require 64 kbit/s plus whatever overhead is necessary to
+        deliver it, and a TCP session might have variable throughput depending
+        on where it is in its evolution. The premise of Generalized Processor
+        Sharing is that on all time scales, the flow occupies a predictable
+        bit rate so that if there is enough bandwidth for the flow in the
+        long term, it also lacks nothing in the short term. "All time scales"
+        is obviously untenable in a packet network -- and even in a traditional
+        Time-Division Multiplexer (TDM) circuit switch network -- because a
+	timescale shorter than the
+        duration of a packet will only see one packet at a time. However, it
+        provides an ideal for other models to be compared against.</t>
+
+        <t>There are a number of attributes of approximations to the GPS model
+        that bear operational consideration, including at least the
+        transmission quanta, the definition of a "flow", and the unit of
+        measurement. Implementation approaches have different practical
+        impacts as well.</t>
+
+        <section anchor="gps-quanta"
+                 title="GPS Comparisons: Transmission Quanta">
+          <t>The most obvious comparison between the GPS model and common
+          approximations to it is that real world data is not delivered
+          uniformly, but in some quantum. The smallest quantum in a packet
+          network is a packet. But quanta can be larger; for example, in
+          video applications, it is common to describe data flow in frames per
+          second, where a frame describes a picture on a screen or the changes
+          made from a previous one. A single video frame is commonly on the
+          order of tens of packets. If a codec is delivering thirty frames per
+          second, it is conceivable that the packets comprising a frame might
+          be sent as thirty bursts per second, with each burst sent at the
+          interface rate of the camera or other sender. Similarly, TCP
+          exchanges have an initial window (common values of which include 1,
+          2, 3, 4 <xref target="RFC3390"/>, and 10 <xref target="RFC6928"/>),
+          and there are also reports of bursts of 64 KB at the relevant
+	  Maximum Segment Size (MSS),
+          which is to say about 45 packets in one burst, presumably coming
+          from TCP Segment Offload ((TSO) also called TCP Offload Engine (TOE)) engines (at least
+          one implementation is known to be able to send a burst of 256 KB).
+          After that initial burst, TCP senders commonly send pairs of
+          packets but may send either smaller or larger bursts <xref
+          target="RFC5690"/>.</t>
+        </section>
+
+        <section anchor="gps-flow" title="GPS Comparisons: Flow Definition">
+          <t>An important engineering trade-off relevant to GPS is the
+          definition of a "flow". A flow is, by definition, a defined data
+          stream. Common definitions include: <list style="symbols">
+              <t>packets in a single transport layer session ("microflow"),
+              identified by a five-tuple <xref target="RFC2990"/>;</t>
+
+              <t>packets between a single pair of addresses, identified by a
+              source and destination address or prefix;</t>
+
+              <t>packets from a single source address or prefix <xref
+              target="RFC0970"/>;</t>
+
+              <t>packets to a single destination address or prefix; and</t>
+
+              <t>packets to or from a single subscriber, customer, or peer
+              <xref target="RFC6057"/>. In Service Provider operations, this
+              might be a neighboring Autonomous System; in broadband,
+	      this might be a residential customer.</t>
+            </list></t>
+
+          <t>The difference should be apparent. Consider a comparison between
+          sorting by source address or destination address, to pick two
+          examples, in the case that a given router interface has N
+          application sessions going through it between N/2 local destinations
+          and N remote sources. Sorting by source, or in this case by
+          source/destination pair, would give each remote peer an upper-bound
+          guarantee of 1/N of the available capacity, which might be
+          distributed very unevenly among the local destinations. Sorting by
+          destination would give each local destination an upper-bound
+          guarantee of 2/N of the available capacity, which might be
+          distributed very unevenly among the remote systems and correlated
+          sessions. Who is one fair to? In both cases, they deliver equal
+          service by their definition, but that might not be someone else's
+          definition.</t>
+
+          <t>Flow fairness, and the implications of TCP's congestion avoidance
+          algorithms, is discussed extensively in <xref target="NoFair"/>.</t>
+        </section>
+
+        <section anchor="gps-unit"
+                 title="GPS Comparisons: Unit of Measurement">
+          <t>And finally, there is the question of what is measured for rate.
+          If the only objective is to force packet streams to not dominate
+          each other, it is sufficient to count packets. However, if the issue
+          is the bit rate of a Service Level Agreement (SLA), one must consider the sizes of the
+          packets (the aggregate throughput of a flow measured in bits or
+          bytes). 
+
+If predictable unfairness is a consideration, the value
+          must be weighted accordingly.</t>
+
+          <t><xref target="RFC7141"/> discusses measurement.</t>
+        </section>
+      </section>
+
+      <section anchor="approx" title="GPS Approximations">
+        <t>Carrying the matter further, a queuing algorithm may also be termed
+        "work conserving" or "non work conserving". A queue in a work-conserving algorithm, by definition, is either empty, in which case
+        no attempt is being made to dequeue data from it, or contains
+        something, in which case the algorithm continuously tries to empty the
+        queue. A work-conserving queue that contains queued data at an
+        interface with a given rate will deliver data at that rate until it
+        empties. A non-work-conserving queue might stop delivering even though
+        it still contains data. A common reason for doing this is to impose an
+        artificial upper bound on a class of traffic that is lower than the
+        rate of the underlying physical interface.</t>
+
+        <section anchor="queue-algorithm"
+                 title="Definition of a Queuing Algorithm">
+          <t>In the discussion following, we assume a basic definition of a
+          queuing algorithm. A queuing algorithm has, at minimum: <list
+              style="symbols">
+              <t>some form of internal storage for the elements kept in the
+              queue;</t>
+
+              <t>if it has multiple internal classifications, then it has <list
+                  style="symbols">
+                  <t>a method for classifying elements and</t>
+
+                  <t>additional storage for the classifier and implied
+                  classes;</t>
+                </list></t>
+
+              <t>potentially, a method for creating the queue;</t>
+
+              <t>potentially, a method for destroying the queue;</t>
+
+              <t>an enqueuing method for placing packets into the queue or
+              queuing system; and</t>
+
+              <t>a dequeuing method for removing packets from the queue or
+              queuing system.</t>
+            </list></t>
+
+          <t>There may also be other information or methods, such as the
+          ability to inspect the queue. It also often has inspectable external
+          attributes, such as the total volume of packets or bytes in queue,
+          and may have limit thresholds, such as a maximum number of packets
+          or bytes the queue might hold.</t>
+
+          <t>For example, a simple FIFO queue has a linear data structure,
+          enqueues packets at the tail, and dequeues packets from the head. It
+          might have a maximum queue depth and a current queue depth
+          maintained in packets or bytes.</t>
+        </section>
+
+        <section anchor="WRR" title="Round-Robin Models">
+          <t>One class of implementation approaches, generically referred to
+          as "Weighted Round Robin" (WRR), implements the structure of the
+          queue as an array or ring of subqueues associated with flows for
+          whatever definition of a flow is important.</t>
+
+
+	  <t>The arriving packet must, of course, first be classified. If a hash
+	  is used as a classifier, the hash result might be used as an
+	  array index, selecting the subqueue that the packet will go into.
+          One can imagine other classifiers, such as using a
+          Differentiated Services Code Point (DSCP) value as an index into an
+          array containing the queue number for a flow, or more complex access
+          list implementations.</t>
+
+          <t>In any event, a subqueue contains the traffic for a flow, and
+          data is sent from each subqueue in succession.</t>
+
+          <t>Upon entering the queue, the enqueue method places a classified packet into a
+          simple FIFO subqueue.</t>
+
+          <t>On dequeue, the subqueues are searched in round-robin order, and
+          when a subqueue is identified that contains data, the dequeue
+          method removes a specified quantum of data from it. That quantum is
+          at minimum a packet, but it may be more. If the system is intended
+          to maintain a byte rate, there will be memory between searches of
+          the excess previously dequeued.</t>
+
+          <?rfc needLines="20"?>
+
+          <figure anchor="roundrobin" title="Round-Robin Queues">
+            <artwork align="center"><![CDATA[
+      +-+
+    +>|1|
+    | +-+
+    |  |
+    | +-+               +-+
+    | |1|             +>|3|
+    | +-+             | +-+
+    |  |              |  |
+    | +-+      +-+    | +-+
+    | |1|    +>|2|    | |3|
+    | +-+    | +-+    | +-+
+    |  A     |  A     |  A
+    |  |     |  |     |  |
+   ++--++   ++--++   ++--++
++->| Q  |-->| Q  |-->| Q  |--+
+|  +----+   +----+   +----+  |
++----------------------------+
+]]></artwork>
+          </figure>
+        </section>
+
+        <section anchor="WFQ" title="Calendar Queue Models">
+          <t>Another class of implementation approaches, generically referred
+	  to as
+          <xref target="CalendarQueue">Calendar Queue Implementations</xref>,
+          implements the structure of the queue as an array or ring of
+          subqueues (often called "buckets") associated with time or
+          sequence; each bucket contains the set of packets, which may be
+          null, intended to be sent at a certain time or following the
+          emptying of the previous bucket. The queue structure includes a
+          look-aside table that indicates the current depth (which is to say,
+          the next bucket) of any given class of traffic, which might
+          similarly be identified using a hash, a DSCP, an access list, or any
+          other classifier. Conceptually, the queues each contain zero or more
+          packets from each class of traffic. One is the queue being emptied
+          "now"; the rest are associated with some time or sequence in the
+          future. The characteristics under "load" have been investigated in
+          <xref target="Deadline"/>.</t>
+
+          <t>Upon entering the queue, the enqueue method, considering a classified packet,
+          determines the current depth of that class with a view to scheduling
+          it for transmission at some time or sequence in the future. If the
+          unit of scheduling is a packet and the queuing quantum is one packet
+          per subqueue, a burst of packets arrives in a given flow, and if at
+          the start the flow has no queued data, the first packet goes into
+          the "next" queue, the second into its successor, and so on. If there
+          was some data in the class, the first packet in the burst would go
+          into the bucket pointed to by the look-aside table. If the unit of
+          scheduling is time, the explanation in <xref target="VC"/> might be
+          simplest to follow, but the bucket selected will be the bucket
+          corresponding to a given transmission time in the future. A
+          necessary side effect, memory being finite, is that there exist a
+          finite number of "future" buckets. If enough traffic arrives to
+          cause a class to wrap, one is forced to drop something
+          (tail drop).</t>
+
+          <t>On dequeue, the buckets are searched at their stated times or in
+          their stated sequence, and when a bucket is identified that contains
+          data, the dequeue method removes a specified quantum of data from it
+          and, by extension, from the associated traffic classes. A single
+          bucket might contain data from a number of classes
+          simultaneously.</t>
+
+          <?rfc needLines="25"?>
+
+          <figure anchor="wfq" title="Calendar Queue">
+            <artwork align="center"><![CDATA[
+           +-+
+         +>|1|
+         | +-+
+         |  |
+         | +-+      +-+
+         | |2|    +>|2|
+         | +-+    | +-+
+         |  |     |  |
+         | +-+    | +-+      +-+
+         | |3|    | |1|    +>|1|
+         | +-+    | +-+    | +-+
+         |  A     |  A     |  A
+         |  |     |  |     |  |
+        ++--++   ++--++   ++--++
+"now"+->| Q  |-->| Q  |-->| Q  |-->...
+        +----+   +----+   +----+
+           A       A         A
+           |3      |2        |1
+        +++++++++++++++++++++++
+        ||||     Flow      ||||
+        +++++++++++++++++++++++
+]]></artwork>
+          </figure>
+
+          <t>In any event, a subqueue contains the traffic for a point in
+          time or a point in sequence, and data is sent from each subqueue in
+          succession. If subqueues are associated with time, an interesting
+          end case develops: if the system is draining a given subqueue and
+          the time of the next subqueue arrives, what should the system do?
+          One potentially valid line of reasoning would have it continue
+          delivering the data in the present queue on the assumption that it
+          will likely trade off for time in the next. Another potentially
+          valid line of reasoning would have it discard any waiting data in
+          the present queue and move to the next.</t>
+        </section>
+
+        <section anchor="sfq"
+                 title="Work-Conserving Models and Stochastic Fairness Queuing">
+          <t><xref target="SFQ">Stochastic Fairness Queuing</xref> is an
+          example of a work-conserving algorithm. This algorithm measures
+          packets and considers a "flow" to be an equivalence class of
+          traffic defined by a hashing algorithm over the source and
+          destination IPv4 addresses. As packets arrive, the enqueue method
+          performs the indicated hash and places the packet into the indicated
+          subqueue. The dequeue method operates as described in <xref
+          target="WRR"/>; subqueues are inspected in round-robin sequence
+          and a packet is removed if they contain one or more packets.</t> 
+
+          <t>The <xref target="DRR">Deficit Round Robin</xref> model modifies the
+          quanta to bytes and deals with variable length packets. A subqueue
+          descriptor contains a waiting quantum (the amount intended to be
+          dequeued on the previous dequeue attempt that was not satisfied), a
+          per-round quantum (the subqueue is intended to dequeue a certain
+          number of bytes each round), and a maximum to permit (some multiple
+          of the MTU). In each dequeue attempt, the dequeue method sets the
+          waiting quantum to the smaller of the maximum quantum and the sum of
+          the waiting and incremental quantum. It then dequeues up to the
+          waiting quantum (in bytes) of packets in the queue and reduces the
+          waiting quantum by the number of bytes dequeued. Since packets will
+          not normally be exactly the size of the quantum, some dequeue
+          attempts will dequeue more than others, but they will over time
+          average the incremental quantum per round if there is data
+          present.</t>
+
+          <t><xref target="SFQ"/> and <xref target="DRR"/> could be
+          implemented as described in <xref target="WFQ"/>. 
+	  The weakness of a classical WRR approach is the search time expended
+	  inspecting and not choosing sub-queues that contain no data or not enough to
+	  trigger a transmission from them.</t>
+        </section>
+
+        <section anchor="VC"
+                 title="Non-Work-Conserving Models and Virtual Clock">
+          <t><xref target="VirtualClock">Virtual Clock</xref> is an example of
+          a non-work-conserving algorithm. It is trivially implemented as
+          described in <xref target="WFQ"/>. It associates buckets with
+          intervals in time that have durations on the order of microseconds to
+          tens of milliseconds. Each flow is assigned a rate in bytes per
+          interval. The flow entry maintains a point in time the "next" packet
+          in the flow should be scheduled.</t>
+
+          <t>On enqueue, the method determines whether the "next schedule"
+          time is "in the past"; if so, the packet is scheduled "now", and if
+          not, the packet is scheduled at that time. It then calculates the
+          new "next schedule" time as the current "next schedule" time plus
+          the length of the packet divided by the rate. If the resulting time
+          is also in the past, the "next schedule" time is set to "now";
+          otherwise, it is set to the calculated time. As noted in <xref target="WFQ"/>,
+          there is an interesting point regarding "too much time in the
+          future"; if a packet is scheduled too far into the future, it may be
+          marked or dropped in the AQM procedure, and if it runs beyond the
+          end of the queuing system, may be defensively tail dropped.</t>
+
+          <t>On dequeue, the bucket associated with the time "now" is
+          inspected. If it contains a packet, the packet is dequeued and
+          transmitted. If the bucket is empty and the time for the next bucket
+          has not arrived, the system waits, even if there is a packet in the
+          next bucket. As noted in <xref target="WFQ"/>, there is an
+          interesting point regarding the queue associated with "now". If a
+          subsequent bucket, even if it is actually empty, would be delayed by
+          the transmission of a packet, one could imagine marking the packet
+          <xref target="RFC3168">Explicit Congestion Notification - Congestion
+	  Experienced (ECN-CE)</xref> <xref target="RFC6679"/> or
+          dropping the packet.</t>
+        </section>
+      </section>
+    </section>
+
+    <section anchor="integration" title="Queuing, Marking, and Dropping">
+      <t>Queuing, marking, and dropping are integrated in any system that has
+      a queue. If nothing else, as memory is finite, a system has to drop as
+      discussed in Sections <xref target="WFQ" format="counter"/> and <xref target="VC"
+      format="counter"/> in order to
+      protect itself. However, host transports interpret drops as signals, so
+      AQM algorithms use that as a mechanism to signal.</t>
+
+      <t>It is useful to think of the effects of queuing as a signal as well.
+      The receiver sends acknowledgements as data is received, so the arrival
+      of acknowledgements at the sender paces the sender at approximately the
+      average rate it is able to achieve through the network. This is true
+      even if the sender keeps an arbitrarily large amount of data stored in
+      network queues and is the basis for delay-based congestion control
+      algorithms. So, delaying a packet momentarily in order to permit another
+      session to improve its operation has the effect of signaling a slightly
+      lower capacity to the sender.</t>
+
+      <section anchor="integration-fifo" title="Queuing with Tail Mark/Drop">
+        <t>In the default case in which a FIFO queue is used with defensive
+        tail drop only, the effect is to signal to the sender in two
+        ways: <list style="symbols">
+            <t>Ack clocking, which involves pacing the sender to send at approximately the
+            rate it can deliver data to the receiver; and</t>
+
+            <t>Defensive loss, which is when a sender sends faster than available
+            capacity (such as by probing network capacity when fully utilizing
+            that capacity) and overburdens a queue.</t>
+          </list></t>
+      </section>
+
+      <section anchor="integration-codel" title="Queuing with CoDel Mark/Drop">
+        <t>In any case wherein a queuing algorithm is used along with <xref
+        target="DELAY-AQM">CoDel</xref>, the sequence of events is
+        that a packet is time stamped, enqueued, dequeued, compared to a
+        subsequent reading of the clock, and then acted on, whether by
+        dropping it, marking and forwarding it, or simply forwarding it. This
+        is to say that the only drop algorithm inherent in queuing is the
+        defensive drop when the queue's resources are overrun. However, the
+        intention of marking or dropping is to signal to the sender much
+        earlier when a certain amount of delay has been observed. In a
+        FIFO+CoDel, Virtual Clock+CoDel, or <xref
+        target="FQ-CODEL">FlowQueue-Codel</xref> implementation,
+        the queuing algorithm is completely separate from the AQM algorithm.
+        Using them in series results in four signals to the sender: <list
+            style="symbols">
+            <t>Ack clocking, which involves pacing the sender to send at approximately the
+            rate it can deliver data to the receiver through a queue;</t>
+
+            <t>Lossless signaling that a certain delay threshold has been
+            reached, if <xref target="RFC3168">ECN</xref> <xref
+            target="RFC6679"/> is in use;</t>
+
+            <t>Intentional signaling via loss that a certain delay threshold
+            has been reached, if ECN is not in use; and</t>
+
+            <t>Defensive loss, which is when a sender sends faster than available
+            capacity (such as by probing network capacity when fully utilizing
+            that capacity) and overburdens a queue.</t>
+          </list></t>
+      </section>
+
+      <section anchor="integration-pie"
+               title="Queuing with RED or PIE Mark/Drop">
+        <t>In any case wherein a queuing algorithm is used along with <xref
+        target="AQM-PIE">PIE</xref>, <xref
+        target="RFC7567">Random Early Detection (RED)</xref>, or other such algorithms, the sequence of
+        events is that a queue is inspected, a packet is dropped, marked, or
+        left unchanged, enqueued, dequeued, compared to a subsequent reading
+        of the clock, and then forwarded on. This is to say that the AQM
+        Mark/Drop Algorithm precedes enqueue; if it has not been effective and
+        as a result the queue is out of resources anyway, the defensive drop
+        algorithm steps in, and failing that, the queue operates in whatever
+        way it does. Hence, in a FIFO+PIE, SFQ+PIE, or Virtual Clock+PIE
+        implementation, the queuing algorithm is again completely separate
+        from the AQM algorithm. Using them in series results in four signals
+        to the sender: <list style="symbols">
+            <t>Ack clocking, which involves pacing the sender to send at approximately the
+            rate it can deliver data to the receiver through a queue;</t>
+
+            <t>Lossless signaling that a queue depth that corresponds to a
+            certain delay threshold has been reached, if ECN is in use;</t>
+
+            <t>Intentional signaling via loss that a queue depth that
+            corresponds to a certain delay threshold has been reached, if ECN
+            is not in use; and</t>
+
+            <t>Defensive loss, which is when a sender sends faster than available
+            capacity (such as by probing network capacity when fully utilizing
+            that capacity) and overburdens a queue.</t>
+          </list></t>
+      </section>
+    </section>
+
+    <section anchor="conclusion" title="Conclusion">
+      <t>To summarize, in <xref target="fq"/>, implementation approaches for
+      several classes of queuing algorithms were explored. Queuing algorithms
+      such as SFQ, Virtual Clock, and <xref
+      target="FQ-CODEL">FlowQueue-Codel</xref> have value in the
+      network in that they delay packets to enforce a rate upper bound or to
+      permit competing flows to compete more effectively. ECN marking and loss
+      are also useful signals if used in a manner that enhances TCP / Steam
+      Control Transmission Protocol (SCTP)
+      operation or restrains unmanaged UDP data flows.</t>
+
+      <t>Conceptually, queuing algorithms and mark/drop algorithms operate in
+      series (as discussed in <xref target="integration"/>), not as a single
+      algorithm. The observed effects differ: defensive loss protects the
+      intermediate system and provides a signal, AQM mark/drop works to reduce
+      mean latency, and the scheduling of flows works to modify flow
+      interleave and acknowledgement pacing. Certain features like flow
+      isolation are provided by fair-queuing-related designs but are not the
+      effect of the mark/drop algorithm.</t>
+
+      <t>There is value in implementing and coupling the operation of both
+      queuing algorithms and queue management algorithms, and there is
+      definitely interesting research in this area, but specifications,
+      measurements, and comparisons should decouple the different algorithms
+      and their contributions to system behavior.</t>
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+      <t>This memo adds no new security issues; it observes implementation
+      strategies for Diffserv implementation.</t>
+    </section>
+  </middle>
+  <back>
+    <!-- references split to informative and normative -->
+
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2475" ?>
+    </references>
+
+    <references title="Informative References">
+      <?rfc include="reference.RFC.3390" ?>
+
+      <?rfc include="reference.RFC.5690" ?>
+
+      <?rfc include="reference.RFC.6928" ?>
+
+<!--draft-ietf-aqm-codel-02: I-D Version Updated from -01 to -02 -->
+
+<reference anchor='DELAY-AQM'>
+<front>
+<title>Controlled Delay Active Queue Management</title>
+
+<author initials='K' surname='Nichols' fullname='Kathleen Nichols'>
+    <organization />
+</author>
+
+<author initials='V' surname='Jacobson' fullname='Van Jacobson'>
+    <organization />
+</author>
+
+<author initials='A' surname='McGregor' fullname='Andrew McGregor'>
+    <organization />
+</author>
+
+<author initials='J' surname='Iyengar' fullname='Janardhan Iyengar'>
+    <organization>Google</organization>
+</author>
+
+<date month='December' year='2015' />
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-aqm-codel-02' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-aqm-codel-02.txt' />
+</reference>
+
+<!--draft-ietf-aqm-fq-codel  in last call -->
+
+<reference anchor='FQ-CODEL'>
+<front>
+<title>The FlowQueue-CoDel Packet Scheduler and Active Queue Management Algorithm</title>
+
+<author initials='T' surname='Hoeiland-Joergensen' fullname='Toke Hoeiland-Joergensen'>
+    <organization />
+</author>
+
+<author initials='P' surname='McKenney' fullname='Paul McKenney'>
+    <organization />
+</author>
+
+<author initials='D' surname='Taht' fullname='Dave Taht'>
+    <organization />
+</author>
+
+<author initials='J' surname='Gettys' fullname='Jim Gettys'>
+    <organization />
+</author>
+
+<author initials='E' surname='Dumazet' fullname='Eric Dumazet'>
+    <organization />
+</author>
+
+<date month='March' year='2016' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-aqm-fq-codel-06' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-aqm-fq-codel-06.txt' />
+</reference>
+
+<!--draft-ietf-aqm-pie  In last call -->
+
+<reference anchor='AQM-PIE'>
+<front>
+<title>PIE: A Lightweight Control Scheme To Address the Bufferbloat Problem</title>
+
+<author initials='R' surname='Pan' fullname='Rong Pan'>
+    <organization />
+</author>
+
+<author initials='P' surname='Natarajan' fullname='Preethi Natarajan'>
+    <organization />
+</author>
+
+<author initials='F' surname='Baker' fullname='Fred Baker'>
+    <organization />
+</author>
+
+<author initials="G" surname="White" fullname="Greg White">
+<organization />
+</author>
+
+<author initials="B" surname="Ver Steeg" fullname="Bill Ver Steeg">
+<organization />
+</author>
+
+<author initials="M" surname="Prabhu" fullname="Mythili Prabhu">
+<organization />
+</author>
+
+<author initials="C" surname="Piglione" fullname="Chiara Piglione">
+<organization />
+</author>
+
+<author initials="V" surname="Subramanian" fullname="Vijay Subramanian">
+<organization />
+</author>
+
+
+<date month='March' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-aqm-pie-05' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-aqm-pie-05.txt' />
+</reference>
+
+
+<!--      <?rfc include="reference.RFC.0970" ?> -->
+
+<reference  anchor='RFC0970' target='http://www.rfc-editor.org/info/rfc970'>
+<front>
+<title>On Packet Switches With Infinite Storage</title>
+<author initials='J.' surname='Nagle' fullname='J. Nagle'><organization /></author>
+<date year='1985' month='December' />
+<abstract><t>The purpose of this RFC is to focus discussion on a particular problem    in the ARPA-Internet and possible methods of solution.  Most prior work    on congestion in datagram systems focuses on buffer management.  In this    memo the case of a packet switch with infinite storage is considered.    Such a packet switch can never run out of buffers.  It can, however,    still become congested.  The meaning of congestion in an    infinite-storage system is explored.  An unexpected result is found that    shows a datagram network with infinite storage, first-in-first-out    queuing, at least two packet switches, and a finite packet lifetime    will, under overload, drop all packets.  By attacking the problem of    congestion for the infinite-storage case, new solutions applicable to    switches with finite storage may be found.  No proposed solutions this    document are intended as standards for the ARPA-Internet at this time.</t></abstract>
+</front>
+<seriesInfo name='RFC' value='970'/>
+<seriesInfo name='DOI' value='10.17487/RFC0970'/>
+</reference>
+
+      <?rfc include="reference.RFC.7567" ?>
+
+      <?rfc include="reference.RFC.2990" ?>
+
+      <?rfc include="reference.RFC.3168"?>
+
+      <?rfc include="reference.RFC.6057" ?>
+
+      <?rfc include="reference.RFC.6679" ?>
+
+      <?rfc include="reference.RFC.7141" ?>
+
+      <reference anchor="CalendarQueue"
+                 target="http://dl.acm.org/citation.cfm?id=63045">
+        <front>
+          <title>Calendar queues: a fast 0(1) priority queue implementation
+	  for the simulation event set problem</title>
+          <author fullname="R. Brown" initials="R." surname="Brown">
+            <organization/>
+          </author>
+          <date month="October" year="1988"/>
+        </front>
+        <seriesInfo name="Communications of the ACM" value="Volume 21, Issue
+							    10, pp. 1220-1227"/>
+	<seriesInfo name="DOI" value="10.1145/63039.63045"/>
+      </reference>
+
+      <reference anchor="Deadline"
+                 target="http://www.math.cmu.edu/users/shreve/Reneging.pdf">
+        <front>
+          <title>Heavy Traffic Analysis For EDF Queues With Reneging</title>
+          <author initials="L" surname="Kruk" fullname="L. Kruk">
+            <organization/>
+          </author>
+          <author initials="J" surname="Lohoczky" fullname="J. Lohoczky">
+            <organization/>
+          </author>
+          <author initials="K" surname="Ramanan" fullname="K. Ramanan">
+            <organization/>
+          </author>
+          <author initials="S" surname="Shreve" fullname="S. Shreve">
+            <organization/>
+          </author>
+          <date year="2011"/>
+        </front>
+        <seriesInfo name="The Annals of Applied Probability" value="Volume 21,
+								    Issue
+								    No. 2,
+								    pp. 484-545"/>
+	<seriesInfo name="DOI" value="10.1214/10-AAP681"/>
+      </reference>
+
+      <reference anchor="VirtualClock"
+                 target="http://dl.acm.org/citation.cfm?id=99508.99525">
+        <front>
+          <title>VirtualClock: A New Traffic Control Algorithm for Packet
+	  Switching Networks</title>
+          <author initials="L." surname="Zhang" fullname="Lixia Zhang">
+            <organization>Xerox PARC</organization>
+          </author>
+          <date month="September" year="1990"/>
+        </front>
+        <seriesInfo name="Proceedings of the ACM Symposium on Communications
+			  Architectures and Protocols," value="Volume 20"/>
+	<seriesInfo name="DOI" value="10.1145/99508.99525"/>
+      </reference>
+
+      <reference anchor="DRR"
+                 target="http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&amp;arnumber=502236">
+        <front>
+          <title>Efficient fair queuing using deficit round-robin</title>
+          <author initials="M." surname="Shreedhar" fullname="M. Shreedhar">
+            <organization>Microsoft Corporation</organization>
+          </author>
+          <author fullname="George Varghese" initials="G." surname="Varghese">
+            <organization>Washington University in St. Louis</organization>
+          </author>
+          <date month="June" year="1996"/>
+        </front>
+        <seriesInfo name="IEEE/ACM Transactions on Networking" value="Volume
+								      4, Issue
+								      3,
+								      pp. 375-385"/>
+	<seriesInfo name="DOI" value="10.1109/90.502236"/>
+      </reference>
+
+      <reference anchor="NoFair"
+                 target="http://dl.acm.org/citation.cfm?id=1232926">
+        <front>
+          <title>Flow rate fairness: dismantling a religion</title>
+          <author initials="B." surname="Briscoe" fullname="Bob Briscoe">
+            <organization>British Telecom</organization>
+          </author>
+          <date month="April" year="2007"/>
+        </front>
+        <seriesInfo name="ACM SIGCOMM Computer Communication Review,"
+		    value="Volume 37, Issue 2, pp. 63-74"/>
+	<seriesInfo name="DOI" value="10.1145/1232919.1232926"/>
+      </reference>
+
+      <reference anchor="GPS"
+                 target="http://blizzard.cs.uwaterloo.ca/keshav/home/Papers/data/89/fq.pdf">
+        <front>
+          <title>Analysis and Simulation of a Fair Queueing Algorithm</title>
+          <author initials="A." surname="Demers" fullname="Alan Demers">
+            <organization>Xerox PARC</organization>
+          </author>
+          <author fullname="Keshav">
+            <organization>University of California, Berkeley</organization>
+          </author>
+          <author fullname="Scott Shenker">
+            <organization>Xerox PARC</organization>
+          </author>
+          <date month="September" year="1989"/>
+        </front>
+        <seriesInfo name="ACM SIGCOMM Computer Communication Review,"
+		    value="Volume 19, Issue 4, pp. 1-12"/>
+	<seriesInfo name="DOI" value="10.1145/75247.75248"/>
+      </reference>
+
+      <reference anchor="SFQ"
+                 target="http://www2.rdrop.com/~paulmck/scalability/paper/sfq.2002.06.04.pdf">
+        <front>
+          <title>Stochastic Fairness Queuing</title>
+          <author initials="P." surname="Mckenney" fullname="Paul E. Mckenney">
+            <organization>SRI International</organization>
+          </author>
+          <date month="June" year="1990"/>
+        </front>
+        <seriesInfo name="Proceedings of IEEE INFOCOM '90,"
+		    value="Volume 2, pp. 733-740"/>
+	<seriesInfo name="DOI" value="10.1109/INFCOM.1990.91316"/>
+      </reference>
+    </references>
+
+    <section anchor="Acknowledgements" title="Acknowledgements" numbered="no">
+      <t>This note grew out of, and is in response to, mailing list                    
+         discussions in AQM, in which some have pushed an algorithm to compare
+         to AQM marking and dropping algorithms, but which includes flow queuing.</t>
+    </section>
+
+  </back>
+</rfc>

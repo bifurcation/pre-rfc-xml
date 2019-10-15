@@ -1,0 +1,640 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+  ]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc iprnotified="no" ?>
+<?rfc strict="yes" ?>
+
+<rfc submissionType="IETF" category="std" consensus="yes" ipr="trust200902" number="8646" >
+
+<front>
+<title abbrev="DLEP Pause Extension">Dynamic Link Exchange Protocol
+ (DLEP) Control&nbhy;Plane&nbhy;Based&nbsp;Pause&nbsp;Extension</title>
+
+   <author initials='B.' surname="Cheng" fullname='Bow-Nan Cheng'>
+    <organization>MIT Lincoln Laboratory</organization>
+    <address>
+      <postal>
+        <street>Massachusetts Institute of Technology</street>
+        <street>244 Wood Street</street>
+        <city>Lexington</city>
+        <region>MA</region>
+        <code>02421-6426</code>
+        <country>United States of America</country>
+      </postal>
+       <email>bcheng@ll.mit.edu</email>
+    </address>
+    </author>
+
+   <author initials='D.' surname="Wiggins" fullname='David Wiggins'>
+    <organization>MIT Lincoln Laboratory</organization>
+    <address>
+      <postal>
+        <street>Massachusetts Institute of Technology</street>
+        <street>244 Wood Street</street>
+        <city>Lexington</city>
+        <region>MA</region>
+        <code>02420-9108</code>
+        <country>United States of America</country>
+      </postal>
+       <email>David.Wiggins@ll.mit.edu</email>
+    </address>
+    </author>
+
+   <author initials='L.' surname="Berger" fullname='Lou Berger' role='editor'>
+    <organization>LabN Consulting, L.L.C.</organization>
+    <address>
+       <email>lberger@labn.net</email>
+    </address>
+    </author>
+
+<date year="2019" month="September"/>
+
+<keyword>DLEP, Flow control, Pause</keyword>
+
+  <abstract>
+<t>
+  This document defines an extension to the Dynamic Link Exchange Protocol (DLEP) that enables a
+  modem to use DLEP messages to pause and resume data traffic coming
+  from its peer router.
+</t>
+</abstract>
+</front>
+
+<middle>
+<section anchor="sec-1" title="Introduction">
+<t>
+  The Dynamic Link Exchange Protocol (DLEP) is defined in <xref
+  target="RFC8175"/>. It provides the exchange of link-related
+ control information between a
+  modem and a router. DLEP defines a base set of
+  mechanisms as well as support for possible extensions.  This
+  document defines one such extension.
+</t>
+<t>
+  The base DLEP specification does not include any data-plane
+  flow&nbhy;control capability.  The extension defined in this document supports
+  flow control of data traffic based on explicit messages sent via DLEP
+  by a modem to indicate when a router should hold off sending traffic
+  and when it should resume.  This functionality parallels the
+  flow&nbhy;control mechanism found in PPP over Ethernet (PPPoE) per
+  <xref target="RFC5578"/>.  The extension also optionally
+  supports DSCP-aware flow control ("DSCP" stands for "Differentiated
+  Services Code Point") for use by Diffserv-aware modems. (For
+  general background on Differentiated Services, see <xref
+  target="RFC2475"/>.)
+  This functionality is very similar to that provided by Ethernet
+  priority&nbhy;based flow control; see <xref target="IEEE.802.1Q_2014"/>.
+  The extension defined in this document is referred
+  to as "Control-Plane-Based Pause".  Other flow-control methods are
+  possible with DLEP; for example, see <xref target="DLEP-DIFFSERV"/> and
+  <xref target="DLEP-CREDIT"/>.
+</t>
+<t>
+  Note that
+  this mechanism only applies to traffic that is to be transmitted on the
+  modem's attached data channel and not to DLEP control messages
+  themselves.  Furthermore, it applies only to the single subnetwork
+  that is used to connect a modem and a router, and for traffic sent
+  from a router to a modem.
+</t>
+<t>
+  This document defines a new DLEP Extension Type Value that is used to
+  indicate the use of the extension; see <xref target="sec-ext-type"/>.
+  Three new DLEP Data Items are defined in <xref target="sec-data-items"/>.
+</t>
+<section anchor="sec-1.1" title="Key Words">
+
+    <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+    "SHALL&nbsp;NOT", "SHOULD", "SHOULD&nbsp;NOT", "RECOMMENDED",
+    "NOT&nbsp;RECOMMENDED", "MAY", and "OPTIONAL" in this document
+    are to be interpreted as described in BCP&nbsp;14
+    <xref target="RFC2119"/> <xref target="RFC8174"/> when,
+    and only when, they appear in all capitals, as shown here.</t>
+
+</section>
+</section>
+<section anchor="sec-ext-type" title="Extension Usage and Identification">
+<t>
+   The use of the Control-Plane-Based Pause Extension SHOULD be configurable.
+   To indicate that the implementation supports the use of the
+   Control-Plane-Based Pause Extension, an
+   implementation MUST include the Control-Plane-Based Pause Extension Type
+   Value in the Extensions Supported Data Item. The Extensions Supported
+   Data Item is sent and processed according to <xref
+   target="RFC8175"/>.
+</t>
+
+<t>
+  The Control-Plane-Based Pause Extension Type Value is 2; see <xref
+  target="sec-iana"/>.
+</t>
+</section>
+<section anchor="sec-data-items" title="Extension Data Items">
+<t>
+   Three Data Items are defined by this extension. The Queue Parameters
+   Data Item is used by a modem to provide information about the DSCPs it
+   uses in forwarding. The Pause Data Item is used by a modem to
+   indicate when a router should cease sending packets, and the Restart
+   Data Item is used by a modem to indicate when a router can resume
+   sending packets.
+</t>
+<section anchor="sec-di-qp" title="Queue Parameters">
+<t>
+  The Queue Parameters Data Item is sent by a modem to a router to indicate DSCP
+  values that may be independently paused.  This Data Item MUST be
+  included in a Session Initialization Response Message that also
+  contains the Control-Plane-Based Pause Extension Type Value in the
+  Extensions Supported Data Item.  Updates to these parameters MAY be
+  sent by a modem by including the Data Item in Session Update
+  Messages.
+</t>
+<t>
+  The Queue Parameters Data Item groups DSCPs into
+  logical queues, each of which is identified by a "Queue Index" field. The
+  number of logical queues is variable, as is the
+  number of DSCPs associated with each queue. A queue size (in bytes)
+  is provided for informational purposes.  Queue Index fields are numbered
+  sequentially from zero, where queue index zero is a special case
+  covering DSCPs that are not otherwise associated with a Queue Index field.
+</t>
+<t>
+  An implementation that does not support DSCPs would indicate one queue
+  with zero DSCPs, and the number of bytes that may be in its associated
+  link transmit queue.  Additional logical queues are represented in a
+  variable series of Queue Parameter Sub-Data Items.
+</t>
+<t>
+  The format of the Queue Parameters Data Item is:
+</t>
+<t>
+<figure>
+<artwork>
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Data Item Type                | Length                        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |   Num Queues  | Scale |              Reserved                 |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |               Queue Parameter Sub-Data Item 1                 |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   :                                ...                            :
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |               Queue Parameter Sub-Data Item n                 |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+</t>
+<t>
+  <list style="hanging">
+    <t hangText="Data Item Type:">23</t>
+    <t hangText="Length:">Variable
+      <vspace blankLines="1"/>
+      Per <xref target="RFC8175"/>, Length
+      is the number of octets in the Data Item, excluding the Type and
+      Length fields.
+    </t>
+    <t hangText="Num Queues:">
+      <vspace blankLines="1"/>
+      An 8-bit unsigned integer indicating the number of queues
+      represented in the Data Item.  This field MUST contain a value of
+      at least one (1) and is equal to one greater than the number of
+      included Queue Parameter Sub-Data Items.
+    </t>
+   <t hangText="Scale:">
+      <vspace blankLines="1"/>
+      A 4-bit unsigned integer indicating the scale used in the Queue
+      Size Qn field. The valid values are:
+      <figure>
+        <artwork>
+      Value   Scale
+      --------------------------------
+          0    B - Bytes     (Octets)
+          1   KB - Kilobytes (1024 B)
+          2   MB - Megabytes (1024 KB)
+          3   GB - Gigabytes (1024 MB)
+        </artwork>
+      </figure>
+    </t>
+    <t hangText="Reserved:">
+      <vspace blankLines="1"/>
+      A 20-bit field that MUST be set to zero (0) by the sender (a modem) and ignored by the
+      receiver (a router).
+    </t>
+  </list>
+</t>
+
+  <section anchor="sec-di-qp-sub" title="Queue Parameter Sub-Data Item">
+
+    <t>
+      Queue Parameter Sub-Data Items are an unordered list composed of
+      Sub&nbhy;Data Items with a common format.  The format of the Queue
+      Parameter Sub&nbhy;Data Item is patterned after the standard format for
+      the DLEP Data Item; see <xref target="RFC8175"/>, Section&nbsp;11.3.
+      Any errors or inconsistencies encountered in parsing Sub-Data Items are
+      handled in the same fashion as any other Data Item parsing error
+      encountered in DLEP.
+      In particular, the receiving implementation MUST issue a
+      Session Termination Message containing a Status Data Item with
+      status code set to 130 ("Invalid Data") and transition to the
+      Session Termination state.
+    </t>
+    <t>
+      The format of the Queue Parameter Sub-Data Item is:
+    </t>
+<t>
+<figure>
+<artwork>
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Sub-Data Item Type (1)        | Length                        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                           Value...                            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+</t>
+<t>
+  and Value has the format:
+</t>
+<t>
+<figure>
+<artwork>
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Queue Index  |             Queue Size Qn                     |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Num DSCPs Qn  |  DS Field Qn  |              ...              :
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   :                          ...                  |  DS Field Qn  |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+</t>
+
+<t>
+  <list style="hanging">
+    <t hangText="Sub-Data Item Type:">
+      <vspace blankLines="1"/>
+      A 16-bit unsigned integer that indicates the type and
+      corresponding format of the Sub-Data Item's Value field.  Sub-Data
+      Item Types are scoped within the Data Item in which they are
+      carried, i.e., the Sub-Data Item Type field MUST be used together
+      with the Queue Parameters Data Item Type to identify the format of the Sub-Data
+      Item.  This field MUST be set to one (1) for the Queue Parameter
+      Sub-Data Item.
+    </t>
+    <t hangText="Length:">Variable
+      <vspace blankLines="1"/>
+      Length
+      is the number of octets in the Sub-Data Item, excluding the Type and
+      Length fields.
+    </t>
+    <t hangText="Queue Index:">
+      <vspace blankLines="1"/>
+      An 8-bit field indicating the queue index of the queue
+      parameter represented in the Sub-Data Item.  Only the first
+      instance of a particular Queue Index value is meaningful.
+      Subsequent Sub-Data Items containing the same Queue Index values,
+      if present, MAY be logged via a management interface and MUST
+      otherwise be ignored. Note that the value 255 is reserved and MUST
+      NOT be used in this field.
+    </t>
+    <t hangText="Queue Size Qn:">
+      <vspace blankLines="1"/>
+      A 24-bit unsigned integer representing the size, in the octet
+      scale indicated by the Scale field, of the queue that supports
+      the traffic with the DSCPs associated with the queue index.
+    </t>
+    <t hangText="Num DSCPs Qn:">
+      <vspace blankLines="1"/>
+      An 8-bit unsigned integer indicating the number of DSCPs
+      associated with the queue index associated with the Sub-Data Item.
+      This field MUST contain a value of at least one (1).
+    </t>
+    <t hangText="DS Field Qn:">
+      <vspace blankLines="1"/>
+      The Data Item contains a sequence of 8-bit DS fields.  The
+      number of DS fields present MUST equal the Num DSCPs Qn field value.
+
+      <vspace blankLines="1"/>
+      The DS field structure is the same as the structure shown in
+      <xref target="RFC2474"/>.
+      <figure>
+        <artwork>
+          0   1   2   3   4   5   6   7
+        +---+---+---+---+---+---+---+---+
+        |         DSCP          |  CU   |
+        +---+---+---+---+---+---+---+---+
+
+        DSCP: Differentiated Services Code Point
+        CU:   Currently Unused; MUST be zero
+        </artwork>
+      </figure>
+    </t>
+  </list>
+</t>
+</section>
+</section>
+<section anchor="sec-di-pause" title="Pause">
+<t>
+  The Pause Data Item is sent by a modem to a router to indicate to its peer that
+  traffic is to be suppressed, i.e., paused.
+  The motivating use case for this Data Item is when a modem's
+  internal queue length exceeds a particular threshold.  Other use cases
+  are possible, e.g., when there are non&nbhy;queue-related congestion points
+  within a modem. Such cases are not explicitly described in this
+  document.
+</t>
+<t>
+  A modem can indicate that traffic is to be suppressed on a device&nbhy;wide
+  or destination-specific basis. An example of when a modem might use
+  device&nbhy;wide suppression is when output queues are shared across all
+  destinations. Destination-specific suppression might be used when
+  per&nbhy;destination queuing is used.  To indicate that suppression applies to
+  all destinations, a modem MUST send the Pause Data Item in a Session
+  Update Message.  To indicate that suppression applies to a particular
+  destination, a modem MUST send the Pause Data Item in a Destination
+  Update Message.
+</t>
+<t>
+  Each Pause Data Item identifies the traffic to be suppressed by the
+  Queue Index field (<xref target="sec-di-qp"/>), which in turn
+  indicates traffic identified by one or more DSCPs. The special value of 255
+  is used to indicate that all traffic is to be suppressed.
+</t>
+<t>
+  While there is no restriction on the number of messages containing
+  Pause Data Items that may be sent by a modem, a modem SHOULD include
+  multiple queue indexes in the same message when possible.
+</t>
+<t>
+  A router that receives the Pause Data Item MUST cease sending
+  the identified traffic to the modem. This may of course translate into
+  the router's queues exceeding their own thresholds.
+  If a received Pause Data Item contains a Queue Index value other than
+  255 or a queue index established by a Session Initialization or
+  Session Update Message, the router MUST terminate the session with a
+  Status Data Item indicating "Invalid Data".
+</t>
+<t>
+  The format of the Pause Data Item is:
+</t>
+<t>
+<figure>
+<artwork>
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Data Item Type                | Length                        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Queue Index  |               ...                             :
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   :                                ...            |  Queue Index  |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+</t>
+<t>
+  <list style="hanging">
+    <t hangText="Data Item Type:">24</t>
+    <t hangText="Length:">Variable
+      <vspace blankLines="1"/>
+      Per <xref target="RFC8175"/>, Length
+      is the number of octets in the Data Item, excluding the Type and
+      Length fields. It will equal the number of Queue Index fields
+      carried in the Data Item.
+    </t>
+    <t hangText="Queue Index:">
+      <vspace blankLines="1"/>
+      One or more 8-bit fields used to indicate a queue index defined by
+      a Queue Parameters Data Item.  The special value of 255 indicates
+      that (1)&nbsp;all traffic to the modem is to be suppressed when the
+      Data Item is carried in a Session Update Message or (2)&nbsp;all
+      traffic to a particular destination is to be suppressed when the
+      Data Item is carried in a Destination Update Message.
+    </t>
+  </list>
+</t>
+
+</section>
+<section anchor="sec-di-restart" title="Restart">
+<t>
+  The Restart Data Item is sent by a modem to a router to indicate to its peer that
+  transmission of previously suppressed traffic may be resumed.  An
+  example of when a modem might send this Data Item is when an internal
+  queue length drops below a particular threshold.
+</t>
+<t>
+  The sending of this Data Item parallels the Pause Data Item
+  (see <xref target="sec-di-pause"/>) and follows the same rules.
+  To indicate that transmission can resume
+  to all destinations, a modem MUST send the Restart Data Item in a
+  Session Update Message.  To indicate that
+  transmission can resume to a particular destination, a modem MUST send
+  the Restart Data Item in a Destination Update Message.
+  Finally, the same rules apply to queue indexes.
+</t>
+<t>
+  A router that receives the Restart Data Item SHOULD resume
+  transmission of the identified traffic to the modem.
+</t>
+<t>
+  The format of the Restart Data Item matches the Pause Data Item and&nbsp;is:
+</t>
+<t>
+<figure>
+<artwork>
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Data Item Type                | Length                        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Queue Index  |               ...                             :
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   :                                ...            |  Queue Index  |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+</t>
+<t>
+  <list style="hanging">
+    <t hangText="Data Item Type:">25</t>
+    <t hangText="Length:">See <xref target="sec-di-pause"/>.</t>
+    <t hangText="Queue Index:">See <xref target="sec-di-pause"/>.</t>
+  </list>
+</t>
+</section>
+</section>
+
+<section anchor="sec-sec" title="Security Considerations">
+<t>
+   The extension defined in this document introduces a new mechanism for flow control between a
+   router and modem using DLEP.  The
+   extension does not introduce any vulnerabilities that are inherently different
+   from those documented in <xref target="RFC8175"/>.
+   The approach taken to security in that document applies equally
+   when running the extension defined in this document.
+</t>
+<t>
+   Implementations of the extension defined in this document MUST support
+   the configuration and use of TLS, as described in <xref target="RFC8175"/>,
+   in order to protect configurations where injection attacks are
+   possible, i.e., when the link between a modem and router is not
+   otherwise protected.
+</t>
+<t>
+  Note that this extension does allow a compromised or impersonating
+  modem to suppress transmission by the router or a switch that
+  interconnects the modem and router.  Similar attacks are
+  generally possible with base DLEP -- for example, an impersonating modem may
+  cause a session reset, or a compromised modem can simply
+  drop all traffic destined for or sent by a router.
+  <xref target="RFC8175"/> defines the use of TLS to protect against such
+  impersonating attackers.
+</t>
+</section>
+<section anchor="sec-iana" title="IANA Considerations">
+<t>
+  This document assigns four new values and creates a new subregistry in the
+  "Dynamic Link Exchange Protocol (DLEP) Parameters" registry.  
+</t>
+<section anchor="sec-iana-ext" title="Extension Type Value">
+
+<t>
+  This document adds a new assignment to the DLEP extensions 
+  registry named "Extension Type Values" <xref target="RFC8175"/>, per the
+  "Specification Required" policy <xref target="RFC8126"/>. IANA
+  has assigned the following value: 
+</t>
+
+<texttable anchor="table_et" title="Extension Type Value">
+  <preamble></preamble>
+  <ttcol>Code</ttcol> <ttcol>Description</ttcol>
+    <c>2</c> <c>Control-Plane-Based Pause</c>
+    <postamble></postamble>
+    </texttable>
+</section>
+<section anchor="sec-iana-di" title="Data Item Values">
+
+<t>
+  This document adds three new assignments to the DLEP Data Item
+  registry named "Data Item Type Values" <xref target="RFC8175"/>, per the
+  "Specification Required" policy <xref target="RFC8126"/>. IANA
+  has assigned the following values:</t>
+<texttable anchor="table_di" title="Data Item Values">
+  <preamble></preamble>
+  <ttcol>Type Code</ttcol> <ttcol>Description</ttcol>
+    <c>23</c> <c>Queue Parameters</c>
+    <c>24</c> <c>Pause</c>
+    <c>25</c> <c>Restart</c>
+    <postamble></postamble>
+    </texttable>
+</section>
+
+<section anchor="sec-iana-sdi" title="Queue Parameter Sub-Data Item Values">
+
+<t>IANA has created a new DLEP registry named "Queue Parameter Sub-Data Item
+Type Values". 
+</t>
+<t>
+  <xref target="table_sdi"/> provides initial registry values and the
+  registration policies <xref target="RFC8126"/> that apply:
+</t>
+<texttable anchor="table_sdi" title="Initial Registry Values">
+  <ttcol>Type Code</ttcol> <ttcol>Description/Policy</ttcol>
+    <c>0</c> <c>Reserved</c>
+    <c>1</c> <c>Queue Parameter</c>
+    <c>2-65407</c> <c>Specification Required</c>
+    <c>65408-65534</c> <c>Private Use</c>
+    <c>65535</c> <c>Reserved</c>
+    </texttable>
+</section>
+
+</section>
+</middle>
+
+<back>
+<references title="Normative References">
+
+<?rfc include="reference.RFC.2119"?>
+<?rfc include="reference.RFC.8174"?>
+<?rfc include="reference.RFC.8175"?>
+
+</references>
+
+<references title="Informative References">
+
+<!-- draft-ietf-manet-dlep-da-credit-extension (I-D Exists) -->
+<reference anchor='DLEP-DIFFSERV'>
+<front>
+<title>DLEP DiffServ Aware Credit Window Extension</title>
+<author initials='B' surname='Cheng' fullname='Bow-Nan Cheng'>
+    <organization />
+</author>
+<author initials='D' surname='Wiggins' fullname='David Wiggins'>
+    <organization />
+</author>
+<author initials='L' surname='Berger' fullname='Lou Berger'>
+    <organization />
+</author>
+<date month='March' year='2019' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-manet-dlep-da-credit-extension-07' />
+</reference>
+
+<!-- draft-ietf-manet-dlep-credit-flow-control (I-D Exists) -->
+<reference anchor='DLEP-CREDIT'>
+<front>
+<title>DLEP Credit-Based Flow Control Messages and Data Items</title>
+<author initials='B' surname='Cheng' fullname='Bow-Nan Cheng'>
+    <organization />
+</author>
+<author initials='D' surname='Wiggins' fullname='David Wiggins'>
+    <organization />
+</author>
+<author initials='L' surname='Berger' fullname='Lou Berger'>
+    <organization />
+</author>
+<author initials='S' surname='Ratliff' fullname='Stan Ratliff'>
+    <organization />
+</author>
+<date month='March' year='2019' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-manet-dlep-credit-flow-control-04' />
+</reference>
+
+<?rfc include="reference.RFC.2474"?>
+<?rfc include="reference.RFC.2475"?>
+<?rfc include="reference.RFC.5578"?>
+<?rfc include="reference.RFC.8126"?>
+
+<reference anchor="IEEE.802.1Q_2014" target="https://ieeexplore.ieee.org/document/6991462">
+<front>
+<title>IEEE Standard for Local and metropolitan area networks--Bridges
+and Bridged Networks</title>
+<author><organization>IEEE</organization></author>
+<date/>
+<!-- <date day="18" month="December" year="2014"/> -->
+</front>
+<seriesInfo name="IEEE" value="802.1Q-2014"/>
+</reference>
+
+</references>
+
+<section title="Acknowledgments" numbered="no">
+   <t>
+     The format for the Sub-Data Item was inspired by Rick Taylor's "Data Item
+     Containers" idea.
+   </t>
+</section>
+
+</back>
+</rfc>

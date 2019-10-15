@@ -1,0 +1,480 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<?xml-stylesheet type='text/xsl' href='./rfc2629.xslt' ?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" >
+
+<?rfc toc="yes"?>
+<?rfc symrefs="no"?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc sortrefs="yes" ?>
+<?rfc rfcedstyle="yes" ?>
+
+<rfc number="7366" ipr="trust200902" category="std" submissionType="IETF" consensus="yes">
+
+<!-- ====================================================================== -->
+  <front>
+    <title abbrev="Encrypt-then-MAC for TLS and DTLS">Encrypt-then-MAC for Transport
+    Layer Security (TLS) and Datagram&nbsp;Transport&nbsp;Layer&nbsp;Security&nbsp;(DTLS)</title>
+
+    <author initials="P." surname="Gutmann" fullname="Peter Gutmann">
+      <organization abbrev="University of Auckland">University of Auckland</organization>
+      <address>
+        <postal>
+          <street>Department of Computer Science</street>
+          <country>New Zealand</country>
+        </postal>
+        <email>pgut001@cs.auckland.ac.nz</email>
+      </address>
+    </author>
+    <date month="September" year="2014"/>
+    <area>Security Area</area>
+    <workgroup>TLS Working Group</workgroup>
+
+    <abstract>
+      <t>
+
+This document describes a means of negotiating the use of the encrypt-then-MAC
+security mechanism in place of the existing MAC-then-encrypt mechanism in
+Transport Layer Security (TLS) and Datagram
+                    Transport Layer Security (DTLS). The MAC-then-encrypt
+		    mechanism has been the subject of a number of security vulnerabilities over a period of
+many years.
+
+      </t>
+    </abstract>
+  </front>
+<!-- ====================================================================== -->
+  <middle>
+
+<!-- ====================================================================== -->
+    <section anchor="introduction" title="Introduction">
+      <t>
+
+<xref target="TLS">TLS</xref> and <xref target="DTLS">DTLS</xref> use a 
+MAC-then-encrypt construction that was regarded as secure at the time the
+original Secure Socket Layer (SSL) protocol was specified in the mid-1990s,
+but that is no longer regarded as secure <xref target="EncryptThenMAC"/> 
+<xref target="EncryptThenAuth"/>.  This construction, as used in TLS and later
+DTLS, has been the subject of numerous security vulnerabilities and attacks
+stretching over a period of many years. This document specifies a means of
+switching to the more secure encrypt-then-MAC construction as part of the
+TLS/DTLS handshake, replacing the current MAC-then-encrypt construction. (In
+this document, "MAC" refers to "Message Authentication Code".)
+
+      </t>
+      <section anchor="mustshouldmay" title="Conventions Used in This Document">
+        <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
+          "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described
+          in <xref target="RFC2119"/>.</t>
+      </section>
+
+    </section>
+<!-- ====================================================================== -->
+    <section anchor="negotiation" title="Negotiating Encrypt-then-MAC">
+      <t>
+
+The use of encrypt-then-MAC is negotiated via TLS/DTLS extensions as defined
+in <xref target="TLS">TLS</xref>.  On connecting, the client includes the
+encrypt_then_mac extension in its client_hello if it wishes to use 
+encrypt-then-MAC rather than the default MAC-then-encrypt.  If the server is
+capable of meeting this requirement, it responds with an encrypt_then_mac in
+its server_hello.  
+
+The "extension_type" value for this extension SHALL be 22
+(0x16), and the "extension_data" field of this extension SHALL be empty.  The
+client and server MUST NOT use encrypt-then-MAC unless both sides have
+successfully exchanged encrypt_then_mac extensions.
+
+      </t>
+      <section anchor="negotiation_rationale" title="Rationale">
+        <t>
+
+The use of TLS/DTLS extensions to negotiate an overall switch is preferable to
+defining new ciphersuites because the latter would result in a Cartesian
+explosion of suites, potentially requiring duplicating every single existing
+suite with a new one that uses encrypt-then-MAC.  In contrast, the approach
+presented here requires just a single new extension type with a corresponding
+minimal-length extension sent by client and server.
+
+        </t>
+        <t>
+
+Another possibility for introducing encrypt-then-MAC would be to make it part
+of TLS 1.3; however, this would require the implementation and deployment of
+all of TLS 1.2 just to support a trivial code change in the order of
+encryption and MAC'ing.  In contrast, deploying encrypt-then-MAC via the
+TLS/DTLS extension mechanism required changing less than a dozen lines of code
+in one implementation (not including the handling for the new extension type,
+which was a further 50 or so lines of code).
+
+        </t>
+        <t>
+
+The use of extensions precludes use with SSL 3.0, but then it's likely that
+anything still using that protocol, which is nearly two decades old, will be vulnerable
+to any number of other attacks anyway, so there seems little point in bending
+over backwards to accommodate SSL 3.0.
+
+        </t>
+      </section>
+    </section>
+<!-- ====================================================================== -->
+    <section anchor="applying" title="Applying Encrypt-then-MAC">
+      <t>
+
+Once the use of encrypt-then-MAC has been negotiated, processing of TLS/DTLS
+packets switches from the standard:
+
+        <figure><artwork><![CDATA[
+encrypt( data || MAC || pad )
+        ]]></artwork></figure>
+
+to the new:
+
+        <figure><artwork><![CDATA[
+encrypt( data || pad ) || MAC
+        ]]></artwork></figure>
+
+with the MAC covering the entire packet up to the start of the MAC value.  In
+<xref target="TLS">TLS</xref> notation, the MAC calculation for TLS 1.0 without
+the explicit Initialization Vector (IV) is:
+
+        <figure><artwork><![CDATA[
+MAC(MAC_write_key, seq_num +
+    TLSCipherText.type +
+    TLSCipherText.version +
+    TLSCipherText.length +
+    ENC(content + padding + padding_length));
+        ]]></artwork></figure>
+
+and for TLS 1.1 and greater with an explicit IV is:
+
+        <figure><artwork><![CDATA[
+MAC(MAC_write_key, seq_num +
+    TLSCipherText.type +
+    TLSCipherText.version +
+    TLSCipherText.length +
+    IV +
+    ENC(content + padding + padding_length));
+        ]]></artwork></figure>
+
+(For DTLS, the sequence number is replaced by the combined epoch and sequence
+number as per <xref target="DTLS">DTLS</xref>.)  The final MAC value is then
+appended to the encrypted data and padding.  This calculation is identical to
+the existing one, with the exception that the MAC calculation is run over the
+payload ciphertext (the TLSCipherText PDU) rather than the plaintext (the
+TLSCompressed PDU).
+      </t>
+      <t>
+
+The overall TLS packet <xref target="TLS"/> is then:
+
+        <figure><artwork><![CDATA[
+struct {
+       ContentType type;
+       ProtocolVersion version;
+       uint16 length;
+       GenericBlockCipher fragment;
+       opaque MAC;
+       } TLSCiphertext;
+        ]]></artwork></figure>
+
+The equivalent DTLS packet <xref target="DTLS"/> is then:
+
+        <figure><artwork><![CDATA[
+struct {
+       ContentType type;
+       ProtocolVersion version;
+       uint16 epoch;
+       uint48 sequence_number;
+       uint16 length;
+       GenericBlockCipher fragment;
+       opaque MAC;
+       } TLSCiphertext;
+        ]]></artwork></figure>
+
+This is identical to the existing TLS/DTLS layout, with the only difference
+being that the MAC value is moved outside the encrypted data.
+
+      </t>
+      <t>
+
+Note from the GenericBlockCipher annotation that this only applies to standard
+block ciphers that have distinct encrypt and MAC operations.  It does not
+apply to GenericStreamCiphers or to GenericAEADCiphers that already include
+integrity protection with the cipher.  If a server receives an 
+encrypt-then-MAC request extension from a client and then selects a stream or
+Authenticated Encryption with Associated Data (AEAD) ciphersuite, it
+MUST NOT send an encrypt-then-MAC response extension back to the client.
+
+      </t>
+      <t>
+
+Decryption reverses this processing.  The MAC SHALL be evaluated before any
+further processing such as decryption is performed, and if the MAC
+verification fails, then processing SHALL terminate immediately.  For TLS, a
+fatal bad_record_mac MUST be generated <xref target="TLS"/>.  For DTLS, the
+record MUST be discarded, and a fatal bad_record_mac MAY be generated 
+<xref target="DTLS"/>.  This immediate response to a bad MAC eliminates any
+timing channels that may be available through the use of manipulated packet
+data.
+
+      </t>
+      <t>
+
+Some implementations may prefer to use a truncated MAC rather than a 
+full-length one.  In this case, they MAY negotiate the use of a truncated MAC
+through the TLS truncated_hmac extension as defined in 
+<xref target="TLS-Ext">TLS-Ext</xref>.
+
+      </t>
+      <section anchor="applying_rehandshake" title="Rehandshake Issues">
+        <t>
+
+The status of encrypt-then-MAC vs. MAC-then-encrypt can potentially change
+during one or more rehandshakes.  Implementations SHOULD retain the current
+session state across all rehandshakes for that session.  (In other words, if the
+mechanism for the current session is X, then the renegotiated session should
+also use X.)  Although implementations SHOULD NOT change the state during a
+rehandshake, if they wish to be more flexible, then the following rules apply:
+
+        </t>
+
+
+<?rfc compact="no"?>
+        <texttable anchor="table_renegotiation" title="Encrypt-then-MAC with Renegotiation">
+
+          <ttcol align='center'>Current Session</ttcol>
+          <ttcol align='center'>Renegotiated Session</ttcol>
+          <ttcol align='center'>Action to take</ttcol>
+
+          <c>MAC-then-encrypt</c>
+          <c>MAC-then-encrypt</c>
+          <c>No change</c>
+
+          <c>MAC-then-encrypt</c>
+          <c>Encrypt-then-MAC</c>
+          <c>Upgrade to Encrypt&nbhy;then&nbhy;MAC</c>
+
+          <c>Encrypt-then-MAC</c>
+          <c>MAC-then-encrypt</c>
+          <c>Error</c>
+
+          <c>Encrypt-then-MAC</c>
+          <c>Encrypt-then-MAC</c>
+          <c>No change</c>
+
+        </texttable>
+<?rfc compact="yes"?>
+
+
+        <t>
+
+As the above table points out, implementations MUST NOT renegotiate a
+downgrade from encrypt-then-MAC to MAC-then-encrypt.  Note that a client or
+server that doesn't wish to implement the mechanism-change-during-rehandshake
+ability can (as a client) not request a mechanism change and (as a server)
+deny the mechanism change.
+
+        </t>
+        <t>
+
+Note that these rules apply across potentially many rehandshakes.  For example,
+if a session were in the encrypt-then-MAC state and a rehandshake selected a
+GenericAEADCiphers ciphersuite and a subsequent rehandshake then selected a
+MAC-then-encrypt ciphersuite, this would be an error since the renegotiation
+process has resulted in a downgrade from encrypt-then-MAC to
+MAC-then-encrypt (via the AEAD ciphersuite).
+
+        </t>
+
+        <t>
+
+(As the text above has already pointed out, implementations SHOULD avoid
+having to deal with these ciphersuite calisthenics by retaining the
+initially negotiated mechanism across all rehandshakes.)
+
+        </t>
+
+        <t>
+
+If an upgrade from MAC-then-encrypt to encrypt-then-MAC is negotiated as per
+the second line in the table above, then the change will take place in the
+first message that follows the Change Cipher Spec (CCS) message.  In other words, all
+messages up to and including the CCS will use MAC-then-encrypt, and then the
+message that follows will continue with encrypt-then-MAC.
+
+        </t>
+      </section>
+    </section>
+<!-- ====================================================================== -->
+    <section anchor="security" title="Security Considerations">
+      <t>
+
+This document defines encrypt-then-MAC, an improved security mechanism to
+replace the current MAC-then-encrypt one.  Encrypt-then-MAC is regarded as more secure
+than the current mechanism <xref target="EncryptThenMAC"/> 
+<xref target="EncryptThenAuth"/> and should mitigate or eliminate a number of
+attacks on the current mechanism, provided that the instructions on MAC
+processing given in <xref target="applying"/> are applied.
+
+      </t>
+      <t>
+
+An active attacker who can emulate a client or server with extension
+intolerance may cause some implementations to fall back to older protocol
+versions that don't support extensions, which will in turn force a fallback to
+non-encrypt-then-MAC behaviour.  A straightforward solution to this problem is
+to avoid fallback to older, less secure protocol versions.  If fallback
+behaviour is unavoidable, then mechanisms to address this issue, which affects
+all capabilities that are negotiated via TLS extensions, are being developed
+by the TLS working group <xref target="DownGradeSCSV"/>.  Anyone concerned
+about this type of attack should consult the TLS working group documents for
+guidance on appropriate defence mechanisms.
+
+      </t>
+    </section>
+<!-- ====================================================================== -->
+    <section anchor="iana" title="IANA Considerations">
+      <t>
+
+IANA has added the extension code point 22 (0x16) for the encrypt_then_mac
+extension to the TLS "ExtensionType Values" registry as specified in
+<xref target="TLS">TLS</xref>.
+
+      </t>
+    </section>
+<!-- ====================================================================== -->
+    <section anchor="ack" title="Acknowledgements">
+      <t>
+
+The author would like to thank Martin Rex, Dan Shumow, and the members of the
+TLS mailing list for their feedback on this document.
+
+      </t>
+    </section>
+<!-- ====================================================================== -->
+
+  </middle>
+<!-- ====================================================================== -->
+  <back>
+
+    <references title="Normative References">
+
+<reference anchor='RFC2119'>
+
+<front>
+<title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+<author initials='S.' surname='Bradner' fullname='Scott Bradner' />
+<date year='1997' month='March' />
+</front>
+
+<seriesInfo name='BCP' value='14' />
+<seriesInfo name='RFC' value='2119' />
+<format type='TXT' octets='4723' target='http://www.rfc-editor.org/rfc/rfc2119.txt' />
+<format type='HTML' octets='17970' target='http://xml.resource.org/public/rfc/html/rfc2119.html' />
+<format type='XML' octets='5777' target='http://xml.resource.org/public/rfc/xml/rfc2119.xml' />
+</reference>
+
+
+      <reference anchor='TLS'>
+
+<front>
+<title>The Transport Layer Security (TLS) Protocol Version 1.2</title>
+<author initials='T.' surname='Dierks' fullname='T. Dierks'>
+<organization /></author>
+<author initials='E.' surname='Rescorla' fullname='E. Rescorla'>
+<organization /></author>
+<date year='2008' month='August' />
+<abstract>
+<t>This document specifies Version 1.2 of the Transport Layer Security (TLS) protocol.  The TLS protocol provides communications security over the Internet.  The protocol allows client/server applications to communicate in a way that is designed to prevent eavesdropping, tampering, or message forgery. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='5246' />
+<format type='TXT' octets='222395' target='http://www.rfc-editor.org/rfc/rfc5246.txt' />
+</reference>
+
+      <reference anchor='TLS-Ext'>
+<front>
+<title>Transport Layer Security (TLS) Extensions: Extension Definitions</title>
+<author initials='D.' surname='Eastlake' fullname='D. Eastlake'>
+<organization /></author>
+<date year='2011' month='January' />
+<abstract>
+<t>This document provides specifications for existing TLS extensions.  It is a companion document for RFC 5246, "The Transport Layer Security (TLS) Protocol Version 1.2".  The extensions specified are server_name, max_fragment_length, client_certificate_url, trusted_ca_keys, truncated_hmac, and status_request. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='6066' />
+<format type='TXT' octets='55079' target='http://www.rfc-editor.org/rfc/rfc6066.txt' />
+</reference>
+
+
+      <reference anchor='DTLS'>
+<front>
+<title>Datagram Transport Layer Security Version 1.2</title>
+<author initials='E.' surname='Rescorla' fullname='E. Rescorla'>
+<organization /></author>
+<author initials='N.' surname='Modadugu' fullname='N. Modadugu'>
+<organization /></author>
+<date year='2012' month='January' />
+<abstract>
+<t>This document specifies version 1.2 of the Datagram Transport Layer Security (DTLS) protocol.  The DTLS protocol provides communications privacy for datagram protocols.  The protocol allows client/server applications to communicate in a way that is designed to prevent eavesdropping, tampering, or message forgery.  The DTLS protocol is based on the Transport Layer Security (TLS) protocol and provides equivalent security guarantees.  Datagram semantics of the underlying transport are preserved by the DTLS protocol.  This document updates DTLS 1.0 to work with TLS version 1.2. [STANDARDS-TRACK]</t></abstract></front>
+
+<seriesInfo name='RFC' value='6347' />
+<format type='TXT' octets='73546' target='http://www.rfc-editor.org/rfc/rfc6347.txt' />
+</reference>
+
+    </references>
+
+    <references title="Informative References">
+
+      <reference anchor='EncryptThenMAC'>
+        <front>
+          <title>Authenticated Encryption: Relations among notions and analysis of the generic composition paradigm</title>
+          <author fullname="Mihir Bellare" initials="M" surname="Bellare">
+            <organization>UCSD</organization>
+          </author>
+          <author fullname="Chanathip Namprempre" initials="C" surname="Namprempre">
+            <organization>Thammasat University</organization>
+          </author>
+          <date year='2000' month='December' />
+
+        </front>
+
+<seriesInfo name="Proceedings of" value="AsiaCrypt '00"/>
+        <seriesInfo name='Springer-Verlag LNCS' value='No. 1976, p. 531' />
+      </reference>
+
+      <reference anchor='EncryptThenAuth'>
+        <front>
+          <title>The Order of Encryption and Authentication for Protecting Communications (or: How Secure Is SSL?)</title>
+          <author fullname="Hugo Krawczyk" initials="H" surname="Krawczyk">
+            <organization abbrev="IBM">IBM Research</organization>
+          </author>
+          <date year='2001' month='August' />
+
+        </front>
+<seriesInfo name="Proceedings of" value="Crypto '01" />
+        <seriesInfo name='Springer-Verlag LNCS' value='No. 2139, p. 310' />
+      </reference>
+
+<!-- draft-bmoeller-tls-downgrade-scsv
+was replaced by draft-ietf-tls-downgrade-scsv-00: I-D Exists -->
+
+      <reference anchor='DownGradeSCSV'>
+        <front>
+          <title>TLS Fallback Signaling Cipher Suite Value (SCSV) for Preventing Protocol Downgrade Attacks</title>
+          <author fullname="Bodo Moeller" initials="B" surname="Moeller">
+            <organization>Google Switzerland Gmbh</organization>
+          </author>
+          <author fullname="Adam Langley" initials="A" surname="Langley">
+            <organization>Google Inc.</organization>
+          </author>
+          <date year='2014' month='July' />
+        </front>
+<seriesInfo name="Work" value="in Progress"/>
+      </reference>
+      
+    </references>
+<!-- ====================================================================== -->
+  </back>
+</rfc>

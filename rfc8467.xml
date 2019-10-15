@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+ <!ENTITY rfc2119 PUBLIC ""
+          "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY rfc7830 PUBLIC ""
+          "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7830.xml">
+<!ENTITY rfc7858 PUBLIC ""
+          "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7858.xml">
+<!ENTITY rfc8094 PUBLIC ""
+          "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8094.xml">
+ <!ENTITY rfc8174 PUBLIC ""
+          "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8174.xml">
+]>
+
+<rfc category="exp" number="8467" submissionType="IETF" consensus="yes"
+  ipr="trust200902">
+  <?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+  <?rfc toc="yes" ?>
+  <?rfc symrefs="yes" ?>
+  <?rfc sortrefs="yes"?>
+  <?rfc compact="yes" ?>
+  <?rfc subcompact="no" ?>
+  <front>
+    <title abbrev="Padding Policies for EDNS(0)">Padding Policies for Extension
+    Mechanisms for DNS (EDNS(0))</title>
+
+    <author initials="A.M." surname="Mayrhofer"
+      fullname="Alexander Mayrhofer">
+      <organization>nic.at GmbH</organization>
+      <address>
+    <postal>
+     <street>Karlsplatz 1/2/9</street>
+     <city>Vienna</city>
+     <code>1010</code>
+     <country>Austria</country>
+    </postal>
+    <email>alex.mayrhofer.ietf@gmail.com</email>
+	<uri>http://edns0-padding.org/</uri>
+   </address>
+   </author>
+   <date month="October" year="2018"/>
+   <area>Operations and Management Area</area>
+
+
+<keyword>Security</keyword>
+
+    <abstract>
+      <t>RFC 7830 specifies the "Padding" option for Extension Mechanisms for
+      DNS (EDNS(0)) but does not specify
+      the actual padding length for specific applications. This memo lists the
+      possible options ("padding policies"), discusses the implications of
+      each option, and 
+	  provides a recommended (experimental) option.
+      </t>
+    </abstract>
+  </front>
+  <middle>
+    <section title="Introduction">
+	  <t><xref target="RFC7830"/> specifies the Extension Mechanisms for DNS (EDNS(0))
+      "Padding" option, which allows DNS clients and servers to 
+	  artificially increase the size of a DNS message by a variable number
+      of bytes, hampering size-based correlation of encrypted DNS messages.
+      </t>
+	  <t>However, RFC 7830 deliberately does not specify the actual length of padding to be used. 
+	  This memo discusses options regarding the actual size of padding, lists advantages and 
+	  disadvantages of each of these "padding strategies", and provides a recommended (experimental) strategy.
+	  </t>
+	  <t>Padding DNS messages is useful only when transport is encrypted using protocols such as 
+	  <xref target='RFC7858'>DNS over Transport Layer Security</xref>, <xref target='RFC8094'>DNS over Datagram Transport Layer Security</xref>, or
+	  other encrypted DNS transports specified in the future.</t>
+	</section>
+    <section anchor="terminology" title="Terminology">
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+	</section>
+	<section title="General Guidance">
+	   <t>EDNS(0) options space: The maximum message length, as dictated by the protocol, limits the space for EDNS(0) options.
+	   Since padding will reduce the message space available to other EDNS(0) options, 
+	   the "Padding" option MUST be the last EDNS(0) option applied before a DNS message is sent.</t>
+	   <t>Resource Conservation: Especially in situations where networking and processing resources are scarce (e.g., battery-powered long-life devices, 
+	   low bandwidth, or high-cost links),
+	   the trade-off between increased size of padded DNS messages and the corresponding gain in confidentiality 
+	   must be carefully considered.</t>
+	   <t>Transport Protocol Independence: The message size used as input to the various padding strategies MUST be calculated excluding the potential 
+		extra 2-octet length field used in TCP transport. Otherwise, the padded (observable) size of the DNS packets could 
+		significantly change between different transport protocols and reveal an indication of the original (unpadded) length. 
+		For example, given a Block-Length Padding strategy with a
+		block length of 32 octets 
+		and a DNS message with a size of 59 octets, the message would
+		be padded to 64 octets when transported over UDP. If that same
+		message were transported over TCP and the padding strategy considered the extra 2 octets of the length field (61 octets in total), the padded message would be 96 octets long (as the minimum length of the "Padding" option is 4 octets).
+	   </t>
+	 </section>
+	 <section title="Padding Strategies">
+	 <t>This section contains a recommended strategy, as well as a
+	 non-exhaustive list of other sensible strategies, for choosing padding
+	 length. Note that, for completeness, <xref
+	 target='non-sensible-strategies'/> contains two more
+	 strategies that are not sensible.</t>
+
+
+    <section title='Recommended Strategy: Block-Length Padding' anchor='recommendation'>
+       <t>Based on <xref target='NDSS-PADDING'>empirical research performed by
+       Daniel K.&nbsp;Gillmor</xref>, padding SHOULD be performed following
+       the Block-Length Padding strategy as follows:
+
+         <list style='format (%d)'>
+    <t>Clients SHOULD pad queries to the closest multiple of 128 octets.</t>
+    <t>If a server receives a query that includes the EDNS(0) "Padding" option,
+    it MUST pad the corresponding response (see Section 4 of RFC 7830) and
+    SHOULD pad the corresponding response to a multiple of 468 octets (see
+    below).</t>
+
+		     </list>
+	        </t>
+	<t>Note that the recommendation above only applies if the DNS transport is encrypted (see Section 6 of RFC 7830).</t> 
+	<t>In Block-Length Padding, a sender pads each message so that its padded length is a multiple of a chosen block length. This creates a greatly reduced variety 
+of message lengths. An implementor needs to consider that even the zero-length "Padding" option increases the length of the packet by 4 octets.
+		  </t>
+		  
+	  <t>Options: Block length. For queries, values between 16 and 128
+	octets were discussed before empiric research was performed. 
+	Responses will require larger block sizes (see <xref target='NDSS-PADDING'/> and 
+	above for a discussion).</t>
+
+	     <t>Very large block lengths will have confidentiality properties
+	     similar to the <xref target='maxlen'>Maximal-Length Padding
+	     strategy</xref>, since almost all messages will fit into a single
+	     block. Such "very large block length" values are:
+<list style="symbols" >
+  <t>288 bytes for the query (the maximum size of a one-question query over TCP,
+without any EDNS(0) options) and</t>
+<t>the EDNS(0) buffer size of the server for the responses.</t>
+</list>
+	     </t>
+		<t>Advantages: This policy is reasonably easy to implement, reduces the
+		variety of message ("fingerprint") sizes significantly, and does not
+		require a source of (pseudo) random numbers, since the padding length required
+		can be derived from the actual (unpadded) message.</t>
+
+		<t>Disadvantage: Given an unpadded message and the block size of the
+		padding (which is assumed to be public knowledge once a server is
+		reachable), the size range of a padded message can be predicted.  
+		Therefore, the minimum length of the unpadded message can be inferred. 
+		</t>	        
+	        <t>The empirical research cited above performed a simulation
+		of padding, based on real-world DNS traffic captured on busy
+		recursive resolvers of a research network. The evaluation of
+		the performance of individual padding policies was based on a
+		"cost to attacker" and "cost to defender" function, where the
+		"cost to attacker" was defined as the percentage of
+		query/response pairs falling into the same size bucket and
+		"cost to defender" was defined as the size factor between padded and
+		unpadded messages. Padding with a block size of 128 bytes on
+		the query side and 468 bytes on the response side was
+		considered the optimum trade-off between defender and attacker
+		cost. The response block size of 468 was chosen so that 3
+		blocks of 468 octets would still comfortably fit into typical
+		Maximum Transmission Unit (MTU) size values.</t>
+
+		<t>The block size will interact with the MTU size. Especially for length values that 
+			are a large fraction of the MTU, unless the block length is chosen so 
+			that a multiple just fits into the MTU, Block-Length Padding may cause 
+			unnecessary fragmentation for UDP-based delivery. 
+
+
+			Of course, choosing a block length larger than the MTU always forces fragmentation.</t>
+			
+	        <t>Note: Once DNSSEC-validating clients become more prevalent, observed size patterns are expected to change significantly. In that case, the recommended 
+	        strategy might need to be revisited.</t>
+		</section>
+	    <section title="Other Strategies">
+
+		<section title="Maximal-Length Padding" anchor='maxlen'>
+		<t>In Maximal-Length Padding, the sender pads every message to the
+		maximum size allowed by protocol negotiations.
+		</t>
+
+		<t>Advantages: Maximal-Length Padding, when combined with encrypted
+		transport, provides the highest possible level of message-size confidentiality.</t>
+
+		<t>Disadvantages: Maximal-Length Padding is wasteful and requires resources on the client, 
+		all intervening networks and equipment, and the server. Depending on the negotiated size, this 
+		strategy will commonly exceed the MTU and result in a consistent number of fragments, reducing delivery probability when datagram-based transport (such as UDP) is used.</t>
+
+		<t>Due to resource consumption, Maximal-Length Padding is NOT RECOMMENDED.</t>
+		</section>
+		
+		<section title="Random-Length Padding">
+		  <t>When using Random-Length Padding, a sender pads each
+		  message with a random amount of padding. Due to the size of
+		  the "Padding" option itself, each message size is
+		  increased by at least 4 octets. The upper limit for padding
+		  is the maximum message size. However, a client or server 
+		  may choose to impose a lower maximum padding length.</t>
+		  <t>Options: Maximum and minimum padding length.</t>
+		  <t>Advantages: Theoretically, this policy should create a natural distribution of message sizes.</t>
+		  <t>Disadvantage: Random-Length Padding allows an attacker 
+		  who can observe a large number of requests to infer the length of the original value by 
+		  observing the distribution of total lengths.</t>
+		  <t>According to the limited empirical data available, Random-Length Padding exposes  
+		  slightly more entropy to an attacker than Block-Length
+		  Padding. Because of that, and the risk outlined above, 
+		  Random-Length Padding is NOT RECOMMENDED.</t>
+		</section>
+		<section title="Random-Block-Length Padding">
+		  <t>This policy combines Block-Length Padding with a random
+		  component. Specifically, a sender randomly chooses between a
+		  few block length values and then applies Block-Length
+		  Padding based on the chosen block length. The random
+		  selection of block length might even be reasonably based on
+		  a "weak" source of randomness, such as the transaction ID of
+		  the message.</t>
+
+
+		  <t>Options: Number of and the values for the set of block
+		  lengths; source of randomness
+</t>
+  <t>Advantages: Compared to Block-Length Padding, this creates more variety in the resulting message sizes 
+		  for a certain individual original message length.</t>
+  <t>Disadvantage: Requires more implementation effort compared to simple Block-Length Padding.</t>
+
+
+  <t>Random-Block-Length Padding requires further empirical study, as do other combinations of padding strategies.</t>
+		</section>
+		</section>
+	</section>
+	<section title='IANA Considerations'>
+<t>This document has no IANA actions.</t>
+	</section>
+	<section title="Security Considerations">
+	   <t>The choice of the right padding policy (and the right parameters for the chosen policy) has a significant impact on 
+	   the resilience of encrypted DNS against size-based correlation
+	   attacks. Therefore, any implementor of the "Padding" option must 
+	   carefully consider which policies to implement, the default policy
+	   chosen, which parameters to 
+	   make configurable, and the default parameter values.</t>
+	   <t>No matter how carefully a client selects their padding policy,
+	   this effort can be jeopardized if the server chooses to apply an
+	   ineffective padding policy to the corresponding response
+	   packets. 
+
+
+   Therefore, a client applying the "Padding" option may want to choose a DNS server
+   that applies a padding policy on responses that is at least equally
+   effective.
+</t>
+	   <t>Note that even with encryption and padding, it might be trivial
+	   to identify that the observed traffic is DNS. Also, padding does
+	   not prevent information leaks via other side channels (particularly
+	   timing information and number of query/response
+	   pairs). Countermeasures against such side channels could include
+	   injecting artificial "cover traffic" into the stream of DNS
+	   messages or delaying DNS responses by a certain amount of
+	   jitter. Such strategies are out of the scope of this
+	   document. Additionally, there is not enough theoretic 
+	   analysis or experimental data available to recommend any such countermeasures.</t>
+	</section>
+  </middle>
+  <back>
+    <references title="Normative References">
+                &rfc2119;
+		&rfc7830;
+		&rfc8174;
+<reference anchor='NDSS-PADDING' target='https://dns.cmrg.net/ndss2017-dprive-empirical-DNS-traffic-size.pdf'>
+	<front>
+	<title>Empirical DNS Padding Policy</title>
+	<author initials="D. K." surname="Gillmor" fullname="Daniel Kahn Gillmor">
+	<organization>Network and Distributed System Security Symposium </organization>
+	</author>
+	<date year="2017" month="March"/>
+		</front>
+	  </reference>
+	</references>
+
+    <references title="Informative References">
+      &rfc7858;
+      &rfc8094;
+	</references>
+
+	<section anchor='non-sensible-strategies' 
+title='Padding Policies That Are Not Sensible'>
+		   <section title="No Padding">
+	     <t>In the No Padding policy, the "Padding" option is not
+	     used, and the size of the final (actually, "non-padded") message
+	     obviously exactly matches the size of the unpadded message. Even
+	     though this "non-policy" seems redundant in this list, its
+	     properties must be considered for cases in which just one of the
+	     parties (client or server) applies padding.</t>
+
+		 <t>Also, this policy is required when the remaining message size of the unpadded 
+		 message does not allow for the "Padding" option
+		 to be included -- i.e., there are fewer than 4 octets left.
+		 </t>
+		 <t>Advantages: This policy requires no additional resources
+		 on the client, server, and network side.</t>
+		 <t>Disadvantages: The original size of the message remains
+		 unchanged; hence, this approach provides no additional
+		 confidentiality.</t>
+		 
+		 <t>The No Padding policy MUST NOT be used unless message size disallows
+		 the use of the "Padding" option.</t>
+
+	   </section>
+	   <section title="Fixed-Length Padding">
+
+	     <t>In Fixed-Length Padding, a sender chooses to pad each message with a padding of constant length.</t>
+		 <t>Options: Actual length of padding</t>
+		 <t>Advantages: Since the padding is constant in length, this
+		 policy is very easy to implement and at least ensures that
+		 the message length diverges from the length of the original
+		 packet (even if only by a fixed value).</t>
+		 <t>Disadvantage: Obviously, the amount of padding is easily
+		 discoverable from a single unencrypted message or by observing
+		 message patterns. When a public DNS server applies this
+		 policy, the length of the padding hence must be assumed to be
+		 public knowledge. Therefore, this policy is (almost) as
+		 useless as the No Padding policy described above.</t>
+
+		 <t>The Fixed-Length Padding policy MUST NOT be used except for test applications.</t>
+		</section> 
+	</section>
+	<section title='Acknowledgements' numbered="no">
+	  <t>Daniel K.&nbsp;Gillmor performed empirical research out of which the "Recommended Strategy" was copied. Stephane Bortzmeyer and Hugo Connery provided text. 
+	  Shane Kerr, Sara Dickinson, Paul Hoffman, Magnus Westerlund, Charlie Kaufman, Joe Clarke, and Meral Shirazipour performed reviews or provided substantial comments.</t>
+	</section>
+
+  </back>
+
+
+
+</rfc>

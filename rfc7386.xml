@@ -1,0 +1,365 @@
+<?xml version="1.0" encoding="US-ASCII"?> 
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+  <!ENTITY rfc5789 PUBLIC '' 'reference.RFC.5789.xml'>  
+  <!ENTITY rfc7159 PUBLIC '' 'reference.RFC.7159.xml'>
+]>
+
+<?rfc toc="yes"?> 
+<?rfc symrefs="yes" ?> 
+<?rfc sortrefs="yes"?> 
+<?rfc compact="yes"?> 
+<?rfc subcompact="no"?>
+<?rfc rfcedstyle="yes"?>
+
+<rfc number="7386" category="std" submissionType="IETF" consensus="yes" ipr="trust200902">
+  <front> 
+    <title abbrev="JSON Merge Patch"> 
+JSON Merge Patch
+    </title> 
+ 
+<author fullname="Paul Hoffman" initials="P." surname="Hoffman">
+<organization>VPN Consortium</organization>
+<address>
+<email>paul.hoffman@vpnc.org</email>
+</address>
+</author>
+
+    <author initials="J.M." surname="Snell" fullname="James M. Snell"> 
+      <address> 
+        <email>jasnell@gmail.com</email> 
+      </address> 
+    </author> 
+    
+    <date month="October" year="2014"/> 
+ 
+    <area>General</area>
+    <workgroup>Applications Area Working Group</workgroup>
+    <keyword>http</keyword>
+    <keyword>json</keyword> 
+    <keyword>patch</keyword> 
+    <keyword>merge</keyword>
+
+<abstract> 
+      <t>
+        This specification defines the JSON merge patch format and processing
+        rules.
+The merge patch format is primarily intended for use with the HTTP PATCH method as a means
+of describing a set of modifications to a target resource's content.
+      </t> 
+      </abstract> 
+
+    </front> 
+
+    <middle> 
+      <section anchor="intro" title="Introduction"> 
+
+	<t>
+	  This specification defines the JSON merge patch document 
+	  format, processing rules, and associated MIME media type identifier.
+	  The merge patch format is primarily intended for use with the 
+	  HTTP PATCH method <xref target="RFC5789"/> as a means of describing
+	  a set of modifications to a target resource's content.
+	</t>
+
+	<t>
+	  A JSON merge patch document describes changes to be made to a target
+	  JSON document using a syntax that closely mimics the document being
+	  modified. Recipients of a merge patch document determine the exact 
+	  set of changes being requested by comparing the content of the provided
+	  patch against the current content of the target document. If the 
+	  provided merge patch contains members that do not appear within the
+	  target, those members are added. If the target does contain the member, 
+	  the value is replaced. Null values in the merge patch are given 
+	  special meaning to indicate the removal of existing values in the target. 
+	</t>
+
+  <figure><preamble>For example, given the following original JSON document:</preamble><artwork>
+    {
+      "a": "b",
+      "c": {
+	"d": "e",
+	"f": "g"
+      }
+    }
+  </artwork></figure>
+
+  <figure><preamble>Changing the value of "a" and removing "f" can be achieved by sending:</preamble><artwork>
+    PATCH /target HTTP/1.1
+    Host: example.org
+    Content-Type: application/merge-patch+json
+
+    {
+      "a":"z",
+      "c": {
+	"f": null
+      }
+    }
+  </artwork></figure>
+
+	<t>
+	  When applied to the target resource, the value of the "a" member 
+	  is replaced with "z" and "f" is removed, leaving the remaining content 
+	  untouched.
+	</t>
+
+	<t>  
+	  This design means that merge patch documents are suitable for describing
+	  modifications to JSON documents that primarily use objects for their 
+	  structure and do not make use of explicit null values. The merge 
+	  patch format is not appropriate for all JSON syntaxes.
+	</t>
+
+      </section> 
+
+      <section title="Processing Merge Patch Documents" anchor="json-merge-patch">
+
+	<t>
+	  JSON merge patch documents describe, by example, a set of changes that 
+	  are to be made to a target resource. Recipients of merge patch 
+	  documents are responsible for comparing the merge patch with
+	  the current content of the target resource to determine the specific
+	  set of change operations to be applied to the target.
+	</t>
+
+	<t>
+	  To apply the merge patch document to a target resource, the system realizes the effect of the
+	  following function, described in pseudocode. For this description, the function is
+	  called MergePatch, and it takes two arguments: the target resource document and the
+	  merge patch document. The Target argument can be any JSON value or undefined.
+	  The Patch argument can be any JSON value.
+	</t>
+
+  <figure><artwork>
+  define MergePatch(Target, Patch):
+    if Patch is an Object:
+      if Target is not an Object:
+	Target = {} # Ignore the contents and set it to an empty Object
+      for each Name/Value pair in Patch:
+	if Value is null:
+	  if Name exists in Target:
+	    remove the Name/Value pair from Target
+	else:
+	  Target[Name] = MergePatch(Target[Name], Value)
+      return Target    
+    else:
+      return Patch
+  </artwork></figure>
+
+  <t>
+  There are a few things to note about the function. If the patch is anything other than an object,
+  the result will always be to replace the entire target with the entire
+  patch. Also, it is not
+  possible to patch part of a target that is not an object, such as to replace
+  just some of the values
+  in an array.
+  </t>
+
+
+  <t>
+  The MergePatch operation is defined to operate at the level of data items, not at the level of textual
+  representation. There is no expectation that the MergePatch operation will preserve 
+  features at the textual-representation level such as white space, member ordering,
+  number precision beyond what is available
+  in the target's implementation, and so forth. In addition, even if the
+  target implementation allows multiple
+  name/value pairs with the same name, the result of the MergePatch operation on
+  such objects is not defined.
+  </t>
+
+      </section>
+
+      <section title="Example" anchor="example">
+
+	<figure><preamble>Given the following example JSON document:</preamble>
+	<artwork>
+    {
+      "title": "Goodbye!",
+      "author" : {
+	"givenName" : "John",
+	"familyName" : "Doe"
+      },
+      "tags":[ "example", "sample" ],
+      "content": "This will be unchanged"
+    }
+	</artwork></figure>
+
+	<t>
+    A user agent wishing to change the value of the "title" member from
+    "Goodbye!" to the value "Hello!", add a new "phoneNumber" member,
+    remove the "familyName" member from the "author" object, and replace
+    the "tags" array so that it doesn't include the word "sample" would
+    send the following request:
+	</t>
+
+  <figure><artwork>
+    PATCH /my/resource HTTP/1.1
+    Host: example.org
+    Content-Type: application/merge-patch+json
+
+    {
+      "title": "Hello!",
+      "phoneNumber": "+01-123-456-7890",
+      "author": {
+	"familyName": null
+      },
+      "tags": [ "example" ]
+    }
+  </artwork></figure>
+
+  <figure><preamble>The resulting JSON document would be:</preamble><artwork>
+    {
+      "title": "Hello!",
+      "author" : {
+	"givenName" : "John"
+      },
+      "tags": [ "example" ],
+      "content": "This will be unchanged",
+      "phoneNumber": "+01-123-456-7890"
+    }
+  </artwork></figure>
+
+      </section>
+
+      <section title="IANA Considerations"> 
+	<t>This specification registers the following additional 
+	MIME media types:</t>
+
+	<t><list>
+	<t>Type name: application</t>
+	<t>Subtype name: merge-patch+json</t>
+	<t>Required parameters: None</t>
+	<t>Optional parameters: None</t>
+	<t>Encoding considerations: Resources that use the "application/merge-patch+json"
+	media type are required to conform to the "application/json" media type
+	and are therefore subject to the same encoding considerations
+	specified in Section 8 of <xref target="RFC7159"/>.</t>
+	<t>Security considerations: As defined in this specification</t>
+	<t>Published specification: This specification.</t>
+	<t>Applications that use this media type: None currently known.</t>
+	<t>Additional information:
+	<list>
+	<t>Magic number(s): N/A</t>
+	<t>File extension(s): N/A</t>
+	<t>Macintosh file type code(s): TEXT</t>
+	</list></t>
+	<t>Person &amp; email address to contact for further information: IESG</t>
+	<t>Intended usage: COMMON</t>
+	<t>Restrictions on usage: None</t>
+	<t>Author: James M.&nbsp;Snell &lt;jasnell@gmail.com&gt;</t>
+	<t>Change controller: IESG</t>
+	</list></t>
+
+      </section> 
+
+      <section title="Security Considerations"> 
+
+	<t>The "application/merge-patch+json" media type allows user agents to
+   indicate their intention for the server to determine the specific set
+   of change operations to be applied to a target resource.
+	   As such, 
+	  it is the server's responsibility to determine the appropriateness 
+	  of any given change as well as the user agent's authorization to 
+	  request such changes. How such determinations are made is considered
+	  out of the scope of this specification.
+	</t>
+
+	<t>
+	  All of the security considerations discussed in Section 5 of 
+	  <xref target="RFC5789"/> apply to all uses of the 
+	  HTTP PATCH method with the "application/merge-patch+json" media type.
+	</t>     
+      </section>
+
+    </middle> 
+    <back>
+      <references title="Normative References"> 
+
+<reference anchor='RFC7159' target='http://www.rfc-editor.org/info/rfc7159'>
+  <front>
+   <title>The JavaScript Object Notation (JSON) Data Interchange Format</title>
+   <author initials='T.' surname='Bray' fullname='T. Bray'>
+   <organization />
+   </author>
+   <date year='2014' month='March' />
+  </front>
+<seriesInfo name='RFC' value='7159' />
+<format type='TXT' octets='27451' target='http://www.rfc-editor.org/rfc/rfc7159.txt' />
+</reference>
+
+    </references>
+    <references title="Informative References"> 
+
+<reference anchor='RFC5789' target='http://www.rfc-editor.org/info/rfc5789'>
+
+  <front>
+    <title>PATCH Method for HTTP</title>
+    <author initials='L.' surname='Dusseault' fullname='L. Dusseault'>
+    <organization /></author>
+    <author initials='J.' surname='Snell' fullname='J. Snell'>
+    <organization /></author>
+    <date year='2010' month='March' />
+  </front>
+  <seriesInfo name='RFC' value='5789' />
+  <format type='TXT' octets='21706' target='http://www.rfc-editor.org/rfc/rfc5789.txt' />
+</reference>
+    </references>
+    
+    <section title="Example Test Cases">
+
+      <figure><artwork>
+ORIGINAL        PATCH            RESULT
+------------------------------------------
+{"a":"b"}       {"a":"c"}       {"a":"c"}
+  
+{"a":"b"}       {"b":"c"}       {"a":"b",
+                                 "b":"c"}
+
+{"a":"b"}       {"a":null}      {}
+
+{"a":"b",       {"a":null}      {"b":"c"}
+ "b":"c"}
+ 
+{"a":["b"]}     {"a":"c"}       {"a":"c"}
+
+{"a":"c"}       {"a":["b"]}     {"a":["b"]}
+
+{"a": {         {"a": {         {"a": {
+  "b": "c"}       "b": "d",       "b": "d"
+}                 "c": null}      }
+                }               }
+                
+{"a": [         {"a": [1]}      {"a": [1]}
+  {"b":"c"}
+ ]
+}
+
+["a","b"]       ["c","d"]       ["c","d"]
+
+{"a":"b"}       ["c"]           ["c"]
+
+{"a":"foo"}     null            null
+
+{"a":"foo"}     "bar"           "bar" 
+
+{"e":null}      {"a":1}         {"e":null,
+                                 "a":1}
+
+[1,2]           {"a":"b",       {"a":"b"}
+                 "c":null}
+
+{}              {"a":            {"a":
+                 {"bb":           {"bb":
+                  {"ccc":          {}}}
+                   null}}}
+
+</artwork></figure>
+
+    </section>
+<section title="Acknowledgments">
+  <t>Many people contributed significant ideas to this document.  These
+   people include, but are not limited to, James Manger, Matt Miller,
+   Carsten Bormann, Bjoern Hoehrmann, Pete Resnick, and Richard
+   Barnes.</t>    
+</section>
+  </back>  
+</rfc> 

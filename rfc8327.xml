@@ -1,0 +1,479 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" []>
+
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc symrefs="yes"?>
+
+<rfc number="8327" seriesNo="214" category="bcp"
+     ipr="trust200902"
+     submissionType="IETF" consensus="yes">
+
+    <front>
+
+        <title abbrev="BGP Session Culling">Mitigating the Negative Impact of Maintenance through BGP&nbsp;Session&nbsp;Culling</title>
+
+        <author fullname="Will Hargrave" initials="W." surname="Hargrave">
+            <organization abbrev="LONAP">LONAP Ltd</organization>
+            <address>
+                <postal>
+                    <street>5 Fleet Place</street>
+                    <city>London</city>
+                    <code>EC4M 7RD</code>
+                    <country>United Kingdom</country>
+                </postal>
+                <email>will@lonap.net</email>
+            </address>
+        </author>
+
+        <author fullname="Matt Griswold" initials="M." surname="Griswold">
+            <organization abbrev="20C">20C</organization>
+            <address>
+                <postal>
+                    <street>1658 Milwaukee Ave # 100-4506</street>
+                    <city>Chicago</city>
+                    <region>IL</region>
+                    <code>60647</code>
+                    <country>United States of America</country>
+                </postal>
+                <email>grizz@20c.com</email>
+            </address>
+        </author>
+
+        <author fullname="Job Snijders" initials="J." surname="Snijders">
+            <organization abbrev="NTT">NTT Communications</organization>
+            <address>
+                <postal>
+                    <street>Theodorus Majofskistraat 100</street>
+                    <code>1065 SZ</code>
+                    <city>Amsterdam</city>
+                    <country>The Netherlands</country>
+                </postal>
+                <email>job@ntt.net</email>
+            </address>
+        </author>
+
+        <author initials="N" surname="Hilliard" fullname="Nick Hilliard">
+            <organization>INEX</organization>
+            <address>
+                <postal>
+                    <street>4027 Kingswood Road</street>
+                    <city>Dublin</city>
+                    <code>24</code>
+                    <country>Ireland</country>
+                </postal>
+                <email>nick@inex.ie</email>
+            </address>
+        </author>
+
+        <date month="February" year="2018" />
+
+        <area>Routing</area>
+        <workgroup>Global Routing Operations</workgroup>
+
+        <keyword>BGP</keyword>
+        <keyword>culling</keyword>
+        <keyword>EBGP</keyword>
+        <keyword>sessions</keyword>
+
+        <abstract>
+            <t>
+                This document outlines an approach to mitigate the negative
+		impact on networks resulting from maintenance activities. 
+                It includes guidance for both IP networks and Internet
+		Exchange Points (IXPs). The approach is to ensure BGP-4
+		sessions that will be affected by maintenance are forcefully
+		torn down before the actual maintenance activities commence. 
+            </t>
+        </abstract>
+    </front>
+
+    <middle>
+        <section anchor="Introduction" title="Introduction">
+            <t>
+                BGP Session Culling is the practice of ensuring BGP sessions
+		are forcefully torn down before maintenance activities on a
+		lower-layer network commence -- activities that otherwise
+		would affect the flow of data between the BGP speakers.
+
+                BGP Session Culling is the practice of ensuring BGP sessions
+		are forcefully torn down before commencing maintenance
+		activities (that otherwise would affect the flow of data
+		between the BGP speakers) on a lower-layer network.
+            </t>
+            <t>
+                BGP Session Culling minimizes the amount of disruption that
+		lower-layer network maintenance activities cause, by making
+		BGP speakers preemptively converge onto alternative paths
+		while the lower-layer network's forwarding plane remains fully
+		operational. 
+            </t>
+            <t>
+                The grace period required for a successful application of BGP
+		Session Culling is the sum of the time needed to detect the
+		loss of the BGP session plus the time required for the BGP
+		speaker to converge onto alternative paths. 
+                The first value is often governed by the BGP Hold Timer
+		(see Section 6.5 of <xref target="RFC4271" />), which is
+		commonly between 90 and 180 seconds. 
+                The second value is implementation specific, but it could be
+		as much as 15 minutes when a router with a slow control plane
+		is receiving a full set of Internet routes. 
+            </t>
+            <t>
+                Throughout this document, the "Caretaker" is defined to be in
+		control of the lower-layer network, while "Operators" directly
+		administrate the BGP speakers. 
+                Operators and Caretakers implementing BGP Session Culling are
+		encouraged to avoid using a fixed grace period, and instead to
+		monitor forwarding-plane activity while the culling is taking
+		place and to consider it complete <xref target="Procedural_Considerations">once traffic levels have dropped to a minimum</xref>.
+            </t>
+        </section>
+
+        <section title="Requirements Language">
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+        </section>
+
+        <section title="BGP Session Culling">
+            <t>
+                From the viewpoint of the Operator, there are two types of BGP Session Culling:
+                <list style="hanging">
+                    <t hangText="Voluntary BGP Session Teardown:">The Operator initiates the teardown of the potentially affected BGP session by issuing an Administrative Shutdown.</t>
+                    <t hangText="Involuntary BGP Session Teardown:">The Caretaker of the lower-layer network disrupts (higher-layer) BGP control-plane traffic, causing the BGP Hold Timers of the affected BGP session to expire, subsequently triggering rerouting of end-user traffic.</t>
+                </list>
+            </t>
+            <section title="Voluntary BGP Session Teardown Recommendations">
+                <t>
+                    Before an Operator commences activities that can cause disruption to the flow of data through the lower-layer network, an Operator can reduce loss of traffic by issuing an administrative shutdown to all BGP sessions running across the lower-layer network and wait a few minutes for data-plane traffic to subside.
+                </t>
+                <t>
+                    While architectures exist to facilitate quick network
+		    reconvergence (such as <xref target="BGP_PIC">BGP Prefix
+		    Independent Convergence (PIC)</xref>), an Operator cannot assume the remote side has such capabilities.
+                    As such, a grace period between the Administrative Shutdown and the impacting maintenance activities is warranted.
+                </t>
+                <t>
+                    After the maintenance activities have concluded, the Operator is expected to restore the BGP sessions to their original Administrative state.
+                </t>
+                <section title="Maintenance Considerations">
+                    <t>
+                        Initiators of the Administrative Shutdown MAY consider using <xref target="RFC8326">Graceful Shutdown</xref> to facilitate smooth drainage of traffic prior to session tear down, and the <xref target="RFC8203">Shutdown Communication</xref> to inform the remote side on the nature and duration of the maintenance activities.
+                    </t>
+                </section>
+            </section>
+            <section title="Involuntary BGP Session Teardown Recommendations">
+                <t>
+                    In the case where multilateral interconnection between BGP speakers is facilitated through a switched Layer 2 fabric, such as commonly seen at Internet Exchange Points (IXPs), different operational considerations can apply.
+                </t>
+                <t>
+                    Operational experience shows that many Operators are unable to carry out the Voluntary BGP Session Teardown recommendations, because of the operational cost and risk of coordinating the two configuration changes required. This has an adverse affect on Internet performance.
+                 </t>
+                <t>
+                    In the absence of notifications from the lower layer (e.g., Ethernet link down) consistent with the planned maintenance activities in a switched Layer 2 fabric, the Caretaker of the fabric could choose to cull BGP sessions on behalf of the Operators connected to the fabric.
+                </t>
+                <t>
+                    Such culling of control-plane traffic will preempt the
+		    loss of end-user traffic by causing the expiration of BGP
+		    Hold Timers ahead of the moment where the expiration would
+		    occur without intervention from the fabric's Caretaker. 
+                </t>
+                <t>
+                    In this scenario, BGP Session Culling is accomplished as
+		    described in the next subsection, through the application
+		    of a combined Layer 3 and Layer 4 (Layer 3/4) packet filter deployed
+		    in the Caretaker's switched fabric. 
+                </t>
+                <section title="Packet-Filter Considerations">
+                    <t>
+                        The peering LAN prefixes used by the IXP form the
+			control plane, and the following considerations apply
+			to the packet-filter design: 
+                        <list style="symbols">
+                            <t>
+                                The packet filter MUST only affect BGP traffic
+				specific to the Layer 2 fabric, i.e., traffic forming
+				part of the control plane of the system
+				described, rather than multihop BGP traffic
+				that merely transits. 
+                            </t>
+                            <t>
+                                The packet filter MUST only affect BGP, i.e.,
+				TCP port 179. 
+                            </t>
+                            <t>
+                                The packet filter SHOULD make provision for the bidirectional nature of BGP, i.e., sessions may be established in either direction.
+                            </t>
+                            <t>
+                                The packet filter MUST affect all Address Family Identifiers.
+                            </t>
+                        </list>
+                    <xref target="acl1" /> contains examples of correct packet
+		    filters for various platforms. 
+                    </t>
+                </section>
+                <section title="Hardware Considerations">
+                    <t>
+                        Not all hardware is capable of deploying combined Layer 3/4
+			filters on Layer 2 ports; even on platforms
+			that claim support for such a feature, limitations may
+			exist or hardware resource allocation failures may
+			occur during filter deployment, which may cause
+			unexpected results. These problems may include:
+                        <list style="symbols">
+                            <t>
+                                Platform inability to apply Layer 3/4 filters
+				on ports that already have Layer 2 filters
+				applied. 
+                            </t>
+                            <t>
+                                Layer 3/4 filters supported for IPv4 but not for IPv6.
+                            </t>
+                            <t>
+                                Layer 3/4 filters supported on physical ports,
+				but not on IEEE 802.1AX Link Aggregate ports
+				<xref target="IEEE802.1AX" />. 
+                            </t>
+                            <t>
+                                Failure of the Caretaker to apply filters to
+				all IEEE 802.1AX Link Aggregate ports <xref
+				target="IEEE802.1AX" />. 
+                            </t>
+
+                            <t>
+Limitations in Access Control List (ACL) hardware mechanisms causing filters
+not to be applied.
+                            </t>
+                            <t>
+                                Fragmentation of ACL lookup memory causing transient ACL application problems that are resolved after ACL removal/reapplication.
+                            </t>
+                            <t>
+                                Temporary service loss during hardware programming.
+                            </t>
+                            <t>
+                                Reduction in hardware ACL capacity if the platform enables lossless ACL application.
+                            </t>
+                        </list>
+                        It is advisable for the Caretaker to be aware of the limitations of their hardware and to thoroughly test all complicated configurations in advance to ensure that problems don't occur during production deployments.
+                    </t>
+                </section>
+            </section>
+            <section anchor="Procedural_Considerations" title="Procedural Considerations">
+                <t>
+                    The Caretaker of the lower-layer network can monitor
+		    data-plane traffic (e.g., interface counters) and carry
+		    out the maintenance without impact to traffic once session
+		    culling is complete. 
+                </t>
+                <t>
+                    It is recommended that the packet filters be deployed 
+		    for the duration of the maintenance only and be removed immediately
+		    after the maintenance is completed. 
+                    To prevent unnecessary troubleshooting, it is RECOMMENDED
+		    that Caretakers notify the affected Operators before the
+		    maintenance takes place and make it explicit that the
+		    Involuntary BGP Session Culling methodology will be
+		    applied. 
+                </t>
+            </section>
+
+        </section>
+
+        <section anchor="Security" title="Security Considerations">
+            <t>
+                There are no security considerations.
+            </t>
+        </section>
+
+        <section title="IANA Considerations">
+            <t>
+                This document has no actions for IANA.
+            </t>
+        </section>
+
+    </middle>
+
+    <back>
+
+        <references title="Normative References">
+            <?rfc include="reference.RFC.2119.xml"?>
+            <?rfc include="reference.RFC.4271.xml"?>
+            <?rfc include="reference.RFC.8174.xml"?>
+        </references>
+
+        <references title="Informative References">
+
+<reference anchor="IEEE802.1AX"
+		 target="http://ieeexplore.ieee.org/servlet/opac?punumber=6997981">
+  <front>
+      <title>IEEE Standard for Local and metropolitan area networks -- Link Aggregation</title>
+      <author><organization>IEEE</organization>
+      </author>
+   <date month="December" year="2014" />
+  </front>
+<seriesInfo name="IEEE Std" value="802.1AX-2014"/>
+<seriesInfo name="DOI" value="10.1109/IEEESTD.2014.7055197"/>
+</reference>
+
+
+<!-- draft-ietf-grow-bgp-gshut -->
+<reference anchor='RFC8326' target="https://www.rfc-editor.org/info/rfc8326">
+<front>
+<title>Graceful BGP Session Shutdown</title>
+
+<author initials='P' surname='Francois' fullname='Pierre Francois' role='editor'>
+    <organization />
+</author>
+
+<author initials='B' surname='Decraene' fullname='Bruno Decraene' role='editor'>
+    <organization />
+</author>
+
+<author initials='C' surname='Pelsser' fullname='Cristel Pelsser'>
+    <organization />
+</author>
+
+<author initials='K' surname='Patel' fullname='Keyur Patel'>
+    <organization />
+</author>
+
+<author initials='C' surname='Filsfils' fullname='Clarence Filsfils'>
+    <organization />
+</author>
+
+<date month='February' year='2018' />
+
+</front>
+
+<seriesInfo name='RFC' value='8326' />
+<seriesInfo name='DOI' value='10.17487/8326' />
+</reference>
+
+            <?rfc include="reference.RFC.8203.xml"?>
+
+<!-- draft-ietf-rtgwg-bgp-pic-06: I-D Exists -->
+
+<reference anchor='BGP_PIC'>
+<front>
+<title>BGP Prefix Independent Convergence</title>
+
+<author initials='A' surname='Bashandy' fullname='Ahmed Bashandy' role='editor'>
+    <organization />
+</author>
+
+<author initials='C' surname='Filsfils' fullname='Clarence Filsfils'>
+    <organization />
+</author>
+
+<author initials='P' surname='Mohapatra' fullname='Prodosh Mohapatra'>
+    <organization />
+</author>
+
+<date month='November' day='20' year='2017' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-rtgwg-bgp-pic-06' />
+
+</reference>
+
+        </references>
+
+        <section anchor="acl1" title="Example Packet Filters">
+<t>
+   This section includes examples of packet filters performing Involuntary
+   BGP Session Teardown at an IXP using peering LAN prefixes 192.0.2.0/24
+   and 2001:db8:2::/64 as its control plane.
+</t>
+            <t>
+                A repository of configuration examples for a number of
+		assorted platforms can be found at
+	    <vspace/>
+<eref
+		target="https://github.com/bgp/bgp-session-culling-config-examples"
+		/>.
+            </t>
+<section title="Example Configuration for Cisco IOS, IOS XR, and Arista EOS">
+<figure>
+<artwork><![CDATA[
+ipv6 access-list acl-ipv6-permit-all-except-bgp
+   10 deny tcp 2001:db8:2::/64 eq bgp 2001:db8:2::/64
+   20 deny tcp 2001:db8:2::/64 2001:db8:2::/64 eq bgp
+   30 permit ipv6 any any
+!
+ip access-list acl-ipv4-permit-all-except-bgp
+   10 deny tcp 192.0.2.0/24 eq bgp 192.0.2.0/24
+   20 deny tcp 192.0.2.0/24 192.0.2.0/24 eq bgp
+   30 permit ip any any
+!
+interface Ethernet33
+   description IXP Participant Affected by Maintenance
+   ip access-group acl-ipv4-permit-all-except-bgp in
+   ipv6 access-group acl-ipv6-permit-all-except-bgp in
+!
+]]></artwork>
+</figure>
+</section>
+<section title="Example Configuration for Nokia SR OS">
+<figure>
+<artwork><![CDATA[
+ip-filter 10 create
+    filter-name "ACL IPv4 Permit All Except BGP"
+    default-action forward
+    entry 10 create
+        match protocol tcp
+            dst-ip 192.0.2.0/24
+            src-ip 192.0.2.0/24
+            port eq 179
+        exit
+        action
+            drop
+        exit
+    exit
+exit
+
+ipv6-filter 10 create
+    filter-name "ACL IPv6 Permit All Except BGP"
+    default-action forward
+    entry 10 create
+        match next-header tcp
+            dst-ip 2001:db8:2::/64
+            src-ip 2001:db8:2::/64
+            port eq 179
+        exit
+        action
+            drop
+        exit
+    exit
+exit
+
+interface "port-1/1/1"
+    description "IXP Participant Affected by Maintenance"
+    ingress
+        filter ip 10
+        filter ipv6 10
+    exit
+exit
+]]></artwork>
+</figure>
+            </section>
+        </section>
+
+
+        <section anchor="Acknowledgments" title="Acknowledgments" numbered="no">
+            <t>
+                The authors would like to thank the following people for their contributions to this document: Saku Ytti, Greg Hankins, James Bensley, Wolfgang Tremmel, Daniel Roesen, Bruno Decraene, Tore Anderson, John Heasley, Warren Kumari, Stig Venaas, and Brian Carpenter.
+            </t>
+        </section>
+
+    </back>
+</rfc>

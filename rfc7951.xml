@@ -1,0 +1,928 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt"?>
+<!DOCTYPE rfc SYSTEM 'rfc2629.dtd'>
+
+<?rfc strict="yes"?>
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="7951" ipr="trust200902" category="std" submissionType="IETF" consensus="yes">
+
+  <front>
+    <title abbrev="JSON Encoding of YANG Data">JSON Encoding of Data
+    Modeled with YANG</title>
+
+    <author initials="L." surname="Lhotka" fullname="Ladislav Lhotka">
+      <organization>CZ.NIC</organization>
+      <address>
+        <email>lhotka@nic.cz</email>
+      </address>
+    </author>
+
+    <date month="August" year="2016"/>
+
+    <keyword>I-JSON</keyword>
+    <keyword>RESTCONF</keyword>
+
+    <abstract>
+      <t>This document defines encoding rules for representing
+      configuration data, state data, parameters of Remote
+      Procedure Call (RPC) operations or actions, and notifications
+      defined using YANG as JavaScript Object Notation (JSON) text.</t>
+    </abstract>
+  </front>
+
+  <middle>
+
+    <section anchor="sec.introduction" title="Introduction">
+      <t>The Network Configuration Protocol (NETCONF) <xref target="RFC6241"/>
+      uses XML&nbsp;<xref target="XML"/> for encoding data in its Content
+      Layer. Other management protocols might want to use other
+      encodings while still benefiting from using YANG <xref target="RFC7950"/> as the data modeling
+      language.</t>
+      <t>For example, the RESTCONF protocol <xref target="RESTCONF"/> supports two encodings: XML
+      (media type "application/yang.data+xml") and JavaScript Object
+      Notation (JSON) (media type "application/yang.data+json").</t>
+      <t>The specification of the YANG&nbsp;1.1 data modeling language <xref target="RFC7950"/> defines only XML encoding
+      of data trees, i.e., configuration data, state data,
+      input/output parameters of Remote Procedure Call (RPC) operations
+      or actions, and notifications. The aim of this document is to define
+      rules for encoding the same data as JSON
+      text&nbsp;<xref target="RFC7159"/>.</t>
+    </section>
+
+    <section anchor="sec.term-not" title="Terminology and Notation">
+
+      
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL"
+in this document are to be interpreted as described in <xref target="RFC2119"/>.</t>
+
+
+      <t>The following terms are defined in <xref target="RFC7950"/>:
+      <list style="symbols">
+        <t>action</t>
+        <t>anydata</t>
+        <t>anyxml</t>
+        <t>augment</t>
+        <t>container</t>
+        <t>data node</t>
+        <t>data tree</t>
+        <t>identity</t>
+        <t>instance identifier</t>
+        <t>leaf</t>
+        <t>leaf-list</t>
+        <t>list</t>
+        <t>module</t>
+        <t>RPC operation</t>
+        <t>submodule</t>
+      </list></t>
+
+      <t>The following terms are defined in <xref target="RFC6241"/>:
+      <list style="symbols">
+        <t>configuration data</t>
+        <t>notification</t>
+        <t>state data</t>
+      </list></t>
+
+    </section>
+
+    <section anchor="sec.properties" title="Properties of the JSON Encoding">
+      <t>This document defines JSON encoding for YANG data trees and
+      their subtrees. It is always assumed that the top-level
+      structure in JSON-encoded data is an object.</t>
+      <t>Instances of YANG data nodes (leafs, containers, leaf-lists,
+      lists, anydata nodes, and anyxml nodes) are encoded as members of a
+      JSON object, i.e., name/value pairs. <xref target="sec.names-ns"/> defines how the name part is formed, and
+      the following sections deal with the value part. The encoding
+      rules are identical for all types of data trees, i.e.,
+      configuration data, state data, parameters of RPC operations,
+      actions, and notifications.</t>
+      <t>With the exception of "anydata" encoding (<xref target="sec.anydata"/>), all rules in this document are also
+      applicable to YANG 1.0 <xref target="RFC6020"/>.</t>
+      <t>Unlike XML element content, JSON values carry partial type
+      information (number, string, boolean). The JSON encoding is
+      defined so that this information is never in conflict with the
+      data type of the corresponding YANG leaf or leaf-list.</t>
+      <t>With the exception of anyxml and schema-less anydata nodes,
+      it is possible to map a JSON-encoded data tree to XML encoding
+      as defined in <xref target="RFC7950"/>, and
+      vice versa. However, such conversions require the YANG data
+      model to be available.</t>
+      <t>In order to achieve maximum interoperability while allowing
+      implementations to use a variety of existing JSON parsers, the
+      JSON encoding rules follow, as much as possible, the constraints
+      of the I-JSON (Internet JSON) restricted
+      profile <xref target="RFC7493"/>. <xref target="sec.i-json"/>
+      discusses I-JSON conformance in more detail.</t>
+    </section>
+
+    <section anchor="sec.names-ns" title="Names and Namespaces">
+      <t>A JSON object member name MUST be in one of the following
+      forms:
+      <list style="symbols">
+        <t>simple - identical to the identifier of the corresponding
+        YANG data node.</t>
+        <t>namespace-qualified - the data node identifier is prefixed
+        with the name of the module in which the data node is defined,
+        separated from the data node identifier by the colon character
+        (":").</t>
+      </list></t>
+      <t>The name of a module determines the namespace of all data
+      node names defined in that module. If a data node is defined in
+      a submodule, then the namespace-qualified member name uses the
+      name of the main module to which the submodule belongs.</t>
+      <t>ABNF syntax&nbsp;<xref target="RFC5234"/> of a member name is
+      shown in <xref target="fig.mname"/>, where the production for
+      "identifier" is defined in Section&nbsp;14 of <xref target="RFC7950"/>.
+</t>
+
+      <figure anchor="fig.mname" title="ABNF Production for a JSON Member Name">
+        <artwork>
+        member-name = [identifier ":"] identifier
+        </artwork>
+      </figure>
+
+      <t>A namespace-qualified member name MUST be used for all
+      members of a top-level JSON object and then also whenever the
+      namespaces of the data node and its parent node are
+      different. In all other cases, the simple form of the member
+      name MUST be used.</t>
+
+      <t>For example, consider the following YANG module:
+      <figure>
+        <artwork>
+module example-foomod {
+
+  namespace "http://example.com/foomod";
+
+  prefix "foomod";
+
+  container top {
+    leaf foo {
+      type uint8;
+    }
+  }
+}
+</artwork>
+
+      </figure></t>
+      <t>If the data model consists only of this module, then the
+      following is valid JSON-encoded configuration data:
+      <figure>
+        <artwork>
+{
+  "example-foomod:top": {
+    "foo": 54
+  }
+}
+        </artwork>
+      </figure>
+      </t>
+      <t>Note that the member of the top-level object uses the
+      namespace-qualified name but the "foo" leaf doesn't because it
+      is defined in the same module as its parent container "top".</t>
+      <t>Now, assume that the container "top" is augmented from another
+      module, "example-barmod":
+
+      <figure>
+        <artwork>
+module example-barmod {
+
+  namespace "http://example.com/barmod";
+
+  prefix "barmod";
+
+  import example-foomod {
+    prefix "foomod";
+  }
+
+  augment "/foomod:top" {
+    leaf bar {
+      type boolean;
+    }
+  }
+}
+</artwork>
+
+      </figure>
+      </t>
+      <t>Valid JSON-encoded configuration data containing both leafs
+      may then look like this:
+      <figure>
+        <artwork>
+{
+  "example-foomod:top": {
+    "foo": 54,
+    "example-barmod:bar": true
+  }
+}
+        </artwork>
+      </figure>
+      </t>
+      <t>The name of the "bar" leaf is prefixed with the namespace
+      identifier because its parent is defined in a different
+      module.</t>
+      <t>Explicit namespace identifiers are sometimes needed when
+      encoding values of the "identityref" and "instance-identifier"
+      types. The same form of namespace-qualified name as defined
+      above is then used. See Sections&nbsp;<xref format="counter"
+      target="sec.idref"/> and <xref format="counter" target="sec.i-i"/>
+      for details.</t>
+    </section>
+
+    <section anchor="sec.datanodes" title="Encoding of YANG Data Node Instances">
+
+      <t>Every data node instance is encoded as a name/value pair
+      where the name is formed from the data node identifier using the
+      rules of <xref target="sec.names-ns"/>. The value depends on the
+      category of the data node, as explained in the following
+      subsections.</t>
+      <t>Character encoding MUST be UTF-8.</t>
+
+      <section anchor="sec.leaf" title="The &quot;leaf&quot; Data Node">
+
+        <t>A leaf instance is encoded as a name/value pair where the
+        value can be a string, number, literal "true" or "false", or
+        the special array "[null]", depending on the type of the leaf
+        (see <xref target="sec.datatypes"/> for the type encoding
+        rules).</t>
+        <t>Example: For the leaf node definition
+        <figure>
+          <artwork>
+leaf foo {
+  type uint8;
+}
+          </artwork>
+        </figure>
+        the following is a valid JSON-encoded instance:
+        <figure>
+          <artwork>
+"foo": 123
+          </artwork>
+        </figure>
+        </t>
+
+      </section>
+
+      <section anchor="sec.container" title="The &quot;container&quot; Data Node">
+
+        <t>A container instance is encoded as a name/object pair. The
+        container's child data nodes are encoded as members of the
+        object.</t>
+        <t>Example: For the container definition
+        <figure>
+          <artwork>
+container bar {
+  leaf foo {
+    type uint8;
+  }
+}
+          </artwork>
+        </figure>
+        the following is a valid JSON-encoded instance:
+        <figure>
+          <artwork>
+"bar": {
+  "foo": 123
+}
+          </artwork>
+        </figure>
+        </t>
+      </section>
+
+      <section anchor="sec.leaf-list" title="The &quot;leaf-list&quot; Data Node">
+
+        <t>A leaf-list is encoded as a name/array pair, and the array
+        elements are values of some scalar type, which can be a
+        string, number, literal "true" or "false", or the special
+        array "[null]", depending on the type of the leaf-list (see
+        <xref target="sec.datatypes"/> for the type encoding
+        rules).</t>
+        <t>The ordering of array elements follows the same rules as
+        the ordering of XML elements representing leaf-list entries in
+        the XML encoding. Specifically, the "ordered-by" properties
+        (Section&nbsp;7.7.7 in <xref target="RFC7950"/>)
+        MUST be observed.</t>
+        <t>Example: For the leaf-list definition
+        <figure>
+          <artwork>
+leaf-list foo {
+  type uint8;
+}
+          </artwork>
+        </figure>
+        the following is a valid JSON-encoded instance:
+        <figure>
+          <artwork>
+"foo": [123, 0]
+          </artwork>
+        </figure>
+        </t>
+      </section>
+
+      <section anchor="sec.list" title="The &quot;list&quot; Data Node">
+
+        <t>A list instance is encoded as a name/array pair, and the
+        array elements are JSON objects.</t>
+        <t>The ordering of array elements follows the same rules as
+        the ordering of XML elements representing list entries in the
+        XML encoding. Specifically, the "ordered-by" properties
+        (Section&nbsp;7.7.7 in <xref target="RFC7950"/>)
+        MUST be observed.</t>
+        <t>Unlike the XML encoding, where list keys are required to
+        precede any other siblings within a list entry and appear in
+        the order specified by the data model, the order of members in
+        a JSON-encoded list entry is arbitrary because JSON objects
+        are fundamentally unordered collections of members.</t>
+        <t>Example: For the list definition
+        <figure>
+          <artwork>
+list bar {
+  key foo;
+  leaf foo {
+    type uint8;
+  }
+  leaf baz {
+    type string;
+  }
+}
+          </artwork>
+        </figure>
+        the following is a valid JSON-encoded instance:
+        <figure>
+          <artwork>
+"bar": [
+  {
+    "foo": 123,
+    "baz": "zig"
+  },
+  {
+    "baz": "zag",
+    "foo": 0
+  }
+]
+          </artwork>
+        </figure>
+
+        </t>
+
+      </section>
+
+      <section anchor="sec.anydata" title="The &quot;anydata&quot; Data Node">
+        <t>The anydata data node serves as a container for an arbitrary
+        set of nodes that otherwise appear as normal YANG-modeled
+        data. A data model for anydata content may or may not be known
+        at runtime. In the latter case, converting JSON-encoded
+        instances to the XML encoding defined in <xref target="RFC7950"/>
+        may be impossible.</t>
+        <t>An anydata instance is encoded in the same way as a
+        container, i.e., as a name/object pair. The requirement that
+        anydata content can be modeled by YANG implies the following
+        rules for the JSON text inside the object:
+        <list style="symbols">
+          <t>It is valid I-JSON <xref target="RFC7493"/>.</t>
+          <t>All object member names satisfy the ABNF production in
+          <xref target="fig.mname"/>.</t>
+          <t>Any JSON array contains either only unique scalar values
+          (as a leaf-list; see <xref target="sec.leaf-list"/>) or
+          only objects (as a list; see <xref target="sec.list"/>).</t>
+          <t>The "null" value is only allowed in the single-element
+          array "[null]" corresponding to the encoding of the "empty"
+          type; see <xref target="sec.empty"/>.</t>
+        </list></t>
+        <t>Example: For the anydata definition
+        <figure>
+          <artwork>
+anydata data;
+          </artwork>
+        </figure>
+        the following is a valid JSON-encoded instance:
+        <figure>
+          <artwork>
+"data": {
+  "ietf-notification:notification": {
+    "eventTime": "2014-07-29T13:43:01Z",
+    "example-event:event": {
+      "event-class": "fault",
+      "reporting-entity": {
+        "card": "Ethernet0"
+      },
+      "severity": "major"
+    }
+  }
+}
+          </artwork>
+        </figure>
+        </t>
+      </section>
+
+      <section anchor="sec.anyxml" title="The &quot;anyxml&quot; Data Node">
+        <t>An anyxml instance is encoded as a JSON name/value pair.
+        The value MUST satisfy I-JSON constraints.</t>
+        <t>Example: For the anyxml definition
+        <figure>
+          <artwork>
+anyxml bar;
+          </artwork>
+        </figure>
+        the following is a valid JSON-encoded instance:
+        <figure>
+          <artwork>
+"bar": [true, null, true]
+          </artwork>
+        </figure>
+        </t>
+      </section>
+
+      <section anchor="sec.meta" title="Metadata Objects">
+        <t>Apart from instances of YANG data nodes, a JSON document
+        MAY contain special object members whose name starts with the
+        "@" character (COMMERCIAL AT). Such members are used for
+        special purposes, such as encoding
+        metadata&nbsp;<xref target="RFC7952"/>. The exact syntax and
+        semantics of such members are outside the scope of this document.</t>
+      </section>
+
+    </section>
+
+    <section anchor="sec.datatypes" title="Representing YANG Data Types in JSON Values">
+
+      <t>The type of the JSON value in an instance of the leaf or
+      leaf-list data node depends on the type of that data node, as
+      specified in the following subsections.</t>
+
+      <section anchor="sec.numtypes" title="Numeric Types">
+        <t>A value of the "int8", "int16", "int32", "uint8", "uint16", or
+        "uint32" type is represented as a JSON number.</t>
+        <t>A value of the "int64", "uint64", or "decimal64" type is
+        represented as a JSON string whose content is the lexical
+        representation of the corresponding YANG type as specified in
+        Sections&nbsp;9.2.1 and 9.3.1 of <xref target="RFC7950"/>.</t>
+        <t>For example, if the type of the leaf "foo"
+        in <xref target="sec.leaf"/> was "uint64" instead of "uint8",
+        the instance would have to be encoded as</t>
+        <figure>
+          <artwork>
+"foo": "123"
+          </artwork>
+        </figure>
+        <t>The special handling of 64-bit numbers follows from the
+        I-JSON recommendation to encode numbers exceeding the
+        IEEE&nbsp;754&nbhy;2008 double&nbhy;precision range
+        <xref target="IEEE754-2008"/> as strings; see Section&nbsp;2.2 in
+        <xref target="RFC7493"/>.</t>
+      </section>
+
+      <section anchor="sec.string" title="The &quot;string&quot; Type">
+        <t>A "string" value is represented as a JSON string, subject to
+        JSON string encoding rules.</t>
+      </section>
+
+      <section anchor="sec.boolean" title="The &quot;boolean&quot; Type">
+        <t>A "boolean" value is represented as the corresponding JSON
+        literal name "true" or "false".</t>
+      </section>
+
+      <section anchor="sec.enum" title="The &quot;enumeration&quot; Type">
+        <t>An "enumeration" value is represented as a JSON string&nbsp;--
+        one of the names assigned by "enum" statements in YANG.</t>
+        <t>The representation is identical to the lexical
+        representation of the "enumeration" type in XML; see Section&nbsp;9.6
+        in <xref target="RFC7950"/>.</t>
+      </section>
+
+      <section anchor="sec.bits" title="The &quot;bits&quot; Type">
+        <t>A "bits" value is represented as a JSON string&nbsp;-- a
+        space-separated sequence of names of bits that are set. The
+        permitted bit names are assigned by "bit" statements in
+        YANG.</t>
+        <t>The representation is identical to the lexical
+        representation of the "bits" type; see Section&nbsp;9.7 in <xref target="RFC7950"/>.</t>
+      </section>
+
+      <section anchor="sec.binary" title="The &quot;binary&quot; Type">
+        <t>A "binary" value is represented as a JSON string&nbsp;--
+        base64&nbsp;encoding of arbitrary binary data.</t>
+        <t>The representation is identical to the lexical
+        representation of the "binary" type in XML; see Section&nbsp;9.8 in
+        <xref target="RFC7950"/>.</t>
+      </section>
+
+      <section anchor="sec.leafref" title="The &quot;leafref&quot; Type">
+        <t>A "leafref" value is represented using the same rules as
+        the type of the leaf to which the leafref value refers.</t>
+      </section>
+
+      <section anchor="sec.idref" title="The &quot;identityref&quot; Type">
+        <t>An "identityref" value is represented as a string&nbsp;-- the
+        name of an identity. If the identity is defined in a module
+        other than the leaf node containing the identityref value,
+        the namespace-qualified form (<xref target="sec.names-ns"/>)
+        MUST be used. Otherwise, both the simple and
+        namespace-qualified forms are permitted.</t>
+        <t>For example, consider the following schematic module:</t>
+
+        <figure>
+          <artwork>
+module example-mod {
+  ...
+  import ietf-interfaces {
+    prefix if;
+  }
+  ...
+  leaf type {
+    type identityref {
+      base "if:interface-type";
+    }
+  }
+}
+          </artwork>
+        </figure>
+        <t>A valid instance of the "type" leaf is then encoded as
+        follows:
+        <figure>
+          <artwork>
+"type": "iana-if-type:ethernetCsmacd"
+          </artwork>
+        </figure>
+        </t>
+        <t>The namespace identifier "iana-if-type" must be present in
+        this case because the "ethernetCsmacd" identity is not defined
+        in the same module as the "type" leaf.</t>
+      </section>
+
+      <section anchor="sec.empty" title="The &quot;empty&quot; Type">
+        <t>An "empty" value is represented as "[null]", i.e., an array
+        with the "null" literal being its only element. For the
+        purposes of this document, "[null]" is considered an atomic
+        scalar value.</t>
+        <t>This encoding of the "empty" type was chosen instead of
+        using simply "null" in order to facilitate the use of empty
+        leafs in common programming languages where the "null" value of a
+        member is treated as if the member is not present.</t>
+
+        <t>Example: For the leaf definition
+        <figure>
+          <artwork>
+leaf foo {
+  type empty;
+}
+          </artwork>
+        </figure>
+        a valid instance is
+        <figure>
+          <artwork>
+"foo": [null]
+          </artwork>
+        </figure>
+        </t>
+
+      </section>
+
+      <section anchor="sec.union" title="The &quot;union&quot; Type">
+        <t>A value of the "union" type is encoded as the value of any
+        of the member types.</t>
+        <t>When validating a value of the "union" type, the type
+        information conveyed by the JSON encoding MUST also be taken
+        into account. JSON syntax thus provides additional means for
+        resolving the member type of the union that are not available
+        in XML encoding.</t>
+        <t>For example, consider the following YANG definition:
+        <figure>
+          <artwork>
+leaf bar {
+  type union {
+    type uint16;
+    type string;
+  }
+}
+          </artwork>
+        </figure>
+        In RESTCONF <xref target="RESTCONF"/>, it is
+        possible to set the value of "bar" in the following way when
+        using the "application/yang.data+xml" media&nbsp;type:
+        <figure>
+          <artwork>
+&lt;bar&gt;13.5&lt;/bar&gt;
+          </artwork>
+        </figure>
+        because the value may be interpreted as a string, i.e., the
+        second&nbsp;member type of the union. When using the
+        "application&wj;/yang.data+json" media type, however, this is an error:
+        <figure>
+          <artwork>
+"bar": 13.5
+          </artwork>
+        </figure>
+        In this case, the JSON encoding indicates that the value is
+        supposed to be a number rather than a string, and it is not a
+        valid "uint16" value.</t>
+        <t>Conversely, the value of
+        <figure>
+          <artwork>
+"bar": "1"
+          </artwork>
+        </figure>
+        is to be interpreted as a string.</t>
+      </section>
+
+      <section anchor="sec.i-i" title="The &quot;instance-identifier&quot; Type">
+        <t>An "instance-identifier" value is encoded as a string that
+        is analogical to the lexical representation in XML encoding;
+        see Section&nbsp;9.13.2 in <xref target="RFC7950"/>. However, the
+        encoding of namespaces in instance-identifier values follows the
+        rules stated in&nbsp;<xref target="sec.names-ns"/>, namely:
+        <list style="symbols">
+          <t>The leftmost (top-level) data node name is always in the
+          namespace-qualified form.</t>
+          <t>Any subsequent data node name is in the
+          namespace-qualified form if the node is defined in a module
+          other than its parent node, and the simple form is used
+          otherwise. This rule also holds for node names appearing in
+          predicates.</t>
+        </list></t>
+        <t>For example,
+        <figure>
+          <artwork>
+/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/ip
+          </artwork>
+        </figure>
+        is a valid instance-identifier value because the data nodes
+        "interfaces", "interface", and "name" are defined in the module
+        "ietf&nbhy;interfaces", whereas "ipv4" and "ip" are defined in
+        "ietf-ip".</t>
+      </section>
+
+    </section>
+
+    <section anchor="sec.i-json" title="I-JSON Compliance">
+      <t>I-JSON <xref target="RFC7493"/> is a restricted profile of
+      JSON that guarantees maximum interoperability for protocols that
+      use JSON in their messages, no matter what JSON
+      encoders/decoders are used in protocol implementations. The
+      encoding defined in this document therefore observes the I-JSON
+      requirements and recommendations as closely as possible.</t>
+      <t>In particular, the following properties are guaranteed:
+      <list style="symbols">
+        <t>Character encoding is UTF-8.</t>
+        <t>Member names within the same JSON object are always unique.</t>
+        <t>The order of JSON object members is never relied upon.</t>
+        <t>Numbers of any type supported by YANG can be exchanged
+        reliably. See <xref target="sec.numtypes"/> for details.</t>
+      </list>
+      </t>
+      <t>The JSON encoding defined in this document deviates from
+      I-JSON only in the representation of the "binary" type. In order
+      to remain compatible with XML encoding, the base64 encoding
+      scheme is used (<xref target="sec.binary"/>), whilst I-JSON
+      recommends base64url instead.</t>
+    </section>
+
+    <section anchor="sec.cons" title="Security Considerations">
+      <t>This document defines an alternative encoding for data
+      modeled in the YANG data modeling language. As such, it doesn't
+      contribute any new security issues beyond those discussed in
+      Section&nbsp;17 of <xref target="RFC7950"/>.</t>
+
+      <t>This document defines no mechanisms for signing and
+      encrypting data modeled with YANG. Under normal circumstances,
+      data security and integrity are guaranteed by the management
+      protocol in use, such as NETCONF <xref target="RFC6241"/> or
+      RESTCONF <xref target="RESTCONF"/>. If this is
+      not the case, external mechanisms, such as Public-Key Cryptography
+      Standards (PKCS) #7 <xref target="RFC2315"/> or 
+      JSON Object Signing and Encryption (JOSE) <xref target="RFC7515"/>
+      <xref target="RFC7516"/>, need to be considered.</t>
+      <t>JSON processing is rather different from XML, and JSON
+      parsers may thus suffer from different types of vulnerabilities
+      than their XML counterparts. To minimize these new security risks,
+      software on the receiving side SHOULD reject all messages that
+      do not comply with the rules of this document and reply with an
+      appropriate error message to the sender.</t>
+    </section>
+
+  </middle>
+
+  <back>
+
+    <references title="Normative References">
+      
+<?rfc include="reference.RFC.2119"?>
+<?rfc include="reference.RFC.5234"?>
+<?rfc include="reference.RFC.6241"?>
+<?rfc include="reference.RFC.7159"?>
+<?rfc include="reference.RFC.7493"?>
+      
+<!-- draft-ietf-netmod-rfc6020bis (RFC 7950) -->
+<reference anchor="RFC7950" target="http://www.rfc-editor.org/info/rfc7950">
+<front>
+<title>The YANG 1.1 Data Modeling Language</title>
+<author initials="M" surname="Bjorklund" fullname="Martin Bjorklund">
+    <organization/>
+</author>
+<date month="August" year="2016"/>
+</front>
+<seriesInfo name='RFC' value='7950'/>
+<seriesInfo name="DOI" value="10.17487/RFC7950"/>
+</reference>
+      
+    </references>
+
+    <references title="Informative References">
+
+<reference anchor="IEEE754-2008" target="http://standards.ieee.org/findstds/standard/754-2008.html">
+<front>
+    <title>IEEE Standard for Floating-Point Arithmetic</title>
+      <author>
+        <organization>IEEE</organization>
+      </author>
+      <date year="2008" />
+</front>
+  <seriesInfo name="IEEE" value="754-2008" />
+  <seriesInfo name="DOI" value="10.1109/IEEESTD.2008.4610935" />
+</reference>
+
+<?rfc include="reference.RFC.2315"?>
+<?rfc include="reference.RFC.6020"?>
+<?rfc include="reference.RFC.7223"?>
+<?rfc include="reference.RFC.7515"?>
+<?rfc include="reference.RFC.7516"?>
+      
+<!-- draft-ietf-netconf-restconf (In Last Call) -->
+<reference anchor="RESTCONF">
+  <front>
+    <title>RESTCONF Protocol</title>
+    <author initials="A" surname="Bierman" fullname="Andy Bierman">
+      <organization/>
+    </author>
+    <author initials="M" surname="Bjorklund" fullname="Martin Bjorklund">
+      <organization/>
+    </author>
+    <author initials="K" surname="Watsen" fullname="Kent Watsen">
+      <organization/>
+    </author>
+    <date month="July" year="2016"/>
+  </front>
+  <seriesInfo name="Work in Progress," value="draft-ietf-netconf-restconf-15"/>
+</reference>
+
+<!-- draft-ietf-netmod-yang-metadata (RFC 7952) -->
+<reference anchor="RFC7952" target="http://www.rfc-editor.org/info/rfc7952">
+<front>
+<title>Defining and Using Metadata with YANG</title>
+<author initials="L" surname="Lhotka" fullname="Ladislav Lhotka">
+    <organization/>
+</author>
+<date month="August" year="2016"/>
+</front>
+<seriesInfo name='RFC' value='7952'/>
+<seriesInfo name="DOI" value="10.17487/RFC7952"/>
+</reference>
+
+<reference anchor="XML" target="http://www.w3.org/TR/2008/REC-xml-20081126">
+<front>
+<title>Extensible Markup Language (XML) 1.0 (Fifth Edition)</title>
+<author initials="T." surname="Bray" fullname="Tim Bray">
+    <organization/>
+</author>
+<author initials="J." surname="Paoli" fullname="Jean Paoli">
+    <organization/>
+</author>
+<author initials="M." surname="Sperberg-McQueen" fullname="Michael Sperberg-McQueen">
+    <organization/>
+</author>
+<author initials="E." surname="Maler" fullname="Eve Maler">
+    <organization/>
+</author>
+<author initials="F." surname="Yergeau" fullname="Fran&#xC3;&#xA7;ois Yergeau">
+    <organization/>
+</author>
+<date month="November" day="26" year="2008"/>
+</front>
+<seriesInfo name="World Wide Web Consortium Recommendation" value="REC-xml-20081126"/>
+</reference>
+
+    </references>
+
+    <section anchor="app.ex-if" title="A Complete Example">
+
+      <t>The JSON document shown below represents the same data as the
+      reply to the NETCONF &lt;get&gt; request appearing in Appendix&nbsp;D
+      of <xref target="RFC7223"/>. The data model is a combination of
+      two YANG modules: "ietf&nbhy;interfaces" and "ex-vlan" (the latter is
+      an example module from Appendix&nbsp;C of <xref target="RFC7223"/>).
+      The "if-mib" feature defined in the "ietf&nbhy;interfaces" module is
+      supported.</t>
+
+      <figure>
+        <artwork>
+{
+  "ietf-interfaces:interfaces": {
+    "interface": [
+      {
+        "name": "eth0",
+        "type": "iana-if-type:ethernetCsmacd",
+        "enabled": false
+      },
+      {
+        "name": "eth1",
+        "type": "iana-if-type:ethernetCsmacd",
+        "enabled": true,
+        "ex-vlan:vlan-tagging": true
+      },
+      {
+        "name": "eth1.10",
+        "type": "iana-if-type:l2vlan",
+        "enabled": true,
+        "ex-vlan:base-interface": "eth1",
+        "ex-vlan:vlan-id": 10
+      },
+      {
+        "name": "lo1",
+        "type": "iana-if-type:softwareLoopback",
+        "enabled": true
+      }
+    ]
+  },
+  "ietf-interfaces:interfaces-state": {
+    "interface": [
+      {
+        "name": "eth0",
+        "type": "iana-if-type:ethernetCsmacd",
+        "admin-status": "down",
+        "oper-status": "down",
+        "if-index": 2,
+        "phys-address": "00:01:02:03:04:05",
+        "statistics": {
+          "discontinuity-time": "2013-04-01T03:00:00+00:00"
+        }
+      },
+      {
+        "name": "eth1",
+        "type": "iana-if-type:ethernetCsmacd",
+        "admin-status": "up",
+        "oper-status": "up",
+        "if-index": 7,
+        "phys-address": "00:01:02:03:04:06",
+        "higher-layer-if": [
+          "eth1.10"
+        ],
+        "statistics": {
+          "discontinuity-time": "2013-04-01T03:00:00+00:00"
+        }
+      },
+      {
+        "name": "eth1.10",
+        "type": "iana-if-type:l2vlan",
+        "admin-status": "up",
+        "oper-status": "up",
+        "if-index": 9,
+        "lower-layer-if": [
+          "eth1"
+        ],
+        "statistics": {
+          "discontinuity-time": "2013-04-01T03:00:00+00:00"
+        }
+      },
+      {
+        "name": "eth2",
+        "type": "iana-if-type:ethernetCsmacd",
+        "admin-status": "down",
+        "oper-status": "down",
+        "if-index": 8,
+        "phys-address": "00:01:02:03:04:07",
+        "statistics": {
+          "discontinuity-time": "2013-04-01T03:00:00+00:00"
+        }
+      },
+      {
+        "name": "lo1",
+        "type": "iana-if-type:softwareLoopback",
+        "admin-status": "up",
+        "oper-status": "up",
+        "if-index": 1,
+        "statistics": {
+          "discontinuity-time": "2013-04-01T03:00:00+00:00"
+        }
+      }
+    ]
+  }
+}
+</artwork>
+
+      </figure>
+
+    </section>
+
+    <section anchor="sec.ack" title="Acknowledgements" numbered="no">
+      <t>The author wishes to thank Andy Bierman, Martin Bjorklund,
+      Dean Bogdanovic, Balazs Lengyel, Juergen Schoenwaelder, and Phil
+      Shafer for their helpful comments and suggestions.</t>
+    </section>
+  </back>
+
+</rfc>

@@ -1,0 +1,605 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<?xml-stylesheet type="text/xsl" href="../../rfc2629.xslt"?>
+<!DOCTYPE rfc SYSTEM 'rfc2629.dtd'
+[
+
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc toc="yes"?>
+<?rfc comments="yes"?>
+<?rfc inline="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc tocdepth="2"?>
+<?rfc rfcedstyle="yes"?>
+
+<rfc category="std" ipr='trust200902' number='7529' updates='5545, 6321, 7265' submissionType="IETF" consensus="yes">
+  <front>
+    <title abbrev="iCalendar RSCALE Extension">Non-Gregorian Recurrence Rules in the Internet Calendaring and Scheduling Core Object Specification (iCalendar)</title>
+    <author initials="C." surname="Daboo" fullname="Cyrus Daboo">
+      <organization abbrev="Apple Inc.">Apple Inc.</organization>
+      <address>
+        <postal>
+          <street>1 Infinite Loop</street>
+          <city>Cupertino</city>
+          <region>CA</region>
+          <code>95014</code>
+          <country>United States</country>
+        </postal>
+        <email>cyrus@daboo.name</email>
+        <uri>http://www.apple.com/</uri>
+      </address>
+    </author>
+    <author initials="G." surname="Yakushev" fullname="Gregory Yakushev">
+      <organization abbrev="Google Inc.">Google Inc.</organization>
+      <address>
+        <postal>
+          <street>Brandschenkestrasse 100</street>
+          <city>8002 Zurich</city>
+          <region></region>
+          <code></code>
+          <country>Switzerland</country>
+        </postal>
+        <email>gyakushev@yahoo.com</email>
+        <uri>http://www.google.com/</uri>
+      </address>
+    </author>
+    <date month="May" year="2015" />
+
+    <area>Applications</area>
+    <keyword>calendaring</keyword>
+    <keyword>iCalendar</keyword>
+    <keyword>iTIP</keyword>
+    <keyword>CalDAV</keyword>
+
+    <abstract>
+      <t>This document defines extensions to the Internet Calendaring and Scheduling Core Object Specification (iCalendar) (RFC 5545) to support use of non-Gregorian recurrence rules. It also defines how Calendaring Extensions to WebDAV (CalDAV) (RFC 4791) servers and clients can be extended to support these new recurrence rules.</t>
+    </abstract>
+  </front>
+  <middle>
+    <section title='Introduction'>
+      <t>The <xref target='RFC5545'>iCalendar</xref> data format is in widespread use to represent calendar data. &nbsp;iCalendar represents dates and times using the Gregorian calendar system only. It does provide a way to use non-Gregorian calendar systems via a "CALSCALE" property, but this has never been used. However, there is a need to support at least non-Gregorian recurrence patterns to cover anniversaries, and many local, religious, or civil holidays based on non-Gregorian dates.</t>
+      <t>
+        There are several disadvantages to using the existing "CALSCALE" property in iCalendar for implementing non-Gregorian calendars:
+        <list style="numbers">
+          <t>
+            The "CALSCALE" property exists in the top-level "VCALENDAR" objects and thus applies to all components within that object. In today's multi-cultural society, that restricts the ability to mix events from different calendar systems within the same iCalendar object, e.g., it would prevent having both the Gregorian New Year and Chinese New Year in the same iCalendar object.
+          </t>
+          <t>
+            Time zone and daylight saving time rules are typically published using Gregorian calendar dates and rules (e.g., "the 3rd Sunday in March") and are thus converted to iCalendar "VTIMEZONE" components using Gregorian dates and recurrence rules. This results in the problem whereby one component (the "VTIMEZONE") is fixed to the Gregorian calendar system, and another (a "VEVENT") wants to use a different non-Gregorian calendar scale; thus, the single top-level "CALSCALE" property is again inadequate.
+          </t>
+        </list>
+      </t>
+      <t>This specification solves these issues by allowing the "CALSCALE" to remain set to Gregorian but redefining the "RRULE" recurrence rule property to accept new items, including one that allows non-Gregorian calendar systems to be used. With this, all the "DATE", "DATE-TIME", and "PERIOD" values in the iCalendar object would remain specified using the Gregorian calendar system, but repeating patterns in other calendar systems could be defined. It is then up to calendar user agents and servers to map between Gregorian and non-Gregorian calendar systems in order to expand out recurrence instances. The non-Gregorian recurrence rules can be used in any iCalendar component that allows the "RRULE" property to be specified, including "VTIMEZONE" components (to allow for possible future use of non-Gregorian rules in published daylight saving time data).</t>
+     
+ <t>This specification does not itself define calendar systems; rather, it utilizes the calendar system registry defined by the <xref target='UNICODE.CLDR'>Unicode Consortium in their Common Locale Data Repository (CLDR) project</xref>, as implemented in the <xref target='UNICODE.ICU'>Unicode (International Components for Unicode (ICU)) Library</xref>.</t>
+      <t>
+        This specification makes the following updates:
+        <list>
+          <t>It updates <xref target='RFC5545'>iCalendar</xref>, <xref target='RFC6321'>the XML format for iCalendar (xCal)</xref>, and <xref target='RFC7265'>the JSON format for iCalendar (jCal)</xref>, to extend the "RRULE" property definition.</t>
+          <t>It clarifies <xref target='RFC5546'>the iCalendar Transport-Independent Interoperability Protocol (iTIP)</xref> to specify how the extended "RRULE" property should be handled in iTIP messages.</t>
+          <t>It extends <xref target='RFC4791'>CalDAV</xref> to specify how the extended "RRULE" property can be supported by CalDAV servers and clients.</t>
+        </list>
+      </t>
+    </section>
+    <section title='Conventions Used in This Document'>
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in <xref target='RFC2119' />.</t>
+      <t>The notation used in this memo is the ABNF notation of <xref target='RFC5234' /> as used by <xref target='RFC5545'>iCalendar</xref>. Any syntax elements shown below that are not explicitly defined in this specification come from <xref target='RFC5545'>iCalendar</xref>,  <xref target='RFC5546'>iTIP</xref>, and  <xref target='RFC4791'>CalDAV</xref>.</t>
+      <t>When XML element types in the namespaces "DAV:" and "urn:ietf:params:xml:ns:caldav" are referenced in this document outside of the context of an XML fragment, the string "DAV:" and "CALDAV:" will be prefixed to the element type names, respectively.</t>
+      <t>
+        When a Gregorian calendar date is shown in text, it will use the format "YYYYMMDD", where "YYYY" is the 4-digit year, "MM" the 2-digit month, and "DD" the 2-digit day (this is the same format used in <xref target='RFC5545'>iCalendar</xref>). The Chinese calendar will be used as an example of a non-Gregorian calendar for illustrative purposes. When a Chinese calendar date is shown in text, it will use the format "{C}YYYYMM[L]DD" -- i.e., the same format as Gregorian but with a "{C}" prefix, and an optional "L" character after the month element to indicate a leap month. Similarly, {E} and {H} are used in other examples as prefixes for Ethiopic (Amete Mihret) and Hebrew dates, respectively. The "{}" prefix is used for purely illustrative purposes and never appears in actual dates used in iCalendar or related specifications. Note that the Chinese calendar years shown in the examples are based on the <xref target='UNICODE.ICU'>Unicode (ICU)</xref> library's Chinese calendar epoch. While there are several different Chinese calendar epochs in common use, the choice of one over another does not impact the actual calculation of the Gregorian equivalent dates, provided conversion is always done using the same epoch.
+      </t>
+    </section>
+    <section title="Overview">
+<t>In the Gregorian calendar system, each year is composed of a fixed
+number of months (12), with each month having a fixed number of days
+(between 30 and 31), except for the second month (February), which
+contains either 28 or 29 days (the latter in a leap year). Weeks are composed of 7 days, with day names Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, and Sunday. Years can have either 365 or 366 days (the latter in a leap year). The number of whole weeks in a year is 52 (though the <xref target='ISO.8601.2004'/> week numbering scheme used by <xref target='RFC5545'>iCalendar</xref> can have a numeric count up to 53).</t>
+      <t>
+        In iCalendar, the "RECUR" value type defines various fields used to express a recurrence pattern, and those fields are given limits based on those of the Gregorian calendar system. Since other calendar systems can have different limits and other behaviors that need to be accounted for, the maximum values for the elements in the "RECUR" value are not covered by this specification.
+      </t>
+      <t>
+        To generate a set of recurring instances in a non-Gregorian calendar system, the following principles are used:
+        <list style="numbers">
+          <t>iCalendar data continues to use the "GREGORIAN" calendar system, so all "DATE", "DATE-TIME", and "PERIOD" values continue to use the Gregorian format and limits.</t>
+          <t>The "RRULE" property is extended to include an "RSCALE" element in its value that specifies the calendar system to use for the recurrence pattern. The existing elements of the "RRULE" value type are used, but modified to support different upper limits, based on the "RSCALE" value, as well as a modification to month numbers to allow a leap month to be specified. Existing requirements for the use of "RRULE" all still apply (e.g., the "RRULE" has to match the "DTSTART" value of the master instance). Other recurrence properties such as "RECURRENCE-ID", "RDATE", and "EXDATE" continue to use the Gregorian date format as "CALSCALE" is unchanged.</t>
+        </list>
+        When generating instances, the following procedure might be used:
+        <list style="numbers">
+          <t>Convert the "DTSTART" property value of the master recurring component into the date and time components for the calendar system specified by the "RSCALE" element in the "RRULE" value. This provides the "seed" value for generating subsequent recurrence instances.</t>
+          <t>Iteratively generate instances using the "RRULE" value applied to the year, month, and day components of the date in the new calendar system.</t>
+          <t>For each generated instance, convert the dates and times back from the non-Gregorian form into Gregorian and use those values for other properties such as "RECURRENCE-ID".</t>
+        </list>
+      </t>
+      <t>
+        Consider the following example for an event representing the Chinese New Year:
+      <figure><artwork>
+DTSTART;VALUE=DATE:20130210
+RRULE:RSCALE=CHINESE;FREQ=YEARLY
+SUMMARY:Chinese New Year
+</artwork></figure>
+      To generate instances, first the "DTSTART" value "20130210" is converted into the Chinese calendar system giving "{C}46500101". Next, the year component is incremented by one to give "{C}46510101", and that is then converted back into Gregorian as "20140131". Additional instances are generated by iteratively increasing the year component in the Chinese date and converting back to Gregorian.
+      </t>
+    </section>
+    <section title="Extended RRULE Property">
+      <t>
+        This specification extends the existing "RRULE" iCalendar property value to include a new "RSCALE" element that can be used to indicate the calendar system used for generating the recurrence pattern.
+      </t>
+      <t>
+        When "RSCALE" is present, the other changes to "RRULE" are:
+        <list style="numbers">
+          <t>Elements that include numeric values (e.g., "BYYEARDAY") have numeric ranges defined by the "RSCALE" value (i.e., in some calendar systems there might be more than 366 days in a year).</t>
+          <t>Month numbers can include an "L" suffix to indicate that the specified month is a leap month in the corresponding calendar system (see <xref target='leap_months'/>).</t>
+          <t>A "SKIP" element is added to define how "missing" instances are handled (see <xref target='skip'/>).</t>
+        </list>
+      </t>
+      <t>
+        The syntax for the "RECUR" value is modified in the following fashion:
+            <figure>
+              <artwork name="abnf"><![CDATA[
+; recur-rule-part is extended from RFC 5545
+recur-rule-part =/   ("RSCALE" "=" rscale)
+                   / ("SKIP" "=" skip)
+
+rscale          = (iana-token  ; A CLDR-registered calendar system
+                               ; name.
+                 / x-name)     ; A non-standard, experimental
+                               ; calendar system name.
+                               ; Names are case insensitive,
+                               ; but uppercase values are preferred.
+
+skip            = ("OMIT" / "BACKWARD" / "FORWARD")
+                 ; Optional, with default value "OMIT", and
+                 ; MUST NOT be present unless "RSCALE" is present.
+
+monthnum        = 1*2DIGIT  ["L"]
+                 ; Existing element modified to include a leap
+                 ; month indicator suffix.
+]]></artwork>
+            </figure></t>
+
+      <section anchor="skip" title="Skipping Invalid Dates">
+        <t>In every calendar system, only certain combinations of day-of-month and month values are valid for a given year, e.g., in the Gregorian calendar system, January 31st is valid but February 31st is not. Similarly, February 29th is valid in a leap year but invalid in a non-leap year. Other calendar systems can also include leap months (see <xref target='leap_months'/>), which vary from year to year. This poses a problem for recurring events where the frequency of recurrence might give rise to an invalid date. For example, a recurring event that starts on January 31st and is set to repeat monthly will generate invalid dates for months with fewer than 31 days. The <xref target='RFC5545'>iCalendar</xref> specification requires recurrence rule generators to ignore any invalid dates generated when iterating the rule. However, that behavior might be surprising to a calendar user born on a leap day and whose birthday event only appears on their calendar every four years. There are common conventions used by humans to determine what to do in such cases, but those conventions can differ from calendar system to calendar system, as well as within the same calendar system, depending on the nature of the event. Typically, humans will expect the "missing" events to be moved to an earlier or later (valid) date.</t>
+       
+ <t>This specification introduces a new "RRULE" element, "SKIP", for use only when the "RSCALE" element is present. The "SKIP" element allows the calendar user agent to specify new options for handling invalid dates.
+          <list>
+            <t>"SKIP=OMIT": this is the default option and corresponds to the existing iCalendar behavior of simply ignoring the invalid date.</t>
+            <t>"SKIP=BACKWARD": when this option is set, a date with an invalid month is changed to the previous (valid) month. A date with an invalid day-of-month is changed to the previous (valid) day&nbhy;of&nbhy;month.</t>
+            <t>"SKIP=FORWARD": when this option is set, a date with an invalid month is changed to the next (valid) month. A date with an invalid day-of-month is changed to the next (valid) day-of-month.</t>
+          </list>
+          Note that for both "BACKWARD" and "FORWARD", if the month is changed and results in an invalid day-of-month, then the skip behavior will be reapplied as per the day-of-month rules, according to the processing order defined below.
+        </t>
+        <t>
+          The month and day-of-month skip behavior is only applied at specific points during the processing of an "RRULE" as determined by the order in which any "BYxxx" elements are processed. The order is as follows (based on the "RRULE" element processing order defined in Section 3.3.10 of <xref target='RFC5545'/>):
+          <list style='symbols'>
+            <t>BYMONTH</t>
+            <t>SKIP (for invalid month only)</t>
+            <t>BYWEEKNO</t>
+            <t>BYYEARDAY</t>
+            <t>BYMONTHDAY</t>
+            <t>SKIP (for invalid day)</t>
+            <t>BYDAY</t>
+            <t>BYHOUR</t>
+            <t>BYMINUTE</t>
+            <t>BYSECOND</t>
+            <t>BYSETPOS</t>
+            <t>COUNT</t>
+            <t>UNTIL</t>
+          </list>
+        </t>
+        <t>
+          It is often possible to avoid having to deal with invalid dates by determining the real intent of a human user, e.g., a human creating a monthly recurring event that starts on January 31st likely intends the event to occur on the last day of every month, in which case that could be encoded into an "RRULE" by using the "BYMONTHDAY=&nbhy;1" element.
+        </t>
+        <t>
+          Only a few types of recurrence patterns are likely to need the use of "SKIP". The following is a list of some situations where it might be needed:
+          <list style='numbers'>
+            <t>The start date of the recurrence is a leap day in the specified calendar system.</t>
+            <t>The start date of the recurrence is in a leap month in the specified calendar system.</t>
+            <t>The start date of the recurrence has a day-of-month value greater than the smallest day-of-month value for any month in any year in the specified calendar system.</t>
+            <t>A "BYMONTHDAY" element in an "RRULE" has a day-of-month value greater than the smallest day-of-month value for any month in any year in the specified calendar system.</t>
+            <t>A "BYMONTH" element in an "RRULE" has a value corresponding to a leap month in the specified calendar system.</t>
+            <t>A combination of a "BYMONTHDAY" element and a "BYMONTH" element in an "RRULE" has a value corresponding to a leap day in the specified calendar system.</t>
+            <t>A "BYYEARDAY" element in an "RRULE" has an absolute value greater than the smallest number of days in any year in the specified calendar system.</t>
+            <t>A "BYWEEKNO" element in an "RRULE" has an absolute value greater than the smallest number of weeks in any year in the specified calendar system.</t>
+          </list>
+        </t>
+        <t>Examples of using "SKIP" for some common use cases appear in <xref target='examples'/>.</t>
+      </section>
+      <section anchor="leap_months" title="Handling Leap Months">
+        <t>Leap months can occur in different calendar systems. For such calendar systems, the following rules are applied for "identifying" months:
+        <list style='numbers'>
+          <t>Numeric values 1 through N are used to identify regular, non-leap, months (where N is the number of months in a regular, non-leap, year).</t>
+          <t>The suffix "L" is added to the regular month number to indicate a leap month that follows the regular month, e.g., "5L" is a leap month that follows the 5th regular month in the year.</t>
+        </list>
+        Care has to be taken when mapping the month identifiers used here with those of any underlying calendar system library being used. In particular, the Hebrew calendar system used by <xref target='UNICODE.ICU'>Unicode (ICU)</xref> uses a month number scheme of 1 through 13, with month 6 being the leap month, and in non-leap years, month 6 is skipped. Thus, ICU months 1 through 5 map to iCalendar months 1 through 5, ICU month 6 maps to iCalendar month "5L", and ICU months 7 through 13 map to iCalendar months 6 through 12.</t>
+      </section>
+      <section title="Examples" anchor="examples">
+        <section title="Chinese New Year">
+          <t>Consider the following set of iCalendar properties (from the example above):
+      <figure><artwork>
+DTSTART;VALUE=DATE:20130210
+RRULE:RSCALE=CHINESE;FREQ=YEARLY
+SUMMARY:Chinese New Year
+</artwork></figure>
+          These define a recurring event for the Chinese New Year, with the first instance being the one in Gregorian year 2013.</t>
+          <t>
+          The Chinese date corresponding to the first instance is "{C}46500101". The table below shows the initial instance and the next four, each of which is determined by adding the appropriate amount to the year component of the Chinese date. Also shown is the conversion back to the Gregorian date:</t>
+          <texttable>
+            <ttcol>Chinese Date</ttcol>
+            <ttcol>Gregorian Date</ttcol>
+            <c>{C}46500101</c>
+            <c>20130210 - DTSTART value</c>
+            <c>{C}46510101</c>
+            <c>20140131</c>
+            <c>{C}46520101</c>
+            <c>20150219</c>
+            <c>{C}46530101</c>
+            <c>20160208</c>
+            <c>{C}46540101</c>
+            <c>20170128</c>
+          </texttable>
+        </section>
+        <section title="Ethiopic 13th Month">
+          <t>Consider the following set of iCalendar properties:
+      <figure><artwork>
+DTSTART;VALUE=DATE:20130906
+RRULE:RSCALE=ETHIOPIC;FREQ=MONTHLY;BYMONTH=13
+SUMMARY:First day of 13th month
+</artwork></figure>
+          These define a recurring event for the first day of the 13th month, with the first instance being the one in Gregorian year 2013. While there are a number of alternative ways of writing the "RRULE" above to achieve the same pattern of recurring dates, the one above was chosen to illustrate a "BYMONTH" value exceeding the limit of 12, previously described in iCalendar (Section 3.3.10 of <xref target='RFC5545'/>).
+</t>
+          <t>
+          The Ethiopic date corresponding to the first instance is "{E}20051301". The table below shows the initial instance and the next four, each of which is determined by adding the appropriate amount to the year component of the Ethiopic date. Also shown is the conversion back to the Gregorian date:</t>
+          <texttable>
+            <ttcol>Ethiopic Date</ttcol>
+            <ttcol>Gregorian Date</ttcol>
+            <c>{E}20051301</c>
+            <c>20130906 - DTSTART value</c>
+            <c>{E}20061301</c>
+            <c>20140906</c>
+            <c>{E}20071301</c>
+            <c>20150906</c>
+            <c>{E}20081301</c>
+            <c>20160906</c>
+            <c>{E}20091301</c>
+            <c>20170906</c>
+          </texttable>
+          <t>Note that in this example, the value of the "BYMONTH" component in the "RRULE" matches the Ethiopic month value and not the Gregorian month.</t>
+        </section>
+        <section title="Hebrew Anniversary Starting in a Leap Month">
+          <t>Consider the following set of iCalendar properties:
+      <figure><artwork>
+DTSTART;VALUE=DATE:20140208
+RRULE:RSCALE=HEBREW;FREQ=YEARLY;BYMONTH=5L;BYMONTHDAY=8;SKIP=FORWARD
+SUMMARY:Anniversary
+</artwork></figure>
+          These define a recurring event for the 8th day of the Hebrew month of Adar I (the leap month identified by "5L"), with the first instance being the one in Gregorian year 2014.</t>
+          <t>
+          The Hebrew date corresponding to the first instance is "{H}577405L08", which is a leap month in year 5774. The table below shows the initial instance and the next four, each of which is determined by adding the appropriate amount to the year component of the Hebrew date, taking into account that only year 5776 is a leap year. Thus, in other years the Hebrew month component is adjusted forward to month 6. Also shown is the conversion back to the Gregorian date:</t>
+          <texttable>
+            <ttcol>Hebrew Date</ttcol>
+            <ttcol>Gregorian Date</ttcol>
+            <c>{H}577405L08</c>
+            <c>20140208 - DTSTART value</c>
+            <c>{H}57750608</c>
+            <c>20150227</c>
+            <c>{H}577605L08</c>
+            <c>20160217</c>
+            <c>{H}57770608</c>
+            <c>20170306</c>
+            <c>{H}57780608</c>
+            <c>20180223</c>
+          </texttable>
+        </section>
+        <section title="Gregorian Leap Day with SKIP">
+          <t>Consider the following set of iCalendar properties:
+      <figure><artwork>
+DTSTART;VALUE=DATE:20120229
+RRULE:FREQ=YEARLY
+SUMMARY:Anniversary
+</artwork></figure>
+These define a recurring event for the 29th of February, 2012, in
+the standard iCalendar calendar scale -- Gregorian. The standard
+iCalendar behavior is that non-existent dates in a recurrence set
+are ignored. Thus, the properties above would only generate
+instances in leap years (2016, 2020, etc.), which is likely not what
+users expect. The new "RSCALE" option defined by this specification
+provides the "SKIP" element, which can be used to "fill in" the
+missing instances in an appropriate fashion. The set of iCalendar
+properties below
+does that:
+      <figure><artwork>
+DTSTART;VALUE=DATE:20120229
+RRULE:RSCALE=GREGORIAN;FREQ=YEARLY;SKIP=FORWARD
+SUMMARY:Anniversary
+</artwork></figure>
+</t>
+          <t>With these properties, the "missing" instances in non-leap years
+          now appear on the 1st of March in those years:</t>
+          <texttable>
+            <ttcol>Instances (with SKIP=FORWARD)</ttcol>
+            <ttcol>Instances (without RSCALE)</ttcol>
+            <c>20120229</c>
+            <c>20120229 - DTSTART value</c>
+            <c>20130301</c>
+            <c></c>
+            <c>20140301</c>
+            <c></c>
+            <c>20150301</c>
+            <c></c>
+            <c>20160229</c>
+            <c>20160229</c>
+            <c>20170301</c>
+            <c></c>
+          </texttable>
+        </section>
+      </section>
+    </section>
+    <section title='Registering Calendar Systems' anchor='registration'>
+      <t>
+        This specification uses the <xref target='UNICODE.CLDR'>Unicode Consortium's registry of calendar systems</xref> to define valid values for the "RSCALE" element of an "RRULE". Note that the underscore character "_" is never used in CLDR-based calendar system names. New values can be added to this registry following Unicode Consortium rules. It is expected that many implementations of non-Gregorian calendars will use software libraries provided by <xref target='UNICODE.ICU'>Unicode (ICU)</xref>, and hence it makes sense to reuse their registry rather than creating a new one. "RSCALE" values are case insensitive, but uppercase is preferred.
+      </t>
+      <t>
+        CLDR supports the use of "alias" values as alternative names for specific calendar systems. These alias values can be used as "RSCALE" values and are treated the same as the equivalent CLDR calendar system they are an alias for.
+      </t>
+      <t>
+        When using the CLDR data, calendar agents SHOULD take into account the "deprecated" value and use the alternative "preferred" calendar system. In particular, the "islamicc" calendar system is considered deprecated in favor of the "islamic-civil" calendar system.
+      </t>
+    </section>
+    <section title='Compatibility' anchor='compatibility'>
+      <t>For calendar user agents that do not support the "RSCALE" element, or do not support the calendar system specified by the "RSCALE" element value, the following behaviors are possible when processing iCalendar data:
+      <list style='numbers'>
+        <t>The calendar user agent can reject the entire iCalendar object within which at least one iCalendar component uses the unrecognized "RSCALE" element or element value.</t>
+        <t>The calendar user agent can reject just the iCalendar components containing an unrecognized "RSCALE" element or element value. Note that any overridden components associated with those rejected components MUST also be rejected (i.e., any other components with the same "UID" property value as the one with the unrecognized "RSCALE" element or element value).</t>
+        <t>The calendar user agent can fall back to a non-recurring behavior for the iCalendar component containing the unrecognized "RSCALE" element or element value (effectively ignoring the "RRULE" property). However, any overridden components SHOULD be rejected as they would represent "orphaned" instances that would seem to be out of place.</t>
+      </list>
+      </t>
+<t>In general, the best choice for a calendar user agent would be option
+(2) above, as it would be the least disruptive choice. Note that when
+processing <xref target="RFC5546">iTIP</xref> messages, the manner of
+the rejection is covered as discussed in the next section.
+</t>
+    </section>
+    <section title='Use with iTIP'>
+      <t><xref target="RFC5546">iTIP</xref> defines how iCalendar data can be sent between calendar user agents to schedule calendar components between calendar users. It is often not possible to know the capabilities of a calendar user agent to which an iTIP message is being sent, but iTIP defines fallback behavior in such cases.</t>
+      <t>For calendar user agents that do not support the "RSCALE" element, the following can occur when iTIP messages containing an "RSCALE" element are received:
+      <list>
+        <t>The receiving calendar user agent can reject the entire iTIP message and return an iTIP reply with a "REQUEST-STATUS" property set to the "3.1" status code (as per Section 3.6.14 of <xref target="RFC5546" />).</t>
+<t>The receiving calendar user agent can fall back to a non-recurring
+behavior for the calendar component (effectively ignoring the "RRULE"
+property) and return an iTIP reply with a "REQUEST-STATUS" property
+set to the "2.3", "2.5", "2.8", or "2.10" status codes (as per
+Sections 3.6.4, 3.6.6, 3.6.9, or 3.6.11, respectively, of <xref
+target="RFC5546" />).</t>
+
+      </list>
+      </t>
+      <t>For calendar user agents that support the "RSCALE" element but do not support the calendar system specified by the "RSCALE" element value, the following can occur:
+        <list>
+          <t>The iTIP message SHOULD be rejected, returning a "REQUEST-STATUS" property set to the "3.1" status code (as per Section 3.6.14 of <xref target="RFC5546" />).</t>
+          <t>If the iTIP message is accepted and the calendar component treated as non-recurring, an iTIP reply with a "REQUEST-STATUS" property set to the "2.8" or "2.10" status codes (as per Sections 3.6.9 or 3.6.11, respectively, of <xref target="RFC5546" />) SHOULD be returned.</t>
+        </list>
+      </t>
+      <t>As noted in <xref target='compatibility'/>, the best choice is to reject the entire iTIP message.</t>
+    </section>
+    <section title='Use with xCal'>
+      <t><xref target="RFC6321">xCal</xref> defines how iCalendar data is represented in XML. This specification extends the &lt;recur&gt; XML element in Section 3.6.10 of <xref target="RFC6321"/> in the following manner:
+        <list style="numbers">
+          <t>A new &lt;rscale&gt; XML element is defined as a child element of &lt;recur&gt;. The content of this element MUST be a string whose value is the "RSCALE" element value of the "RRULE", with case preserved.</t>
+          <t>A new &lt;skip&gt; XML element is defined as a child element of &lt;recur&gt;. The content of this element MUST be a string whose value is the "SKIP" element value of the "RRULE", with case preserved.</t>
+          <t>The &lt;bymonth&gt; XML element is redefined to support either numeric or string values as its content (as per <xref target="leap_months" />).</t>
+        </list>
+        Extensions to the RELAX NG schema in Appendix A of <xref
+        target="RFC6321"/> are defined in <xref target="xcal_relaxng" />
+        of this document.
+      </t>
+      <t>
+        Example: the iCalendar "RRULE" property:
+      <figure><artwork>
+RRULE:RSCALE=GREGORIAN;FREQ=YEARLY;SKIP=FORWARD        
+</artwork></figure>
+         would be represented in XML as:
+      <figure><artwork><![CDATA[
+<rrule>
+  <recur>
+    <rscale>GREGORIAN</rscale>
+    <freq>YEARLY</freq>
+    <skip>FORWARD</skip>
+  </recur>
+</rrule>
+]]></artwork></figure>
+      </t>
+    </section>
+    <section title='Use with jCal'>
+      <t><xref target="RFC7265">jCal</xref> defines how iCalendar data is represented in JSON. This specification extends the "recur" JSON object defined in Section 3.6.10 of <xref target="RFC7265"/> in the following manner:
+        <list style="numbers">
+          <t>A new "rscale" child member is defined. This MUST be a string whose value is the "RSCALE" element value of the "RRULE", with case preserved.</t>
+          <t>A new "skip" child member is defined. This MUST be a string whose value is the "SKIP" element value of the "RRULE", with case preserved.</t>
+          <t>The "bymonth" child member is redefined to support either numeric or string values. If the "BYMONTH" element value is an integer, then a numeric JSON value MUST be used. If the "BYMONTH" element value is an integer with the "L" suffix (as per <xref target="leap_months" />), then a JSON string value MUST be used.</t>
+        </list>
+      </t>
+      <t>
+        Example: the iCalendar "RRULE" property:
+      <figure><artwork>
+RRULE:RSCALE=GREGORIAN;FREQ=YEARLY;SKIP=FORWARD        
+</artwork></figure>
+         would be represented in JSON as:
+      <figure><artwork><![CDATA[
+[
+  "rrule",
+  {},
+  "recur",
+  {
+    "rscale": "GREGORIAN",
+    "freq": "YEARLY",
+    "skip": "FORWARD"
+  }
+]
+]]></artwork></figure>
+      </t>
+    </section>
+    <section title='Use with CalDAV'>
+      <t>The <xref target="RFC4791">CalDAV</xref> calendar access protocol allows clients and servers to exchange iCalendar data. In addition, CalDAV clients are able to query calendar data stored on the server, including time-based queries. Since an "RSCALE" element value determines the time ranges for recurring instances in a calendar component, CalDAV servers need to support it to interoperate with clients also using the "RSCALE" element.</t>
+      <t>A CalDAV server advertises a CALDAV:supported-rscale-set Web Distributed Authoring and Versioning (WebDAV) property on calendar home or calendar collections if it supports use of the "RSCALE" element as described in this specification. The server can advertise a specific set of supported calendar systems by including one or more CALDAV:supported-rscale XML elements within the CALDAV:supported&nbhy;rscale&nbhy;set XML element. If no CALDAV:supported&nbhy;rscale XML elements are included in the WebDAV property, then clients can try any calendar system value but need to be prepared for a failure when attempting to store the calendar data.</t>
+      <t>Clients MUST NOT attempt to store iCalendar data containing "RSCALE" elements if the CALDAV:supported-rscale-set WebDAV property is not advertised by the server.</t>
+      <t>The server SHOULD return an HTTP 403 response with a DAV:error element containing a CALDAV:supported-rscale XML element, if a client attempts to store iCalendar data with an "RSCALE" element value not supported by the server.</t>
+      <t>It is possible for an "RSCALE" value to be present in calendar data on the server being accessed by a client that does not support an "RSCALE" element or its specified value. It is expected that existing clients, unaware of "RSCALE", will fail gracefully by ignoring the calendar component, while still processing other calendar data on the server (as per option (2) in <xref target='compatibility'/>).</t>
+      <section title="CALDAV:supported-rscale-set Property">
+        <t>
+          <list style="hanging">
+            <t hangText="Name:">supported-rscale-set</t>
+            <t hangText="Namespace:">urn:ietf:params:xml:ns:caldav</t>
+            <t hangText="Purpose:">Enumerates the set of supported iCalendar "RSCALE" element values supported by the server.</t>
+            <t hangText="Protected:">This property MUST be protected and SHOULD NOT be returned by a PROPFIND allprop request (as defined in Section 14.2 of <xref target="RFC4918"/>).</t>
+            <t hangText="Description:">See above.</t>
+            <t hangText="Definition:">
+              <figure><artwork><![CDATA[
+<!ELEMENT supported-rscale-set (supported-rscale*)>
+<!ELEMENT supported-rscale (#PCDATA)>
+<!-- PCDATA value: string - case insensitive but
+     uppercase preferred -->
+]]></artwork></figure>
+            </t>
+            <t hangText="Example:">
+              <figure>
+                <artwork><![CDATA[
+<C:supported-rscale-set
+     xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <C:supported-rscale>GREGORIAN</C:supported-rscale>
+  <C:supported-rscale>CHINESE</C:supported-rscale>
+  <C:supported-rscale>ISLAMIC-CIVIL</C:supported-rscale>
+  <C:supported-rscale>HEBREW</C:supported-rscale>
+  <C:supported-rscale>ETHIOPIC</C:supported-rscale>
+</C:supported-rscale-set>
+]]></artwork>
+              </figure>
+            </t>
+          </list>
+        </t>
+      </section>
+    </section>
+    <section title='Security Considerations'>
+      <t>This specification does not introduce any additional security concerns beyond those described in <xref target="RFC5545" />, <xref target="RFC5546" />, and <xref target="RFC4791" />.</t>
+    </section>
+ 
+  </middle>
+  <back>
+    <references title='Normative References'>
+  <?rfc include="reference.RFC.2119" ?>
+  <?rfc include="reference.RFC.4791" ?>
+  <?rfc include="reference.RFC.4918" ?>
+  <?rfc include="reference.RFC.5234" ?>
+  <?rfc include="reference.RFC.5545" ?>
+  <?rfc include="reference.RFC.5546" ?>
+  <?rfc include="reference.RFC.6321" ?>
+  <?rfc include="reference.RFC.7265" ?>
+  
+    <reference anchor='UNICODE.CLDR' target='http://www.unicode.org/repos/cldr/tags/latest/common/bcp47/calendar.xml'>
+      <front>
+      <title>CLDR calendar.xml Data</title>
+      <author><organization>The Unicode Consortium
+      </organization>
+      </author>
+      <date />
+      </front>
+      <seriesInfo name='Unicode Consortium' value='CLDR'/>
+    </reference>
+    </references>
+
+    <references title='Informative References'>
+
+    <reference anchor='UNICODE.ICU' target='http://site.icu-project.org'>
+      <front>
+      <title>International Components for Unicode</title>
+      <author fullname='The Unicode Consortium'>
+          <organization />
+      </author>
+      <date month='April' year='2014' />
+      </front>
+    </reference>
+
+    <reference anchor="ISO.8601.2004">
+      <front>
+      <title>Data elements and interchange formats - Information interchange - Representation of dates and times</title>
+      <author>
+      <organization>International Organization for Standardization</organization>
+      </author>
+      <date month="December" year="2004" />
+      </front>
+      <seriesInfo name="ISO" value="Standard 8601" />
+    </reference>
+
+    </references>
+
+    <section anchor="xcal_relaxng" title="xCal RELAX NG Schema Update">
+    <t>
+    The following changes are made to the RELAX NG schema defined in
+    Appendix A of <xref target="RFC6321" />.
+
+      <figure><artwork>
+# 3.3.10 RECUR
+# This extension adds type-rscale and type-skip,
+# and modifies type-bymonth
+
+value-recur = element recur {
+    type-rscale?,
+    type-freq,
+    (type-until | type-count)?,
+    element interval {
+        xsd:positiveInteger
+    }?,
+    type-bysecond*,
+    type-byminute*,
+    type-byhour*,
+    type-byday*,
+    type-bymonthday*,
+    type-byyearday*,
+    type-byweekno*,
+    type-bymonth*,
+    type-bysetpos*,
+    element wkst { type-weekday }?,
+    type-skip?
+}
+
+
+type-rscale = element rscale {
+    xsd:string
+}
+
+type-bymonth = element bymonth {
+    xsd:positiveInteger |
+    xsd:string
+}
+
+type-skip = element skip {
+    "OMIT" |
+    "BACKWARD" |
+    "FORWARD"
+}
+</artwork></figure>
+</t>
+    </section>
+   
+    <section title='Acknowledgments' numbered='no'>
+      <t>Thanks to the following for feedback:
+      Mark Davis,
+      Mike Douglass,
+      Donald Eastlake,
+      Peter Edberg,
+      Marten Gajda,
+      Philipp Kewisch,
+      Barry Leiba,
+      Jonathan Lennox,
+      Ken Murchison,
+      Arnaud Quillaud,
+      Dave Thewlis,
+      and Umaoka Yoshito.
+      </t>
+            <t>
+                This specification originated from work at the Calendaring and Scheduling Consortium, which has helped with the development and testing of implementations.
+            </t>
+    </section>
+  </back>
+</rfc>

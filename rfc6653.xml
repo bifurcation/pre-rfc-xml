@@ -1,0 +1,648 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<?xml-stylesheet type='text/xsl'
+href='http://xml.resource.org/authoring/rfc2629.xslt' ?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes"?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc rfcedstyle="yes"?>
+
+<rfc category="info" number="6653" submissionType="independent">
+
+
+<front>
+    <title abbrev="Prefix Delegation">
+    DHCPv6 Prefix Delegation in Long-Term Evolution (LTE) Networks
+    </title>
+
+
+       <author initials="B.S." surname="Sarikaya" fullname="Behcet Sarikaya">
+    <organization>Huawei USA</organization>
+    <address>
+    <postal>
+    <street>5340 Legacy Dr.</street>
+    <street></street>
+    <city>Plano</city> <region>TX</region> <code>75074</code>
+    </postal>
+    <email>sarikaya@ieee.org</email>
+    </address>
+    </author>  
+    
+    
+       <author initials='F.X.' surname='Xia' fullname="Frank Xia">
+    <organization>Huawei USA</organization>
+    <address>
+    <postal>
+    <street>1700 Alma Drive, Suite 500</street>
+    <street></street>
+    <city>Plano</city> <region>TX</region> <code>75075</code>
+    </postal>
+    <phone>+1 972-509-5599</phone>
+    <email>xiayangsong@huawei.com</email>
+    </address>
+    </author> 
+       
+       <author initials='T.M.' surname='Lemon' fullname="Ted Lemon">
+    <organization>Nominum</organization>
+    <address>
+    <postal>
+    <street>2000 Seaport Blvd.</street>
+    <street></street>
+    <city>Redwood City</city> <region>CA</region> <code>94063</code>
+    </postal>
+    <email>mellon@nominum.com</email>
+    </address>
+    </author> 
+    
+     
+    <date month="July"  year="2012"/>
+    <area>Internet</area>
+
+    <abstract>
+    <t>As interest in IPv6 deployment in cellular networks increases,
+several migration issues have been being raised; IPv6 prefix management
+is the issue addressed in this document.  Based on the idea that DHCPv6
+servers can manage prefixes, we use DHCPv6 Prefix Delegation
+to address such prefix management issues as an access router
+offloading delegation of prefixes and release tasks to a DHCPv6
+server.  The access router first requests a prefix for an incoming mobile node
+from the DHCPv6 server.  The access router may next do stateless or stateful
+address allocation to the mobile node, e.g., with a Router Advertisement or
+using DHCP.  We also describe prefix management using Authentication,
+Authorization, and Accounting (AAA) servers.</t> 
+    </abstract>
+</front>
+
+
+<middle>
+
+    <section title="Introduction">
+    <t><xref target="elements"></xref> illustrates the key elements of a typical cellular 
+    access network. In a Long-Term Evolution (LTE) network, the Access Router
+(AR) is the Packet Data Network (PDN) Gateway <xref target="3GPP-23401"/>.</t>
+
+     <figure anchor="elements" title="Key Elements of a Typical Cellular Network"> <artwork><![CDATA[
+                                       +-------------+
+                                       |   +------+  |
+                                       |   |DHCP  |  |
++-----+   +-----+   +------+  +------+ |   |Server|  | +------+
+| MN  |---| BS  |---+Access+--+Access+-+   +------+  +-+Border|
++-----+   +-----+   |  GW  |  |Router| |IP Network(s)| |Router+-Internet
+                    +--+---+  +--+---+ |             | +------+
+                       |         |     +-------------+
++-----+   +-----+      |         |    +------+
+| MN  |---| BS  |------+         |    |AAA   |
++-----+   +-----+                +--- |Server|
+                                      +------+
+        ]]></artwork> </figure>
+    
+    <t>The Mobile Node (MN) attaches to a Base Station (BS) through an LTE
+air interface. A BS manages connectivity of User Equipment (UE) and extends
+connections to an Access Gateway (GW), e.g., the Serving Gateway (S-GW)
+in an LTE network. The access GW and the AR are connected via an IP network.
+The AR is the first-hop router of the MNs and is in charge of address/prefix
+management.</t>
+    <t>
+    The AR is connected to an IP network that is owned by the
+operator; this network is connected to the public Internet via a border
+router. The network contains servers for subscriber management, including
+Quality of Service, billing, and accounting, as well as a Dynamic Host Configuration Protocol (DHCP) server <xref target="RFC6342"/>.
+    </t>
+
+    <t>With IPv6 addressing, because mobile network links are point-to-point
+(P2P), the per-MN interface prefix model is used <xref target="RFC3314"/> <xref
+target="RFC3316"/>.  In the per-MN interface prefix model, 
+     prefix management is an issue.</t>
+
+    <t>When an MN attaches to an AR, the AR requests one or more prefixes for
+the MN. When the MN detaches from the AR, 
+    the prefixes should be released. When the MN becomes idle, the AR should
+keep (i.e., not release) the allocated prefixes. 
+   </t>
+   
+    <t>
+    This document describes how to use DHCPv6 Prefix Delegation (DHCPv6-PD)
+in mobile
+networks, such as networks based on standards developed by the 3rd Generation
+Partnership Project (3GPP) and it could easily be adopted by the Worldwide
+Interoperability for Microwave Access (WiMAX) Forum as well. In view of
+migration to IPv6, the number of MNs connected to the network at a
+given time may become very high. Traditional techniques such as prefix pools
+are not scalable. In such cases, DHCPv6-PD becomes the viable approach to take.
+        </t>
+        <t>
+        The techniques described in this document have not been approved
+by the IETF or the 3GPP, except for those techniques described below in <xref
+target="MNBased"/>. This document is not a Standard or Best Current
+Practice. This document is published only for possible consideration by
+operators.
+        </t>
+        <t>
+        This document is useful when address space needs to be managed by
+DHCPv6-PD. There are obviously other means of managing address space, including
+having the AR track internally what address space is used by what mobile.
+        </t>
+
+    </section>
+
+    <section title="Terminology and Acronyms">
+    <t>
+    3GPP - 3rd Generation Partnership Project
+    </t>
+
+    <t>
+    AAA - Authentication, Authorization, and Accounting
+    </t>
+
+    <t>
+    AR - Access Router
+    </t>
+
+    <t>
+    BS - Base Station
+    </t>
+
+    <t>
+    DHCP - Dynamic Host Configuration Protocol
+    </t>
+
+    <t>
+     E-UTRAN - Evolved Universal Terrestrial Radio Access Network 
+    </t>
+
+    <t>
+    GPRS - General Packet Radio Service 
+    </t>
+
+    <t>
+    LTE - Long-Term Evolution 
+    </t>
+
+    <t>
+    MN - Mobile Node
+    </t>
+
+    <t>
+    P2P - Point-to-Point
+    </t>
+
+    <t>
+    PD - Prefix Delegation
+    </t>
+
+    <t>
+    PDN - Packet Data Network
+    </t>
+
+    <t>
+    S-GW - Serving Gateway
+    </t>
+
+    <t>
+    WiMAX - Worldwide Interoperability for Microwave Access
+    </t>
+    </section> 
+
+    <section anchor="prefixdel" title="Prefix Delegation Using DHCPv6">
+    <t>
+        "Access router" refers to the cellular network entity that has a DHCP
+client. According to <xref target="3GPP-23401"/>, the DHCP client is located in
+the PDN Gateway, and so the AR is the PDN Gateway in the LTE architecture.
+        </t>
+
+    <section anchor="PrefixRequest" title="Prefix Request Procedure for Stateless Address Configuration">
+    
+    <t>There are two function modules in the AR: the DHCP client and
+the DHCP relay. DHCP messages should be relayed if the AR and a DHCP server are not 
+directly connected; otherwise, the DHCP relay function in the AR is not necessary.  <xref target="RequestFigure"></xref> 
+    illustrates a scenario in which the AR and the DHCP server aren't
+directly connected:</t>
+
+  <figure anchor="RequestFigure" title="Prefix Request"> <artwork> <![CDATA[
+  +-------+               +----------------------+    +-----------+
+  |  MN   |               |       AR             |    |DHCP Server|
+  +-------+               |DHCP     |  Relay     |    +-----------+
+      |                   |Client   |  Agent     |          |
+      |                   +----------------------+          |
+      |1 Initial NW entry |                                 |
+      |or attach procedure|                                 |
+      |<----------------->|                                 |
+      |                   |2 Solicit                        |
+      |                   |--------->         Relay-forward |
+      |                   |                 --------------->|
+      |                   |                   3 Relay-reply |
+      |                   |Advertise        <---------------|
+      |                   |<--------                        |
+      |                   |4 Request                        |
+      |                   |--------->         Relay-forward |
+      |                   |                 --------------->|
+      |                   |                   5 Relay-reply |
+      |                   |Reply            <---------------|
+      |                   |<--------                        |
+      |6  Attach          |                                 |
+      | Completed         |                                 |
+      |<----------------->|                                 |
+      |7 Router           |                                 |
+      |  Solicitation     |                                 |
+      |------------------>|                                 |
+      | 8 Router          |                                 |
+      |  Advertisement    |                                 |
+      |<------------------|                                 |
+    ]]></artwork> </figure>
+
+    <t><list style="numbers">
+    <t>An MN (also referred to as UE, or User Equipment, by the 3GPP)
+performs initial network entry and authentication procedures, a.k.a. the
+attach procedure. </t>
+
+    <t>On successful completion of Step 1, the AR initiates the DHCP Solicit procedure to request 
+    prefixes for the MN. The DHCP client in the AR creates and transmits a Solicit message as described in Sections&nbsp;17.1.1
+    ("Creation of Solicit Messages") and 17.1.2 ("Transmission of Solicit Messages") of <xref target="RFC3315"/>.  
+    The DHCP client in an AR that supports DHCPv6 Prefix Delegation <xref target="RFC3633"/> creates an Identity Association for Prefix Delegation (IA_PD) and assigns it an Identity Association IDentifier (IAID).  The client must include the IA_PD option in the 
+    Solicit message. The DHCP client as Requesting Router (RR) must set the
+prefix-length field to a value less than, e.g., 48 or equal to 64 to request a
+/64 prefix.
+    Next, the relay agent in the AR sends to the DHCP server a
+Relay-forward message in which a Solicit message is encapsulated.</t>
+
+    <t>The DHCP server sends an Advertise message to the AR in the same way as
+that described 
+    in Section 17.2.2 ("Creation and Transmission of Advertise Messages") of
+<xref target="RFC3315"/>. An Advertise message with the IA_PD shows that
+the DHCP
+server is capable of delegating prefixes. This message is received encapsulated
+in a Relay-reply message by the relay agent in the AR and is sent as an
+Advertise message to the DHCP client in the AR.</t>
+
+    <t>The AR (DHCP client and relay agent) uses the same message exchanges as
+those described in Section 18 ("DHCP Client-Initiated Configuration Exchange")
+of
+<xref target="RFC3315"/> and in <xref target="RFC3633"/> to obtain or update
+prefixes from the DHCP server.  The AR (DHCP client and relay agent) and 
+    the DHCP server use the IA_PD Prefix option to exchange information about prefixes in much the 
+    same way as IA Address options are used for assigned addresses. This is
+accomplished by the AR sending a DHCP Request message and the DHCP server
+sending a DHCP Reply message.</t>
+
+    <t>The AR stores the prefix information it received in the Reply
+       message.</t>
+
+    <t>A connection between the MN and AR is established, and the link becomes
+active. This step completes the Packet Data Protocol (PDP) Context Activation
+Procedure in Universal Mobile Telecommunications System (UMTS) and PDN connection establishment in LTE networks.
+    </t>
+
+    <t>The MN may send a Router Solicitation message to solicit the AR to send
+a Router Advertisement (RA) message.</t>
+
+    <t>The AR advertises the prefixes received in the IA_PD option to the MN
+via an RA once the PDP Context/PDN connection is
+established, or in response to a Router Solicitation message sent from the
+MN. </t>
+    
+    </list></t>
+    <t>
+    The 4-way exchange between the AR as RR and the DHCP server as Delegating
+Router (DR), as shown in <xref target="RequestFigure"></xref>, may be reduced
+to a two-message exchange by using the Rapid Commit option <xref
+target="RFC3315"></xref>. The DHCP client in the AR acting as RR includes
+a Rapid Commit option in the Solicit message. The DR then sends a Reply message
+containing one or more prefixes.
+    </t>
+
+    </section> 
+
+    <section anchor="PrefixRequestFull" title="Prefix Request Procedure for Stateful Address Configuration">
+        <t>
+        Stateful address configuration requires a different architecture than
+that shown in <xref target="RequestFigure"></xref>; in this type of 
+configuration, there are two function modules in the AR: the DHCP server
+and the DHCP client. 
+        </t>
+
+        <t>
+        After the initial attach is completed, a connection to the AR is
+established for the MN. The DHCP client function at the AR as RR and the DHCP
+server as DR follow Steps 2 through 5 of the procedure shown in
+<xref target="RequestFigure"></xref> to get the new prefix for this interface
+of the MN from the IA_PD option exchange defined in <xref target="RFC3633"></xref>.
+        </t>
+
+        <t>The DHCPv6 client at the MN sends the DHCP Request to the AR.
+          The DHCP server function at the AR must use the IA_PD option received
+in the DHCPv6-PD exchange to assign an address to the MN. The IA_PD option must
+contain the prefix. The AR sends to the MN a DHCP Reply message containing
+the IA address option (IAADDR). <xref target="DHCPRequestFigure"/> shows
+the message sequence.
+        </t>
+
+        <t>
+        The MN configures its interface with the address assigned by the
+DHCP server in the DHCP Reply message.
+        </t>
+
+        <t>
+        In <xref target="DHCPRequestFigure"/>, the AR may be the home
+gateway of a fixed network to which the MN gets connected during the
+MN's handover.
+        </t>
+        
+ <figure anchor="DHCPRequestFigure" title="Stateful Address Configuration Following PD"> <artwork><![CDATA[
+ +----------+             +--------------+             +-----------+
+ |  MN      |             |    AR        |             |DHCP Server|
+ |   |DHCP  |             | DHCP |DHCP   |             +-----------+
+ |   |Client|             |Server|Client |
+ +----------+             +--------------+
+     |  Initial NW entry     |                           |
+     |or attach procedure    |                           |
+     |<----------------->    |                           |
+     |                       |      DHCPv6-PD exchange   |
+     |                       |      similar to Steps 2-5 |
+     |   Solicit             |      of Figure 2 (IA_PD)  |
+     |---------------------->|                           |
+     |   Advertise           |                           |
+     |<----------------------|                           |
+     |    Request            |                           |
+     |---------------------->|                           |
+     |                       |                           |
+     |                       |                           |
+     |                       | Use prefix in IA_PD       |
+     |    Reply              | to assign IAADDR          |
+     |<--------------------- |                           |
+   ]]></artwork> </figure> 
+
+     </section>
+
+     <section anchor="MNBased" title="The MN as Requesting Router in Prefix Delegation">
+         <t>
+    The AR may use a DHCPv6 Prefix Delegation exchange to get a delegated
+prefix shorter than /64 by setting the prefix-length field to a value less
+than 64, e.g., 56 to get a /56 prefix. Each newly attaching MN first goes
+through the
+steps in <xref target="RequestFigure"/>, in which the AR requests a 
+shorter prefix to establish a default connection with the MN. 
+        </t>
+
+        <t>
+    The MN may next request additional prefixes (/64 or shorter) from the AR
+using DHCPv6 Prefix Delegation, where the MN is the RR and the AR is the
+DR (see <xref target="RFC6459"/> and Section 5.3.1.2.6 of <xref
+target="3GPP-23401"/>). In this case, the call flow is similar to that
+shown in <xref target="DHCPRequestFigure"/>. The Solicit message must include
+the IA_PD option
+with the prefix-length field set to 64. The MN may request more than one /64
+prefix. The AR as DR must delegate these prefixes, excluding the
+prefix assigned to the default connection.  
+    </t>
+     </section>
+
+    <section anchor="PrefixesRelease" title="Prefix Release Procedure">
+ 
+    <t>Prefixes can be released in two ways: via prefix aging, or via 
+the DHCP release procedure. In prefix aging, a prefix should not be used
+by an MN when the prefix ages, 
+    and the DHCP server can delegate it to another MN.  A prefix lifetime is
+delivered from the DHCPv6 server to the MN via the DHCP IA_PD Prefix option
+<xref target="RFC3633"></xref> and the RA Prefix Information option <xref
+target="RFC4861"></xref>.  <xref target="ReleaseFigure"></xref> illustrates 
+how the AR releases prefixes to a DHCP server that isn't directly
+connected to the AR:</t>  
+
+    <t><list style="numbers">   
+    <t>A signal that an MN has detached, such as switch-off or handover,
+triggers the prefix release procedure. </t> 
+    
+    <t>The AR initiates a Release message to give the prefixes back to
+the DHCP server. 
+     </t>
+
+     <t>
+    The server responds with a Reply message. The prefixes can then
+be reused by other MNs.</t>
+    </list></t>
+    
+  <figure anchor="ReleaseFigure" title="Prefix Release"> <artwork><![CDATA[
+    +-------+               +-------+             +-----------+
+    |  MN   |               |  AR   |             |DHCP Server|
+    +-------+               +-------+             +-----------+
+        |                       |                       |
+        |  1 De-registration    |                       |
+        |  handover, or other   |                       |
+        |<--------------------->|                       |
+        |                       |2 Relay-forward/Release|
+        |                       |---------------------->|
+        |                       |                       |
+        |                       |3 Relay-reply/Reply    |
+        |                       |<--------------------- |
+        |                       |                       |
+        |                       |                       |
+        ]]></artwork> </figure>
+    </section>     
+    
+    <section anchor="Miscellaneous" title="Miscellaneous Considerations">
+      
+    <section anchor="IAID" title="How to Generate an IAID">
+
+    <t>The IAID is 4 bytes in length and should be unique in the scope
+of an AR.
+The prefix table should be maintained; this table contains the IAID, the
+Media Access Control (MAC) address, and the prefix(es) assigned to the MN.
+In LTE networks, the International Mobile Equipment Identity (IMEI)
+uniquely identifies the MN's interface and thus corresponds to the MAC
+address. The MAC address of the interface should be stored in the
+prefix table and is used as the key for searching the table.
+    </t>
+
+    <t>
+    The IAID should be set to Start_IAID; Start_IAID is an integer of
+    4&nbsp;octets. The following algorithm is used to generate the IAID:</t> 
+    <t><list style="numbers">
+    
+    <t>Set this IAID value in the IA_PD Prefix option.  Request a
+prefix for this MN as described in <xref target="PrefixRequest"></xref> or <xref target="PrefixRequestFull"></xref>.
+    </t>
+    <t>Store the IAID, MAC address, and received prefix(es) in the
+next entry of the prefix table.
+    </t>
+    <t>Increment the IAID.
+    </t>
+     </list></t> 
+     <t>
+     A prefix table entry for an MN that hands over to another AR must
+be removed. The IAID value is released and can then be reused.
+     </t> 
+    </section>     
+
+    <section anchor="Policy" title="Policy to Delegate Prefixes">
+    <t>
+    In P2P links, if /64 prefixes of all MNs connected to one or more
+ARs are broadcast dynamically upstream as route information, high
+routing-protocol traffic (IGP, OSPF, etc.) due to per-MN interface
+prefixes will result.  There are two solutions to this problem.
+One solution is to use static configuration, which would be preferable in many
+cases. No routing protocols are needed, because each AR has a known piece of
+address space. If the DHCP servers also know that address space, then they
+will assign to a particular AR a prefix from that space.
+      </t>
+      
+      <t>
+       The other solution is to use route aggregation. For example, each AR can
+be assigned a /48 or /32 prefix (an aggregate prefix, a.k.a service provider
+common prefix),
+     while each interface of an MN can be assigned a /64 prefix. The /64 prefix
+is an extension of the /48 prefix -- for example, 
+an AR's /48 prefix is 2001:db8:0::/48 -- while an interface of the MN is
+assigned a 2001:db8:0:2::/64 prefix.  The border router in <xref target="elements"/> may be manually configured to 
+     broadcast only an individual AR's /48 or /32 prefix information to the
+Internet.
+     </t>
+     </section>
+    </section>
+   </section>
+    
+    <section anchor="PrefixRADIUS" title="Prefix Delegation Using RADIUS and Diameter">
+
+    <t>
+    In the initial network entry procedure shown in <xref target="RequestFigure"/>, the
+AR as Remote Authentication Dial In User Service (RADIUS) client sends an
+Access&nbhy;Request message with 
+    MN information to the RADIUS server.  If the MN passes the authentication, the RADIUS server may send an
+    Access&nbhy;Accept message with prefix information to the AR using the
+Framed&nbhy;IPv6-Prefix attribute.  The AAA server also provides routing information
+to be configured for the MN on the AR using the Framed&nbhy;IPv6-Route attribute.
+Using such a process, the AR can handle initial prefix assignments to MNs,
+but managing the lifetime
+of the prefixes is totally left to the AR. The Framed-IPv6-Prefix is not
+designed to support
+   delegation of IPv6 prefixes. For this situation, the
+Delegated-IPv6-Prefix attribute, which is discussed below, can be used.
+    </t>
+
+    <t><xref target="RFC4818"></xref> defines a RADIUS attribute,
+Delegated-IPv6-Prefix, which carries an 
+    IPv6 prefix to be delegated.  This attribute is usable within either RADIUS or Diameter. 
+    <xref target="RFC4818"></xref> recommends that the DR use the AAA
+server to receive the prefixes to be delegated, by using the
+Delegated-IPv6-Prefix attribute/Attribute-Value Pair (AVP).
+    </t>
+    
+    <t>
+    The DHCP server as DR, as shown in <xref target="RequestFigure"></xref>,
+may send an 
+    Access&nbhy;Request packet containing the Delegated-IPv6-Prefix attribute to the
+RADIUS server to request prefixes. In the Access-Request message, the DR may
+provide a hint that it would prefer a prefix --
+    for example, a /48 prefix.  As the RADIUS server is not required to honor
+the hint, the server may delegate a longer prefix -- e.g., /56 or /64 -- 
+in an Access-Accept message 
+    containing the Delegated&nbhy;IPv6&nbhy;Prefix attribute <xref target="RFC4818"/>. 
+     The attribute 
+    can appear multiple times when the RADIUS server delegates multiple
+prefixes to the DR. 
+    The DR sends the prefixes to the RR using the IA_PD option, and the AR
+as RR uses them for MNs, as described in <xref target="prefixdel"/>. 
+    </t>
+
+    <t>
+    When Diameter is used, the DHCP server as DR, as shown
+in <xref target="RequestFigure"></xref>, sends an AA-Request message.
+    The AA-Request message may contain a Delegated-IPv6-Prefix AVP. 
+    The Diameter server replies with an AA&nbhy;Answer message.
+    The AA-Answer message may contain a Delegated&nbhy;IPv6-Prefix AVP.
+    The AVP 
+    can appear multiple times when the Diameter server assigns multiple
+prefixes to an MN.
+    The Delegated-IPv6-Prefix AVP may appear in an 
+    AA-Request packet as a hint from the AR to the Diameter server that it
+would
+prefer a prefix -- 
+    for example, a /48 prefix. The Diameter server may delegate in the
+AA-Answer message a /64 prefix, which is an extension of the /48 prefix.
+      As in the case of RADIUS, the DR sends the prefixes to the
+RR using the IA_PD option, and the AR as RR uses them for the MNs as described
+in <xref target="prefixdel"/>.
+    </t>
+    
+    </section>     
+
+    <section title="Security Considerations">
+    <t>This document does not introduce any additional message types
+and therefore does not introduce any additional threats.
+The security procedures for DHCPv6 <xref target="RFC3633"></xref>,
+RADIUS <xref target="RFC2865"></xref>, and Diameter <xref
+target="RFC3588"></xref> apply.</t>
+    </section> 
+  
+  <section title='Acknowledgements'>
+  <t>
+  We are grateful to Suresh Krishnan, Hemant Singh, Qiang Zhao, Ole Troan, Qin
+Wu, Jouni Korhonen, Cameron Byrne, Brian Carpenter, Jari Arkko, and Jason Lin,
+whose in-depth reviews of this document led to several improvements.
+  </t>
+  </section>
+</middle>
+
+
+<back>
+<?rfc rfcedstyle="no"?>
+<references title='Informative References'>
+
+    <?rfc include='reference.RFC.3633'?>
+    
+    <?rfc include='reference.RFC.3314'?>
+
+    <?rfc include='reference.RFC.3315'?>
+
+    <?rfc include='reference.RFC.3316'?>
+        
+    <?rfc include='reference.RFC.2865'?>
+
+    <?rfc include='reference.RFC.3588'?>         
+         
+    <?rfc include='reference.RFC.4861'?>
+
+    <?rfc include='reference.RFC.4818'?>                            
+      
+      <reference anchor="3GPP-23401" >
+        <front>
+          <title abbrev="3GPP 23.401">
+          General Packet Radio Service (GPRS)
+enhancements for Evolved Universal Terrestrial Radio Access Network 
+(E-UTRAN) access (Release 11)
+          </title>
+          <author><organization>3GPP</organization> </author>
+          <date month="December" year="2011" />
+        </front>
+<seriesInfo name="TS" value="23.401 V11.0.0"/>
+        </reference>
+
+            <?rfc include='reference.RFC.6342'?>
+
+<reference anchor='RFC6459'>
+<front>
+<title>IPv6 in 3rd Generation Partnership Project (3GPP) Evolved Packet System (EPS)</title>
+<author initials='J.' surname='Korhonen' fullname='J. Korhonen' role="editor">
+<organization /></author>
+<author initials='J.' surname='Soininen' fullname='J. Soininen'>
+<organization /></author>
+<author initials='B.' surname='Patil' fullname='B. Patil'>
+<organization /></author>
+<author initials='T.' surname='Savolainen' fullname='T. Savolainen'>
+<organization /></author>
+<author initials='G.' surname='Bajko' fullname='G. Bajko'>
+<organization /></author>
+<author initials='K.' surname='Iisakkila' fullname='K. Iisakkila'>
+<organization /></author>
+<date year='2012' month='January' />
+</front>
+<seriesInfo name='RFC' value='6459' />
+</reference>
+
+</references> 
+<?rfc rfcedstyle="yes"?>
+</back>
+
+</rfc>

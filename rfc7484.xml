@@ -1,0 +1,570 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+
+<rfc category="std" ipr="trust200902" number="7484" submissionType="IETF" consensus="yes">
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc rfcedstyle="yes" ?>
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<front>
+<title abbrev="Finding Authoritative RDAP Service">Finding the Authoritative Registration Data (RDAP) Service</title>
+<author initials="M." surname="Blanchet" fullname="Marc Blanchet">
+  <organization>Viagenie</organization>
+  <address>
+    <postal>
+      <street>246 Aberdeen</street>
+      <city>Quebec</city>
+      <region>QC</region>
+      <code>G1R 2E1</code>
+      <country>Canada</country>
+    </postal>
+    <email>Marc.Blanchet@viagenie.ca</email>
+    <uri>http://viagenie.ca</uri>
+  </address>
+</author>
+
+<date month="March" year="2015" />
+
+<keyword>whois</keyword>
+<keyword>bootstrap</keyword>
+<keyword>IDN</keyword>
+<keyword>AS</keyword>
+<keyword>IPv4</keyword>
+<keyword>IPv6</keyword>
+<keyword>JSON</keyword>
+ 
+<abstract>
+<t>This document specifies a method to find which Registration Data Access Protocol (RDAP) server is authoritative to answer queries for a requested scope, such as domain names, IP addresses, or Autonomous System numbers.</t>
+</abstract>
+</front>
+<middle>
+  <section title="Introduction">
+<t>Querying and retrieving registration data from registries are defined in
+Registration Data Access Protocol (RDAP) <xref target="RFC7480"/> <xref
+target="RFC7482"/> <xref target="RFC7483"/>. These documents do not specify where to send the queries. This document specifies a method to find which server is authoritative to answer queries for the requested scope.</t>
+<t>Top-Level Domains (TLDs), Autonomous System (AS) numbers, and network
+blocks are delegated by IANA to Internet registries such as TLD registries and
+Regional Internet Registries (RIRs) that then issue further delegations and
+maintain information about them.  Thus, the bootstrap information needed by
+RDAP clients is best generated from data and processes already maintained by
+IANA; the relevant registries already exist at <xref target="ipv4reg"/>, <xref target="ipv6reg"/>, <xref target="asreg"/>, and <xref target="domainreg"/>.
+</t>
+<t>Per this document, IANA has created new registries based on a JSON format specified in this document, herein named RDAP Bootstrap Service Registries. These new registries are based on the existing entries of the above mentioned registries. An RDAP client fetches the RDAP Bootstrap Service Registries, extracts the data, and then performs a match with the query data to find the authoritative registration data server and appropriate query base URL. 
+</t>
+  </section>
+<section title="Conventions Used in This Document">
+<t>
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+   document are to be interpreted as described in <xref target="RFC2119"/>.
+</t>
+</section>
+  <section anchor="struct" title="Structure of the RDAP Bootstrap Service Registries">
+<t>The RDAP Bootstrap Service Registries, as specified in <xref
+target="ianaconsiderations"/> below, have been made available as JSON <xref
+target="RFC7159"/> objects, which can be retrieved via HTTP from locations specified by IANA. The JSON object for each registry contains a series of members containing metadata about the registry such as a version identifier, a timestamp of the publication date of the registry, and a description. Additionally, a "services" member contains the registry items themselves, as an array. Each item of the array contains a second-level array, with two elements, each of them being a third-level array.
+</t>
+<t>Each element of the Services Array is a second-level array with two elements: in order, an Entry Array and a Service URL Array.</t>
+<t>The Entry Array contains all entries that have the same set of base RDAP URLs.  The Service URL Array contains the list of base RDAP URLs usable for the entries found in the Entry Array. Elements within these two arrays are not sorted in any way.</t>
+<t>An example structure of the JSON output of a RDAP Bootstrap Service Registry is illustrated:
+<figure>
+<artwork>
+{
+    "version": "1.0",
+    "publication": "YYYY-MM-DDTHH:MM:SSZ",
+    "description": "Some text",
+    "services": [
+      [ 
+        ["entry1", "entry2", "entry3"],
+        [
+          "https://registry.example.com/myrdap/",
+          "http://registry.example.com/myrdap/"
+        ]
+      ],
+      [
+        ["entry4"],
+        [
+          "http://example.org/"
+        ]
+      ]
+    ]
+}
+</artwork>
+</figure>
+</t>
+<t>The formal syntax is described in <xref target="abnf"/>.</t>
+<t>The "version" corresponds to the format version of the registry. This specification defines version "1.0".</t>
+<t>The syntax of the "publication" value conforms to the Internet date/time format <xref target="RFC3339"/>. The value is the latest update date of the registry by IANA.</t>
+<t>The optional "description" string can contain a comment regarding the content of the bootstrap object. </t>
+<t>Per <xref target="RFC7258"/>, in each array of base RDAP URLs, the secure versions of the transport protocol SHOULD be preferred and tried first. For example, if the base RDAP URLs array contains both HTTPS and HTTP URLs, the bootstrap client SHOULD try the HTTPS version first.</t>
+<t>Base RDAP URLs MUST have a trailing "/" character because they are concatenated to the various segments defined in <xref target="RFC7482"/>.</t>
+<t>JSON names MUST follow the format recommendations of <xref target="RFC7480"/>. Any unrecognized JSON object properties or values MUST be 
+ ignored by implementations.</t>
+
+
+<t>Internationalized Domain Name labels used as entries or base RDAP URLs in the registries defined in this document MUST be only represented using their A-label form as defined in <xref target="RFC5890"/>.</t>
+<t>All Domain Name labels used as entries or base RDAP URLs in the registries defined in this document MUST be only represented in lowercase.</t>
+  </section>
+  <section anchor="domainrdapreg" 
+title="Bootstrap Service Registry for Domain Name Space">
+    <t>The JSON output of this registry contains domain label entries attached to the root, grouped by base RDAP URLs, as shown in this example.
+<figure>
+<artwork>
+{
+    "version": "1.0",
+    "publication": "YYYY-MM-DDTHH:MM:SSZ",
+    "description": "Some text",
+    "services": [
+      [ 
+        ["net", "com"],
+        [
+          "https://registry.example.com/myrdap/"
+        ]
+      ],
+      [
+        ["org", "mytld"],
+        [
+          "http://example.org/"
+        ]
+      ],
+      [
+        ["xn--zckzah"],
+        [
+          "https://example.net/rdapxn--zckzah/",
+          "http://example.net/rdapxn--zckzah/"
+        ]
+      ]
+    ]
+}
+</artwork>
+</figure>
+</t>
+    <t>The domain name's authoritative registration data service is found by
+    doing the label-wise longest match of the target domain name with the
+    domain values in the Entry Arrays in the IANA Bootstrap Service Registry for
+    Domain Name Space. The match is done per label, from right to left. If the longest match results in multiple entries, then those entries are considered equivalent. The values contained in the Service URL Array of the matching second-level array are the valid base RDAP URLs as described in <xref target="RFC7482"/>.</t>
+    <t>For example, a domain RDAP query for a.b.example.com matches the com entry in one of the arrays of the registry. The base RDAP URL for this query is then taken from the second element of the array, which is an array of base RDAP URLs valid for this entry. The client chooses one of the base URLs from this array; in this example, it chooses the only one available, "https://registry.example.com/myrdap/". The segment specified in <xref target="RFC7482"/> is then appended to the base URL to complete the query. The complete query is then "https://registry.example.com/myrdap/domain/a.b.example.com". </t>
+ <t>If a domain RDAP query for a.b.example.com matches both com and example.com entries in the registry, then the longest match applies and the example.com entry is used by the client.</t>
+ <t>If the registry contains entries such as com and goodexample.com, then a domain RDAP query for example.com only matches the com entry because matching is done on a per-label basis.</t>
+
+ <t>The entry for the root of the domain name space is specified as "".</t>
+  </section>
+  <section anchor="iprdapreg" 
+title="Bootstrap Service Registries for Internet Numbers">
+    <t>This section discusses IPv4 and IPv6 address space and Autonomous System numbers.</t>
+<t>For IP address space, the authoritative registration data service is found
+by doing a longest match of the target address with the values of the arrays
+in the corresponding RDAP Bootstrap Service Registry for Address
+Space. The longest match is done the same way as for routing: the addresses are converted in binary form and then the binary strings are compared to find the longest match up to the specified prefix length. The values contained in the second element of the array are the base RDAP URLs as described in <xref target="RFC7482"/>. The longest match method enables covering prefixes of a larger address space pointing to one base RDAP URL while more specific prefixes within the covering prefix are being served by another base RDAP URL.</t>
+    <section title="Bootstrap Service Registry for IPv4 Address Space">
+    <t>The JSON output of this registry contains IPv4 prefix entries, specified in Classless Inter-domain Routing (CIDR) format <xref target="RFC4632"/> and grouped by RDAP URLs, as shown in this example.
+<figure>
+<artwork>
+{
+    "version": "1.0",
+    "publication": "2024-01-07T10:11:12Z",
+    "description": "RDAP Bootstrap file for example registries.",
+    "services": [
+      [ 
+        ["1.0.0.0/8", "192.0.0.0/8"],
+        [
+          "https://rir1.example.com/myrdap/"
+        ]
+      ],
+      [
+        ["28.2.0.0/16", "192.0.2.0/24"],
+        [
+          "http://example.org/"
+        ]
+      ],
+      [
+        ["28.3.0.0/16"],
+        [
+          "https://example.net/rdaprir2/",
+          "http://example.net/rdaprir2/"
+        ]
+      ]
+    ]
+}
+</artwork>
+</figure>
+</t>
+<t>For example, a query for "192.0.2.1/25" matches the "192.0.0.0/8" entry and the "192.0.2.0/24" entry in the example registry above. The latter is chosen by the client given the longest match. The base RDAP URL for this query is then taken from the second element of the array, which is an array of base RDAP URLs valid for this entry. The client chooses one of the base URLs from this array; in this example, it chooses the only one available, "http://example.org/". The {resource} specified in <xref target="RFC7482"/> is then appended to the base URL to complete the query. The complete query is then "https://example.org/ip/192.0.2.1/25".</t>
+    </section>
+    <section title="Bootstrap Service Registry for IPv6 Address Space">
+    <t>The JSON output of this registry contains IPv6 prefix entries, using <xref target="RFC4291"/> text representation of the address prefixes format, grouped by base RDAP URLs, as shown in this example.
+<figure>
+<artwork>
+{
+    "version": "1.0",
+    "publication": "2024-01-07T10:11:12Z",
+    "description": "RDAP Bootstrap file for example registries.",
+    "services": [
+      [ 
+        ["2001:0200::/23", "2001:db8::/32"],
+        [
+          "https://rir2.example.com/myrdap/"
+        ]
+      ],
+      [
+        ["2600::/16", "2100:ffff::/32"],
+        [
+          "http://example.org/"
+        ]
+      ],
+      [
+        ["2001:0200:1000::/36"],
+        [
+          "https://example.net/rdaprir2/",
+          "http://example.net/rdaprir2/"
+        ]
+      ]
+    ]
+}
+</artwork>
+</figure>
+</t>
+<t>For example, a query for "2001:0200:1000::/48" matches the "2001:0200::/23" entry and the "2001:0200:1000::/36" entry in the example registry above. The latter is chosen by the client given the longest match. The base RDAP URL for this query is then taken from the second element of the array, which is an array of base RDAP URLs valid for this entry. The client chooses one of the base URLs from this array; in this example, it chooses "https://example.net/rdaprir2/" because it's the secure version of the protocol. The segment specified in <xref target="RFC7482"/> is then appended to the base URL to complete the query. The complete query is, therefore, "https://example.net/rdaprir2/ip/2001:0200:1000::/48". If the target RDAP server does not answer, the client can then use another URL prefix from the array.</t>
+    </section>
+
+
+    <section title="Bootstrap Service Registry for AS Number Space">
+    <t>The JSON output of this contains Autonomous Systems number ranges entries, grouped by base RDAP URLs, as shown in this example. The Entry Array is an array containing the list of AS number ranges served by the base RDAP URLs found in the second element. The array always contains two AS numbers represented in decimal format that represents the range of AS numbers between the two elements of the array. A single AS number is represented as a range of two identical AS numbers.
+<figure>
+<artwork>
+{
+    "version": "1.0",
+    "publication": "2024-01-07T10:11:12Z",
+    "description": "RDAP Bootstrap file for example registries.",
+    "services": [
+      [ 
+        ["2045-2045"],
+        [
+          "https://rir3.example.com/myrdap/"
+        ]
+      ],
+      [
+        ["10000-12000", "300000-400000"],
+        [
+          "http://example.org/"
+        ]
+      ],
+      [
+        ["64512-65534"],
+        [
+          "http://example.net/rdaprir2/",
+          "https://example.net/rdaprir2/"
+        ]
+      ]
+    ]
+}
+</artwork>
+</figure>
+</t>
+    <t>For example, a query for AS 65411 matches the 64512-65534 entry in the example registry above. The base RDAP URL for this query is then taken from the second element of the array, which is an array of base RDAP URLs valid for this entry. The client chooses one of the base URLs from this array; in this example, it chooses "https://example.net/rdaprir2/". The segment specified in <xref target="RFC7482"/> is then appended to the base URL to complete the query. The complete query is, therefore, "https://example.net/rdaprir2/autnum/65411". If the server does not answer, the client can then use another URL prefix from the array.</t>
+    </section>
+  </section>
+  <section title="Entity">
+   <t>Entities (such as contacts, registrants, or registrars) can be queried by handle as described in <xref target="RFC7482"/>. Since there is no global namespace for entities, this document does not describe how to find the authoritative RDAP server for entities. However, it is possible that, if the entity identifier was received from a previous query, the same RDAP server could be queried for that entity, or the entity identifier itself is a fully referenced URL that can be queried.</t>
+  </section>
+  <section title="Non-existent Entries or RDAP URL Values">
+    <t>The registries may not contain the requested value. In these cases, there is no known RDAP server for that requested value, and the client SHOULD provide an appropriate error message to the user.</t>
+  </section>
+  <section anchor="deploy" title="Deployment and Implementation Considerations">
+   <t>This method relies on the fact that RDAP clients are fetching the IANA registries to then find the servers locally. Clients SHOULD NOT fetch the registry on every RDAP request. Clients SHOULD cache the registry, but use underlying protocol signaling, such as the HTTP Expires header field <xref target="RFC7234"/>, to identify when it is time to refresh the cached registry.</t>
+   <t>If the query data does not match any entry in the client cached registry, then the client may implement various methods, such as the following:
+   <list style="symbols">
+     <t>In the case of a domain object, the client may first query the DNS to see if the respective entry has been delegated or if it is mistyped information by the user. The DNS query could be to fetch the NS records for the TLD domain. If the DNS answer is negative, then there is no need to fetch the new version of the registry. However, if the DNS answer is positive, this may mean that the currently cached registry is no longer current. The client could then fetch the registry, parse, and then do the normal matching as specified above. This method may not work for all types of RDAP objects.</t>
+     <t>If the client knows the existence of an RDAP aggregator or redirector and its associated base URL, and trusts that service, then it could send the query to the redirector, which would redirect the client if it knows the authoritative server that client has not found.</t>
+  </list>
+  </t>
+   <t>Some authorities of registration data may work together on sharing their information for a common service, including mutual redirection <xref target="REDIRECT-RDAP"/>.</t>
+  <t>When a new object is allocated, such as a new AS range, a new TLD, or a new IP address range, there is no guarantee that this new object will have an entry in the corresponding bootstrap RDAP registry, since the setup of the RDAP server for this new entry may become live and registered later. Therefore, the clients should expect that even if an object, such as TLD, IP address range, or AS range is allocated, the existence of the entry in the corresponding bootstrap registry is not guaranteed.</t>
+  </section>
+  <section title="Limitations">
+    <t>This method does not provide a direct way to find authoritative RDAP servers for any other objects than the ones described in this document. In particular, the following objects are not bootstrapped with the method described in this document:
+      <list style="symbols">
+        <t>entities</t>
+        <t>queries using search patterns that do not contain a terminating string that matches some entries in the registries</t>
+        <t>nameservers</t>
+        <t>help</t>
+      </list>
+    </t>
+  </section>
+  <section anchor="abnf" title="Formal Definition"> 
+<t>This section is the formal definition of the registries. The structure of JSON objects and arrays using a set of primitive elements is defined in <xref target="RFC7159"/>. Those elements are used to describe the JSON structure of the registries.</t>
+
+<section title="Imported JSON Terms">
+
+<t>
+<list style="symbols">
+  <t>OBJECT: a JSON object, defined in Section 4 of <xref target="RFC7159"/></t>
+  <t>MEMBER: a member of a JSON object, defined in Section 4 of <xref target="RFC7159"/></t>
+  <t>MEMBER-NAME: the name of a MEMBER, defined as a "string" in
+      Section 4 of <xref target="RFC7159"/></t>
+  <t>MEMBER-VALUE: the value of a MEMBER, defined as a "value" in
+      Section 4 of <xref target="RFC7159"/></t>
+  <t>ARRAY:  an array, defined in Section 5 of <xref target="RFC7159"/></t>
+  <t>ARRAY-VALUE: an element of an ARRAY, defined in Section 5 of
+      <xref target="RFC7159"/></t>
+  <t>STRING: a "string", as defined in Section 7 of <xref target="RFC7159"/></t>
+ </list>
+</t>
+ </section>
+ <section title="Registry Syntax">
+<t>Using the above terms for the JSON structures, the syntax of a
+   registry is defined as follows:
+<list style="symbols">
+ <t>rdap-bootstrap-registry: an OBJECT containing a MEMBER version and 
+    a MEMBER publication, an optional MEMBER description, and a MEMBER services-list</t>
+ <t>version: a MEMBER with MEMBER-NAME "version" and
+      MEMBER-VALUE a STRING</t>
+ <t>publication: a MEMBER with MEMBER-NAME "publication" and
+      MEMBER-VALUE a STRING</t>
+ <t>description: a MEMBER with MEMBER-NAME "description" and
+      MEMBER-VALUE a STRING</t>
+ <t>services-list: a MEMBER with MEMBER-NAME "services" and MEMBER-VALUE a services-array</t>
+ <t>services-array: an ARRAY, where each ARRAY-VALUE is a service</t>
+ <t>service: an ARRAY of 2 elements, where the first ARRAY-VALUE is a an entry-list and the second ARRAY-VALUE is a service-uri-list</t>
+ <t>entry-list: an ARRAY, where each ARRAY-VALUE is an entry</t>
+ <t>entry: a STRING</t>
+ <t>service-uri-list: an ARRAY, where each ARRAY-VALUE is a service-uri</t>
+ <t>service-uri: a STRING</t>
+   </list>
+  </t>
+  </section>
+</section>
+  <section title="Security Considerations">
+     <t>By providing a bootstrap method to find RDAP servers, this document
+     helps to ensure that the end users will get the RDAP data from an
+     authoritative source, instead of from rogue sources. The method has the
+     same security properties as the RDAP protocols themselves. 
+
+   The transport used to access the registries can be more secure by using
+   TLS <xref target="RFC5246"/>, which IANA supports.
+     </t>
+
+<t>Additional considerations on using RDAP are described in <xref target="RFC7481"/>.</t>
+  </section>
+  <section anchor="ianaconsiderations" title="IANA Considerations">
+<t>IANA has created the RDAP Bootstrap Services Registries, listed below,
+and made them available as JSON objects.  The contents of these registries are described in <xref target="struct"/>, <xref target="domainrdapreg"/>, and <xref target="iprdapreg"/>, with the formal syntax specified in <xref target="abnf"/>.</t> 
+
+<t>The process for adding or updating entries in these registries differs from the normal IANA registry processes: these registries are generated from the data, processes, and policies maintained by IANA in their allocation registries (<xref target="ipv4reg"/>, <xref target="ipv6reg"/>, <xref target="asreg"/>, and <xref target="domainreg"/>), with the addition of new RDAP server information.</t>
+
+<t>IANA will create and update RDAP Bootstrap Services Registries entries from the allocation registries as those registries are updated.</t>
+
+<t>This document does not change any policies related to the allocation
+registries; IANA has provided a mechanism for collecting the RDAP server information. The RDAP Bootstrap Services Registries will start empty and will be gradually populated as registrants of domains and address spaces provide RDAP server information to IANA.</t>
+
+<t>IANA has created a new top-level category on the Protocol Registries page,
+&lt;http://www.iana.org/protocols&gt;. The group is called "Registration Data
+Access Protocol (RDAP)".  
+
+Each of the RDAP Bootstrap Services Registries has
+been made available for general public on-demand download in the JSON format,
+and that registry's URI is listed directly on the Protocol Registries page. 
+</t>
+<t>Other normal registries will be added to this group by other
+  documents, but the reason the URIs for these registries are
+  clearly listed on the main page is to make those URIs obvious to
+  implementers -- these are registries that will be accessed by
+  software, as well as by humans using them for reference information.</t>
+
+<t>Because these registries will be accessed by software, the download demand
+for the RDAP Bootstrap Services Registries may be unusually high compared to
+normal IANA registries.  The technical infrastructure by which registries are
+published will need to be reviewed and might need to be augmented.</t>
+
+<t>As discussed in <xref target="deploy"/>, software that accesses these registries will depend on the HTTP Expires header field to limit their query rate. It is, therefore, important for that header field to be properly set to provide timely information as the registries change, while maintaining a reasonable load on the IANA servers.</t>
+
+<t>The HTTP Content-Type returned to clients accessing these JSON-formatted registries MUST be "application/json", as defined in <xref target="RFC7159"/>.</t>
+
+<t>Because of how information in the RDAP Bootstrap Services Registries is grouped and formatted, the registry entries may not be sortable.  It is, therefore, not required or expected that the entries be sorted in any way.</t>
+
+<section title="Bootstrap Service Registry for IPv4 Address Space">
+<t>Entries in this registry contain at least the following:
+ <list style="symbols">
+  <t>a CIDR <xref target="RFC4632"/> specification of the network block being registered.</t>
+  <t>one or more URLs that provide the RDAP service regarding this registration. </t>
+ </list>
+</t>
+</section>
+<section title="Bootstrap Service Registry for IPv6 Address Space">
+<t>Entries in this registry contain at least the following:
+ <list style="symbols">
+  <t>an IPv6 prefix <xref target="RFC4291"/> specification of the network block being registered.</t>
+  <t>one or more URLs that provide the RDAP service regarding this registration.
+ </t>
+ </list>
+</t>
+</section>
+<section title="Bootstrap Service Registry for AS Number Space">
+<t>Entries in this registry contain at least the following:
+ <list style="symbols">
+  <t>a range of Autonomous System numbers being registered.</t>
+  <t>one or more URLs that provide the RDAP service regarding this registration.
+ </t>
+ </list>
+</t>
+</section>
+<section title="Bootstrap Service Registry for Domain Name Space">
+<t>Entries in this registry contain at least the following:
+ <list style="symbols"> 
+  <t>a domain name attached to the root being registered.</t>
+  <t>one or more URLs that provide the RDAP service regarding this registration.
+ </t>
+ </list>
+</t>
+</section>
+</section>
+
+</middle>
+<back>
+  <references title="Normative References">
+    <?rfc include="reference.RFC.2119"?>
+    <?rfc include="reference.RFC.3339"?>
+    <?rfc include="reference.RFC.4291"?>
+    <?rfc include="reference.RFC.4632"?>
+    <?rfc include="reference.RFC.5890"?>
+    <?rfc include="reference.RFC.7159"?>
+  </references>
+
+  <references title="Informative References">
+
+    <?rfc include="reference.RFC.5246"?>
+    <?rfc include="reference.RFC.7071"?>
+    <?rfc include="reference.RFC.7234"?>
+    <?rfc include="reference.RFC.7258"?>
+
+<!--I-D.ietf-weirds-rdap-query = 7482 -->
+<reference anchor='RFC7482' target='http://www.rfc-editor.org/info/rfc7482'>
+<front>
+<title>Registration Data Access Protocol Query Format</title>
+<author initials='A' surname='Newton' fullname='Andrew Newton'>
+    <organization />
+</author>
+<author initials='S' surname='Hollenbeck' fullname='Scott Hollenbeck'>
+    <organization />
+</author>
+<date month='March' year='2015' />
+</front>
+<seriesInfo name='RFC' value='7482' />
+</reference>
+
+<!--I-D.ietf-weirds-using-http = 7480 -->
+<reference anchor='RFC7480' target='http://www.rfc-editor.org/info/rfc7480'>
+<front>
+<title>HTTP Usage in the Registration Data Access Protocol (RDAP)</title>
+<author initials='A' surname='Newton' fullname='Andrew Newton'>
+    <organization />
+</author>
+<author initials='B' surname='Ellacott' fullname='Byron Ellacott'>
+    <organization />
+</author>
+<author initials='N' surname='Kong' fullname='Ning Kong'>
+    <organization />
+</author>
+<date month='March' year='2015' />
+</front>
+<seriesInfo name='RFC' value='7480' />
+</reference>
+
+<!--I-D.ietf-weirds-json-response = 7483 -->
+<reference anchor='RFC7483' target='http://www.rfc-editor.org/info/rfc7483'>
+<front>
+<title>JSON Responses for the Registration Data Access Protocol (RDAP)</title>
+<author initials='A' surname='Newton' fullname='Andrew Newton'>
+    <organization />
+</author>
+<author initials='S' surname='Hollenbeck' fullname='Scott Hollenbeck'>
+    <organization />
+</author>
+<date month='March' year='2015' />
+</front>
+<seriesInfo name='RFC' value='7483' />
+</reference>
+
+<!--I-D.ietf-weirds-redirects, Expired - not in queue-->
+<reference anchor='REDIRECT-RDAP'>
+<front>
+<title>Redirection Service for Registration Data Access Protocol</title>
+<author initials='C' surname='Martinez' fullname='Carlos Martinez'>
+    <organization />
+</author>
+<author initials='L' surname='Zhou' fullname='Linlin Zhou'>
+    <organization />
+</author>
+<author initials='G' surname='Rada' fullname='Gerardo Rada'>
+    <organization />
+</author>
+<date month='July' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-weirds-redirects-04' />
+</reference>
+
+<!--I-D.ietf-weirds-rdap-sec = 7481 -->
+<reference anchor='RFC7481' target='http://www.rfc-editor.org/info/rfc7481'>
+<front>
+<title>Security Services for the Registration Data Access Protocol</title>
+<author initials='S' surname='Hollenbeck' fullname='Scott Hollenbeck'>
+    <organization />
+</author>
+<author initials='N' surname='Kong' fullname='Ning Kong'>
+    <organization />
+</author>
+<date month='March' year='2015' />
+</front>
+<seriesInfo name='RFC' value='7481' />
+</reference>
+    
+    <reference anchor="ipv4reg" target="http://www.iana.org/assignments/ipv4-address-space">
+      <front><title>IPv4 Address Space Registry</title>
+     <author>
+    <organization>IANA</organization></author>
+    <date/>
+    </front>
+    </reference>
+
+    <reference anchor="ipv6reg" target="http://www.iana.org/assignments/ipv6-unicast-address-assignments">
+      <front><title>IPv6 Global Unicast Address Assignments</title>
+   <author>
+    <organization>IANA</organization></author>
+    <date/></front>
+    </reference>
+
+    <reference anchor="asreg" target="http://www.iana.org/assignments/as-numbers">
+      <front><title>Autonomous System (AS) Numbers</title>
+      <author>
+    <organization>IANA</organization></author>
+     <date/>
+     </front>
+    </reference>
+
+    <reference anchor="domainreg" target="http://www.iana.org/domains/root/db">
+      <front><title>Root Zone Database</title>
+     <author>
+    <organization>IANA</organization></author>
+      <date/></front>
+    </reference>
+  </references>
+
+ <section title="Acknowledgements" numbered="no">
+     <t>The WEIRDS working group had multiple discussions on this topic,
+     including a session during IETF 84, where various methods such as
+     in&nbhy;DNS and others were debated. 
+
+The idea of using IANA registries was discovered by the author during discussions with his colleagues as well as by a comment from Andy Newton. All the people involved in these discussions are herein acknowledged. Linlin Zhou, Jean-Philippe Dionne, John Levine, Kim Davies, Ernie Dainow, Scott Hollenbeck, Arturo Servin, Andy Newton, Murray Kucherawy, Tom Harrison, Naoki Kambe, Alexander Mayrhofer, Edward Lewis, Pete Resnick, Alessandro Vesely, Bert Greevenbosch, Barry Leiba, Jari Arkko, Kathleen Moriaty, Stephen Farrell, Richard Barnes, and Jean-Francois Tremblay  have provided input and suggestions to this document. Guillaume Leclanche was a coauthor of this document for some revisions; his support is therein acknowledged and greatly appreciated. The section on formal definition was inspired by Section 6.2 of <xref target="RFC7071"/>.</t>
+  </section>
+
+
+</back>
+</rfc>

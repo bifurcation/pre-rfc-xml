@@ -1,0 +1,3706 @@
+<?xml version='1.0' encoding='US-ASCII'?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc subcompact="no"?>
+<?rfc compact="yes"?>
+<?rfc comments="yes"?>
+
+<rfc category="std" ipr="trust200902" number="8175" submissionType="IETF"
+     consensus="yes">
+
+  <front>
+    <title>Dynamic Link Exchange Protocol (DLEP)</title>
+
+    <author fullname="Stan Ratliff" initials="S." surname="Ratliff">
+      <organization>VT iDirect</organization>
+      <address>
+        <postal>
+          <street>13861 Sunrise Valley Drive, Suite 300</street>
+          <city>Herndon</city>
+          <region>VA</region>
+          <code>20171</code>
+          <country>United States of America</country>
+        </postal>
+        <email>sratliff@idirect.net</email>
+      </address>
+    </author>
+
+    <author initials="S." surname="Jury" fullname="Shawn Jury">
+      <organization>Cisco Systems</organization>
+      <address>
+        <postal>
+          <street>170 West Tasman Drive</street>
+          <city>San Jose</city>
+          <region>CA</region>
+          <code>95134</code>
+          <country>United States of America</country>
+        </postal>
+        <email>sjury@cisco.com</email>
+      </address>
+    </author>
+
+    <author initials="D." surname="Satterwhite" fullname="Darryl Satterwhite">
+      <organization>Broadcom</organization>
+      <address>
+        <email>dsatterw@broadcom.com</email>
+      </address>
+    </author>
+
+    <author initials="R." surname="Taylor" fullname="Rick Taylor">
+      <organization>Airbus Defence &amp; Space</organization>
+      <address>
+        <postal>
+          <street>Quadrant House</street>
+          <street>Celtic Springs</street>
+          <street>Coedkernew</street>
+          <city>Newport</city>
+          <code>NP10 8FZ</code>
+          <country>United Kingdom</country>
+        </postal>
+        <email>rick.taylor@airbus.com</email>
+      </address>
+
+    </author>
+    <author initials="B." surname="Berry" fullname="Bo Berry"/>
+
+    <date month="June" year="2017"/>
+
+    <abstract>
+<t>When routing devices rely on modems to effect communications over wireless
+links, they need timely and accurate knowledge of the characteristics of the
+link (speed, state, etc.) in order to make routing decisions. In mobile or
+other environments where these characteristics change frequently, manual
+configurations or the inference of state through routing or transport
+protocols does not allow the router to make the best decisions.
+This document introduces a new protocol called the Dynamic Link Exchange
+Protocol (DLEP), which provides a bidirectional, event-driven
+communication channel between the router and the modem to facilitate
+communication of changing link characteristics.</t>
+    </abstract>
+  </front>
+
+  <middle>
+
+<section title="Introduction" anchor="introduction" toc="default">
+
+<t>There exist today a collection of modem devices that control links of
+variable data&nbsp;rate and quality. Examples of these types of links include
+line-of-sight (LOS) terrestrial radios, satellite terminals, and broadband
+modems. Fluctuations in speed and quality of these links can occur due to
+configuration, or on a moment-to-moment basis, due to physical phenomena like
+multipath interference, obstructions, rain fade, etc. It is also quite
+possible that link quality and data&nbsp;rate vary with respect to individual
+destinations on a link and with the type of traffic being sent. As an
+example, consider the case of an IEEE 802.11 access point serving two
+associated laptop computers. In this environment, the answer to the question
+"What is the data&nbsp;rate on the 802.11 link?" is "It depends on which
+associated laptop we're talking about and on what kind of traffic is being
+sent." While the first laptop, being physically close to the access point,
+may have a data&nbsp;rate of 54&nbsp;Mbps for unicast traffic, the other
+laptop, being relatively far away or obstructed by some object, can
+simultaneously have a data&nbsp;rate of only 32&nbsp;Mbps for unicast.
+However, for multicast traffic sent from the access point, all traffic is
+sent at the base transmission rate (which is configurable but, depending on
+the model of the access point, is usually 24&nbsp;Mbps or less).</t>
+
+<t>In addition to utilizing links that have variable data&nbsp;rates,
+mobile networks are challenged by the notion that link connectivity will
+come and go over time, without an effect on a router's interface state
+(Up or Down). Effectively utilizing a relatively short-lived connection is
+problematic in IP routed networks, as IP routing protocols tend to rely on
+interface state and independent timers to maintain network convergence
+(e.g., HELLO messages and/or recognition of DEAD routing adjacencies).
+These dynamic connections can be better utilized with an event-driven
+paradigm, where acquisition of a new neighbor (or loss of an existing one)
+is signaled, as opposed to a paradigm driven by timers and/or interface
+state. DLEP not only implements such an event-driven paradigm but does so
+over a local (1&nbhy;hop) TCP session, which guarantees delivery of the
+event messages.</t>
+
+<t>Another complicating factor
+for mobile networks are the different methods of physically connecting the
+modem devices to the router.  Modems can be deployed as an interface card in a
+router's chassis, or as a standalone device connected to the router via
+Ethernet or serial link. In the case of Ethernet attachment, with existing
+protocols and techniques, routing software cannot be aware of convergence
+events occurring on the radio link (e.g., acquisition or loss of a potential
+routing neighbor), nor can the router be aware of the actual capacity of the
+link. This lack of awareness, along with the variability in data&nbsp;rate,
+leads to a situation where finding the (current) best route through the
+network to a given node is difficult to establish and properly maintain. This
+is especially true of demand-based access schemes such as Demand Assigned
+Multiple Access (DAMA) implementations used on some satellite systems. With
+a DAMA&nbhy;based system, additional data&nbsp;rate may be available but will
+not be used unless the network devices emit traffic at a rate higher than
+the currently established rate. Increasing the traffic rate does not
+guarantee that additional data&nbsp;rate will be allocated; rather, it may
+result in data loss and additional retransmissions on the link.</t>
+
+<t>Addressing the challenges listed above, the Dynamic Link Exchange
+Protocol, or DLEP, has been developed. DLEP runs between a router and
+its attached modem devices, allowing the modem devices to communicate
+(1)&nbsp;link characteristics as they change and (2)&nbsp;convergence
+events (acquisition and loss of potential routing next&nbsp;hops).
+Figures&nbsp;<xref target="fig:dlep_network" format="counter"/> and
+<xref target="fig:dlep_network_mul" format="counter"/> illustrate the
+scope of DLEP packets.</t>
+
+<figure anchor="fig:dlep_network" align="center" title="DLEP Network" suppress-title="false" alt="" width="" height=""><artwork align="center" xml:space="preserve" name="" type="" alt="" width="" height="">
+|-------Local Node-------|          |-------Remote Node------|
+|                        |          |                        |
++--------+       +-------+          +-------+       +--------+
+| Router |=======| Modem |{~~~~~~~~}| Modem |=======| Router |
+|        |       | Device|          | Device|       |        |
++--------+       +-------+          +-------+       +--------+
+         |       |       | Link     |       |       |
+         |-DLEP--|       | Protocol |       |-DLEP--|
+         |       |       | (e.g.,   |       |       |
+         |       |       | 802.11)  |       |       |
+</artwork></figure>
+
+<t>In <xref target="fig:dlep_network" pageno="false" format="default"/>, when
+the local modem detects the presence of a remote node, it (the local modem)
+sends a message to its router via DLEP. The message consists of
+an indication of what change has occurred on the link (e.g., the presence of a
+remote node detected), along with a collection of DLEP-defined Data Items that
+further describe the change. Upon receipt of the message, the local router may
+take whatever action it deems appropriate, such as initiating discovery
+protocols and/or issuing HELLO messages to converge the network. On a
+continuing, as-needed basis, the modem devices use DLEP to report any
+characteristics of the link (data&nbsp;rate, latency, etc.) that have
+changed. DLEP is independent of the link type and topology supported by the
+modem. Note that DLEP is specified to run only on the local link between
+router and modem. Some over-the-air signaling may be necessary between
+the local and remote modem in order to provide some parameters in
+DLEP Messages between the local modem and local router, but DLEP does not
+specify how such over-the-air signaling is carried out. Over-the-air
+signaling is purely a matter for the modem implementer.</t>
+
+<t><xref target="fig:dlep_network_mul" pageno="false" format="default"/> shows
+how DLEP can support a configuration where routers are connected with
+different link types. In this example, Modem Device Type&nbsp;A implements a
+point-to-point link, and Modem Device Type&nbsp;B is connected via a
+shared medium. In both cases, DLEP is used to report the characteristics of
+the link (data&nbsp;rate, latency, etc.) to routers. The modem is also
+able to use the DLEP session to notify the router when the remote node is
+lost, shortening the time required to reconverge the network.</t>
+
+<figure anchor="fig:dlep_network_mul" align="center" title="DLEP Network with Multiple Modem Devices" suppress-title="false" alt="" width="" height=""><artwork align="center" xml:space="preserve" name="" type="" alt="" width="" height="">
+         +--------+                     +--------+
+    +----+ Modem  |                     | Modem  +---+
+    |    | Device |                     | Device |   |
+    |    | Type A |  &lt;===== // ======&gt;  | Type A |   |
+    |    +--------+ Point-to-Point Link +--------+   |
++---+----+                                       +---+----+
+| Router |                                       | Router |
+|        |                                       |        |
++---+----+                                       +---+----+
+    |     +--------+                     +--------+  |
+    +-----+ Modem  |                     | Modem  |  |
+          | Device |   o o o o o o o o   | Device +--+
+          | Type B |    o  Shared   o    | Type B |
+          +--------+     o Medium  o     +--------+
+                          o       o
+                           o     o
+                            o   o
+                              o
+                         +--------+
+                         | Modem  |
+                         | Device |
+                         | Type B |
+                         +---+----+
+                             |
+                             |
+                         +---+----+
+                         | Router |
+                         |        |
+                         +--------+
+</artwork></figure>
+</section>
+
+<section title="Protocol Overview"
+anchor="protocol-overview" toc="default">
+
+<t>DLEP defines a set of Messages
+used by modems and their attached routers to communicate events that occur on
+the physical link(s) managed by the modem: for example, a remote node entering
+or leaving the network, or that the link has changed. Associated with these
+Messages are a set of Data Items -- information that describes the remote node
+(e.g., address information) and/or the characteristics of the link to the
+remote node. Throughout this document, we refer to modems/routers
+participating in a DLEP session as "DLEP Participants", unless a specific
+distinction (e.g., modem or router) is required.</t>
+
+<t>DLEP uses a session-oriented paradigm between the modem device and its
+associated router. If multiple modem devices are attached to a router (as in
+<xref target="fig:dlep_network_mul" pageno="false" format="default"/>) or the
+modem supports multiple connections (via multiple logical or physical
+interfaces), then separate DLEP sessions exist for each modem or connection. A
+router and modem form a session by completing the discovery and initialization
+process. This router-modem session persists unless or until it either
+(1)&nbsp;times out, based on the absence of DLEP traffic (including
+heartbeats) or (2)&nbsp;is explicitly torn down by one of the DLEP
+participants.</t>
+
+<t>While this document represents the best efforts of the working group to be
+functionally complete, it is recognized that extensions to DLEP will in all
+likelihood be necessary as more link types are used. Such extensions are
+defined as additional Messages, Data Items, and&wj;/or status codes, and
+associated rules of behavior, that are not defined in this document.
+DLEP contains a standard mechanism for router and modem implementations
+to negotiate the available extensions to use on a per-session basis.</t>
+
+<section title="Destinations" anchor="destinations" toc="default">
+
+<t>The router-modem session provides a carrier for information exchange
+concerning "destinations" that are available via the modem device.
+Destinations can be identified by either the router or the modem and
+represent a specific, addressable location that can be reached via the
+link(s) managed by the modem.</t>
+
+<t>The DLEP Messages concerning destinations thus become the way for routers
+and modems to maintain, and notify each other about, an information base
+representing the physical and logical destinations accessible via the modem
+device, as well as the link characteristics to those destinations.</t>
+<t>A destination can be either physical or logical. The example of a physical
+destination would be that of a remote, far-end router attached via the
+variable-quality network. It should be noted that for physical destinations
+the Media Access Control (MAC) address is the address of the far&nbhy;end
+router, not the modem.</t>
+
+<t>The example of a logical destination is Multicast. Multicast traffic
+destined for the variable-quality network (the network accessed via the modem)
+is handled in IP networks by deriving a Layer&nbsp;2 MAC address based on
+the Layer 3 address. Leveraging on this scheme, multicast traffic is
+supported in DLEP simply by treating the derived MAC address as any
+other destination in the network.</t>
+
+<t>To support these logical destinations, one of the DLEP participants
+(typically, the router) informs the other as to the existence of the logical
+destination. The modem, once it is aware of the existence of this logical
+destination, reports link characteristics just as it would for any other
+destination in the network. The specific algorithms a modem would use to
+derive metrics on logical destinations are outside the scope of this
+specification; these algorithms are left to specific implementations
+to decide.</t>
+
+<t>In all cases, when this specification uses the term "destination",
+it refers to the addressable locations, either logical or physical,
+that are accessible by the radio link(s).</t>
+</section>
+
+<section title="Conventions and Terminology"
+anchor="conventions-and-terminology" toc="default">
+
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+"SHALL&nbsp;NOT", "SHOULD", "SHOULD&nbsp;NOT", "RECOMMENDED",
+"NOT&nbsp;RECOMMENDED", "MAY", and "OPTIONAL" in this document
+are to be interpreted as described in BCP&nbsp;14
+<xref format="default" pageno="false" target="RFC2119"/>
+<xref format="default" pageno="false" target="RFC8174"/> when,
+and only when, they appear in all capitals, as shown here.</t>
+
+</section>
+</section>
+
+<section title="Requirements" anchor="requirements"
+toc="default">
+
+<t>DLEP MUST be implemented on a single Layer 2 domain. The
+protocol identifies next-hop destinations by using the MAC address for
+delivering data traffic. No manipulation or substitution is performed; the MAC
+address supplied in all DLEP Messages is used as the Destination MAC address
+for frames emitted by the participating router. MAC addresses MUST be unique
+within the context of the router-modem session.</t>
+
+<t>To enforce the single Layer 2 domain, implementations MUST support
+the Generalized TTL Security Mechanism <xref target="RFC5082"/>, and
+implementations MUST adhere to this specification for all DLEP Messages.</t>
+
+<t>DLEP specifies UDP multicast for single-hop discovery signaling and TCP
+for transport of the Messages. Modems and routers participating in DLEP
+sessions MUST have topologically consistent IP addresses assigned. It is
+RECOMMENDED that DLEP implementations utilize IPv6 link-local addresses to
+reduce the administrative burden of address assignment.</t>
+<t>DLEP relies on the guaranteed delivery of its Messages between router and
+modem, once the 1&nbhy;hop discovery process is complete -- hence, the
+specification of TCP to carry the Messages. Other reliable transports for
+the protocol are possible but are outside the scope of this document.</t>
+</section>
+
+<section title="Implementation Scenarios"
+anchor="intro_impl_scenarios" toc="default">
+
+<t>During development of this
+specification, two types of deployments were discussed.</t>
+<t>The first can be viewed as a "dedicated deployment". In this mode, DLEP
+routers and modems are either directly connected (e.g., using crossover
+cables to connect interfaces) or connected to a dedicated switch. An
+example of this type of deployment would be a router with a line-of-sight
+radio connected into one interface, with a satellite modem connected into
+another interface. In mobile environments, the router and the connected
+modem (or modems) are placed into a mobile platform (e.g., a vehicle, boat,
+or airplane). In this mode, when a switch is used, it is possible that a small
+number of ancillary devices (e.g., a laptop) are also plugged into the
+switch. But in either event, the resulting network segment is constrained to a
+small number of devices and is not generally accessible from anywhere else in
+the network.</t>
+
+<t>The other type of deployment envisioned can be viewed as a "networked
+deployment". In this type of scenario, the DLEP router and modem (or&nbsp;modems)
+are placed on a segment that is accessible from other points in the network.
+In this scenario, not only are the DLEP router and modem(s) accessible from
+other points in the network; the router and a given modem could be multiple
+physical hops away from each other. This scenario necessitates the use of
+Layer&nbsp;2 tunneling technology to enforce the single-hop requirement
+of DLEP.</t>
+</section>
+
+<section title="Assumptions" anchor="assumptions"
+toc="default">
+
+<t>DLEP assumes that a signaling protocol exists between modems
+participating in a network. This specification does not define the character
+or behavior of this over-the-air signaling but does expect some information to
+be carried (or derived) by the signaling, such as the arrival and departure of
+modems from this network, and the variation of the link characteristics
+between modems. This information is then assumed to be used by the modem to
+implement DLEP.</t>
+
+<t>This specification assumes that the link between router and modem is static
+with respect to data&nbsp;rate and latency and that this link is not
+likely to be the cause of a performance bottleneck. In deployments where
+the router and modem are physically separated by multiple network hops,
+served by Layer&nbsp;2 tunneling technology, DLEP statistics on the RF links
+could be insufficient for routing protocols to make appropriate routing
+decisions. This would especially become an issue in cases where the
+Layer&nbsp;2 tunnel between router and modem is itself served in part
+(or in total) with a wireless backhaul link.</t>
+</section>
+
+<section title="Metrics" anchor="metrics" toc="default">
+
+<t>DLEP includes the ability for the router and modem to communicate metrics
+that reflect the characteristics (e.g., data&nbsp;rate, latency) of the
+variable-quality link in use. DLEP does not specify how a given metric value
+is to be calculated; rather, the protocol assumes that metrics have been
+calculated by a "best effort", incorporating all pertinent data that is
+available to the modem device. Metrics based on large-enough sample sizes
+will preclude short traffic bursts from adversely skewing reported values.</t>
+
+<t>DLEP allows for metrics to be sent within two contexts -- metrics for a
+specific destination within the network (e.g., a specific router), and
+"per&nbsp;session" (those that apply to all destinations accessed via the
+modem). Most metrics can be further subdivided into transmit and receive
+metrics. In cases where metrics are provided at the session level, the router
+propagates the metrics to all entries in its information base for destinations
+that are accessed via the modem.</t>
+
+<t>DLEP modems announce all metric Data Items that will be reported during
+the session, and provide default values for those metrics, in the <xref
+target="msg_session_init_resp" pageno="false" format="default">Session
+Initialization Response Message</xref>. In order to use a metric type that was
+not included in the Session Initialization Response Message, modem
+implementations terminate the session with the router (via the <xref
+target="msg_session_term" pageno="false" format="default">Session Termination
+Message</xref>) and establish a new session.</t>
+<t>A DLEP modem can send metrics in both (1)&nbsp;a session context, via the
+<xref target="msg_session_update" pageno="false" format="default">Session Update
+Message</xref> and (2)&nbsp;a specific destination context, via the <xref
+target="msg_dest_update" pageno="false" format="default">Destination Update
+Message</xref>, at any time. The most recently received metric value takes
+precedence over any earlier value, regardless of context -- that is:</t>
+
+<t><list style="numbers">
+
+<t>If the router receives metrics in a specific
+destination context (via the Destination Update Message), then the specific
+destination is updated with the new metric.</t>
+
+<t>If the router receives metrics in a session-wide context (via the Session
+Update Message), then the metrics for all destinations accessed via the modem
+are updated with the new metric.</t>
+
+</list></t>
+
+<t>It is left to implementations to choose sensible default values based on
+their specific characteristics. Modems having static (non&nbhy;changing) link
+metric characteristics can report metrics only once for a given destination
+(or once on a session-wide basis, if all connections via the modem are of this
+static nature).</t>
+
+<t>In addition to communicating existing metrics about the link, DLEP provides
+a Message allowing a router to request a different data&nbsp;rate or latency
+from the modem. This Message is the <xref target="msg_link_req" pageno="false"
+format="default">Link Characteristics Request Message</xref>; it gives the
+router the ability to deal with requisite increases (or decreases) of
+allocated data&nbsp;rate&wj;/latency in demand-based schemes in a
+more deterministic manner.</t>
+</section>
+
+<section title="DLEP Session Flow" anchor="dlep-session-flow"
+   toc="default">
+
+<t>All DLEP participants of a session transition
+through a number of distinct states during the lifetime of a DLEP session:
+</t>
+<t><list style="symbols">
+
+<t>Peer Discovery</t>
+<t>Session Initialization</t>
+<t>In-Session</t>
+<t>Session Termination</t>
+<t>Session Reset</t>
+</list></t>
+<t>Modems, and routers supporting DLEP discovery, transition through all five
+of the above states. Routers that rely on preconfigured TCP address/port
+information start in the Session Initialization state.</t>
+<t>Modems MUST support the Peer Discovery state.</t>
+
+<section title="Peer Discovery State" anchor="peer_discovery"
+   toc="default">
+
+<t>Modems MUST support DLEP Peer Discovery; routers MAY
+support the discovery signals or rely on a priori configuration to locate
+modems. If a router chooses to support DLEP discovery, all signals MUST be
+supported.</t>
+
+<t>In the Peer Discovery state, routers that support DLEP discovery MUST send
+<xref target="sig_peer_discovery" pageno="false" format="default">Peer
+Discovery Signals</xref> to initiate modem discovery.</t>
+<t>The router implementation then waits for a <xref target="sig_peer_offer"
+pageno="false" format="default">Peer Offer Signal</xref> response from a
+potential DLEP modem. While in the Peer Discovery state, Peer Discovery
+Signals MUST be sent repeatedly by a DLEP router, at regular intervals. It is
+RECOMMENDED that this interval be set to 60 seconds. The interval MUST be a
+minimum of 1&nbsp;second; it SHOULD be a configurable parameter. Note that this
+operation (sending Peer Discovery and waiting for Peer Offer) is outside the
+<xref target="trans_model" pageno="false" format="default">DLEP transaction
+model</xref>, as the transaction model only describes Messages on a TCP
+session.</t>
+<t>Routers receiving a Peer Offer Signal MUST use one of the modem
+address/port combinations from the Peer Offer Signal to establish a TCP
+connection to the modem, even if a priori configuration exists. If multiple
+Connection Point Data Items exist in the received Peer Offer Signal, routers
+SHOULD prioritize IPv6 connection points over IPv4 connection points. If
+multiple connection points exist with the same transport (e.g., IPv6 or IPv4),
+implementations MAY use their own heuristics to determine the order in which
+they are tried. If a TCP connection cannot be achieved using any of the
+address/port combinations and the Discovery mechanism is in use, then the
+router SHOULD resume issuing Peer Discovery Signals. If no Connection Point
+Data Items are included in the Peer Offer Signal, the router MUST use the
+source address of the UDP packet containing the Peer Offer Signal as the IP
+address, and the DLEP well-known port number.</t>
+<t>In the Peer Discovery state, the modem implementation MUST listen for
+incoming Peer Discovery Signals on the DLEP well-known IPv6 and/or IPv4
+link-local multicast address and port. On receipt of a valid Peer Discovery
+Signal, it MUST reply with a Peer Offer Signal.</t>
+<t>Modems MUST be prepared to accept a TCP connection from a router that is
+not using the Discovery mechanism, i.e., a connection attempt that occurs
+without a preceding Peer Discovery Signal.</t>
+
+<t>Implementations of DLEP SHOULD implement, and use,
+Transport Layer Security (TLS) <xref
+target="RFC5246" pageno="false" format="default"/> to protect the TCP
+session. The "dedicated deployments" discussed in <xref
+target="intro_impl_scenarios" pageno="false" format="default">"Implementation
+Scenarios"</xref> MAY consider the use of DLEP without TLS. For all "networked
+deployments" (again, discussed in "Implementation Scenarios"), the implementation
+and use of TLS are STRONGLY RECOMMENDED. If TLS is to be used, then the TLS
+session MUST be established before any Messages are passed between peers.
+Routers supporting TLS MUST prioritize connection points using TLS over those
+that do not.</t>
+<t>Upon establishment of a TCP connection, and the establishment of a
+TLS session if TLS is in use, both modem and router enter the
+Session Initialization state. It is up to the router implementation
+if Peer Discovery Signals continue to be sent after the device has
+transitioned to the Session Initialization state. Modem implementations
+MUST silently ignore Peer Discovery Signals from a router with which
+a given implementation already has a TCP connection.
+</t>
+</section>
+
+<section title="Session Initialization State" anchor="state_session_init"
+   toc="default">
+
+<t>On entering the Session Initialization state, the
+router MUST send a <xref target="msg_session_init" pageno="false"
+format="default">Session Initialization Message</xref> to the modem. The
+router MUST then wait for receipt of a <xref target="msg_session_init_resp"
+pageno="false" format="default">Session Initialization Response Message</xref>
+from the modem. Receipt of the Session Initialization Response Message
+containing a <xref target="di_status" pageno="false" format="default">Status
+Data Item</xref> with status code set to 0 'Success' (see <xref
+target="table:dlep_status_codes" pageno="false" format="default"/> in
+<xref target="di_status"/>) indicates that the modem has received and
+processed the Session Initialization Message, and the router MUST transition
+to the In&nbhy;Session state.</t>
+
+<t>On entering the Session Initialization state, the modem MUST wait for
+receipt of a Session Initialization Message from the router.  Upon receipt of
+a Session Initialization Message, the modem MUST send a Session Initialization
+Response Message, and the session MUST transition to the In-Session state. If
+the modem receives any Message other than Session Initialization or it fails
+to parse the received Message, it MUST NOT send any Message, and it MUST
+terminate the TCP connection and transition to the Session Reset state.</t>
+
+<t>DLEP provides an extension negotiation capability to be used in the Session
+Initialization state; see <xref target="extensions" pageno="false"
+format="default"/>. Extensions supported by an implementation MUST be declared
+to potential DLEP participants using the <xref target="di_ext_supp"
+pageno="false" format="default">Extensions Supported Data Item</xref>. Once
+both DLEP participants have exchanged initialization Messages, an
+implementation MUST NOT emit any Message, Signal, Data Item, or status code
+associated with an extension that was not specified in the received
+initialization Message from its peer.</t>
+</section>
+
+<section title="In-Session State" anchor="state_in_session"
+   toc="default">
+
+<t>In the In-Session state, Messages can flow in both
+directions between DLEP participants, indicating changes to the session state,
+the arrival or departure of reachable destinations, or changes of the state of
+the links to the destinations.</t>
+
+<t>The In-Session state is maintained until
+one of the following conditions occurs:</t>
+<t><list style="symbols">
+
+<t>The implementation terminates the session by
+sending a <xref target="msg_session_term" pageno="false"
+format="default">Session Termination Message</xref>, or</t>
+
+<t>Its peer terminates the session, indicated by receiving a Session
+Termination Message.</t>
+
+</list></t>
+<t>The implementation MUST then transition to the Session Termination state.
+</t>
+<section title="Heartbeats" anchor="session_heartbeats" toc="default">
+
+<t>In
+order to maintain the In-Session state, periodic <xref target="msg_heartbeat"
+pageno="false" format="default">Heartbeat Messages</xref> MUST be exchanged
+between router and modem. These Messages are intended to keep the session
+alive and to verify bidirectional connectivity between the two DLEP
+participants. It is RECOMMENDED that the interval timer between
+Heartbeat Messages be set to 60&nbsp;seconds. The interval MUST be a
+minimum of 1&nbsp;second; it SHOULD be a configurable parameter.</t>
+
+<t>Each DLEP participant is responsible for the creation of Heartbeat
+Messages.</t>
+
+<t>Receipt of any valid DLEP Message MUST reset the heartbeat interval timer
+(i.e., valid DLEP Messages take the place of, and obviate the need for,
+additional Heartbeat Messages).
+</t>
+
+<t>An implementation MUST allow a minimum of 2 heartbeat intervals to
+expire with no Messages from its peer before terminating the session. When
+terminating the session, a Session Termination Message containing a <xref
+target="di_status" pageno="false" format="default">Status Data Item</xref>
+with status code set to 132 'Timed Out' (see <xref
+target="table:dlep_status_codes" pageno="false" format="default"/>) MUST be
+sent, and then the implementation MUST transition to the Session Termination
+state.</t>
+</section>
+</section>
+
+<section title="Session Termination State"
+anchor="state_session_term" toc="default">
+
+<t>When an implementation enters the
+Session Termination state after sending a <xref target="msg_session_term"
+pageno="false" format="default">Session Termination Message</xref> as the
+result of an invalid Message or error, it MUST wait for a <xref
+target="msg_session_term_resp" pageno="false" format="default">Session
+Termination Response Message</xref> from its peer. A sender SHOULD allow 4
+heartbeat intervals to expire before assuming that its peer is
+unresponsive and before continuing with session termination.  Any other
+Message received while waiting MUST be silently ignored.</t>
+
+<t>When the sender of the Session Termination Message receives a Session
+Termination Response Message from its peer or times out, it MUST transition
+to the Session Reset state.</t>
+
+<t>When an implementation receives a Session Termination Message from its
+peer, it enters the Session Termination state, and then it MUST immediately
+send a Session Termination Response and transition to the Session Reset state.
+</t>
+</section>
+
+<section title="Session Reset State" anchor="session-reset-state"
+toc="default">
+
+<t>In the Session Reset state, the implementation MUST perform
+the following actions:</t>
+
+<t><list style="symbols">
+<t>Release all resources allocated for the session.
+</t>
+<t>Eliminate all destinations in the information base represented by the
+session. <xref target="msg_dest_down" pageno="false"
+format="default">Destination Down Messages</xref> MUST NOT be sent.</t>
+<t>Terminate the TCP connection.</t>
+</list></t>
+
+<t>Having completed these actions, the implementation SHOULD return to the
+relevant initial state:</t>
+
+<t><list style="symbols">
+<t>For modems: Peer Discovery.</t>
+<t>For routers: either Peer Discovery or Session Initialization,
+depending on configuration.</t>
+</list></t>
+
+<section title="Unexpected TCP Connection Termination"
+   anchor="unexpected-tcp-connection-termination" toc="default">
+
+<t>If the TCP connection between DLEP participants is terminated when an
+implementation is not in the Session Reset state, the implementation MUST
+immediately transition to the Session Reset state.</t>
+</section>
+</section>
+</section>
+
+<section title="Transaction Model" anchor="trans_model" toc="default">
+
+<t>DLEP defines a simple Message transaction model: only one request per
+destination may be in progress at a time per session. A Message transaction
+is considered complete when a response matching a previously issued request
+is received. If a DLEP participant receives a request for a destination for
+which there is already an outstanding request, the implementation MUST
+terminate the session by issuing a <xref target="msg_session_term" pageno="false"
+format="default">Session Termination Message</xref> containing a <xref
+target="di_status" pageno="false" format="default">Status Data Item</xref>
+with status code set to 129&nbsp;'Unexpected Message' (see <xref
+target="table:dlep_status_codes" pageno="false" format="default"/>) and
+transition to the Session Termination state. There is no restriction on the
+total number of Message transactions in progress at a time, as long as each
+transaction refers to a different destination.</t>
+
+<t>It should be noted that some requests may take a considerable amount of
+time for some DLEP participants to complete; for example, a modem handling a
+multicast Destination Up request may have to perform a complex network
+reconfiguration. A sending implementation MUST be able to handle such
+long&nbhy;running transactions gracefully.</t>
+
+<t>Additionally, only one session request, e.g., a <xref
+target="msg_session_init" pageno="false" format="default">Session
+Initialization Message</xref>, may be in progress at a time per session. As
+noted above for Message transactions, a session transaction is
+considered complete when a response matching a previously issued request is
+received. If a DLEP participant receives a session request while there is
+already a session request in progress, it MUST terminate the session by
+issuing a Session Termination Message containing a Status Data Item with
+status code set to 129 'Unexpected Message' and transition to the
+Session Termination state. Only the Session Termination Message may be
+issued when a session transaction is in progress.  <xref
+target="msg_heartbeat" pageno="false" format="default">Heartbeat
+Messages</xref> MUST NOT be considered part of a session transaction.</t>
+
+<t>DLEP transactions do not time out and are not cancellable, except for
+transactions in&nbsp;flight when the DLEP session is reset. If the session is
+terminated, canceling transactions in progress MUST be performed as part of
+resetting the state machine. An implementation can detect if its peer has
+failed in some way by use of the session heartbeat mechanism during the
+In-Session state; see <xref target="state_in_session" pageno="false"
+format="default"/>.</t>
+</section>
+
+<section title="Extensions" anchor="extensions"
+toc="default">
+
+<t>Extensions MUST be negotiated on a per-session basis during
+session initialization via the Extensions Supported mechanism.
+Implementations are not required to support any extensions in order to be
+considered DLEP compliant.</t>
+
+<t>If interoperable protocol extensions are required, they will need to be
+standardized as either (1)&nbsp;an update to this document or
+(2)&nbsp;an additional standalone specification.
+ The IANA registries
+defined in <xref target="iana-considerations"/> of this document contain
+sufficient unassigned space for DLEP Signals, Messages, Data Items, and
+status codes to accommodate future extensions to the protocol.</t>
+
+<t>As multiple protocol extensions MAY be announced during session
+initialization, authors of protocol extensions need to consider the
+interaction of their extensions with other published extensions and specify
+any incompatibilities.</t>
+
+<section title="Experiments" anchor="experiments" toc="default">
+
+<t>This document registers Private Use <xref target="RFC5226"/> numbering
+space in the DLEP Signal, Message, Data Item, and status code registries
+for experimental extensions. The intent is to allow for experimentation
+with new Signals, Messages, Data Items, and/or status codes while still
+retaining the documented DLEP behavior.</t>
+
+<t>During session initialization, the use of the Private Use
+Signals, Messages, Data Items, status codes, or behaviors MUST be
+announced as DLEP extensions, using extension identifiers from the
+Private Use space in the
+<xref target="table:dlep_extension_types" pageno="false" format="default">
+"Extension Type Values" registry</xref>, with a value agreed upon (a priori)
+between the participants. DLEP extensions using the Private Use
+numbering space are commonly referred to as "experiments".</t>
+
+<t>Multiple experiments MAY be announced in the Session Initialization
+Messages. However, the use of multiple experiments in a single session could
+lead to interoperability issues or unexpected results (e.g., clashes of
+experimental Signals, Messages, Data Items, and/or status code types) and is
+therefore discouraged. It is left to implementations to determine the correct
+processing path (e.g., a decision on whether to terminate the session or
+establish a precedence of the conflicting definitions) if such conflicts
+arise.</t>
+</section>
+</section>
+
+<section title="Scalability" anchor="scalability"
+toc="default">
+
+<t>The protocol is intended to support thousands of destinations on a
+given modem/router pair. On a large scale, an implementation should consider
+employing techniques to prevent flooding its peer with a large number of
+Messages in a short time. For example, a dampening algorithm could be
+employed to prevent a flapping device from generating a large number of
+Destination&nbsp;Up / Destination&nbsp;Down Messages.</t>
+
+<t>Also, the use of techniques such as a hysteresis can lessen the impact of
+rapid, minor fluctuations in link quality. The specific algorithms for
+handling flapping destinations and minor changes in link quality are outside
+the scope of this specification.</t>
+</section>
+
+<section title="DLEP Signal and Message Structure"
+anchor="dlep-signal-and-message-structure" toc="default">
+
+<t>DLEP defines two
+protocol units used in two different ways: Signals and Messages. Signals are
+only used in the Discovery mechanism and are carried in UDP
+datagrams. Messages are used bidirectionally over a TCP connection between the
+participants, in the Session Initialization, In-Session, and Session
+Termination states.</t>
+
+<t>Both Signals and Messages consist of a Header followed by an unordered list
+of Data Items. Headers consist of Type and Length information, while Data
+Items are encoded as TLV (Type-Length-Value) structures. In this document, the
+Data Items following a Signal or Message Header are described as being
+"contained in" the Signal or Message.</t>
+
+<t>There is no restriction on the order of Data Items following a Header, and
+the acceptability of duplicate Data Items is defined by the definition of the
+Signal or Message declared by the type in the Header.</t>
+
+<t>All integers in Header fields and values MUST be in network byte order.</t>
+
+<section title="DLEP Signal Header" anchor="dlep-signal-header"
+   toc="default">
+
+<t>The DLEP Signal Header contains the following
+fields:</t>
+
+<figure anchor="fig:dlep_signal_header" align="center" title="DLEP Signal Header" suppress-title="false" alt="" width="" height=""><artwork align="center" xml:space="preserve" name="" type="" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|      'D'      |      'L'      |      'E'      |      'P'      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Signal Type                   | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="&quot;DLEP&quot;:">Every Signal MUST
+start with the following characters: U+0044, U+004C, U+0045, U+0050.</t>
+
+<t hangText="Signal Type:">A 16-bit unsigned integer containing one of the
+DLEP Signal Type values defined in this document.</t>
+
+<t hangText="Length:">The length in octets, expressed as a 16-bit unsigned
+integer, of all of the DLEP Data Items contained in this Signal. This length
+MUST NOT include the length of the Signal Header itself.</t>
+</list></t>
+
+<t>The DLEP Signal Header is immediately followed by zero or more DLEP
+Data Items, encoded in TLVs, as defined in this document.</t>
+</section>
+
+<section title="DLEP Message Header" anchor="msg_header"
+toc="default">
+
+<t>The DLEP Message Header contains the following fields:</t>
+
+<figure anchor="fig:dlep_message_header" align="center" title="DLEP Message Header" suppress-title="false" alt="" width="" height=""><artwork align="center" xml:space="preserve" name="" type="" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Message Type                  | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Message Type:">A 16-bit unsigned integer
+containing one of the DLEP Message Type values defined in this document.</t>
+<t hangText="Length:">The length in octets, expressed as a 16-bit unsigned
+integer, of all of the DLEP Data Items contained in this Message. This length
+MUST NOT include the length of the Message Header itself.</t>
+</list></t>
+<t>The DLEP Message Header is immediately followed by zero or more DLEP Data
+Items, encoded in TLVs, as defined in this document.</t>
+</section>
+
+<section title="DLEP Generic Data Item"
+anchor="dlep-generic-data-item" toc="default">
+
+<t>All DLEP Data Items contain the following fields:</t>
+
+<figure anchor="fig:dlep_generic_data_item" align="center" title="DLEP Generic Data Item" suppress-title="false" alt="" width="" height=""><artwork align="center" xml:space="preserve" name="" type="" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                           Value...                            :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">A 16-bit unsigned
+integer field specifying the type of Data Item being sent.</t>
+<t hangText="Length:">The length in octets, expressed as a 16-bit unsigned
+integer, of the Value field of the Data Item. This length MUST&nbsp;NOT
+include the length of the Data Item Type and Length fields.</t>
+<t hangText="Value:">A field of &lt;Length&gt; octets that contains data
+specific to a particular Data Item.</t>
+</list></t>
+</section>
+</section>
+
+<section title="DLEP Signals and Messages"
+anchor="dlep-signals-and-messages" toc="default">
+
+<section title="General Processing Rules" anchor="gen_rules" toc="default">
+
+<t>If an unrecognized or unexpected Signal is received or if a received Signal
+contains unrecognized, invalid, or disallowed duplicate Data Items, the
+receiving implementation MUST ignore the Signal.</t>
+
+<t>If a Signal is received with a TTL value that is NOT equal to 255, the
+receiving implementation MUST ignore the Signal.</t>
+
+<t>If an unrecognized Message is received, the receiving implementation MUST
+issue a <xref target="msg_session_term" pageno="false"
+format="default">Session Termination Message</xref> containing a <xref
+target="di_status" pageno="false" format="default">Status Data Item</xref>
+with status code set to 128 'Unknown Message' (see <xref
+target="table:dlep_status_codes" pageno="false" format="default"/>) and
+transition to the Session Termination state.</t>
+
+<t>If an unexpected Message is received, the receiving implementation MUST
+issue a Session Termination Message containing a Status Data Item with status
+code set to 129 'Unexpected Message' and transition to the Session
+Termination state.</t>
+
+<t>If a received Message contains unrecognized, invalid, or disallowed
+duplicate Data Items, the receiving implementation MUST issue a Session
+Termination Message containing a Status Data Item with status code set to 130
+'Invalid Data' and transition to the Session Termination state.</t>
+
+<t>If a packet in the TCP stream is received with a TTL value other than 255,
+the receiving implementation MUST immediately transition to the Session Reset
+state.</t>
+<t>Prior to the exchange of <xref target="msg_dest_up" pageno="false"
+format="default">Destination Up</xref> and <xref target="msg_dest_up_resp"
+pageno="false" format="default">Destination Up Response</xref> Messages, or
+<xref target="msg_dest_annc" pageno="false" format="default">Destination
+Announce</xref> and <xref target="msg_dest_annc_resp" pageno="false"
+format="default">Destination Announce Response</xref> Messages, no Messages
+concerning a destination may be sent. An implementation receiving any Message
+with such an unannounced destination MUST terminate the session by issuing a
+Session Termination Message containing a Status Data Item with status code set
+to 131 'Invalid Destination' and transition to the Session Termination state.
+</t>
+
+<t>After exchanging <xref target="msg_dest_down" pageno="false"
+format="default">Destination Down</xref> and <xref target="msg_dest_down_resp"
+pageno="false" format="default">Destination Down Response</xref> Messages, no
+Messages concerning a destination may be sent until a new Destination Up or
+Destination Announce Message is sent. An implementation receiving a Message
+about a destination previously announced as 'down' MUST terminate the session
+by issuing a Session Termination Message containing a Status Data Item with
+status code set to 131 'Invalid Destination' and transition to the Session
+Termination state.</t>
+</section>
+
+<section title="Status Code Processing"
+anchor="status-code-processing" toc="default">
+
+<t>The behavior of a DLEP
+participant receiving a Message containing a <xref target="di_status"
+pageno="false" format="default">Status Data Item</xref> is defined by the
+failure mode associated with the value of the status code field; see <xref
+target="table:dlep_status_codes" pageno="false" format="default"/>. All status
+code values less than 100 have a failure mode of 'Continue'; all other status
+codes have a failure mode of 'Terminate'.</t>
+
+<t>A DLEP participant receiving any Message apart from a <xref
+target="msg_session_term" pageno="false" format="default">Session Termination
+Message</xref> containing a Status Data Item with a status code value with
+failure mode 'Terminate' MUST immediately issue a Session Termination Message
+echoing the received Status Data Item and then transition to the Session
+Termination state.</t>
+
+<t>A DLEP participant receiving a Message containing a Status Data Item with a
+status code value with failure mode 'Continue' can continue normal operation
+of the session.</t>
+</section>
+
+<section title="Peer Discovery Signal" anchor="sig_peer_discovery"
+toc="default">
+
+<t>A Peer Discovery Signal SHOULD be sent by a DLEP router to
+discover DLEP modems in the network; see <xref target="peer_discovery"
+pageno="false" format="default"/>.</t>
+
+<t>A Peer Discovery Signal MUST be encoded within a UDP packet. The
+destination MUST be set to the DLEP well-known address and port number. For
+routers supporting both IPv4 and IPv6 DLEP operation, it is RECOMMENDED that
+IPv6 be selected as the transport. The source IP address MUST be set to the
+router IP address associated with the DLEP interface. There is no
+DLEP-specific restriction on source port.</t>
+<t>To construct a Peer Discovery Signal, the Signal Type value in the
+Signal Header is set to 1 (see <xref target="di_sigreg" pageno="false"
+format="default">"Signal Type Registration"</xref>).</t>
+<t>The Peer Discovery Signal MAY contain a <xref target="di_peer_type"
+pageno="false" format="default">Peer Type Data Item</xref>.</t>
+</section>
+
+<section title="Peer Offer Signal" anchor="sig_peer_offer"
+toc="default">
+
+<t>A Peer Offer Signal MUST be sent by a DLEP modem in response
+to a properly formatted and addressed <xref target="sig_peer_discovery"
+pageno="false" format="default">Peer Discovery Signal</xref>.</t>
+<t>A Peer Offer Signal MUST be encoded within a UDP packet. The IP source and
+destination fields in the packet MUST be set by swapping the values received
+in the Peer Discovery Signal. The Peer Offer Signal completes the discovery
+process; see <xref target="peer_discovery" pageno="false" format="default"/>.
+</t>
+
+<t>To construct a Peer Offer Signal, the Signal Type value in the Signal
+Header is set to 2 (see <xref target="di_sigreg" pageno="false"
+format="default">"Signal Type Registration"</xref>).</t>
+<t>The Peer Offer Signal MAY contain a <xref target="di_peer_type"
+pageno="false" format="default">Peer Type Data Item</xref>.</t>
+<t>The Peer Offer Signal MAY contain one or more of any of the following
+Data Items, with different values:</t>
+
+<t><list style="symbols">
+<t><xref target="di_ipv4_conn" pageno="false"
+     format="default">IPv4 Connection
+Point</xref></t>
+<t><xref target="di_ipv6_conn" pageno="false" format="default">IPv6 Connection
+Point</xref></t>
+</list></t>
+
+<t>The IPv4 and IPv6 Connection Point Data Items indicate the unicast address
+the router MUST use when connecting the DLEP TCP session.</t>
+</section>
+
+<section title="Session Initialization Message"
+anchor="msg_session_init" toc="default">
+
+<t>A Session Initialization Message MUST be sent by a DLEP router
+as the first Message of the DLEP TCP session. It is sent by the router
+after a TCP connect to an address/port combination that was obtained
+either via receipt of a Peer Offer or from a&nbsp;priori configuration.</t>
+
+<t>To construct a Session Initialization Message, the Message Type value in
+the Message Header is set to 1 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+
+<t>The Session Initialization Message MUST contain one of each of the
+following Data Items:</t>
+
+<t><list style="symbols">
+<t><xref target="di_heartbeat" pageno="false" format="default">Heartbeat Interval</xref></t>
+<t><xref target="di_peer_type" pageno="false" format="default">Peer Type</xref></t>
+</list></t>
+
+<t>If DLEP extensions are supported, the Session Initialization Message
+MUST contain an
+<xref target="di_ext_supp" pageno="false" format="default">Extensions
+Supported Data Item</xref>.</t>
+
+<t>The Session Initialization Message MAY contain one or more of each of the
+following Data Items, with different values and with the
+Add/Drop (A)&nbsp;flag (<xref target="dlep-data-items"/>) set to 1:</t>
+
+<t><list style="symbols">
+
+<t><xref target="di_ipv4_addr" pageno="false"
+     format="default">IPv4 Address</xref></t>
+<t><xref target="di_ipv6_addr" pageno="false" format="default">IPv6
+Address</xref></t>
+<t><xref target="di_ipv4_subnet" pageno="false" format="default">IPv4 Attached
+Subnet</xref></t>
+<t><xref target="di_ipv6_subnet" pageno="false" format="default">IPv6 Attached
+Subnet</xref></t>
+</list></t>
+
+<t>If any optional extensions are supported by the implementation, they MUST
+be enumerated in the Extensions Supported Data Item. If an Extensions
+Supported Data Item does not exist in a Session Initialization Message, the
+modem MUST conclude that there is no support for extensions in the router.
+</t>
+
+<t>DLEP Heartbeats are not started until receipt of the <xref
+target="msg_session_init_resp" pageno="false" format="default">Session
+Initialization Response Message</xref>, and therefore implementations MUST use
+their own timeout heuristics for this Message.</t>
+
+<t>As an exception to the general rule governing an implementation receiving
+an unrecognized Data Item in a Message (see <xref target="gen_rules"
+pageno="false" format="default"/>), if a Session Initialization Message
+contains one or more Extensions Supported Data Items announcing support for
+extensions that the implementation does not recognize, then the implementation
+MAY ignore Data Items it does not recognize.</t>
+</section>
+
+<section title="Session Initialization Response Message"
+anchor="msg_session_init_resp" toc="default">
+
+<t>A Session Initialization
+Response Message MUST be sent by a DLEP modem in response to a received <xref
+target="msg_session_init" pageno="false" format="default">Session
+Initialization Message</xref>.</t>
+<t>To construct a Session Initialization Response Message, the Message Type
+value in the Message Header is set to 2 (see <xref target="di_msgreg"
+pageno="false" format="default">"Message Type Registration"</xref>).</t>
+<t>The Session Initialization Response Message MUST contain one of each of the
+following Data Items:</t>
+<t><list style="symbols">
+
+<t><xref target="di_status" pageno="false"
+     format="default">Status</xref></t>
+<t><xref target="di_peer_type" pageno="false" format="default">Peer
+Type</xref></t>
+<t><xref target="di_heartbeat" pageno="false" format="default">Heartbeat
+Interval</xref></t>
+<t><xref target="di_mdrr" pageno="false" format="default">Maximum Data Rate
+(Receive)</xref></t>
+<t><xref target="di_mdrt" pageno="false" format="default">Maximum Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_cdrr" pageno="false" format="default">Current Data Rate
+(Receive)</xref></t>
+<t><xref target="di_cdrt" pageno="false" format="default">Current Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_latency" pageno="false" format="default">Latency</xref>
+</t>
+</list></t>
+
+<t>The Session Initialization Response Message MUST contain one of each of
+the following Data Items, if the Data Item will be used during the lifetime
+of the session:</t>
+
+<t><list style="symbols">
+
+<t><xref target="di_res" pageno="false"
+     format="default">Resources</xref></t>
+<t><xref target="di_rlqr" pageno="false" format="default">Relative Link
+Quality (Receive)</xref></t>
+<t><xref target="di_rlqt" pageno="false" format="default">Relative Link
+Quality (Transmit)</xref></t>
+<t><xref target="di_mtu" pageno="false" format="default">Maximum Transmission
+Unit (MTU)</xref></t>
+</list></t>
+
+<t>If DLEP extensions are supported, the Session Initialization Response
+Message MUST contain an
+<xref target="di_ext_supp" pageno="false" format="default">Extensions
+Supported Data Item</xref>.</t>
+
+<t>The Session Initialization Response Message MAY contain one or more
+of each of the following Data Items, with different values and with the
+Add/Drop (A)&nbsp;flag (<xref target="dlep-data-items"/>) set to 1:</t>
+<t><list style="symbols">
+
+<t><xref target="di_ipv4_addr" pageno="false"
+     format="default">IPv4 Address</xref></t>
+<t><xref target="di_ipv6_addr" pageno="false" format="default">IPv6
+Address</xref></t>
+<t><xref target="di_ipv4_subnet" pageno="false" format="default">IPv4 Attached
+Subnet</xref></t>
+<t><xref target="di_ipv6_subnet" pageno="false" format="default">IPv6 Attached
+Subnet</xref></t>
+</list></t>
+
+<t>The Session Initialization Response Message completes the DLEP session
+establishment; the modem should transition to the In-Session state when the
+Message is sent, and the router should transition to the In-Session state upon
+receipt of an acceptable Session Initialization Response Message.</t>
+
+<t>All supported metric Data Items MUST be included in the Session
+Initialization Response Message, with default values to be used on a
+session&nbhy;wide basis. This can be viewed as the modem "declaring" all
+supported metrics at DLEP session initialization. Receipt of any further
+DLEP Message containing a metric Data Item not included in the
+Session Initialization Response Message MUST be treated as an error,
+resulting in the termination of the DLEP session between router and modem.</t>
+
+<t>If any optional extensions are supported by the modem, they MUST be
+enumerated in the Extensions Supported Data Item. If an Extensions Supported
+Data Item does not exist in a Session Initialization Response Message, the
+router MUST conclude that there is no support for extensions in the modem.
+</t>
+<t>After the Session Initialization / Session Initialization Response Messages
+have been successfully exchanged, implementations MUST only use extensions
+that are supported by both DLEP participants; see <xref
+target="state_session_init" pageno="false" format="default"/>.</t>
+</section>
+
+<section title="Session Update Message" anchor="msg_session_update"
+toc="default">
+
+<t>A Session Update Message MAY be sent by a DLEP participant,
+on a session-wide basis, to indicate local Layer&nbsp;3 address
+changes and&wj;/or metric changes.</t>
+
+<t>To construct a Session Update Message, the Message Type value in the
+Message Header is set to 3 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+
+<t>The Session Update Message MAY contain one or more of each of the
+following Data Items, with different values:</t>
+
+<t><list style="symbols">
+
+<t><xref target="di_ipv4_addr" pageno="false"
+     format="default">IPv4 Address</xref></t>
+<t><xref target="di_ipv6_addr" pageno="false" format="default">IPv6
+Address</xref></t>
+<t><xref target="di_ipv4_subnet" pageno="false" format="default">IPv4 Attached
+Subnet</xref></t>
+<t><xref target="di_ipv6_subnet" pageno="false" format="default">IPv6 Attached
+Subnet</xref></t>
+</list></t>
+<t>When sent by a modem, the Session Update Message MAY contain one of each of
+the following Data Items:</t>
+<t><list style="symbols">
+
+<t><xref target="di_mdrr" pageno="false"
+     format="default">Maximum Data Rate
+(Receive)</xref></t>
+<t><xref target="di_mdrt" pageno="false" format="default">Maximum Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_cdrr" pageno="false" format="default">Current Data Rate
+(Receive)</xref></t>
+<t><xref target="di_cdrt" pageno="false" format="default">Current Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_latency" pageno="false" format="default">Latency</xref>
+</t>
+</list></t>
+<t>When sent by a modem, the Session Update Message MAY contain one of each of
+the following Data Items, if the Data Item is in use by the session:</t>
+<t><list style="symbols">
+
+<t><xref target="di_res" pageno="false"
+     format="default">Resources</xref></t>
+<t><xref target="di_rlqr" pageno="false" format="default">Relative Link
+Quality (Receive)</xref></t>
+<t><xref target="di_rlqt" pageno="false" format="default">Relative Link
+Quality (Transmit)</xref></t>
+<t><xref target="di_mtu" pageno="false" format="default">Maximum Transmission
+Unit (MTU)</xref></t>
+</list></t>
+
+<t>If metrics are supplied with the Session Update Message (e.g., Maximum Data
+Rate), these metrics are considered to be session-wide and therefore MUST be
+applied to all destinations in the information base associated with the DLEP
+session. This includes destinations for which metrics may have been stored
+based on received Destination Update messages.</t>
+
+<t>It should be noted that Session Update Messages can be sent by both routers
+and modems. For example, the addition of an IPv4 address on the router MAY
+prompt a Session Update Message to its attached modems. Also, for example, a
+modem that changes its Maximum Data Rate (Receive) for all destinations MAY
+reflect that change via a Session Update Message to its attached
+router(s).</t>
+
+<t>Concerning Layer 3 addresses and subnets: if the modem is capable of
+understanding and forwarding this information (via mechanisms not defined by
+DLEP), the update would prompt any remote DLEP-enabled modems to issue a <xref
+target="msg_dest_update" pageno="false" format="default">Destination Update
+Message</xref> to their local routers with the new (or deleted) addresses and
+subnets.</t>
+</section>
+
+<section title="Session Update Response Message"
+anchor="msg_session_update_resp" toc="default">
+
+<t>A Session Update Response
+Message MUST be sent by a DLEP participant when a <xref
+target="msg_session_update" pageno="false" format="default">Session Update
+Message</xref> is received.</t>
+<t>To construct a Session Update Response Message, the Message Type value in
+the Message Header is set to 4 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+<t>The Session Update Response Message MUST contain a <xref target="di_status"
+pageno="false" format="default">Status Data Item</xref>.</t>
+</section>
+
+<section title="Session Termination Message"
+anchor="msg_session_term" toc="default">
+
+<t>When a DLEP participant determines that the DLEP session needs to be
+terminated, the participant MUST send (or attempt to send) a
+Session Termination Message.</t>
+
+<t>To construct a Session Termination Message, the Message Type value in the
+Message Header is set to 5 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+
+<t>The Session Termination Message MUST contain a <xref target="di_status"
+pageno="false" format="default">Status Data Item</xref>.</t>
+<t>It should be noted that Session Termination Messages can be sent by both
+routers and modems.</t>
+</section>
+
+<section title="Session Termination Response Message"
+anchor="msg_session_term_resp" toc="default">
+
+<t>A Session Termination Response
+Message MUST be sent by a DLEP participant when a <xref
+target="msg_session_term" pageno="false" format="default">Session Termination
+Message</xref> is received.</t>
+
+<t>To construct a Session Termination Response Message, the Message Type value
+in the Message Header is set to 6 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+
+<t>There are no valid Data Items for the Session Termination Response Message.
+</t>
+
+<t>Receipt of a Session Termination Response Message completes the teardown
+of the DLEP session; see <xref target="state_session_term" pageno="false"
+format="default"/>.</t>
+</section>
+
+<section title="Destination Up Message" anchor="msg_dest_up"
+toc="default">
+
+<t>Destination Up Messages MAY be sent by a modem to inform its
+attached router of the presence of a new reachable destination.</t>
+<t>To construct a Destination Up Message, the Message Type value in the
+Message Header is set to 7 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+<t>The Destination Up Message MUST contain a <xref target="di_mac_addr"
+pageno="false" format="default">MAC Address Data Item</xref>.</t>
+<t>The Destination Up Message SHOULD contain one or more of each of the
+following Data Items, with different values:</t>
+<t><list style="symbols">
+
+<t><xref target="di_ipv4_addr" pageno="false"
+     format="default">IPv4 Address</xref></t>
+<t><xref target="di_ipv6_addr" pageno="false" format="default">IPv6
+Address</xref></t>
+</list></t>
+<t>The Destination Up Message MAY contain one of each of the following Data
+Items:</t>
+<t><list style="symbols">
+
+<t><xref target="di_mdrr" pageno="false"
+     format="default">Maximum Data Rate
+(Receive)</xref></t>
+<t><xref target="di_mdrt" pageno="false" format="default">Maximum Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_cdrr" pageno="false" format="default">Current Data Rate
+(Receive)</xref></t>
+<t><xref target="di_cdrt" pageno="false" format="default">Current Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_latency" pageno="false" format="default">Latency</xref>
+</t>
+</list></t>
+<t>The Destination Up Message MAY contain one of each of the following Data
+Items, if the Data Item is in use by the session:</t>
+<t><list style="symbols">
+
+<t><xref target="di_res" pageno="false"
+     format="default">Resources</xref></t>
+<t><xref target="di_rlqr" pageno="false" format="default">Relative Link
+Quality (Receive)</xref></t>
+<t><xref target="di_rlqt" pageno="false" format="default">Relative Link
+Quality (Transmit)</xref></t>
+<t><xref target="di_mtu" pageno="false" format="default">Maximum Transmission
+Unit (MTU)</xref></t>
+</list></t>
+<t>The Destination Up Message MAY contain one or more of each of the following
+Data Items, with different values:</t>
+<t><list style="symbols">
+
+<t><xref target="di_ipv4_subnet" pageno="false"
+     format="default">IPv4 Attached Subnet</xref>
+</t>
+<t><xref target="di_ipv6_subnet" pageno="false" format="default">IPv6 Attached
+Subnet</xref></t>
+</list></t>
+<t>A router receiving a Destination Up Message allocates the necessary
+resources, creating an entry in the information base with the specifics (MAC
+Address, Latency, Data Rate, etc.) of the destination. The information about
+this destination will persist in the router's information base until a <xref
+target="msg_dest_down" pageno="false" format="default">Destination Down
+Message</xref> is received, indicating that the modem has lost contact with
+the remote node or that the implementation transitions to the
+Session Termination state.
+</t>
+</section>
+
+<section title="Destination Up Response Message"
+anchor="msg_dest_up_resp" toc="default">
+
+<t>A router MUST send a Destination Up
+Response Message when a <xref target="msg_dest_up" pageno="false"
+format="default">Destination Up Message</xref> is received.</t>
+<t>To construct a Destination Up Response Message, the Message Type value in
+the Message Header is set to 8 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+<t>The Destination Up Response Message MUST contain one of each of the
+following Data Items:</t>
+<t><list style="symbols">
+
+<t><xref target="di_mac_addr" pageno="false"
+     format="default">MAC Address</xref></t>
+<t><xref target="di_status" pageno="false" format="default">Status</xref></t>
+</list></t>
+<t>A router that wishes to receive further information concerning the
+destination identified in the corresponding Destination Up Message MUST set
+the status code of the included Status Data Item to 0&nbsp;'Success'; see
+<xref target="table:dlep_status_codes" pageno="false" format="default"/>.</t>
+
+<t>If the router has no interest in the destination identified in the
+corresponding Destination Up Message, then it MAY set the status code of the
+included Status Data Item to 1 'Not Interested'.</t>
+<t>A modem receiving a Destination Up Response Message containing a Status
+Data Item with a status code of any value other than 0 'Success' MUST NOT
+send further Destination Messages about the destination, e.g., <xref
+target="msg_dest_down" pageno="false" format="default">Destination Down</xref>
+or <xref target="msg_dest_update" pageno="false" format="default">Destination
+Update</xref> with the same MAC address.</t>
+</section>
+
+<section title="Destination Announce Message" anchor="msg_dest_annc"
+toc="default">
+
+<t>Usually, a modem will discover the presence of one or more remote
+router/modem pairs and announce each destination's arrival by sending a
+corresponding <xref target="msg_dest_up" pageno="false"
+format="default">Destination Up Message</xref> to the router. However, there
+may be times when a router wishes to express an interest in a destination that
+has yet to be announced, typically a multicast destination. Destination
+Announce Messages MAY be sent by a router to announce such an interest.</t>
+
+<t>A Destination Announce Message MAY also be sent by a router to request
+information concerning a destination (1)&nbsp;in which the router has
+previously declined interest, via the 1 'Not Interested' status code in a
+<xref target="msg_dest_up_resp" pageno="false" format="default">Destination Up
+Response Message</xref> (see <xref target="table:dlep_status_codes"
+pageno="false" format="default"/>) or (2)&nbsp;that was previously
+declared as 'down', via the
+<xref target="msg_dest_down" pageno="false" format="default">Destination Down
+Message</xref>.</t>
+
+<t>To construct a Destination Announce Message, the Message Type value in the
+Message Header is set to 9 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+<t>The Destination Announce Message MUST contain a <xref target="di_mac_addr"
+pageno="false" format="default">MAC Address Data Item</xref>.</t>
+<t>The Destination Announce Message MAY contain zero or more of the following
+Data Items, with different values:</t>
+<t><list style="symbols">
+
+<t><xref target="di_ipv4_addr" pageno="false"
+     format="default">IPv4 Address</xref></t>
+<t><xref target="di_ipv6_addr" pageno="false" format="default">IPv6
+Address</xref></t>
+</list></t>
+<t>One of the advantages of implementing DLEP is to leverage the modem's
+knowledge of the links between remote destinations, allowing routers to avoid
+using probed neighbor discovery techniques; therefore, modem implementations
+SHOULD announce available destinations via the Destination Up Message, rather
+than relying on Destination Announce Messages.</t>
+</section>
+
+<section title="Destination Announce Response Message"
+anchor="msg_dest_annc_resp" toc="default">
+
+<t>A modem MUST send a Destination
+Announce Response Message when a <xref target="msg_dest_annc" pageno="false"
+format="default">Destination Announce Message</xref> is received.</t>
+
+<t>To construct a Destination Announce Response Message, the Message Type
+value in the Message Header is set to 10 (see <xref target="di_msgreg"
+pageno="false" format="default">"Message Type Registration"</xref>).</t>
+
+<t>The Destination Announce Response Message MUST contain one of each of the
+following Data Items:</t>
+
+<t><list style="symbols">
+<t><xref target="di_mac_addr" pageno="false"
+     format="default">MAC Address</xref></t>
+<t><xref target="di_status" pageno="false" format="default">Status</xref></t>
+</list></t>
+
+<t>The Destination Announce Response Message MAY contain one or more of each
+of the following Data Items, with different values:</t>
+<t><list style="symbols">
+
+<t><xref target="di_ipv4_addr" pageno="false"
+     format="default">IPv4 Address</xref></t>
+<t><xref target="di_ipv6_addr" pageno="false" format="default">IPv6
+Address</xref></t>
+<t><xref target="di_ipv4_subnet" pageno="false" format="default">IPv4 Attached
+Subnet</xref></t>
+<t><xref target="di_ipv6_subnet" pageno="false" format="default">IPv6 Attached
+Subnet</xref></t>
+</list></t>
+<t>The Destination Announce Response Message MAY contain one of each of the
+following Data Items:</t>
+<t><list style="symbols">
+
+<t><xref target="di_mdrr" pageno="false"
+     format="default">Maximum Data Rate
+(Receive)</xref></t>
+<t><xref target="di_mdrt" pageno="false" format="default">Maximum Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_cdrr" pageno="false" format="default">Current Data Rate
+(Receive)</xref></t>
+<t><xref target="di_cdrt" pageno="false" format="default">Current Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_latency" pageno="false" format="default">Latency</xref>
+</t>
+</list></t>
+<t>The Destination Announce Response Message MAY contain one of each of the
+following Data Items, if the Data Item is in use by the session:</t>
+<t><list style="symbols">
+
+<t><xref target="di_res" pageno="false"
+     format="default">Resources</xref></t>
+<t><xref target="di_rlqr" pageno="false" format="default">Relative Link
+Quality (Receive)</xref></t>
+<t><xref target="di_rlqt" pageno="false" format="default">Relative Link
+Quality (Transmit)</xref></t>
+<t><xref target="di_mtu" pageno="false" format="default">Maximum Transmission
+Unit (MTU)</xref></t>
+</list></t>
+
+<t>If a modem is unable to report information immediately about the requested
+information -- for example, if the destination is not currently
+reachable -- the status code in the Status Data Item MUST be set
+to 2 'Request Denied'; see
+<xref target="table:dlep_status_codes" pageno="false" format="default"/>.
+</t>
+
+<t>After sending a Destination Announce Response Message containing a Status
+Data Item with a status code of 0 'Success', a modem then announces changes
+to the link to the destination via Destination Update Messages.</t>
+
+<t>When a successful Destination Announce Response Message is received, the
+router should add knowledge of the available destination to its information
+base.</t>
+</section>
+
+<section title="Destination Down Message" anchor="msg_dest_down"
+toc="default">
+
+<t>A modem MUST send a Destination Down Message to report when a
+destination (a remote node or a multicast group) is no longer reachable.</t>
+
+<t>A router MAY send a Destination Down Message to report when it
+no&nbsp;longer requires information concerning a destination.</t>
+
+<t>To construct a Destination Down Message, the Message Type value in the
+Message Header is set to 11 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+
+<t>The Destination Down Message MUST contain a <xref target="di_mac_addr"
+pageno="false" format="default">MAC Address Data Item</xref>.</t>
+
+<t>It should be noted that both modem and router may send a Destination Down
+Message to their peer, regardless of which participant initially indicated the
+destination to be 'up'.</t>
+</section>
+
+<section title="Destination Down Response Message"
+anchor="msg_dest_down_resp" toc="default">
+
+<t>A Destination Down Response Message MUST be sent by the recipient of
+a <xref target="msg_dest_down" pageno="false" 
+format="default">Destination Down Message</xref> to confirm that the relevant
+data concerning the destination has been removed from the information base.
+</t>
+
+<t>To construct a Destination Down Response Message, the Message Type value in
+the Message Header is set to 12 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+
+<t>The Destination Down Response Message MUST contain one of each of the
+following Data Items:</t>
+
+<t><list style="symbols">
+
+<t><xref target="di_mac_addr" pageno="false"
+     format="default">MAC Address</xref></t>
+<t><xref target="di_status" pageno="false" format="default">Status</xref></t>
+</list></t>
+</section>
+
+<section title="Destination Update Message" anchor="msg_dest_update"
+toc="default">
+
+<t>A modem SHOULD send a Destination Update Message when it
+detects some change in the information base for a given destination (remote
+node or multicast group). Some examples of changes that would prompt a
+Destination Update Message are as follows:</t>
+
+<t><list style="symbols">
+<t>Change in link metrics (e.g., data rates)</t>
+<t>Layer 3 addressing change</t>
+</list></t>
+
+<t>To construct a Destination Update Message, the Message Type value in the
+Message Header is set to 13 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+<t>The Destination Update Message MUST contain a <xref target="di_mac_addr"
+pageno="false" format="default">MAC Address Data Item</xref>.</t>
+<t>The Destination Update Message MAY contain one of each of the following
+Data Items:</t>
+<t><list style="symbols">
+<t><xref target="di_mdrr" pageno="false"
+     format="default">Maximum Data Rate
+(Receive)</xref></t>
+<t><xref target="di_mdrt" pageno="false" format="default">Maximum Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_cdrr" pageno="false" format="default">Current Data Rate
+(Receive)</xref></t>
+<t><xref target="di_cdrt" pageno="false" format="default">Current Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_latency" pageno="false" format="default">Latency</xref>
+</t>
+</list></t>
+<t>The Destination Update Message MAY contain one of each of the following
+Data Items, if the Data Item is in use by the session:</t>
+<t><list style="symbols">
+<t><xref target="di_res" pageno="false"
+     format="default">Resources</xref></t>
+<t><xref target="di_rlqr" pageno="false" format="default">Relative Link
+Quality (Receive)</xref></t>
+<t><xref target="di_rlqt" pageno="false" format="default">Relative Link
+Quality (Transmit)</xref></t>
+<t><xref target="di_mtu" pageno="false" format="default">Maximum Transmission
+Unit (MTU)</xref></t>
+</list></t>
+<t>The Destination Update Message MAY contain one or more of each of the
+following Data Items, with different values:</t>
+<t><list style="symbols">
+<t><xref target="di_ipv4_addr" pageno="false"
+     format="default">IPv4 Address</xref></t>
+<t><xref target="di_ipv6_addr" pageno="false" format="default">IPv6
+Address</xref></t>
+<t><xref target="di_ipv4_subnet" pageno="false" format="default">IPv4 Attached
+Subnet</xref></t>
+<t><xref target="di_ipv6_subnet" pageno="false" format="default">IPv6 Attached
+Subnet</xref></t>
+</list></t>
+
+<t>Metrics supplied in this Message overwrite metrics provided in a
+previously received Session Message, Destination Message, or
+Link Characteristics Message (e.g., Session Initialization,
+Destination&nbsp;Up, Link Characteristics Response).
+</t>
+
+<t>It should be noted that this Message has no corresponding response.</t>
+</section>
+
+<section title="Link Characteristics Request Message"
+anchor="msg_link_req" toc="default">
+
+<t>The Link Characteristics Request
+Message MAY be sent by a router to request that the modem initiate changes for
+specific characteristics of the link. The request can reference either a real
+destination (e.g., a remote node) or a logical destination (e.g., a multicast
+group) within the network.</t>
+
+<t>To construct a Link Characteristics Request Message, the Message Type value
+in the Message Header is set to 14 (see <xref target="di_msgreg"
+pageno="false" format="default">"Message Type Registration"</xref>).</t>
+
+<t>The Link Characteristics Request Message MUST contain a MAC Address
+Data Item (<xref target="di_mac_addr"/>).</t>
+
+<t>The Link Characteristics Request Message MUST also contain at least
+one of each of the following Data Items:</t>
+
+<t><list style="symbols">
+<t><xref target="di_cdrr" pageno="false"
+     format="default">Current Data Rate
+(Receive)</xref></t>
+<t><xref target="di_cdrt" pageno="false" format="default">Current Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_latency" pageno="false" format="default">Latency</xref>
+</t>
+</list></t>
+
+<t>The Link Characteristics Request Message MAY contain either a
+Current Data Rate (Receive) (CDRR) or Current Data Rate (Transmit) (CDRT)
+Data Item to request a different data&nbsp;rate than is currently allocated,
+a Latency Data Item to request that traffic delay on the link not exceed
+the specified value, or both.</t>
+
+<t>The router sending a Link Characteristics Request Message should be aware
+that a request may take an extended period of time to complete.</t>
+</section>
+
+<section title="Link Characteristics Response Message"
+anchor="msg_link_req_resp" toc="default">
+
+<t>A modem MUST send a Link
+Characteristics Response Message when a <xref target="msg_link_req"
+pageno="false" format="default">Link Characteristics Request Message</xref> is
+received.</t>
+<t>To construct a Link Characteristics Response Message, the Message Type
+value in the Message Header is set to 15 (see <xref target="di_msgreg"
+pageno="false" format="default">"Message Type Registration"</xref>).</t>
+<t>The Link Characteristics Response Message MUST contain one of each of the
+following Data Items:</t>
+<t><list style="symbols">
+<t><xref target="di_mac_addr" pageno="false"
+     format="default">MAC Address</xref></t>
+<t><xref target="di_status" pageno="false" format="default">Status</xref></t>
+</list></t>
+<t>The Link Characteristics Response Message SHOULD contain one of each of the
+following Data Items:</t>
+<t><list style="symbols">
+<t><xref target="di_mdrr" pageno="false"
+     format="default">Maximum Data Rate
+(Receive)</xref></t>
+<t><xref target="di_mdrt" pageno="false" format="default">Maximum Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_cdrr" pageno="false" format="default">Current Data Rate
+(Receive)</xref></t>
+<t><xref target="di_cdrt" pageno="false" format="default">Current Data Rate
+(Transmit)</xref></t>
+<t><xref target="di_latency" pageno="false" format="default">Latency</xref>
+</t>
+</list></t>
+<t>The Link Characteristics Response Message MAY contain one of each of the
+following Data Items, if the Data Item is in use by the session:</t>
+<t><list style="symbols">
+<t><xref target="di_res" pageno="false"
+     format="default">Resources</xref></t>
+<t><xref target="di_rlqr" pageno="false" format="default">Relative Link
+Quality (Receive)</xref></t>
+<t><xref target="di_rlqt" pageno="false" format="default">Relative Link
+Quality (Transmit)</xref></t>
+<t><xref target="di_mtu" pageno="false" format="default">Maximum Transmission
+Unit (MTU)</xref></t>
+</list></t>
+<t>The Link Characteristics Response Message MUST contain a complete set of
+metric Data Items, referencing all metrics declared in the <xref
+target="msg_session_init_resp" pageno="false" format="default">Session
+Initialization Response Message</xref>. The values in the metric Data Items in
+the Link Characteristics Response Message MUST reflect the link
+characteristics after the request has been processed.</t>
+<t>If an implementation is not able to alter the characteristics of the link
+in the manner requested, then the status code of the Status Data Item MUST be
+set to 2 'Request Denied'; see <xref target="table:dlep_status_codes"
+pageno="false" format="default"/>.</t>
+</section>
+
+<section title="Heartbeat Message" anchor="msg_heartbeat"
+toc="default">
+
+<t>A Heartbeat Message MUST be sent by a DLEP participant every
+N&nbsp;milliseconds, where N is defined in the <xref target="di_heartbeat"
+pageno="false" format="default">Heartbeat Interval Data Item</xref> of the
+<xref target="msg_session_init" pageno="false" format="default">Session
+Initialization Message</xref> or <xref target="msg_session_init_resp"
+pageno="false" format="default">Session Initialization Response
+Message</xref>.</t>
+
+<t>To construct a Heartbeat Message, the Message Type value in the Message
+Header is set to 16 (see <xref target="di_msgreg" pageno="false"
+format="default">"Message Type Registration"</xref>).</t>
+
+<t>There are no valid Data Items for the Heartbeat Message.</t>
+
+<t>The Heartbeat Message is used by DLEP participants to detect when a
+DLEP session peer (either the modem or the router) is no longer
+communicating; see <xref target="session_heartbeats" pageno="false"
+format="default"/>.
+</t>
+</section>
+</section>
+
+<section title="DLEP Data Items" anchor="dlep-data-items"
+toc="default">
+
+<t>The core DLEP Data Items are as follows:</t>
+
+<?rfc compact="no"?>
+<texttable anchor="table:dlep_data_item_types" align="center" title="DLEP Data
+Item Types" suppress-title="false" style="full"><ttcol align="left"
+ width="16%">Type Code
+</ttcol><ttcol align="left" width="70%">Description </ttcol><c>0
+</c><c>Reserved </c><c>1 </c><c><xref target="di_status" pageno="false"
+format="default">Status</xref> </c><c>2 </c><c><xref target="di_ipv4_conn"
+pageno="false" format="default">IPv4 Connection Point</xref> </c><c>3
+</c><c><xref target="di_ipv6_conn" pageno="false" format="default">IPv6
+Connection Point</xref> </c><c>4 </c><c><xref target="di_peer_type"
+pageno="false" format="default">Peer Type</xref> </c><c>5 </c><c><xref
+target="di_heartbeat" pageno="false" format="default">Heartbeat
+Interval</xref> </c><c>6 </c><c><xref target="di_ext_supp" pageno="false"
+format="default">Extensions Supported</xref> </c><c>7 </c><c><xref
+target="di_mac_addr" pageno="false" format="default">MAC Address</xref>
+</c><c>8 </c><c><xref target="di_ipv4_addr" pageno="false"
+format="default">IPv4 Address</xref> </c><c>9 </c><c><xref
+target="di_ipv6_addr" pageno="false" format="default">IPv6 Address</xref>
+</c><c>10 </c><c><xref target="di_ipv4_subnet" pageno="false"
+format="default">IPv4 Attached Subnet</xref> </c><c>11 </c><c><xref
+target="di_ipv6_subnet" pageno="false" format="default">IPv6 Attached
+Subnet</xref> </c><c>12 </c><c><xref target="di_mdrr" pageno="false"
+format="default">Maximum Data Rate (Receive) (MDRR)</xref> </c><c>13
+</c><c><xref target="di_mdrt" pageno="false" format="default">Maximum Data
+Rate (Transmit) (MDRT)</xref> </c><c>14 </c><c><xref target="di_cdrr"
+pageno="false" format="default">Current Data Rate (Receive) (CDRR)</xref>
+</c><c>15 </c><c><xref target="di_cdrt" pageno="false"
+format="default">Current Data Rate (Transmit) (CDRT)</xref> </c><c>16
+</c><c><xref target="di_latency" pageno="false"
+format="default">Latency</xref> </c><c>17 </c><c><xref target="di_res"
+pageno="false" format="default">Resources (RES)</xref> </c><c>18 </c><c><xref
+target="di_rlqr" pageno="false" format="default">Relative Link Quality
+(Receive) (RLQR)</xref> </c><c>19 </c><c><xref target="di_rlqt" pageno="false"
+format="default">Relative Link Quality (Transmit) (RLQT)</xref> </c><c>20
+</c><c><xref target="di_mtu" pageno="false" format="default">Maximum
+Transmission Unit (MTU)</xref> </c><c>21-65407 </c><c>Unassigned (available for future
+extensions)</c><c>65408-65534 </c><c>Reserved for Private Use (available for experiments)
+</c><c>65535 </c><c>Reserved </c></texttable>
+<?rfc compact="yes"?>
+
+<section title="Status" anchor="di_status" toc="default">
+
+<t>For the <xref
+target="msg_session_term" pageno="false" format="default">Session Termination
+Message</xref>, the Status Data Item indicates a reason for the
+termination. For all response messages, the Status Data Item is used to
+indicate the success or failure of the previously received Message.</t>
+
+<t>The Status Data Item includes an optional Text field that can be used to
+provide a textual description of the status. The use of the Text field is
+entirely up to the receiving implementation, e.g., it could be output to a log
+file or discarded. If no Text field is supplied with the Status Data Item, the
+Length field MUST be set to 1.</t>
+
+<t>The Status Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Status Code   | Text...                                       :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">1
+</t>
+<t hangText="Length:">1 + Length of Text, in octets.</t>
+<t hangText="Status Code:">One of the status codes defined in <xref
+target="table:dlep_status_codes" pageno="false" format="default"/> below.
+</t>
+<t hangText="Text:">UTF-8 encoded string of Unicode <xref target="RFC3629"
+pageno="false" format="default"/> characters, describing the cause, used
+for implementation-defined purposes. Since this field is used
+for description purposes, implementations SHOULD limit characters in this
+field to printable characters.
+</t>
+</list></t>
+<t>An implementation MUST NOT assume that the Text field is a
+NUL&nbhy;terminated string of printable characters.</t>
+
+<?rfc compact="no"?>
+<texttable anchor="table:dlep_status_codes" align="center" title="DLEP Status
+ Codes" suppress-title="false" style="full"><ttcol align="left"
+ width="16%">Status Code
+</ttcol><ttcol align="left" width="18%">Failure Mode </ttcol><ttcol
+align="left" width="27%">Description </ttcol><ttcol align="left"
+width="37%">Reason </ttcol><c>0 </c><c>Continue </c><c>Success </c><c>The
+Message was processed successfully.  </c><c>1 </c><c>Continue </c><c>Not
+Interested </c><c>The receiver is not interested in this Message subject,
+e.g., in a <xref target="msg_dest_up_resp" pageno="false"
+format="default">Destination Up Response Message</xref> to indicate no further
+Messages about the destination.  </c><c>2 </c><c>Continue </c><c>Request
+Denied </c><c>The receiver refuses to complete the request.  </c><c>3
+</c><c>Continue </c><c>Inconsistent Data </c><c>One or more Data Items in the
+Message describe a logically inconsistent state in the network -- for example,
+in the <xref target="msg_dest_up" pageno="false" format="default">Destination
+Up Message</xref> when an announced subnet clashes with an existing
+destination subnet.  </c><c>4-111 </c><c>Continue </c><c>&lt;Unassigned&gt;
+</c><c>Available for future extensions.  </c><c>112-127 </c><c>Continue
+</c><c>&lt;Reserved for Private Use&gt; </c><c>Available for experiments.  </c><c>128
+</c><c>Terminate </c><c>Unknown Message </c><c>The Message was not recognized
+by the implementation.  </c><c>129 </c><c>Terminate </c><c>Unexpected Message
+</c><c>The Message was not expected while the device was in the current state,
+e.g., a <xref target="msg_session_init" pageno="false"
+format="default">Session Initialization Message</xref> in the In&nbhy;Session
+state.  </c><c>130 </c><c>Terminate </c><c>Invalid Data </c><c>One or more
+Data Items in the Message are invalid, unexpected, or incorrectly duplicated.
+</c><c>131 </c><c>Terminate </c><c>Invalid Destination </c><c>The destination
+included in the Message does not match a previously announced destination -- 
+for example, in the <xref target="msg_link_req_resp" pageno="false"
+format="default">Link Characteristics Response Message</xref>.  </c><c>132
+</c><c>Terminate </c><c>Timed Out </c><c>The session has timed out.
+</c><c>133-239 </c><c>Terminate </c><c>&lt;Unassigned&gt; </c><c>Available for
+future extensions.  </c><c>240-254 </c><c>Terminate </c><c>&lt;Reserved for Private Use&gt;
+</c><c>Available for experiments.  </c><c>255 </c><c>Terminate
+</c><c>Shutting Down </c><c>The peer is terminating the session, as it is shutting down. </c></texttable>
+<?rfc compact="yes"?>
+
+</section>
+
+<section title="IPv4 Connection Point" anchor="di_ipv4_conn"
+toc="default">
+
+<t>The IPv4 Connection Point Data Item indicates the IPv4
+address and, optionally, the TCP port number on the modem available for
+connections. If provided, the router MUST use this information to initiate the
+TCP connection to the modem.</t>
+<t>The IPv4 Connection Point Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Flags       |               IPv4 Address...                 :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:  ...cont.     |   TCP Port Number (optional)  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">2
+</t>
+<t hangText="Length:">5 (or 7 if TCP Port Number included).</t>
+<t hangText="Flags:">Flags field, defined below.</t>
+<t hangText="IPv4 Address:">The IPv4 address listening on the modem.</t>
+<t hangText="TCP Port Number:">TCP port number on the modem.</t>
+</list></t>
+<t>If the Length field is 7, the port number specified MUST be used to
+establish the TCP session. If the TCP Port Number is omitted, i.e., the Length
+field is 5, the router MUST use the <xref target="dlep_well_known_port"
+pageno="false" format="default">DLEP well-known port number</xref> to
+establish the TCP connection.</t>
+<t>The Flags field is defined as:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0 1 2 3 4 5 6 7 
++-+-+-+-+-+-+-+-+
+|  Reserved   |T|
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="T:">Use TLS flag,
+indicating whether the TCP connection to the given address and port requires
+the use of TLS <xref target="RFC5246" pageno="false" format="default"/> (1)
+or not (0).</t>
+<t hangText="Reserved:">MUST be zero. Left for future assignment.</t>
+</list></t>
+</section>
+
+<section title="IPv6 Connection Point" anchor="di_ipv6_conn"
+toc="default">
+
+<t>The IPv6 Connection Point Data Item indicates the IPv6
+address and, optionally, the TCP port number on the modem available for
+connections. If provided, the router MUST use this information to initiate the
+TCP connection to the modem.</t>
+<t>The IPv6 Connection Point Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Flags       |                IPv6 Address                   :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        IPv6 Address                           :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        IPv6 Address                           :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        IPv6 Address                           :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:  ...cont.     |   TCP Port Number (optional)  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">3
+</t>
+<t hangText="Length:">17 (or 19 if TCP Port Number included).</t>
+<t hangText="Flags:">Flags field, defined below.</t>
+<t hangText="IPv6 Address:">The IPv6 address listening on the modem.</t>
+<t hangText="TCP Port Number:">TCP port number on the modem.</t>
+</list></t>
+
+<t>If the Length field is 19, the port number specified MUST be used to
+establish the TCP session. If the TCP Port Number is omitted, i.e., the
+Length field is 17, the router MUST use the <xref target="dlep_well_known_port"
+pageno="false" format="default">DLEP well-known port number</xref> to
+establish the TCP connection.</t>
+
+<t>The Flags field is defined as:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0 1 2 3 4 5 6 7 
++-+-+-+-+-+-+-+-+
+|  Reserved   |T|
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="T:">Use TLS flag,
+indicating whether the TCP connection to the given address and port requires
+the use of TLS <xref target="RFC5246" pageno="false" format="default"/> (1)
+or not (0).</t>
+<t hangText="Reserved:">MUST be zero. Left for future assignment.</t>
+</list></t>
+</section>
+
+<section title="Peer Type" anchor="di_peer_type"
+toc="default">
+
+<t>The Peer Type Data Item is used by the router and modem to
+give additional information as to its type and the properties of the
+over&nbhy;the&nbhy;air control plane.</t>
+
+<t>With some devices, access to the shared RF medium is strongly
+controlled. One example of this would be satellite modems -- where protocols,
+proprietary in nature, have been developed to ensure that a given modem has
+authorization to connect to the shared medium.  Another example of this class
+of modems is governmental/military devices, where elaborate mechanisms have
+been developed to ensure that only authorized devices can connect to the
+shared medium.  Contrasting with the above, there are modems where no such
+access control is used. An example of this class of modem would be one that
+supports the 802.11 ad&nbsp;hoc mode of operation. The Secured Medium (S) flag
+is used to indicate if access control is in place.</t>
+
+<t>The Peer Type Data Item includes a textual description of the peer;
+it is envisioned that the text will be used for informational purposes
+(e.g., as output in a display command).</t>
+
+<t>The Peer Type Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Flags         | Description...                                :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">4
+</t>
+<t hangText="Length:">1 + Length of Description, in octets.
+</t>
+<t hangText="Flags:">Flags field, defined below.</t>
+<t hangText="Description:">UTF-8 encoded string of Unicode <xref
+target="RFC3629" pageno="false" format="default"/> characters. For example, a
+satellite modem might set this variable to "Satellite terminal". Since this
+Data Item is intended to provide additional information for display commands,
+sending implementations SHOULD limit the data to printable characters.</t>
+</list></t>
+
+<t>An implementation MUST NOT assume that the Description field is a
+NUL&nbhy;terminated string of printable characters.</t>
+
+<t>The Flags field is defined as:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0 1 2 3 4 5 6 7 
++-+-+-+-+-+-+-+-+
+|  Reserved   |S|
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="S:">Secured Medium
+flag, used by a modem to indicate whether the shared RF medium implements
+access control (1) or not (0).  The Secured Medium flag only has meaning
+in Signals and Messages sent by a modem.</t>
+<t hangText="Reserved:">MUST be zero. Left for future assignment.</t>
+</list></t>
+</section>
+
+<section title="Heartbeat Interval" anchor="di_heartbeat"
+toc="default">
+
+<t>The Heartbeat Interval Data Item is used to specify a period
+in milliseconds for <xref target="msg_heartbeat" pageno="false"
+format="default">Heartbeat Messages</xref>.</t>
+<t>The Heartbeat Interval Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                       Heartbeat Interval                      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">5
+</t>
+<t hangText="Length:">4</t>
+<t hangText="Heartbeat Interval:">The interval in milliseconds, expressed as a
+32-bit unsigned integer, for Heartbeat Messages.  This value MUST&nbsp;NOT
+be 0.</t>
+</list></t>
+
+<t>As mentioned before, receipt of any valid DLEP Message MUST reset the
+heartbeat interval timer (i.e., valid DLEP Messages take the place of, and
+obviate the need for, additional Heartbeat Messages).</t>
+</section>
+
+<section title="Extensions Supported" anchor="di_ext_supp"
+toc="default">
+
+<t>The Extensions Supported Data Item is used by the router and
+modem to negotiate additional optional functionality they are willing to
+support. The Extensions List is a concatenation of the types of each
+supported extension, found in the IANA registry titled "Extension Type
+Values". Each Extension Type definition includes which additional Signals
+and Data Items are supported.
+</t>
+
+<t>The Extensions Supported Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Extensions List...                                            :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">6
+</t>
+<t hangText="Length:">Length of the Extensions List in octets. This is twice
+(2x) the number of extensions.</t>
+
+<t hangText="Extensions List:">A list of extensions supported, identified by
+their 2&nbhy;octet values as listed in the "Extension Type Values" registry.
+</t>
+</list></t>
+</section>
+
+<section title="MAC Address" anchor="di_mac_addr"
+toc="default">
+
+<t>The MAC Address Data Item contains the address of the
+destination on the remote node.</t>
+
+<t>DLEP can support MAC addresses in either EUI-48 or EUI-64 format
+("EUI" stands for "Extended Unique Identifier"), with the restriction
+that all MAC addresses for a given DLEP session MUST be in the
+same format and MUST be consistent with the MAC address format of the
+connected modem (e.g., if the modem is connected to the router with an EUI-48
+MAC, all destination addresses via that modem MUST be expressed in EUI-48
+format).</t>
+<t>Examples of a virtual destination would be (1)&nbsp;a multicast MAC address
+or (2)&nbsp;the broadcast MAC address (FF:FF:FF:FF:FF:FF).</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                      MAC Address                              :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                MAC Address    :     (if EUI-64 used)          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">7
+</t>
+<t hangText="Length:">6 for EUI-48 format or 8 for EUI-64 format.</t>
+<t hangText="MAC Address:">MAC address of the destination.</t>
+</list></t>
+</section>
+
+<section title="IPv4 Address" anchor="di_ipv4_addr"
+toc="default">
+
+<t>When included in the Session Update Message, this Data Item
+contains the IPv4 address of the peer. When included in Destination Messages,
+this Data Item contains the IPv4 address of the destination. In either case,
+the Data Item also contains an indication of whether this is
+(1)&nbsp;a new or existing address or (2)&nbsp;a deletion of a
+previously known address.</t>
+
+<t>The IPv4 Address Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Flags         | IPv4 Address                                  :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:    ...cont.   |
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">8
+</t>
+<t hangText="Length:">5</t>
+<t hangText="Flags:">Flags field, defined below.</t>
+<t hangText="IPv4 Address:">The IPv4 address of the destination or peer.</t>
+</list></t>
+<t>The Flags field is defined as:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0 1 2 3 4 5 6 7 
++-+-+-+-+-+-+-+-+
+|  Reserved   |A|
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="A:">Add/Drop flag,
+indicating whether this is a new or existing address (1) or a withdrawal of
+an address (0).</t>
+<t hangText="Reserved:">MUST be zero. Reserved for future use.</t>
+</list></t>
+
+<section title="IPv4 Address Processing" anchor="ipv4-address-processing"
+   toc="default">
+
+<t>Processing of the IPv4 Address Data Item MUST be
+done within the context of the DLEP peer session on which it is presented.
+</t>
+<t>The handling of erroneous or logically inconsistent conditions depends upon
+the type of the message that contains the Data Item, as follows:</t>
+
+<t>If the containing message is a Session Message, e.g.,
+a <xref target="msg_session_init" pageno="false" format="default">Session
+Initialization Message</xref> or <xref target="msg_session_update"
+pageno="false" format="default">Session Update Message</xref>, the receiver of
+inconsistent information MUST issue a <xref target="msg_session_term"
+pageno="false" format="default">Session Termination Message</xref> containing
+a <xref target="di_status" pageno="false" format="default">Status Data
+Item</xref> with status code set to 130 'Invalid Data' and transition to the
+Session Termination state. Examples of such conditions are:</t>
+
+<t><list style="symbols">
+<t>An address Drop operation referencing an address that is not associated
+with the peer in the current session.</t>
+<t>An address Add operation referencing an address that has already been added
+to the peer in the current session.</t>
+</list></t>
+
+<t>If the containing message is a Destination Message, e.g.,
+a <xref target="msg_dest_up" pageno="false" format="default">Destination Up
+Message</xref> or <xref target="msg_dest_update" pageno="false"
+format="default">Destination Update Message</xref>, the receiver of
+inconsistent information MAY issue the appropriate response message
+containing a Status Data Item with status code
+set to 3 'Inconsistent Data' but MUST continue with session processing.
+Examples of such conditions are:</t>
+
+<t><list style="symbols">
+<t>An address Add operation referencing an address
+that has already been added to the destination in the current session.</t>
+<t>An address Add operation referencing an address that is associated with a
+different destination or the peer in the current session.</t>
+<t>An address Add operation referencing an address that makes no sense --
+for example, defined as not forwardable in
+<xref target="RFC6890" pageno="false" format="default"/>.</t>
+<t>An address Drop operation referencing an address that is not associated
+with the destination in the current session.</t>
+</list></t>
+
+<t>If no response message is appropriate -- for example, the Destination Update
+Message -- then the implementation MUST continue with session processing.</t>
+
+<t>Modems that do not track IPv4 addresses MUST silently ignore IPv4 Address
+Data Items.</t>
+</section>
+</section>
+
+<section title="IPv6 Address" anchor="di_ipv6_addr"
+toc="default">
+
+<t>When included in the Session Update Message, this Data Item
+contains the IPv6 address of the peer. When included in Destination Messages,
+this Data Item contains the IPv6 address of the destination. In either case,
+the Data Item also contains an indication of whether this is
+(1)&nbsp;a new or existing address or (2)&nbsp;a deletion of a
+previously known address.</t>
+
+<t>The IPv6 Address Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Flags         | IPv6 Address                                  :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        IPv6 Address                           :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        IPv6 Address                           :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        IPv6 Address                           :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+: IPv6 Address  | 
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">9
+</t>
+<t hangText="Length:">17</t>
+<t hangText="Flags:">Flags field, defined below.</t>
+<t hangText="IPv6 Address:">The IPv6 address of the destination or peer.</t>
+</list></t>
+<t>The Flags field is defined as:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0 1 2 3 4 5 6 7 
++-+-+-+-+-+-+-+-+
+|  Reserved   |A|
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="A:">Add/Drop flag,
+indicating whether this is a new or existing address (1) or a withdrawal of
+an address (0).</t>
+<t hangText="Reserved:">MUST be zero. Reserved for future use.</t>
+</list></t>
+<section title="IPv6 Address Processing" anchor="ipv6-address-processing"
+   toc="default">
+
+<t>Processing of the IPv6 Address Data Item MUST be
+done within the context of the DLEP peer session on which it is presented.
+</t>
+
+<t>The handling of erroneous or logically inconsistent conditions depends upon
+the type of the message that contains the Data Item, as follows:</t>
+
+<t>If the containing message is a Session Message, e.g.,
+a <xref target="msg_session_init" pageno="false" format="default">Session
+Initialization Message</xref> or <xref target="msg_session_update"
+pageno="false" format="default">Session Update Message</xref>, the receiver of
+inconsistent information MUST issue a <xref target="msg_session_term"
+pageno="false" format="default">Session Termination Message</xref> containing
+a <xref target="di_status" pageno="false" format="default">Status Data
+Item</xref> with status code set to 130 'Invalid Data' and transition to the
+Session Termination state. Examples of such conditions are:</t>
+<t><list style="symbols">
+
+<t>An address Drop operation referencing an address
+that is not associated with the peer in the current session.</t>
+<t>An address Add operation referencing an address that has already been added
+to the peer in the current session.</t>
+
+</list></t>
+<t>If the containing message is a Destination Message, e.g., 
+a <xref target="msg_dest_up" pageno="false" format="default">Destination Up
+Message</xref> or <xref target="msg_dest_update" pageno="false"
+format="default">Destination Update Message</xref>, the receiver of
+inconsistent information MAY issue the appropriate response message containing
+a Status Data Item with status code set to 3 'Inconsistent Data' but MUST
+continue with session processing. Examples of such conditions are:</t>
+<t><list style="symbols">
+
+<t>An address Add operation referencing an address
+that has already been added to the destination in the current session.</t>
+<t>An address Add operation referencing an address that is associated with a
+different destination or the peer in the current session.</t>
+<t>An address Add operation referencing an address that makes no sense --
+for example, defined as not forwardable in
+<xref target="RFC6890" pageno="false" format="default"/>.</t>
+<t>An address Drop operation referencing an address that is not associated
+with the destination in the current session.</t>
+</list></t>
+
+<t>If no response message is appropriate -- for example, the Destination Update
+Message -- then the implementation MUST continue with session processing.</t>
+
+<t>Modems that do not track IPv6 addresses MUST silently ignore IPv6 Address
+Data Items.</t>
+</section>
+</section>
+
+<section title="IPv4 Attached Subnet"
+anchor="di_ipv4_subnet" toc="default">
+
+<t>The DLEP IPv4 Attached Subnet Data Item allows a device to declare that
+it has an IPv4 subnet (e.g., a stub network) attached, that it has become
+aware of an IPv4 subnet being present at a remote destination, or that it has
+become aware of the loss of a subnet at the remote destination.</t>
+
+<t>The DLEP IPv4 Attached Subnet Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Flags        |          IPv4 Attached Subnet                 :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:    ...cont.   |Prefix Length  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">10
+</t>
+<t hangText="Length:">6</t>
+<t hangText="Flags:">Flags field, defined below.</t>
+<t hangText="IPv4 Attached Subnet:">The IPv4 subnet reachable
+at the destination.</t>
+<t hangText="Prefix Length:">Length of the prefix (0-32) for the IPv4
+subnet. A prefix length outside the specified range MUST be considered as
+invalid.</t>
+</list></t>
+<t>The Flags field is defined as:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0 1 2 3 4 5 6 7 
++-+-+-+-+-+-+-+-+
+|  Reserved   |A|
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="A:">Add/Drop flag,
+indicating whether this is a new or existing subnet address (1) or a
+withdrawal of a subnet address (0).</t>
+<t hangText="Reserved:">MUST be zero. Reserved for future use.</t>
+</list></t>
+<section title="IPv4 Attached Subnet Processing"
+   anchor="ipv4-attached-subnet-processing" toc="default">
+
+<t>Processing
+of the IPv4 Attached Subnet Data Item MUST be done within the context of the
+DLEP peer session on which it is presented.</t>
+
+<t>If the containing message is a Session Message, e.g.,
+a <xref target="msg_session_init" pageno="false" format="default">Session
+Initialization Message</xref> or <xref target="msg_session_update"
+pageno="false" format="default">Session Update Message</xref>, the receiver of
+inconsistent information MUST issue a <xref target="msg_session_term"
+pageno="false" format="default">Session Termination Message</xref> containing
+a <xref target="di_status" pageno="false" format="default">Status Data
+Item</xref> with status code set to 130 'Invalid Data' and transition to the
+Session Termination state. Examples of such conditions are:</t>
+<t><list style="symbols">
+
+<t>A subnet Drop operation referencing a subnet that
+is not associated with the peer in the current session.</t>
+<t>A subnet Add operation referencing a subnet that has already been added to
+the peer in the current session.</t>
+
+</list></t>
+<t>If the containing message is a Destination Message, e.g.,
+a <xref target="msg_dest_up" pageno="false" format="default">Destination Up
+Message</xref> or <xref target="msg_dest_update" pageno="false"
+format="default">Destination Update Message</xref>, the receiver of
+inconsistent information MAY issue the appropriate response message containing
+a Status Data Item with status code set to 3 'Inconsistent Data' but MUST
+continue with session processing. Examples of such conditions are:</t>
+
+<t><list style="symbols">
+<t>A subnet Add operation referencing a subnet that
+has already been added to the destination in the current session.</t>
+<t>A subnet Add operation referencing a subnet that is associated with a
+different destination in the current session.</t>
+<t>A subnet Add operation referencing a subnet that makes no sense --
+for example, defined as not forwardable
+in <xref target="RFC6890" pageno="false" format="default"/>.</t>
+<t>A subnet Drop operation referencing a subnet that is not associated with
+the destination in the current session.</t>
+</list></t>
+
+<t>If no response message is appropriate -- for example, the Destination Update
+Message -- then the implementation MUST continue with session processing.</t>
+
+<t>Modems that do not track IPv4 subnets MUST silently ignore IPv4 Attached
+Subnet Data Items.</t>
+</section>
+</section>
+
+<section title="IPv6 Attached Subnet"
+anchor="di_ipv6_subnet" toc="default">
+
+<t>The DLEP IPv6 Attached Subnet Data Item allows a device to declare that
+it has an IPv6 subnet (e.g., a stub network) attached, that it has become
+aware of an IPv6 subnet being present at a remote destination, or that it
+has become aware of the loss of a subnet at the remote destination.</t>
+
+<t>The DLEP IPv6 Attached Subnet Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Flags       |         IPv6 Attached Subnet                  :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                   IPv6 Attached Subnet                        :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                   IPv6 Attached Subnet                        :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                   IPv6 Attached Subnet                        :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:    ...cont.   | Prefix Length |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">11
+</t>
+<t hangText="Length:">18</t>
+<t hangText="Flags:">Flags field, defined below.</t>
+<t hangText="IPv6 Attached Subnet:">The IPv6 subnet reachable at the
+destination.</t>
+<t hangText="Prefix Length:">Length of the prefix (0-128) for the IPv6
+subnet. A prefix length outside the specified range MUST be considered as
+invalid.</t>
+</list></t>
+<t>The Flags field is defined as:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0 1 2 3 4 5 6 7 
++-+-+-+-+-+-+-+-+
+|  Reserved   |A|
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="A:">Add/Drop flag,
+indicating whether this is a new or existing subnet address (1) or a
+withdrawal of a subnet address (0).</t>
+<t hangText="Reserved:">MUST be zero. Reserved for future use.</t>
+</list></t>
+<section title="IPv6 Attached Subnet Processing"
+   anchor="ipv6-attached-subnet-processing" toc="default">
+
+<t>Processing
+of the IPv6 Attached Subnet Data Item MUST be done within the context of the
+DLEP peer session on which it is presented.</t>
+
+<t>If the containing message is a Session Message, e.g.,
+a <xref target="msg_session_init" pageno="false" format="default">Session
+Initialization Message</xref> or <xref target="msg_session_update"
+pageno="false" format="default">Session Update Message</xref>, the receiver of
+inconsistent information MUST issue a <xref target="msg_session_term"
+pageno="false" format="default">Session Termination Message</xref> containing
+a <xref target="di_status" pageno="false" format="default">Status Data
+Item</xref> with status code set to 130 'Invalid Data' and transition to the
+Session Termination state. Examples of such conditions are:</t>
+<t><list style="symbols">
+
+<t>A subnet Drop operation referencing a subnet that
+is not associated with the peer in the current session.</t>
+<t>A subnet Add operation referencing a subnet that has already been added to
+the peer in the current session.</t>
+
+</list></t>
+<t>If the containing message is a Destination Message, e.g.,
+a <xref target="msg_dest_up" pageno="false" format="default">Destination Up
+Message</xref> or <xref target="msg_dest_update" pageno="false"
+format="default">Destination Update Message</xref>, the receiver of
+inconsistent information MAY issue the appropriate response message containing
+a Status Data Item with status code set to 3 'Inconsistent Data' but MUST
+continue with session processing. Examples of such conditions are:</t>
+<t><list style="symbols">
+
+<t>A subnet Add operation referencing a subnet that
+has already been added to the destination in the current session.</t>
+<t>A subnet Add operation referencing a subnet that is associated with a
+different destination in the current session.</t>
+<t>A subnet Add operation referencing a subnet that makes no sense --
+for example, defined as not forwardable in
+<xref target="RFC6890" pageno="false" format="default"/>.</t>
+<t>A subnet Drop operation referencing a subnet that is not associated with
+the destination in the current session.</t>
+</list></t>
+
+<t>If no response message is appropriate -- for example, the Destination Update
+Message -- then the implementation MUST continue with session processing.</t>
+
+<t>Modems that do not track IPv6 subnets MUST silently ignore IPv6 Attached
+Subnet Data Items.</t>
+</section>
+</section>
+
+<section title="Maximum Data Rate (Receive)"
+anchor="di_mdrr" toc="default">
+
+<t>The Maximum Data Rate (Receive) (MDRR) Data
+Item is used to indicate the maximum theoretical data rate, in bits per
+second (bps), that can be achieved while receiving data on the link.</t>
+
+<t>The Maximum Data Rate (Receive) Data Item contains the following fields:
+</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        MDRR (bps)                             :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        MDRR (bps)                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">12
+</t>
+<t hangText="Length:">8</t>
+<t hangText="Maximum Data Rate (Receive):">A 64-bit unsigned integer,
+representing the maximum theoretical data rate, in bits per second, that
+can be achieved while receiving on the link.</t>
+</list></t>
+</section>
+
+<section title="Maximum Data Rate (Transmit)" anchor="di_mdrt"
+toc="default">
+
+<t>The Maximum Data Rate (Transmit) (MDRT) Data Item is used to
+indicate the maximum theoretical data rate, in bits per second, that can be
+achieved while transmitting data on the link.</t>
+
+<t>The Maximum Data Rate (Transmit) Data Item contains the following fields:
+</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        MDRT (bps)                             :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        MDRT (bps)                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">13
+</t>
+<t hangText="Length:">8</t>
+<t hangText="Maximum Data Rate (Transmit):">A 64-bit unsigned integer,
+representing the maximum theoretical data rate, in bits per second, that
+can be achieved while transmitting on the link.</t>
+</list></t>
+</section>
+
+<section title="Current Data Rate (Receive)" anchor="di_cdrr"
+toc="default">
+
+<t>The Current Data Rate (Receive) (CDRR) Data Item is used to
+indicate the rate at which the link is currently operating for receiving
+traffic.</t>
+
+<t>When used in the <xref target="msg_link_req" pageno="false"
+format="default">Link Characteristics Request Message</xref>, Current Data
+Rate (Receive) represents the desired receive rate, in bits per second, on the
+link.</t>
+
+<t>The Current Data Rate (Receive) Data Item contains the following fields:
+</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        CDRR (bps)                             :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        CDRR (bps)                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">14
+</t>
+<t hangText="Length:">8</t>
+<t hangText="Current Data Rate (Receive):">A 64-bit unsigned integer,
+representing the current data rate, in bits per second, that can currently be
+achieved while receiving traffic on the link.</t>
+</list></t>
+<t>If there is no distinction between Current Data Rate (Receive) and <xref
+target="di_mdrr" pageno="false" format="default">Maximum Data Rate
+(Receive)</xref>, Current Data Rate (Receive) MUST be set equal to
+Maximum Data Rate (Receive). Current Data Rate (Receive) MUST NOT exceed
+Maximum Data Rate (Receive).</t>
+</section>
+
+<section title="Current Data Rate (Transmit)" anchor="di_cdrt"
+toc="default">
+
+<t>The Current Data Rate (Transmit) (CDRT) Data Item is used to
+indicate the rate at which the link is currently operating for transmitting
+traffic.</t>
+<t>When used in the <xref target="msg_link_req" pageno="false"
+format="default">Link Characteristics Request Message</xref>, Current Data
+Rate (Transmit) represents the desired transmit rate, in bits per second, on
+the link.</t>
+<t>The Current Data Rate (Transmit) Data Item contains the following fields:
+</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        CDRT (bps)                             :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                        CDRT (bps)                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">15
+</t>
+<t hangText="Length:">8</t>
+<t hangText="Current Data Rate (Transmit):">A 64-bit unsigned integer,
+representing the current data rate, in bits per second, that can currently be
+achieved while transmitting traffic on the link.</t>
+</list></t>
+<t>If there is no distinction between Current Data Rate (Transmit) and <xref
+target="di_mdrt" pageno="false" format="default">Maximum Data Rate
+(Transmit)</xref>, Current Data Rate (Transmit) MUST be set equal to
+Maximum Data Rate (Transmit). Current Data Rate (Transmit) MUST NOT exceed
+Maximum Data Rate (Transmit).</t>
+</section>
+
+<section title="Latency" anchor="di_latency" toc="default">
+
+<t>The
+Latency Data Item is used to indicate the amount of latency, in microseconds,
+on the link.</t>
+<t>The Latency value is reported as transmission delay. The calculation of
+latency is implementation dependent. For example, the latency may be a running
+average calculated from the internal queuing.</t>
+<t>The Latency Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                            Latency                            :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                            Latency                            |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">16
+</t>
+<t hangText="Length:">8</t>
+<t hangText="Latency:">A 64-bit unsigned integer, representing the
+transmission delay, in microseconds, that a packet encounters as it is
+transmitted over the link.</t>
+</list></t>
+</section>
+
+<section title="Resources" anchor="di_res" toc="default">
+
+<t>The
+Resources (RES) Data Item is used to indicate the amount of finite resources
+available for data transmission and reception at the destination as a
+percentage, with 0 meaning 'no resources remaining' and 100 meaning 'a full
+supply', assuming that when Resources reaches 0 data transmission and/or
+reception will cease.</t>
+
+<t>An example of such resources is battery life, but this could
+also include resources such as available memory for queuing, or CPU idle
+percentage. The specific criteria to be used for this metric is out of scope
+for this specification and is implementation specific.</t>
+
+<t>This Data Item is designed to be used as an indication of some capability
+of the modem and/or router at the destination.</t>
+
+<t>The Resources Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|     RES       |
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">17
+</t>
+<t hangText="Length:">1</t>
+<t hangText="Resources:">An 8-bit unsigned integer percentage, 0-100,
+representing the amount of resources available. Any value greater than 100
+MUST be considered as invalid.</t>
+</list></t>
+<t>If a device cannot calculate Resources, this Data Item MUST NOT be issued.
+</t>
+</section>
+
+<section title="Relative Link Quality (Receive)" anchor="di_rlqr"
+toc="default">
+
+<t>The Relative Link Quality (Receive) (RLQR) Data Item is used
+to indicate the quality of the link to a destination for receiving traffic,
+with 0 meaning 'worst quality' and 100 meaning 'best quality'.</t>
+
+<t>Quality in this context is defined as an indication of the stability of a
+link for reception; a destination with high Relative Link Quality (Receive) is
+expected to have generally stable DLEP metrics, and the metrics of a
+destination with low Relative Link Quality (Receive) can be expected to
+rapidly fluctuate over a wide range.</t>
+
+<t>The Relative Link Quality (Receive) Data Item contains the following
+fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|     RLQR      |
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">18
+</t>
+<t hangText="Length:">1</t>
+<t hangText="Relative Link Quality (Receive):">A non-dimensional unsigned
+8-bit integer, 0-100, representing relative quality of the link for receiving
+traffic. Any value greater than 100 MUST be considered as invalid.</t>
+</list></t>
+<t>If a device cannot calculate Relative Link Quality (Receive), this Data
+Item MUST NOT be issued.</t>
+</section>
+
+<section title="Relative Link Quality (Transmit)" anchor="di_rlqt"
+toc="default">
+
+<t>The Relative Link Quality (Transmit) (RLQT) Data Item is used
+to indicate the quality of the link to a destination for transmitting traffic,
+with 0 meaning 'worst quality' and 100 meaning 'best quality'.</t>
+<t>Quality in this context is defined as an indication of the stability of a
+link for transmission; a destination with high Relative Link Quality
+(Transmit) is expected to have generally stable DLEP metrics, and the metrics
+of a destination with low Relative Link Quality (Transmit) can be expected to
+rapidly fluctuate over a wide range.</t>
+<t>The Relative Link Quality (Transmit) Data Item contains the following
+fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|     RLQT      |
++-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">19
+</t>
+<t hangText="Length:">1</t>
+<t hangText="Relative Link Quality (Transmit):">A non-dimensional unsigned
+8-bit integer, 0-100, representing relative quality of the link for
+transmitting traffic. Any value greater than 100 MUST be considered as
+invalid.</t>
+</list></t>
+<t>If a device cannot calculate Relative Link Quality (Transmit), this
+Data Item MUST NOT be issued.</t>
+</section>
+
+<section title="Maximum Transmission Unit (MTU)" anchor="di_mtu"
+toc="default">
+
+<t>The Maximum Transmission Unit (MTU) Data Item is used to
+indicate the maximum size, in octets, of an IP packet that can be transmitted
+without fragmentation, including headers, but excluding any lower&nbhy;layer
+headers.</t>
+
+<t>The Maximum Transmission Unit Data Item contains the following fields:</t>
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Data Item Type                | Length                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|             MTU               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork></figure>
+
+<t><list style="hanging">
+<t hangText="Data Item Type:">20
+</t>
+<t hangText="Length:">2</t>
+<t hangText="Maximum Transmission Unit:">The maximum size, in octets, of an
+IP&nbsp;packet that can be transmitted without fragmentation,
+including headers, but excluding any lower&nbhy;layer headers.</t>
+</list></t>
+
+<t>If a device cannot calculate Maximum Transmission Unit, this Data Item
+MUST NOT be issued.</t>
+</section>
+</section>
+
+<section title="Security Considerations"
+anchor="security-considerations" toc="default">
+
+<t>The potential security concerns when using DLEP are as follows:</t>
+
+<t><list style="numbers">
+
+<t>An attacker might pretend to be a DLEP participant,
+either at DLEP session initialization or by injection of
+DLEP Messages once a session has been established.</t>
+
+<t>DLEP Data Items could be altered by an attacker, causing the receiving
+implementation to inappropriately alter its information base concerning
+network status.</t>
+
+<t>An attacker could join an unsecured radio network and inject over-the-air
+signals that maliciously influence the information reported by a DLEP modem,
+causing a router to forward traffic to an inappropriate destination.</t>
+</list></t>
+
+<t>The implications of attacks on DLEP peers are directly proportional to the
+extent to which DLEP data is used within the control plane.  While the use of
+DLEP data in other control-plane components is out of scope for this document,
+as an example, if DLEP statistics are incorporated into route cost
+calculations, adversaries masquerading as a DLEP peer and injecting malicious
+data via DLEP could cause suboptimal route selection, adversely impacting
+network performance.  Similar issues can arise if DLEP data is used as an
+input to policing algorithms -- injection of malicious data via DLEP can cause
+those policing algorithms to make incorrect decisions, degrading network
+throughput.</t>
+
+<t>For these reasons, security of the DLEP transport must be considered at
+both the transport layer and Layer&nbsp;2.</t>
+
+<t>At the transport layer, when TLS is in use, each peer SHOULD check the
+validity of credentials presented by the other peer during TLS session
+establishment. Implementations following the "dedicated deployments" model
+attempting to use TLS MAY (1)&nbsp;need to consider the use of
+pre&nbhy;shared keys for credentials, (2)&nbsp;provide specialized
+techniques for peer identity validation, and (3)&nbsp;refer to
+<xref target="RFC5487" pageno="false" format="default"/> for additional
+details. Implementations following the "networked deployment"
+model described in "Implementation Scenarios"
+(<xref target="intro_impl_scenarios"/>) SHOULD refer to
+<xref target="RFC7525" pageno="false" format="default"/> for
+additional details.</t>
+
+<t>At Layer 2, since DLEP is restricted to operation over a single
+(possibly logical) hop, implementations SHOULD also secure the
+Layer&nbsp;2 link. Examples of technologies that can be deployed to
+secure the Layer&nbsp;2 link include <xref
+target="IEEE-802.1AE" pageno="false" format="default"/> and <xref
+target="IEEE-802.1X" pageno="false" format="default"/>.</t>
+
+<t>By examining the Secured Medium flag in the <xref target="di_peer_type"
+pageno="false" format="default">Peer Type Data Item</xref>, a router can
+decide if it is able to trust the information supplied via a DLEP modem. If
+this is not the case, then the router SHOULD consider restricting the size of
+attached subnets, announced in <xref target="di_ipv4_subnet" pageno="false"
+format="default">IPv4 Attached Subnet Data Items</xref> and/or <xref
+target="di_ipv6_subnet" pageno="false" format="default">IPv6 Attached Subnet
+Data Items</xref>, that are considered for route selection.</t>
+
+<t>To avoid potential denial-of-service attacks, it is RECOMMENDED that
+implementations using the Peer Discovery mechanism (1)&nbsp;maintain an
+information base of hosts that persistently fail Session
+Initialization, even though those hosts have provided an acceptable
+Peer Discovery Signal and (2)&nbsp;ignore any subsequent Peer Discovery
+Signals from such hosts.
+
+</t>
+
+<t>This specification does not address security of the data plane, as it (the
+data plane) is not affected, and standard security procedures can be employed.
+</t>
+</section>
+
+<section title="IANA Considerations" anchor="iana-considerations"
+toc="default">
+
+<section title="Registrations" anchor="registrations"
+toc="default">
+
+<t>IANA has created a
+new protocol registry for the Dynamic Link Exchange Protocol (DLEP).
+The remainder of this section details the new
+DLEP-specific registries.</t>
+</section>
+
+<section title="Signal Type Registrations" anchor="di_sigreg"
+toc="default">
+
+<t>IANA has created a
+new DLEP registry, named "Signal Type Values".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="19%">Type Code </ttcol><ttcol align="left" width="33%">Description/Policy </ttcol><c>0
+</c><c>Reserved </c><c>1 </c><c>Peer Discovery Signal </c><c>2 </c><c>Peer
+Offer Signal </c><c>3-65519 </c><c>Unassigned / Specification Required </c><c>65520-65534
+</c><c>Reserved for Private Use</c><c>65535 </c><c>Reserved
+</c></texttable>
+
+</section>
+
+<section title="Message Type Registrations"
+anchor="di_msgreg" toc="default">
+
+<t>IANA has created a new DLEP registry, named "Message Type Values".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<?rfc compact="no"?>
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="16%">Type Code </ttcol><ttcol align="left" width="54%">Description/Policy </ttcol><c>0
+</c><c>Reserved </c><c>1 </c><c>Session Initialization Message </c><c>2
+</c><c>Session Initialization Response Message </c><c>3 </c><c>Session Update
+Message </c><c>4 </c><c>Session Update Response Message </c><c>5
+</c><c>Session Termination Message </c><c>6 </c><c>Session Termination
+Response Message </c><c>7 </c><c>Destination Up Message </c><c>8
+</c><c>Destination Up Response Message </c><c>9 </c><c>Destination Announce
+Message </c><c>10 </c><c>Destination Announce Response Message </c><c>11
+</c><c>Destination Down Message </c><c>12 </c><c>Destination Down Response
+Message </c><c>13 </c><c>Destination Update Message </c><c>14 </c><c>Link
+Characteristics Request Message </c><c>15 </c><c>Link Characteristics Response
+Message </c><c>16 </c><c>Heartbeat Message </c><c>17-65519
+</c><c>Unassigned / Specification Required </c><c>65520-65534 </c><c>Reserved for Private Use
+</c><c>65535 </c><c>Reserved </c></texttable>
+<?rfc compact="yes"?>
+
+</section>
+
+<section title="DLEP Data Item Registrations" anchor="dlep-data-item-registrations"
+toc="default">
+
+<t>IANA has created a
+new DLEP registry, named "Data Item Type Values".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<?rfc compact="no"?>
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="27%">Type Code </ttcol><ttcol align="left" width="54%">Description/Policy </ttcol><c>0
+</c><c>Reserved </c><c>1 </c><c>Status </c><c>2 </c><c>IPv4 Connection Point
+</c><c>3 </c><c>IPv6 Connection Point </c><c>4 </c><c>Peer Type </c><c>5
+</c><c>Heartbeat Interval </c><c>6 </c><c>Extensions Supported </c><c>7
+</c><c>MAC Address </c><c>8 </c><c>IPv4 Address </c><c>9 </c><c>IPv6 Address
+</c><c>10 </c><c>IPv4 Attached Subnet </c><c>11 </c><c>IPv6 Attached Subnet
+</c><c>12 </c><c>Maximum Data Rate (Receive) (MDRR) </c><c>13 </c><c>Maximum
+Data Rate (Transmit) (MDRT) </c><c>14 </c><c>Current Data Rate (Receive)
+(CDRR) </c><c>15 </c><c>Current Data Rate (Transmit) (CDRT) </c><c>16
+</c><c>Latency </c><c>17 </c><c>Resources (RES) </c><c>18 </c><c>Relative Link
+Quality (Receive) (RLQR) </c><c>19 </c><c>Relative Link Quality (Transmit)
+(RLQT) </c><c>20 </c><c>Maximum Transmission Unit (MTU) </c><c>21-65407
+</c><c>Unassigned / Specification Required </c><c>65408-65534 </c><c>Reserved
+for Private Use
+</c><c>65535 </c><c>Reserved </c></texttable>
+<?rfc compact="yes"?>
+
+</section>
+
+<section title="DLEP Status Code Registrations" anchor="dlep-status-code-registrations"
+toc="default">
+
+<t>IANA has created a new DLEP registry, named "Status Code Values".</t>
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<?rfc compact="no"?>
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="18%">Status Code </ttcol><ttcol align="left" width="20%">Failure Mode </ttcol><ttcol
+align="left" width="30%">Description/Policy </ttcol><c>0 </c><c>Continue
+</c><c>Success </c><c>1 </c><c>Continue </c><c>Not Interested </c><c>2
+</c><c>Continue </c><c>Request Denied </c><c>3 </c><c>Continue
+</c><c>Inconsistent Data </c><c>4-111 </c><c>Continue </c><c>Unassigned / Specification
+Required </c><c>112-127 </c><c>Continue </c><c>Private Use </c><c>128
+</c><c>Terminate </c><c>Unknown Message </c><c>129 </c><c>Terminate
+</c><c>Unexpected Message </c><c>130 </c><c>Terminate </c><c>Invalid Data
+</c><c>131 </c><c>Terminate </c><c>Invalid Destination </c><c>132
+</c><c>Terminate </c><c>Timed Out </c><c>133-239 </c><c>Terminate
+</c><c>Unassigned / Specification Required </c><c>240-254 </c><c>Terminate
+</c><c>Reserved for Private Use </c><c>255 </c><c>Terminate </c><c>Shutting Down</c></texttable>
+<?rfc compact="yes"?>
+
+</section>
+
+<section title="DLEP Extension Registrations"
+anchor="dlep-extensions-registrations" toc="default">
+
+<t>IANA has created a new DLEP registry, named "Extension
+Type Values".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable anchor="table:dlep_extension_types" align="center" title="DLEP
+ Extension Types" suppress-title="false" style="full"><ttcol align="left"
+ width="16%">Code
+</ttcol><ttcol align="left" width="40%">Description/Policy </ttcol><c>0
+</c><c>Reserved </c><c>1-65519 </c><c>Unassigned / Specification Required
+</c><c>65520-65534 </c><c>Reserved for Private Use </c><c>65535 </c><c>Reserved
+</c></texttable>
+
+</section>
+
+<section title="DLEP IPv4 Connection Point Flags"
+anchor="dlep-ipv4-connection-point-flags" toc="default">
+
+<t>IANA has created a new DLEP registry,
+named "IPv4 Connection Point Flags".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="16%">Bit
+</ttcol><ttcol align="left" width="45%">Description/Policy </ttcol><c>0-6
+</c><c>Unassigned / Specification Required </c><c>7 </c><c>Use TLS <xref
+target="RFC5246" pageno="false" format="default"/> indicator
+</c></texttable>
+
+</section>
+
+<section title="DLEP IPv6 Connection Point Flags"
+anchor="dlep-ipv6-connection-point-flags" toc="default">
+
+<t>IANA has created a new DLEP registry,
+named "IPv6 Connection Point Flags".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="16%">Bit
+</ttcol><ttcol align="left" width="45%">Description/Policy </ttcol><c>0-6
+</c><c>Unassigned / Specification Required </c><c>7 </c><c>Use TLS <xref
+target="RFC5246" pageno="false" format="default"/> indicator
+</c></texttable>
+
+</section>
+
+<section title="DLEP Peer Type Flags"
+anchor="dlep-peer-type-flag" toc="default">
+
+<t>IANA has created a new DLEP registry, named "Peer Type Flags".
+</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="16%">Bit
+</ttcol><ttcol align="left" width="45%">Description/Policy </ttcol><c>0-6
+</c><c>Unassigned / Specification Required </c><c>7 </c><c>Secured Medium
+indicator </c></texttable>
+
+</section>
+
+<section title="DLEP IPv4 Address Flags"
+anchor="dlep-ipv4-address-flag" toc="default">
+
+<t>IANA has created a new DLEP registry,
+named "IPv4 Address Flags".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="16%">Bit
+</ttcol><ttcol align="left" width="45%">Description/Policy </ttcol><c>0-6
+</c><c>Unassigned / Specification Required </c><c>7 </c><c>Add/Drop indicator
+</c></texttable>
+
+</section>
+
+<section title="DLEP IPv6 Address Flags"
+anchor="dlep-ipv6-address-flag" toc="default">
+
+<t>IANA has created a new DLEP registry,
+named "IPv6 Address Flags".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="16%">Bit
+</ttcol><ttcol align="left" width="45%">Description/Policy </ttcol><c>0-6
+</c><c>Unassigned / Specification Required </c><c>7 </c><c>Add/Drop indicator
+</c></texttable>
+
+</section>
+
+<section title="DLEP IPv4 Attached Subnet Flags"
+anchor="dlep-ipv4-attached-subnet-flag" toc="default">
+
+<t>IANA has created a new DLEP registry, named "IPv4
+Attached Subnet Flags".</t>
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="16%">Bit
+</ttcol><ttcol align="left" width="45%">Description/Policy </ttcol><c>0-6
+</c><c>Unassigned / Specification Required </c><c>7 </c><c>Add/Drop indicator
+</c></texttable>
+
+</section>
+
+<section title="DLEP IPv6 Attached Subnet Flags"
+anchor="dlep-ipv6-attached-subnet-flag" toc="default">
+
+<t>IANA has created a new DLEP registry,
+named "IPv6 Attached Subnet Flags".</t>
+
+<t>The following table provides initial registry values and the
+policies, as defined by <xref target="RFC5226"/>, that
+apply to the registry:</t>
+
+<texttable title="" suppress-title="false" align="center" style="full"><ttcol
+ align="left" width="16%">Bit
+</ttcol><ttcol align="left" width="45%">Description/Policy </ttcol><c>0-6
+</c><c>Unassigned / Specification Required </c><c>7 </c><c>Add/Drop indicator
+</c></texttable>
+</section>
+
+<section title="DLEP Well-Known Port"
+anchor="dlep_well_known_port" toc="default">
+<t>IANA has assigned the value 854 in the "Service Name and Transport Protocol Port Number Registry"
+found at
+<eref target="http://www.iana.org/assignments/service-names-port-numbers/"/>
+for use by "DLEP", as defined in this document. This assignment is
+valid for TCP and UDP.</t>
+</section>
+
+<section title="DLEP IPv4 Link-Local Multicast Address"
+anchor="dlep_well_known_ipv4_mcast" toc="default">
+<t>IANA has assigned the
+IPv4 multicast address 224.0.0.117 in the registry found at
+<eref target="http://www.iana.org/assignments/multicast-addresses"/>
+for use as "DLEP Discovery".</t>
+
+</section>
+
+<section title="DLEP IPv6 Link-Local Multicast Address"
+anchor="dlep_well_known_ipv6_mcast" toc="default">
+<t>IANA has assigned the
+IPv6 multicast address 
+FF02:0:0:0:0:0:1:7 in the registry found at
+<eref target="http://www.iana.org/assignments/ipv6-multicast-addresses"/>
+for use as "DLEP Discovery".
+</t>
+</section>
+</section>
+
+ </middle>
+
+  <back>
+
+<references title="Normative References">
+
+  <?rfc include="reference.RFC.2119"?>
+  <?rfc include="reference.RFC.3629"?>
+  <?rfc include="reference.RFC.5082"?>
+  <?rfc include="reference.RFC.5246"?>
+  <?rfc include="reference.RFC.8174"?>
+
+ </references>
+
+<references title="Informative References">
+
+<reference anchor="IEEE-802.1AE" quote-title="true"
+ target="http://ieeexplore.ieee.org/document/1678345/">
+<front>
+<title>IEEE Standards for Local and Metropolitan Area Networks: Media
+Access Control (MAC) Security</title>
+<author/>
+<date/>
+</front>
+<seriesInfo name="DOI" value="10.1109/IEEESTD.2006.245590"/>
+</reference>
+
+<reference anchor="IEEE-802.1X" quote-title="true"
+ target="http://ieeexplore.ieee.org/document/5409813/">
+<front>
+<title>IEEE Standards for Local and metropolitan area networks--Port-Based
+Network Access Control</title>
+<author/>
+<date/>
+</front>
+<seriesInfo name="DOI" value="10.1109/IEEESTD.2010.5409813"/>
+</reference>
+
+  <?rfc include="reference.RFC.5226"?>
+  <?rfc include="reference.RFC.5487"?>
+  <?rfc include="reference.RFC.6890"?>
+  <?rfc include="reference.RFC.7525"?>
+
+</references>
+
+<section title="Discovery Signal Flows" anchor="dlep_signal_flows"
+   toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Signal Description
+========================================================================
+
+|                                     Router initiates discovery,
+|                                     starts a timer, sends Peer
+|-------Peer Discovery----&gt;X          Discovery Signal.
+
+         ~ ~ ~ ~ ~ ~ ~                Router discovery timer expires
+                                      without receiving Peer Offer.
+
+|                                     Router sends another Peer 
+|-------Peer Discovery----------&gt;|    Discovery Signal.
+                                 |    
+                                 |    Modem receives Peer Discovery
+                                 |    Signal.
+                                 |    
+                                 |    Modem sends Peer Offer with
+|&lt;--------Peer Offer-------------|    Connection Point information.
+:
+:                                     Router MAY cancel discovery timer
+:                                     and stop sending Peer Discovery 
+:                                     Signals.
+</artwork></figure>
+</section>
+
+<section title="Peer-Level Message Flows" anchor="dlep_message_flows"
+   toc="default">
+
+<section title="Session Initialization" anchor="session-initialization"
+   toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+|                                     Router connects to discovered or
+|                                     preconfigured Modem Connection 
+|--TCP connection established---&gt;     Point.
+|                                 
+|                                     Router sends Session 
+|----Session Initialization-----&gt;|    Initialization Message.
+                                 |
+                                 |    Modem receives Session 
+                                 |    Initialization Message.
+                                 |      
+                                 |    Modem sends Session Initialization 
+|&lt;--Session Initialization Resp.-|    Response with 'Success' Status
+|                                |    Data Item. 
+|                                |
+|&lt;&lt;============================&gt;&gt;|    Session established.
+:                                :    Heartbeats begin.
+</artwork></figure>
+
+</section>
+
+<section title="Session Initialization - Refused"
+   anchor="session-initialization---refused" toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+|                                     Router connects to discovered or
+|                                     preconfigured Modem Connection 
+|--TCP connection established---&gt;     Point.
+|                                 
+|                                     Router sends Session 
+|-----Session Initialization----&gt;|    Initialization Message.
+                                 |
+                                 |    Modem receives Session 
+                                 |    Initialization Message and 
+                                 |    will not support the advertised
+                                 |    extensions.
+                                 |    
+                                 |    Modem sends Session Initialization 
+                                 |    Response with 'Request Denied'
+|&lt;-Session Initialization Resp.--|    Status Data Item.
+|                                    
+|
+|                                     Router receives negative Session
+|                                     Initialization Response, closes 
+||---------TCP close------------||    TCP connection.
+</artwork></figure>
+
+</section>
+
+<section title="Router Changes IP Addresses"
+   anchor="router-changes-ip-addresses" toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+|                                     Router sends Session Update 
+|-------Session Update----------&gt;|    Message to announce change of
+                                 |    IP address.
+                                 |
+                                 |    Modem receives Session Update
+                                 |    Message and updates internal 
+                                 |    state.
+                                 |
+|&lt;----Session Update Response----|    Modem sends Session Update 
+                                 |    Response.
+</artwork></figure>
+
+</section>
+
+<section title="Modem Changes Session-Wide Metrics"
+   anchor="modem-changes-session-wide-metrics" toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+                                 |    Modem sends Session Update Message
+                                 |    to announce change of session-wide
+|&lt;--------Session Update---------|    metrics.
+|                                 
+|                                     Router receives Session Update 
+|                                     Message and updates internal 
+|                                     state.
+|                                 
+|----Session Update Response----&gt;|    Router sends Session Update 
+                                 |    Response.
+</artwork></figure>
+
+</section>
+
+<section title="Router Terminates Session" anchor="router-terminates-session"
+   toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+|                                     Router sends Session Termination
+|------Session Termination------&gt;|    Message with Status Data Item.
+|                                |    
+|-------TCP shutdown (send)---&gt;  |    Router stops sending Messages.
+                                 |
+                                 |    Modem receives Session 
+                                 |    Termination, stops counting
+                                 |    received heartbeats, and stops
+                                 |    sending heartbeats.
+                                 |    
+                                 |    Modem sends Session Termination 
+|&lt;---Session Termination Resp.---|    Response with Status 'Success'.
+|                                    
+|                                     Modem stops sending Messages.
+|                                     
+||---------TCP close------------||    Session terminated.
+</artwork></figure>
+
+</section>
+
+<section title="Modem Terminates Session" anchor="modem-terminates-session"
+   toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+                                 |    Modem sends Session Termination
+|&lt;----Session Termination--------|    Message with Status Data Item.
+|                                 
+|                                     Modem stops sending Messages.
+|
+|                                     Router receives Session 
+|                                     Termination, stops counting
+|                                     received heartbeats, and stops
+|                                     sending heartbeats.
+|                                      
+|                                     Router sends Session Termination
+|---Session Termination Resp.---&gt;|    Response with Status 'Success'.
+                                 |
+                                 |    Router stops sending Messages.
+                                 |    
+||---------TCP close------------||    Session terminated.
+</artwork></figure>
+
+</section>
+
+<section title="Session Heartbeats" anchor="session-heartbeats" toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+|----------Heartbeat------------&gt;|    Router sends Heartbeat Message.
+                                 |
+                                 |    Modem resets heartbeats missed
+                                 |    counter.
+                                 
+         ~ ~ ~ ~ ~ ~ ~                
+         
+|---------[Any Message]---------&gt;|    When the Modem receives any 
+                                 |    Message from the Router.
+                                 |
+                                 |    Modem resets heartbeats missed
+                                 |    counter.
+                                 
+         ~ ~ ~ ~ ~ ~ ~
+
+|&lt;---------Heartbeat-------------|    Modem sends Heartbeat Message.
+|
+|                                     Router resets heartbeats missed
+|                                     counter.
+
+         ~ ~ ~ ~ ~ ~ ~
+
+|&lt;--------[Any Message]----------|    When the Router receives any
+|                                     Message from the Modem.
+|
+|                                     Modem resets heartbeats missed
+|                                     counter.
+</artwork></figure>
+
+</section>
+
+<section title="Router Detects a Heartbeat Timeout"
+   anchor="router-detects-a-heartbeat-timeout" toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+         X&lt;----------------------|    Router misses a heartbeat.
+ 
+ 
+|        X&lt;----------------------|    Router misses too many
+|                                     heartbeats.
+|
+|
+|------Session Termination------&gt;|    Router sends Session Termination 
+|                                     Message with 'Timeout' Status 
+|                                     Data Item.
+:
+:                                     Termination proceeds...
+</artwork></figure>
+
+</section>
+
+<section title="Modem Detects a Heartbeat Timeout"
+   anchor="modem-detects-a-heartbeat-timeout" toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+|----------------------&gt;X             Modem misses a heartbeat.
+                                  
+                                  
+|----------------------&gt;X        |    Modem misses too many
+                                 |    heartbeats.
+                                 |
+                                 |
+|&lt;-----Session Termination-------|    Modem sends Session Termination 
+                                 |    Message with 'Timeout' Status 
+                                 |    Data Item.
+                                 :
+                                 :    Termination proceeds...
+</artwork></figure>
+
+</section>
+</section>
+
+<section title="Destination-Specific Message Flows"
+   anchor="destination-specific-message-flows" toc="default">
+
+<section title="Common Destination Notification"
+          anchor="common-destination-notification"
+          toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+                                 |    Modem detects a new logical
+                                 |    destination is reachable and 
+|&lt;-------Destination Up----------|    sends Destination Up Message.
+|
+|------Destination Up Resp.-----&gt;|    Router sends Destination Up 
+                                 |    Response.  
+                                  
+           ~ ~ ~ ~ ~ ~ ~        
+                                 |    Modem detects change in logical
+                                 |    destination metrics and sends 
+|&lt;-------Destination Update------|    Destination Update Message.          
+
+           ~ ~ ~ ~ ~ ~ ~
+                                 |    Modem detects change in logical
+                                 |    destination metrics and sends 
+|&lt;-------Destination Update------|    Destination Update Message.     
+           
+            ~ ~ ~ ~ ~ ~ ~
+                                 |    Modem detects logical destination
+                                 |    is no longer reachable and sends
+|&lt;-------Destination Down--------|    Destination Down Message.
+|
+|                                     Router receives Destination Down,
+|                                     updates internal state, and sends
+|------Destination Down Resp.---&gt;|    Destination Down Response Message.
+</artwork></figure>
+
+</section>
+
+<section title="Multicast Destination Notification"
+   anchor="multicast-destination-notification" toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+|                                     Router detects a new multicast
+|                                     destination is in use and sends
+|-----Destination Announce------&gt;|    Destination Announce Message.
+                                 |
+                                 |    Modem updates internal state to 
+                                 |    monitor multicast destination and
+|&lt;-----Dest. Announce Resp.------|    sends Destination Announce 
+                                      Response.  
+                                  
+           ~ ~ ~ ~ ~ ~ ~        
+                                 |    Modem detects change in multicast
+                                 |    destination metrics and sends 
+|&lt;-------Destination Update------|    Destination Update Message.          
+
+           ~ ~ ~ ~ ~ ~ ~
+                                 |    Modem detects change in multicast
+                                 |    destination metrics and sends 
+|&lt;-------Destination Update------|    Destination Update Message.     
+           
+            ~ ~ ~ ~ ~ ~ ~
+|                                     Router detects multicast 
+|                                     destination is no longer in use
+|--------Destination Down-------&gt;|    and sends Destination Down 
+                                 |    Message.
+                                 |
+                                 |    Modem receives Destination Down,
+                                 |    updates internal state, and sends
+|&lt;-----Destination Down Resp.----|    Destination Down Response Message.
+</artwork></figure>
+
+</section>
+
+<section title="Link Characteristics Request"
+   anchor="link-characteristics-request" toc="default">
+
+<figure title="" suppress-title="false" align="left" alt="" width="" height=""><artwork xml:space="preserve" name="" type="" align="left" alt="" width="" height="">
+Router                       Modem    Message Description
+========================================================================
+
+                                      Destination has already been 
+           ~ ~ ~ ~ ~ ~ ~              announced by either peer.        
+
+|                                     Router requires different 
+|                                     characteristics for the 
+|                                     destination and sends Link
+|--Link Characteristics Request-&gt;|    Characteristics Request Message.
+                                 |
+                                 |    Modem attempts to adjust link
+                                 |    properties to meet the received
+                                 |    request and sends a Link
+                                 |    Characteristics Response 
+|&lt;---Link Characteristics Resp.--|    Message with the new values.
+</artwork></figure>
+
+</section>
+</section>
+
+<section title="Acknowledgments" anchor="acknowledgments" numbered="no"
+toc="default">
+
+<t>We would like to acknowledge and thank the members of the
+DLEP design team, who have provided invaluable insight. The members of the
+design team are Teco Boot, Bow-Nan Cheng, John Dowdell, and Henning Rogge.
+</t>
+<t>We would also like to acknowledge the influence and contributions of Greg
+Harrison, Chris Olsen, Martin Duke, Subir Das, Jaewon Kang, Vikram Kaul,
+Nelson Powell, Lou Berger, and Victoria Pritchard.</t>
+</section>
+
+ </back>
+
+</rfc>

@@ -1,0 +1,606 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd"> 
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="no"?>
+<?rfc rfcedstyle="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="5847" category="std">
+
+<front>
+<title abbrev="PMIPv6 Heartbeat Mechanism">
+Heartbeat Mechanism for Proxy Mobile IPv6
+</title>
+
+<author initials="V.D." surname="Devarapalli" fullname="Vijay Devarapalli" role="editor">
+<organization abbrev='WiChorus'>WiChorus</organization>
+<address>
+<postal>
+<street>3950 North First Street</street>
+<city>San Jose</city>
+<region>CA</region>
+<code>95134</code>
+<country>USA</country>
+</postal>
+<email>vijay@wichorus.com</email>
+</address>
+</author>
+<author initials="R.K." surname="Koodli" fullname="Rajeev Koodli" role="editor">
+<organization abbrev='Cisco Systems'>Cisco Systems</organization>
+<address>
+<postal>
+<street></street>
+<city></city>
+<region></region>
+<code></code>
+<country>USA</country>
+</postal>
+<email>rkoodli@cisco.com</email>
+</address>
+</author>
+<author initials="H.L." surname="Lim" fullname="Heeseon Lim">
+<organization abbrev='Stoke'>Stoke</organization>
+<address>
+<postal>
+<street>5403 Betsy Ross Drive</street>
+<city>Santa Clara</city>
+<region>CA</region>
+<code>95054</code>
+<country>USA</country>
+</postal>
+<email>hlim@stoke.com</email>
+</address>
+</author>
+<author initials="N.K." surname="Kant" fullname="Nishi Kant">
+<organization abbrev='Stoke'>Stoke</organization>
+<address>
+<postal>
+<street>5403 Betsy Ross Drive</street>
+<city>Santa Clara</city>
+<region>CA</region>
+<code>95054</code>
+<country>USA</country>
+</postal>
+<email>nishi@stoke.com</email>
+</address>
+</author>
+<author initials="S.K." surname="Krishnan" fullname="Suresh Krishnan">
+<organization abbrev='Ericsson'>Ericsson</organization>
+<address>
+<postal>
+<street>8400 Decarie Blvd.</street>
+<city>Town of Mount Royal</city>
+<region>QC</region>
+<code></code>
+<country>Canada</country>
+</postal>
+<email>suresh.krishnan@ericsson.com</email>
+</address>
+</author>
+<author initials="J.L." surname="Laganier" fullname="Julien Laganier">
+<organization abbrev='Qualcomm Inc.'>Qualcomm Incorporated</organization>
+<address>
+<postal>
+<street>5775 Morehouse Drive</street>
+<city>San Diego</city>
+<region>CA</region>
+<code>92121</code>
+<country>USA</country>
+</postal>
+<email>julienl@qualcomm.com</email>
+</address>
+</author>
+
+<date month="June" year="2010"/>
+
+
+<area>Internet</area>
+<workgroup>NETLMM Working Group</workgroup>
+
+<!--
+   ******** ABSTRACT ****************
+-->
+<abstract>
+  <t>
+  Proxy Mobile IPv6 (PMIPv6) is a network-based mobility management
+  protocol. The mobility entities involved in the Proxy Mobile IPv6
+  protocol, the mobile access gateway (MAG) and the local mobility
+  anchor (LMA), set up tunnels dynamically to manage mobility for a
+  mobile node within the Proxy Mobile IPv6 domain. This document
+  describes a heartbeat mechanism between the MAG and the LMA to
+  detect failures, quickly inform peers in the event of a recovery
+  from node failures, and allow a peer to take appropriate action.
+  </t>
+</abstract>
+</front>
+
+<middle>
+<!--
+   ******** INTRODUCTION **********
+-->
+<section anchor="intro" title="Introduction">
+  <t> 
+  Proxy Mobile IPv6 (PMIPv6) <xref target="RFC5213"/> enables network-based
+  mobility for IPv6 hosts that do not implement any mobility
+  protocols. The protocol is described in detail in <xref
+  target="RFC5213"/>. In order to facilitate the network-based
+  mobility, the PMIPv6 protocol defines a mobile access gateway
+  (MAG), which acts as a proxy for the Mobile IPv6 <xref
+  target='RFC3775'/> signaling, and the local mobility anchor (LMA),
+  which acts similar to a home agent, anchoring a mobile node's
+  sessions within a PMIPv6 domain. The LMA and the
+  MAG establish a bidirectional tunnel for forwarding all data traffic
+  belonging to the mobile nodes.
+  </t>
+  <t> 
+  In a distributed environment such as a PMIPv6 domain consisting
+  of LMAs and MAGs, it is necessary for the nodes to 1) have a
+  consistent state about each other's reachability, and 2) quickly
+  inform peers in the event of recovery from node failures. So, when
+  the LMA restarts after a failure, the MAG should (quickly) learn
+  about the restart so that it can take appropriate actions (such as
+  releasing any resources). When there are no failures, a MAG should
+  know about the LMA's reachability (and vice versa) so that the path can
+  be assumed to be functioning.
+  </t>
+  <t> 
+  This document specifies a heartbeat mechanism between the MAG
+  and the LMA to detect the status of reachability between them. This
+  document also specifies a mechanism to indicate node restarts; the
+  mechanism could be used to quickly inform peers of such
+  restarts. The Heartbeat message is a Mobility Header message
+  (protocol type 135) that is periodically exchanged at a
+  configurable threshold of time or sent unsolicited soon after a node
+  restart. This document does not specify the specific actions (such
+  as releasing resources) that a node takes as a response to
+  processing the Heartbeat messages.
+  </t>
+</section>
+
+<!--
+   ******** TERMINOLOGY ***********
+-->
+<section anchor="term" title="Terminology">
+<t>
+  The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+  "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+  document are to be interpreted as described in <xref
+  target="RFC2119"/>.  
+</t>
+</section>
+
+<!--
+   ******** SOLUTION OVERVIEW *********
+-->
+<section anchor="heartbeat" title="Heartbeat Mechanism">
+  <t>
+  The MAG and the LMA exchange Heartbeat messages every
+  HEARTBEAT_INTERVAL seconds to detect the current status of
+  reachability between them.  The MAG initiates the heartbeat exchange
+  to test if the LMA is reachable by sending a Heartbeat Request
+  message to the LMA. Each Heartbeat Request contains a sequence
+  number that is incremented monotonically.  The sequence number on
+  the last Heartbeat Request message is always recorded by the MAG,
+  and is used to match the corresponding Heartbeat Response.
+  Similarly, the LMA also initiates a heartbeat exchange with the MAG,
+  by sending a Heartbeat Request message, to check if the MAG is
+  reachable. The format of the Heartbeat message is described in <xref
+  target="heartbeat_message"/>.
+  </t>
+  <t>
+  A Heartbeat Request message can be sent only if the MAG has at least
+  one proxy Binding Cache entry at the LMA for a mobile node attached
+  to the MAG. If there are no proxy Binding Cache entries at the LMA
+  for any of the mobile nodes attached to the MAG, then the Heartbeat
+  message SHOULD NOT be sent. Similarly, the LMA SHOULD NOT send a
+  Heartbeat Request message to a MAG if there is no active Binding
+  Cache entry created by the MAG. A PMIPv6 node MUST respond to a
+  Heartbeat Request message with a Heartbeat Response message,
+  irrespective of whether there is an active Binding Cache entry.
+  </t>
+  <t>
+  The HEARTBEAT_INTERVAL SHOULD NOT be configured to a value less than
+  30 seconds. Deployments should be careful in setting the value for
+  the HEARTBEAT_INTERNVAL. Sending Heartbeat messages too often may
+  become an overhead on the path between the MAG and the LMA. It could
+  also create congestion in the network and negatively affect network
+  performance. The HEARTBEAT_INTERVAL can be set to a much larger
+  value on the MAG and the LMA, if required, to reduce the burden of
+  sending periodic Heartbeat messages.
+  </t>
+  <t>
+  If the LMA or the MAG do not support the Heartbeat messages, they
+  respond with a Binding Error message with status set to 2
+  (unrecognized mobility header (MH) type value) as described in <xref
+  target="RFC3775"/>. When the Binding Error message with status set
+  to 2 is received in response to a Heartbeat Request message, the
+  initiating MAG or the LMA MUST NOT use Heartbeat messages with the
+  other end again.
+  </t>
+  <t>
+  If a PMIPv6 node has detected that a peer PMIPv6 node has failed or
+  restarted without retaining the PMIPv6 session state, it should mark
+  the corresponding binding update list or binding cache entries as
+  invalid. The PMIPv6 node may also take other actions, which are
+  outside the scope of this document.
+  </t>
+  <t>
+  The detection of failure and restart events may be signaled to
+  network operators by using asynchronous notifications. Future work
+  may define such notifications in a Structure of Management Information Version 2 (SMIv2) Management Information Base
+  (MIB) module.
+  </t>
+
+  <section anchor="failure_detection" title="Failure Detection">
+  <t>
+  A PMIPv6 node (MAG or LMA) matches every received Heartbeat
+  Response to the Heartbeat Request sent using the sequence
+  number. Before sending the next Heartbeat Request, it increments a
+  local variable MISSING_HEARTBEAT if it has not received a Heartbeat
+  Response for the previous request. When this local variable
+  MISSING_HEARTBEAT exceeds a configurable parameter
+  MISSING_HEARTBEATS_ALLOWED, the PMIPv6 node concludes that the peer
+  PMIPv6 node is not reachable. If a Heartbeat Response message is
+  received, the MISSING_HEARTBEATS counter is reset.
+  </t>
+
+  </section>
+  <section anchor="restart_detection" title="Restart Detection">
+  <t>
+  The section describes a mechanism for detecting failure recovery
+  without session persistence. In the case that the LMA or the MAG crashes and
+  reboots and loses all state with respect to the PMIPv6 sessions, it
+  would be beneficial for the peer PMIPv6 node to discover the failure
+  and the loss of session state and establish the sessions again.
+  </t>
+  <t>
+  Each PMIPv6 node (both the MAG and LMA) MUST maintain a
+  monotonically increasing Restart Counter that is incremented every
+  time the node reboots and loses PMIPv6 session state. The counter
+  MUST NOT be incremented if the recovery happens without losing state
+  for the PMIPv6 sessions active at the time of failure. This counter
+  MUST be treated as state that is preserved across reboots. A PMIPv6
+  node includes a Restart Counter mobility option, described in <xref
+  target="restart_counter"/>, in a Heartbeat Response message to
+  indicate the current value of the Restart Counter.  Each PMIPv6 node
+  MUST also store the Restart Counter for all the peer PMIPv6 nodes
+  with which it currently has sessions. Stored Restart Counter values for peer PMIPv6 nodes do not need to be preserved across reboots.
+  </t>
+  <t>
+  The PMIPv6 node that receives the Heartbeat Response message
+  compares the Restart Counter value with the previously received
+  value. If the value is different, the receiving node assumes that
+  the peer PMIPv6 node had crashed and recovered. If the Restart
+  Counter value changes or if there was no previously stored value,
+  the new value is stored by the receiving PMIPv6 node.
+  </t>
+  <t>
+  If a PMIPv6 node restarts and loses PMIPv6 session state, it SHOULD
+  send an unsolicited Heartbeat Response message with an incremented
+  Restart Counter to all the PMIPv6 nodes that had previously
+  established PMIPv6 sessions. Note that this is possible only when
+  the PMIPv6 node is capable of storing information about the peers
+  across reboots. The unsolicited Heartbeat Response message allows
+  the peer PMIPv6 nodes to quickly discover the restart. The sequence
+  number field in the unsolicited Heartbeat Response is ignored and no
+  response is necessary; the nodes will synchronize during the next
+  request and response exchange.
+  </t>
+  </section>
+
+  <section anchor="heartbeat_message" title="Heartbeat Message">
+   <t>
+   The Heartbeat message is based on the Mobility Header defined in
+   Section 6.1 of <xref target="RFC3775"/>. The MH Type field in the
+   Mobility Header indicates that it is a Heartbeat message. The value
+   MUST be set to 13. This document does not make any
+   other changes to the Mobility Header message.  Please refer to
+   <xref target="RFC3775"/> for a description of the fields in the
+   Mobility Header message.
+   </t>
+    <t>
+  <figure anchor="fig1" title="Mobility Header Message Format"><artwork>
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  | Payload Proto |  Header Len   |   MH Type     |   Reserved    |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |           Checksum            |                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
+  |                                                               |
+  .                                                               .
+  .                       Message Data                            .
+  .                                                               .
+  |                                                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  </artwork></figure>
+   </t>
+   <t>
+   The Heartbeat message follows the Checksum field in the above
+   message. The following illustrates the message format for the
+   Heartbeat Mobility Header message.
+    </t>
+    <t>
+  <figure anchor="fig2" title="Heartbeat Message Format"><artwork>
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+                                  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                                  |            Reserved       |U|R|
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                       Sequence Number                         |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                                                               |
+  .                                                               .
+  .                        Mobility Options                       .
+  .                                                               .
+  |                                                               |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  </artwork></figure>
+    </t>
+      <t><list style="hanging">
+        <t hangText="Reserved">
+        <vspace blankLines="1"/> Set to 0 and ignored by the
+        receiver.
+        </t>
+	<t hangText="'U'"> 
+	<vspace blankLines="1"/> Set to 1 in Unsolicited Heartbeat
+	Response. Otherwise, set to 0. 
+	</t> 
+        <t hangText="'R'">
+        <vspace blankLines="1"/> A 1-bit flag that indicates whether
+        the message is a request or a response. When the 'R' flag is
+        set to 0, it indicates that the Heartbeat message is a
+        request. When the 'R' flag is set to 1, it indicates that the
+        Heartbeat message is a response.
+        </t>
+        <t hangText="Sequence Number">
+        <vspace blankLines="1"/> A 32-bit sequence number used for
+        matching the request to the reply.
+        </t>
+        <t hangText="Mobility Options">
+        <vspace blankLines="1"/>Variable-length field of such length
+        that the complete Mobility Header is an integer that is a multiple of 8
+        octets long.  This field contains zero or more TLV-encoded
+        mobility options.  The receiver MUST ignore and skip any
+        options that it does not understand. At the time of writing
+        this document, the Restart Counter mobility option, described
+        in <xref target="restart_counter"/>, is the only valid option
+        in this message.
+        </t>
+      </list></t>
+  </section>
+  <section anchor="restart_counter" title="Restart Counter Mobility
+  Option">
+    <t>
+    The following shows the message format for a new mobility option
+    for carrying the Restart Counter value in the Heartbeat message. 
+    The Restart Counter mobility option is only valid in a Heartbeat
+    Response message. It has an alignment requirement of 4n+2.
+    </t>
+    <figure anchor="fig3" title="Restart Counter Mobility Option">
+    <artwork>
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+                                  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+                                  |      Type     |     Length    |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                       Restart Counter                         |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    </artwork>
+    </figure>
+      <t><list style="hanging">
+        <t hangText="Type">
+        <vspace blankLines="1"/> An 8-bit field that indicates that it
+        is a Restart Counter mobility option. It MUST be set to
+        28.
+        </t>
+        <t hangText="Length">
+        <vspace blankLines="1"/> An 8-bit field that indicates the
+        length of the option in octets excluding the Type and
+        Length fields. It is set to 4. 
+        </t>
+        <t hangText="Restart Counter">
+        <vspace blankLines="1"/> A 32-bit field that indicates the
+        current Restart Counter value.
+        </t>
+      </list></t>
+  </section>
+</section>
+
+<!--
+   ******** IPV4 TRANSPORT ***********
+-->
+<section title="Exchanging Heartbeat Messages over an IPv4 Transport Network">
+  <t>
+   In some deployments, the network between the MAG and the LMA may be
+   IPv4-only and not capable of routing IPv6 packets.  In this case, the
+   Mobility Header containing the Heartbeat message is carried as specified in
+   Section 4 of <xref target="RFC5844"/>, i.e., the Mobility Header is
+   part of the UDP payload inside an IPv4 packet (IPv4-UDP-MH).
+</t>
+</section>
+
+<!--
+   ******** CONFIGURATION VARIABLES ***********
+-->
+<section title="Configuration Variables">
+  <t>
+  The LMA and the MAG must allow the following variables to be
+  configurable.
+  </t>
+  <t><list style="hanging">
+     <t hangText="HEARTBEAT_INTERVAL">
+     <vspace blankLines="1"/>This variable is used to set the time
+     interval in seconds between two consecutive Heartbeat Request
+     messages. The default value is 60 seconds. It SHOULD NOT be set
+     to less than 30 seconds or more than 3600 seconds.
+     </t>
+     <t hangText="MISSING_HEARTBEATS_ALLOWED">
+     <vspace blankLines="1"/>This variable indicates the maximum
+     number of consecutive Heartbeat Request messages for which a PMIPv6
+     node did not receive a response before concluding that the
+     peer PMIPv6 node is not reachable. The default value for this
+     variable is 3.
+     </t>
+  </list></t>
+</section>
+
+
+<!--
+   ******** SECURITY CONSIDERATIONS ***********
+-->
+<section title="Security Considerations">
+  <t>
+  The Heartbeat messages are just used for checking reachability
+  between the MAG and the LMA. They do not carry information that is
+  useful for eavesdroppers on the path. Therefore, confidentiality
+  protection is not required. Integrity protection using IPsec <xref
+  target="RFC4301"/> for the Heartbeat messages MUST be supported on
+  the MAG and the LMA. RFC 5213 <xref target="RFC5213"/> describes how
+  to protect the Proxy Binding Update and Acknowledgement signaling
+  messages with IPsec. The Heartbeat message defined in this
+  specification is merely another subtype of the same Mobility Header
+  protocol that is already being protected by IPsec. Therefore,
+  protecting this additional message is possible using the mechanisms
+  and security policy models from these RFCs. The security policy
+  database entries should use the new MH Type, the Heartbeat message,
+  for the MH Type selector.
+  </t>
+  <t>
+  If dynamic key negotiation between the MAG and the LMA is required,
+  Internet Key Exchange Protocol version 2 (IKEv2) <xref target="RFC4306"/> should be used.
+  </t>
+</section>
+
+<!--
+   ******** IANA **********
+-->
+<section title="IANA Considerations">
+  <t>
+  The Heartbeat message defined in <xref target="heartbeat_message"/>
+  must have the type value allocated from the same space as the 'MH
+  Type' name space in the Mobility Header defined in RFC 3775 <xref
+  target="RFC3775"/>.
+  </t>
+  <t>
+  The Restart Counter mobility option defined in <xref
+  target="restart_counter"/> must have the type value allocated from
+  the same name space as the mobility options defined in RFC 3775
+  <xref target="RFC3775"/>.
+  </t>
+</section>
+
+
+<!--
+   ******** ACKNOWLEDGMENTS ********
+-->
+<section title="Acknowledgements">
+<t>
+A heartbeat mechanism for a network-based mobility management protocol
+was first described in <xref
+target="NETLMM"/>.  The authors would like to
+thank the members of a NETLMM design team that produced that document.
+The mechanism described in this document also derives from the path
+management mechanism described in <xref target="GTP"/>.
+</t>
+<t>
+We would like to thank Alessio Casati for first suggesting a fault
+handling mechanism for Proxy Mobile IPv6. 
+</t>
+</section>
+
+</middle>
+<back>
+<references title="Normative References">
+<?rfc include="reference.RFC.2119" ?>
+<?rfc include="reference.RFC.5213"?>
+
+<reference anchor='RFC5844'>
+<front>
+<title>IPv4 Support for Proxy Mobile IPv6</title>
+
+<author initials='R' surname='Wakikawa' fullname='Ryuji Wakikawa'>
+    <organization />
+</author>
+
+<author initials='S' surname='Gundavelli' fullname='Sri Gundavelli'>
+    <organization />
+</author>
+
+<date month='May' year='2010' />
+
+</front>
+
+<seriesInfo name='RFC' value='5844' />
+
+</reference>
+
+<?rfc include="reference.RFC.4301" ?>
+<?rfc include="reference.RFC.4306" ?>
+<?rfc include="reference.RFC.3775" ?>
+</references>
+<references title="Informative References">
+
+<reference anchor='NETLMM'>
+<front>
+<title>The NetLMM Protocol</title>
+
+<author initials='H' surname='Levkowetz' role='editor'>
+    <organization />
+</author>
+<author initials='G' surname='Giaretta'>
+    <organization />
+</author>
+<author initials='K' surname='Leung'>
+    <organization />
+</author>
+<author initials='M' surname='Liebsch'>
+    <organization />
+</author>
+<author initials='P' surname='Roberts'>
+    <organization />
+</author>
+<author initials='K' surname='Nishida'>
+    <organization />
+</author>
+<author initials='H' surname='Yokota'>
+    <organization />
+</author>
+<author initials='M' surname='Parthasarathy'>
+    <organization />
+</author>
+
+<date month='October' day='5' year='2006' />
+
+<abstract><t>This document specifies an Internet protocol that allows mobile nodes to move around in a local mobility domain, changing their point of attachment within the domain, but without ever being aware at the IP layer that their point of attachment has changed, and maintaining seamless communication in the presence of such changes. It defines two protocol entities, a Mobile Access Gateway and a Local Mobility Anchor, and a set of messages between them, that together make these mobility events transparent to the mobile nodes at the IP layer, as long as they remain within the local mobility domain.</t></abstract>
+
+</front>
+
+<seriesInfo name='Work in' value='Progress' />
+
+</reference>
+
+
+<reference anchor="GTP">
+  <front>
+    <title>3GPP Technical Specification 29.060 V7.6.0: "Technical
+    Specification Group Core Network and Terminals; General Packet
+    Radio Service (GPRS); GPRS Tunnelling Protocol (GTP) across the Gn
+    and Gp interface (Release 7)"</title>
+    <author surname="3rd Generation Partnership Project">
+    <organization>
+    </organization>
+    </author>
+    <date month="July" year="2007"/>
+  </front>
+</reference>
+</references>
+
+</back>
+
+</rfc>

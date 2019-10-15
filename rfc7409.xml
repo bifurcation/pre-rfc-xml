@@ -1,0 +1,1147 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc rfcedstyle="yes" ?>
+
+<rfc number="7409" 
+     submissionType="IETF" 
+     category="exp" 
+     consensus="yes"
+     ipr="trust200902">
+
+  <front>
+    <title abbrev="ForCES Packet Parallelization">
+    Forwarding and Control Element Separation (ForCES) Packet&nbsp;Parallelization</title>
+		<author fullname="Evangelos Haleplidis" initials="E.H." surname="Haleplidis">
+			<organization>University of Patras</organization>
+			<address>
+				<postal>
+				<street>Department of Electrical and Computer Engineering</street>
+					<city>Patras</city>
+					<region/>
+					<code>26500</code>
+					<country>Greece</country>
+				</postal>
+				<email>ehalep@ece.upatras.gr</email>
+			</address>
+		</author>
+    
+		<author fullname="Joel Halpern" initials="J.H." surname="Halpern">
+			<organization>Ericsson</organization>
+			<address>
+				<postal>
+					<street>P.O. Box 6049</street>
+					<city>Leesburg, VA</city>
+					<region/>
+					<code>20178</code>
+					<country>United States</country>
+				</postal>
+				<phone>+1 703 371 3043</phone>
+				<email>joel.halpern@ericsson.com</email>
+			</address>
+		</author>
+
+    <date month="November" year="2014" />
+
+    <area>Routing</area>
+    <workgroup>Internet Engineering Task Force</workgroup>
+
+    <keyword>ForCES</keyword>
+    <keyword>Model</keyword>
+    <keyword>Extension</keyword>
+
+    <abstract>
+      <t>Many network devices support parallel packet processing.  This
+  document describes how Forwarding and Control Element Separation (ForCES)
+  can model a network device's parallelization datapath using constructs
+defined
+  by the ForCES model (RFC 5812) and controlled via the ForCES protocol (RFC
+5810).</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+    <t>A lot of network devices can process packets in a parallel manner. The
+    Forwarding and Control Element Separation (ForCES) <xref
+    target="RFC5812">model</xref> presents a formal way to describe the
+    Forwarding Plane's datapath with Logical Function Blocks (LFBs) using
+    XML. This document describes how packet parallelization can be described
+    with the ForCES model.</t>
+
+    <t>The modeling concept has been influenced by <xref target="Cilk">Cilk</xref>.
+    Cilk is a programming language that has been in
+    development since 1994 at the Massachusetts Institute of Technology (MIT)
+    Laboratory.  Cilk allows programmers to identify elements that can be executed
+    in parallel. The two Cilk concepts used in this document are "spawn" and
+    "sync": spawn being the place where parallel tasks can start and sync being
+    the place where the parallel task finishes and must collect all parallel output (see <xref target="definitions"/> for the definitions of both "task" and "task correclator"). </t>
+
+
+    <t>This document is Experimental; thus, the LFB Class IDs
+    will not be included in the Standard Action's values. Therefore, the LFB
+    Class IDs must have a value larger than 65535, and the LFB names must begin
+    with the prefix 'Ext-'. However, for brevity, when we refer to the LFB
+    Class names in the text of this document (not the formal definitions), the
+    'Ext-' prefix will be omitted.</t>
+      <t/>
+      <section title="Requirements Language">
+        <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+        "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+        document are to be interpreted as described in <xref target="RFC2119"></xref>.</t>
+      </section>
+  <section title="Definitions" anchor="definitions">
+	<t> This document follows the terminology defined by the ForCES
+   model in <xref target="RFC5812"></xref>. In particular, the reader is expected to be familiar
+     with	the following terms:</t>
+      <t><list style="hanging">
+        <t>FE</t>
+        <t>CE</t>
+        <t>FE Model</t>
+        <t>LFB Class (or type)</t>
+        <t>LFB Instance</t>
+        <t>LFB Model</t>
+        <t>Element</t>
+        <t>Attribute</t>
+        <t>LFB Metadata</t>
+        <t>ForCES Component</t>
+        <t>LFB Class Library</t>
+		</list></t>
+		<t>This document also introduces the following terms:</t>
+      <t><list style="hanging" hangIndent="19">
+      <t hangText="Chunk:"> Pieces of a packet.</t>
+      <t hangText="Task:"> Grouping of packets or chunks belonging to the same packet that are processed in parallel.</t>
+      <t hangText="Task Correlator:"> A 32-bit identifier that uniquely distinguishes tasks.</t>
+      <t hangText="Split Type:"> A parallel type where the packets are split into chunks
+      to be processed in parallel. Each task in a split type is composed only of chunks.</t>
+      <t hangText="Flood Type:"> A parallel type where the packets are copied as-is to
+      downstream LFBs to be processed in parallel. Each task in a flood type is composed only of packets.</t>
+		</list></t>
+    </section>
+  </section>
+  <section title="Packet Parallelization">
+    <t>This document addresses the following two types of packet parallelization:</t>
+    <t><list style="numbers">
+      <t>Flood: Where a copy of a packet is sent to multiple LFBs to be processed in parallel.</t>
+      <t>Split: Where the packet will be split into chunks of equal size specified
+      by the CE and sent to multiple LFB instances, probably of the same LFB class, to be processed in parallel.</t>
+    </list></t>
+    <t>It must be noted that the process of copying the packet in the flood
+    parallel type is implementation dependent and is loosely defined here. 
+
+An
+    implementer may either decide to physically copy the packet and send all
+    packets on the parallel paths or decide to logically copy the packet
+    by simply sending, for example, pointers to the same packet provided that
+    the necessary interlocks are taken into account. The implementer has to
+    take into account the device's characteristics to decide which approach fits best to the device.</t>
+
+    <t>In the split parallel type, while harder, the implementer may also
+    decide to logically split the packet and send, for example, pointers to
+    parts of the packet, provided that the necessary interlocks are
+    managed. In addition, how chunks are distributed to the LFBs (e.g., which
+    chunk to which LFB) is implementation dependent. For example, while usually
+    chunks are sent to the same LFB class, the number of LFB instances may not
+    be equal to the number of chunks. It is up to the implementer to decide how
+    these chunks will be sent, for example, in a round-robin fashion.</t>
+
+    <t>This document introduces two LFBs that are used before and after the parallelization occurs:</t>
+    <t><list style="numbers">
+      <t>Splitter: Similar to Cilk's spawn, a splitter is an LFB that will split the path
+      of a packet that will be sent to multiple downstream LFBs to be processed in parallel.</t>
+      <t>Merger: Similar to Cilk's sync, a merger is an LFB that will receive packets or
+      chunks of the same initial packet and merge them and the results into one packet.</t>
+    </list></t>
+      <t>Both parallel packet distribution types can currently be achieved
+      with the ForCES model. The Splitter LFB has one group output that
+      produces either chunks or packets to be sent to LFBs for processing, and
+      the Merger LFB has one group input that expects either packets or chunks
+      to aggregate all the parallel packets or chunks and produce a single
+      packet.</t> <t><xref target="SplitParallel"></xref> shows a simple example of a split parallel
+  datapath along with the Splitter and Merger LFB. The example in <xref target="SplitParallel" /> depicts multiple regular expression (regex) match LFBs that perform match
+operations on parts of the original packet.  <xref
+      target="FloodParallel"></xref> shows an
+  example of a flood parallel datapath along with the Splitter and
+  Merger LFB. The example in <xref target="FloodParallel" /> depicts a path that will classify an
+IPv4 packet while also performing metering; on the other path, the IPv4
+Time to Live (TTL) field will be decremented.</t>
+       
+ <t><figure title="Simple Split Parallel Processing" anchor="SplitParallel">
+            <artwork align="center"><![CDATA[
+                  C1+M   +------------+  C1+M
+                   +---->| Regex LFB  |----+
+    +----------+   |     +------------+    |       +----------+
+    |          |---+                       +------>|          |
+ P  |          |  C2+M   +------------+  C2+M      |          | P
+--->| Splitter |-------->| Regex LFB  |----------->|  Merger  |--->
+    |   LFB    |  CN+M   +------------+  CN+M      |   LFB    |
+    |          |---+                       +------>|          |
+    +----------+   |     +------------+    |       +----------+
+                   +---->| Regex LFB  |----+
+                         +------------+
+		]]></artwork>
+          </figure>
+        </t>
+        <t>
+          <figure title="Simple Flood Parallel Processing" anchor="FloodParallel">
+            <artwork align="center"><![CDATA[
+    +----------+    +------------+    +-------+    +----------+
+    |          |P+M | Classifier |P+M | Meter |P+M |          |
+ P  |          |--->|     LFB    |--->|  LFB  |--->|          | P
+--->| Splitter |    +------------+    +-------+    |  Merger  |--->
+    |   LFB    |                                   |   LFB    |
+    |          |P+M       +------------+       P+M |          |
+    |          |--------->|  IPv4 TTL  |---------->|          |
+    +----------+          |  Decrement |           +----------+
+                          |    LFB     |
+                          +------------+
+		]]></artwork>
+          </figure>
+        </t>
+      <t>This version of the modeling framework does not allow for nested
+      parallel datapath topologies. This decision was reached by the authors
+      and the ForCES working group, as there was no strong use case or need at
+      decision time. 
+
+
+This led to a simpler metadata definition, which is required
+      to be transported between the splitter and the corresponding
+      merger. If there is a need for nested parallel datapaths, a new version
+      of a splitter and merger will need to be defined, as well as an
+      augmentation to the defined metadata.</t>
+      <section title="CoreParallelization LFB">
+      <t>One important element to a developer is the ability to define which
+      LFBs can be used in a parallel mode, which LFBs can be parallelized with
+      which, as well as the order in which parallel LFBs can be assembled.</t> 
+
+      <t>To access the parallelization details, we opted for defining a new
+      LFB class: the CoreParallelization LFB. This choice was an alternative
+      to making another change to the core FEObject LFB. The
+      CoreParallelization exists merely to define the capabilities for an FE's
+      LFB parallelization. A CE using the <xref target="RFC5810">ForCES
+      protocol</xref> can check the existence of this LFB class in the
+      FEObject's SupportedLFBs component. The existence of the
+      CoreParallelization LFB will indicate to the CE that the 
+      specific FE supports parallelization. There MUST be only one instance of the CoreParallelization LFB per FE.</t>
+
+      <t>The topology of the parallel datapath can be deferred and manipulated from the FEObject LFB's LFBTopology.</t>
+      
+      <t>The CoreParallelization requires only one capability in order to
+      specify each LFB that can be used in a parallel mode:</t>
+      <t><list style="symbols">
+        <t>The Name of the LFB.</t>
+        <t>The Class ID of the LFB.</t>
+        <t>The Version of the LFB.</t>
+        <t>The number of instances that class can support in parallel.</t>
+        <t>A list of LFB classes that can follow this LFB class in a pipeline for a parallel path.</t>
+        <t>A list of LFB classes that can exist before this LFB class in a pipeline for a parallel path.</t>
+        <t>A list of LFB classes that can process packets or chunks in parallel with this LFB class.</t>
+      </list></t>
+        <t>
+          <figure title="XML Definitions for CoreParallelization LFB" anchor="CoreParallelizationLFB">
+            <artwork align="center"><![CDATA[
+    <!-- Datatype -->
+    <dataTypeDef>
+       <name>ParallelLFBType</name>
+       <synopsis>Table entry for parallel LFBs</synopsis>
+       <struct>
+          <component componentID="1">
+             <name>LFBName</name>
+             <synopsis>The name of an LFB Class</synopsis>
+             <typeRef>string</typeRef>
+          </component>
+          <component componentID="2">
+             <name>LFBClassID</name>
+             <synopsis>The id of the LFB Class</synopsis>
+             <typeRef>uint32</typeRef>
+          </component>
+          <component componentID="3">
+             <name>LFBVersion</name>
+             <synopsis>The version of the LFB Class used by this FE
+             </synopsis>
+             <typeRef>string</typeRef>
+          </component>
+          <component componentID="4">
+             <name>LFBParallelOccurrenceLimit</name>
+             <synopsis>The upper limit of instances of the same
+                parallel LFBs of this class</synopsis>
+             <optional />
+             <typeRef>uint32</typeRef>
+          </component>
+          <component componentID="5">
+             <name>AllowedParallelAfters</name>
+             <synopsis>List of LFB Classes that can follow this LFB
+                in a parallel pipeline</synopsis>
+             <optional />
+             <array>
+                <typeRef>uint32</typeRef>
+             </array>
+          </component>
+          <component componentID="6">
+             <name>AllowedParallelBefores</name>
+             <synopsis>List of LFB Classes that this LFB class can
+                follow in a parallel pipeline</synopsis>
+             <optional />
+             <array>
+                <typeRef>uint32</typeRef>
+             </array>
+          </component>
+          <component componentID="7">
+             <name>AllowedParallel</name>
+             <synopsis>List of LFB Classes that this LFB class can run
+                in parallel with</synopsis>
+             <array>
+                <typeRef>uint32</typeRef>
+             </array>
+          </component>
+       </struct>
+    </dataTypeDef>
+    
+    <!-- Capability -->
+          <capability componentID="32">
+             <name>ParallelLFBs</name>
+             <synopsis>List of all supported parallel LFBs</synopsis>
+             <array type="Variable-size">
+                <typeRef>ParallelLFBType</typeRef>
+             </array>
+          </capability>
+		]]></artwork>
+          </figure>
+        </t>
+        </section>
+        <section title="Parallelization Metadata">
+        <t>It is expected that the splitting and merging mechanisms are an
+	implementation issue. This document plays the role of defining the
+	operational parameters for the splitting and merging: namely, the size
+	of the chunks, what happens if a packet or chunk has been marked as
+	invalid, and whether the merge LFB should wait for all packets or
+	chunks to arrive. The following metadata set is defined as a struct:</t>
+      <t><list style="numbers">
+        <t>ParallelType - Flood or split</t>
+        <t>TaskCorrelator - Identify packets or chunks that belonged to the
+	initial packet that entered the Splitter LFB</t>
+        <t>ParallelNum - Sequence number of the packet or the chunk for a specific task</t>
+        <t>ParallelPartsCount - Total number of packets or chunks for a specific task</t>
+      </list></t>
+      <t>This metadata is produced from the Splitter LFB, is opaque to LFBs
+      in parallel paths, and is passed along to the Merger LFB without being
+      consumed.</t>
+
+
+      <t>In the case in which an LFB decides that a packet/chunk has to be
+      dropped, the LFB MAY drop the packet/chunk, but the metadata MUST be sent
+      to the Merger LFB's InvalidIn input port for merging purposes.</t>
+      <t>Additional metadata produced by LFBs inside a datapath MAY be
+      aggregated within the Merger LFB and sent on after the merging
+      process. In case of receiving the same metadata definition with multiple
+      values, the Merger LFB MUST keep the first received from a valid packet or chunk.</t>
+      </section>
+    </section>
+    <section title="Parallel Base Types">
+      <section title="Frame Types">
+        <t>One frame type has been defined in this library.</t>
+        <texttable title="Parallel Frame Types" align="center">
+          <ttcol>Frame Name</ttcol>
+          <ttcol>Synopsis</ttcol>
+          <!--Ingress Port -->
+          <c>Chunk</c>
+          <c>A chunk is a frame that is part of an original larger frame.</c>
+        </texttable>
+      </section>
+      <section title="Data Types">
+        <t>One data type has been defined in this library.</t>
+        <texttable title="Parallel Data Types" align="center">
+          <ttcol>DataType Name</ttcol>
+          <ttcol>Type</ttcol>
+          <ttcol>Synopsis</ttcol>
+          <!--Ingress Port -->
+          <c>ParallelTypes</c>
+          <c>Atomic uchar.  Special Values Flood (0), Split (1).</c>
+          <c>The type of parallelization this packet will go through.</c>
+        </texttable>
+      </section>
+      <section title="Metadata Types">
+        <t>The following metadata structure with ID 16, using the <xref target="RFC7408">ForCES model extension</xref>, is defined for the parallelization library:</t>
+<?rfc compact="no" ?>
+      <texttable title="Metadata Structure for Merging">
+        <ttcol align="center">Metadata Name</ttcol>
+        <ttcol align="center">Type</ttcol>
+        <ttcol align="center">ID</ttcol>
+        <ttcol align="center">Synopsis</ttcol>
+          <!-- MergeID -->            
+          <c>ParallelType</c>
+          <c>uchar</c>
+          <c>1</c>
+          <c>The type of parallelization this packet will go through. 0 for flood, 1 for split.</c>
+          <!-- MergeID -->            
+          <c>TaskCorrelator</c>
+          <c>uint32</c>
+          <c>2</c>
+          <c>An identification number to specify that a packet or a chunk belongs to the same parallel task.</c>
+          <!-- ParallelCount -->            
+          <c>ParallelNum</c>
+          <c>uint32</c>
+          <c>3</c>
+          <c>Defines the number of a specific packet or chunk of a specific task.</c>
+          <!-- ParallelCount -->            
+          <c>ParallelPartsCount</c>
+          <c>uint32</c>
+          <c>4</c>
+          <c>Defines the total number of packets or chunks for a specific task.</c>
+      </texttable>
+<?rfc compact="yes"?>
+     </section>
+    </section>
+    <section title="Parallel LFBs">
+      <section title="Splitter">
+        <t>The Splitter LFB takes part in parallelizing the processing
+	datapath by sending either the same packet (<xref
+	target="FloodParallel"></xref>) or chunks (<xref
+	target="SplitParallel"></xref>) of the same packet to multiple LFBs.</t>
+        <t>
+          <figure title="Splitter LFB" anchor="SplitterLFB">
+            <artwork align="center"><![CDATA[
+              +---------------+
+   SplitterIn |               | SplitterOut
+   ---------->| Splitter LFB  |------------->
+              |               |
+              +---------------+
+		]]></artwork>
+          </figure>
+        </t>
+        <section title="Data Handling">
+          <t>The Splitter LFB receives any kind of packet via the singleton
+	  input, Input. Depending upon the CE's configuration of the
+	  ParallelType component, if the parallel type is of type flood (0),
+	  the same packet MUST be sent through all instances of the group output
+	  "SplitterOut". If the parallel type is of type split (1),
+	  then the packet will be split into same size chunks except for the last, which
+	  MAY be smaller, with the max size being defined by the ChunkSize
+	  component. Chunks MAY be sent out in a round-robin fashion through
+	  instances of the group output "ParallelOut" or in any other way defined
+	  by the implementer. Each packet or chunk will be accompanied by the
+	  following metadata set as a struct:</t>
+          <t><list style="symbols">
+            <t>ParallelType - The parallel type: split or flood.</t>
+
+            <t>ParallelID - Generated by the Splitter LFB to identify which
+	    chunks or packets belong to the same parallel task.</t>
+            <t>ParallelNum - Each chunk or packet of a parallel ID will be
+	    assigned a number in order for the Merger LFB to know when it has
+	    gathered them all along with the ParallelPartsCount metadata.</t>
+            <t>ParallelPartsCount - The number of chunks or packets for the specific task.</t>
+           
+          </list></t>
+        </section>
+        <section title="Components">
+          <t>The Splitter LFB has only two components. The first is the
+	  ParallelType, a uint32 that defines how the packet will be
+	  processed by the Splitter LFB. The second is the ChunkSize, a
+	  uint32 that specifies the size of each chunk when a packet is split
+	  into multiple same-size chunks. The last chunk MAY be smaller than
+	  the value of the ChunkSize.</t>
+        </section>
+        <section title="Capabilities">
+          <t>This LFB has only one capability specified; the MinMaxChunkSize is a
+	  struct of two uint32s to specify the minimum and maximum chunk size.</t>
+        </section>
+        <section title="Events">
+          <t>This LFB has no events specified.</t>
+        </section>
+      </section>
+      <section title="Merger">
+        <t>The Merger LFB is the synchronization point for multiple packets or
+	packet chunks of the same task emanating out of the parallel path, as
+	illustrated in <xref target="SplitParallel"></xref> and <xref target="FloodParallel"></xref>.</t>
+        <t>
+          <figure title="Merger LFB" anchor="MergerLFB">
+            <artwork align="center"><![CDATA[
+              +-------------+
+     MergerIn |             | 
+    --------->|             | MergerOut
+              | Merger LFB  |----------->
+    InvalidIn |             |
+    --------->|             |
+              +-------------+
+	       		]]></artwork>
+          </figure>
+        </t>
+        <section title="Data Handling">
+
+	  <t>The Merger LFB receives either a packet or a chunk via the group
+	  input ParallelIn, along with the ParallelType metadata, the
+	  TaskCorrelator, the ParallelNum, and the ParallelPartsCount.</t>
+
+          <t>In the case in which an upstream LFB has dropped a packet or a chunk, the
+	  Merger LFB MAY receive only the metadata, both the metadata and the packet,
+	  or the chunk through the InvalidIn group input port. It SHOULD receive a
+	  metadata specifying the error code. Currently defined metadata in
+	  the <xref target="RFC6956">Base LFB Library</xref> are the
+	  ExceptionID and the ValidateErrorID.</t>
+
+          <t>If the MergeWaitType is set to false, the Merger LFB will initiate
+	  the merge process upon receiving the first packet. If false, for
+	  each task identified by the task correlator, it will wait for all
+	  packets/chunks to arrive unless the MergeWaitTimeoutTimer timer
+	  expires. If the MergeWaitTimeoutTimer has expired, the Merger MUST
+	  consider the rest of the packets/chunks that have not been
+	  received as invalid, and it MUST handle the packets according to the InvalidAction value.</t>
+
+          <t>If one packet or chunk has been received through the InvalidIn
+	  port, then the merging procedure will handle the packets/chunks
+	  according to the InvalidAction value. If the InvalidAction component
+	  has been set to 0, then if one packet or chunk is not valid, all
+	  will be dropped or else the process will initiate. Once the merging process
+	  has been completed, the resulting packet will be sent via the
+	  singleton output port MergerOut.</t>
+
+          <t>If the Merger LFB receives different values for the same metadata
+	  from different packets or chunks that have the same task correlator,
+	  then the Merger LFB will use the first metadata from a packet or
+	  chunk that entered the LFB through the MergerIn input port.</t>
+        </section>
+        <section title="Components">
+          <t>This LFB has the following components specified:</t>
+          <t><list style="numbers">
+            <t>InvalidAction: A uchar defining what the Merge LFB will do if
+	    an invalid chunk or packet is received. If set to 0 (DropAll), the
+	    merge will be considered invalid and all chunks or packets will be
+	    dropped. If set to 1 (Continue), the merge will continue.</t>
+
+            <t>MergeWaitTimeoutTimer: A uint32 defining the amount of time,
+	    in milliseconds, that the Merger will wait for all packets or
+	    chunks within the same task to arrive before considering them
+	    invalid. The MergeWaitTimeoutTimer starts as soon as the first
+	    chunk or packet of a parallel task arrives.</t>
+
+            <t>MergeWaitType: A boolean. If true, the Merger LFB will wait
+	    for all packets or chunks to be received prior to performing the
+	    merge. If false, when one packet or a chunk with a response is
+	    received by the merge LFB, it will start with the merge process.</t>
+
+            <t>InvalidMergesCounter: A uint32 that counts the number of
+	    merges where there is at least one packet or chunk that entered
+	    the Merger LFB through the InvalidIn input port.</t>
+
+            <t>InvalidTotalCounter: A uint32 that counts the number of merges
+	    where all packets/chunks entered the Merger LFB through the InvalidIn input port.</t>
+
+            <t>InvalidIDCounters: A struct of two arrays. Each array has a
+	    uint32 per row. Each array counts the number of invalid merges where
+	    at least one packet or chunk entered through InvalidID per error
+	    ID. The first array is the InvalidExceptionID and the second is
+	    the InvalidValidateErrorID.</t>
+          </list></t>
+        </section>
+        <section title="Capabilities">
+          <t>This LFB has no capabilities specified.</t>
+        </section>
+        <section title="Events">
+          <t>This LFB specifies only two events. The first detects whether the
+	  InvalidMergesCounter has exceeded a specific value, and the second
+	  detects whether the InvalidAllCounter has exceeded a specific
+	  value. Both error reports will send the respective counter
+	  value. Event Filters can be used to limit the number of messages </t>
+        </section>
+      </section>
+      <section title="CoreParallelization">
+        <t>A core LFB that specifies that the FE supports parallelization
+	instead of updating the FEObject LFB</t>
+        <section title="Data Handling">
+          <t>The CoreParallelization does not handle data.</t>
+        </section>
+        <section title="Components">
+          <t>This LFB has no components specified.</t>
+        </section>
+        <section title="Capabilities">
+          <t>This LFB has only one capability specified. The ParallelLFBs is a table which lists all the LFBs that can be parallelized. Each row of the table contains:</t>
+        <t><list style="numbers">
+        <t>LFBName: A string. The Name of the parallel LFB.</t>
+        <t>LFBClassID: A uint32. The Class ID of the parallel LFB.</t>
+        <t>LFBVersion: A string. The Version of the parallel LFB.</t>
+        <t>LFBParallelOccurrenceLimit: A uint32. The upper limit of instances
+	of the same parallel LFBs of this class.</t>
+        <t>AllowedParallelAfters: A table of uint32s (LFB Class IDs). A list
+	of LFB classes that can follow this LFB class in a pipeline for a parallel path.</t>
+        <t>AllowedParallelBefores: A table of uint32s (LFB Class IDs). A list
+	of LFB classes that can exist before this LFB class in a pipeline for a parallel path.</t>
+        <t>AllowedParallel: A table of uint32s (LFB Class IDs). A list of LFB
+	classes that can process packets or chunks in parallel with this LFB class.</t>
+      </list></t>
+        </section>
+        <section title="Events">
+          <t>This LFB specifies no events</t>
+        </section>
+      </section>
+    </section>
+    <section title="XML for Parallel LFB Library">
+        <t>
+
+
+
+          <figure title="Parallel LFB library" anchor="ParallelLFBLibrary">
+            <artwork align="center"><![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+<LFBLibrary xmlns="urn:ietf:params:xml:ns:forces:lfbmodel:1.1"
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:schemaLocation="urn:ietf:params:xml:ns:forces:lfbmodel:1.1"
+   provides="Parallel">
+  <load library="BaseTypeLibrary" location="BaseTypeLibrary.LFB"/>
+  <frameDefs>
+    <frameDef>
+      <name>Chunk</name>
+      <synopsis>A chunk is a frame that is part of an original
+            larger frame</synopsis>
+    </frameDef>
+  </frameDefs>
+  <dataTypeDefs>
+    <dataTypeDef>
+      <name>ParallelTypes</name>
+      <synopsis>The type of parallelization this packet will go
+            through</synopsis>
+      <atomic>
+        <baseType>uchar</baseType>
+        <specialValues>
+          <specialValue value="0">
+            <name>Flood</name>
+            <synopsis>The packet/chunk has been sent as a whole
+                     to multiple recipients</synopsis>
+          </specialValue>
+          <specialValue value="1">
+            <name>Split</name>
+            <synopsis>The packet/chunk has been split into
+                     multiple chunks and sent to recipients</synopsis>
+          </specialValue>
+        </specialValues>
+      </atomic>
+    </dataTypeDef>
+    <dataTypeDef>
+      <name>ParallelLFBType</name>
+      <synopsis>Table entry for parallel LFBs</synopsis>
+      <struct>
+        <component componentID="1">
+          <name>LFBName</name>
+          <synopsis>The name of an LFB Class</synopsis>
+          <typeRef>string</typeRef>
+        </component>
+        <component componentID="2">
+          <name>LFBClassID</name>
+          <synopsis>The ID of the LFB Class</synopsis>
+          <typeRef>uint32</typeRef>
+        </component>
+        <component componentID="3">
+          <name>LFBVersion</name>
+          <synopsis>The version of the LFB Class used by this FE
+             </synopsis>
+          <typeRef>string</typeRef>
+        </component>
+        <component componentID="4">
+          <name>LFBParallelOccurrenceLimit</name>
+          <synopsis>The upper limit of instances of the same
+                parallel LFBs of this class</synopsis>
+          <optional/>
+          <typeRef>uint32</typeRef>
+        </component>
+        <component componentID="5">
+          <name>AllowedParallelAfters</name>
+          <synopsis>List of LFB Classes that can follow this LFB
+                in a parallel pipeline</synopsis>
+          <optional/>
+          <array>
+            <typeRef>uint32</typeRef>
+          </array>
+        </component>
+        <component componentID="6">
+          <name>AllowedParallelBefores</name>
+          <synopsis>List of LFB Classes that this LFB Class can
+                follow in a parallel pipeline</synopsis>
+          <optional/>
+          <array>
+            <typeRef>uint32</typeRef>
+          </array>
+        </component>
+        <component componentID="7">
+          <name>AllowedParallel</name>
+          <synopsis>List of LFB Classes that this LFB Class can be run
+                in parallel with</synopsis>
+          <array>
+            <typeRef>uint32</typeRef>
+          </array>
+        </component>
+      </struct>
+    </dataTypeDef>
+  </dataTypeDefs>
+  <metadataDefs>
+    <metadataDef>
+      <name>ParallelMetadataSet</name>
+      <synopsis>A metadata set for parallelization-related LFBs
+         </synopsis>
+      <metadataID>32</metadataID>
+      <struct>
+        <component componentID="1">
+          <name>ParallelType</name>
+          <synopsis>The type of parallelization this packet/chunk
+                  has gone through</synopsis>
+          <typeRef>ParallelTypes</typeRef>
+        </component>
+        <component componentID="2">
+          <name>TaskCorrelator</name>
+          <synopsis>An identification number to specify that
+                  packets or chunks originate from the same packet.
+               </synopsis>
+          <typeRef>uint32</typeRef>
+        </component>
+        <component componentID="3">
+          <name>ParallelNum</name>
+          <synopsis>Defines the number of the specific packet or
+                  chunk of the specific parallel ID.</synopsis>
+          <typeRef>uint32</typeRef>
+        </component>
+        <component componentID="4">
+          <name>ParallelPartsCount</name>
+          <synopsis>Defines the total number of packets or chunks
+                  for the specific parallel ID.</synopsis>
+          <typeRef>uint32</typeRef>
+        </component>
+      </struct>
+    </metadataDef>
+  </metadataDefs>
+  <LFBClassDefs>
+    <LFBClassDef LFBClassID="65537">
+      <name>Ext-Splitter</name>
+      <synopsis>A Splitter LFB takes part in parallelizing the
+            processing datapath.  It will either send the same packet
+            or chunks of one packet to multiple LFBs</synopsis>
+      <version>1.0</version>
+      <inputPorts>
+        <inputPort>
+          <name>SplitterIn</name>
+          <synopsis>An input port expecting any kind of frame
+               </synopsis>
+          <expectation>
+            <frameExpected>
+              <ref>Arbitrary</ref>
+            </frameExpected>
+          </expectation>
+        </inputPort>
+      </inputPorts>
+      <outputPorts>
+        <outputPort group="true">
+          <name>SplitterOut</name>
+          <synopsis>A parallel output port that sends the same
+                  packet to all output instances or chunks of the same 
+                  packet to output instances.  Each chunk is sent only
+                  once by the LFB.</synopsis>
+          <product>
+            <frameProduced>
+              <ref>Arbitrary</ref>
+              <ref>Chunk</ref>
+            </frameProduced>
+            <metadataProduced>
+              <ref>ParallelMetadataSet</ref>
+            </metadataProduced>
+          </product>
+        </outputPort>
+      </outputPorts>
+      <components>
+        <component componentID="1" access="read-write">
+          <name>ParallelType</name>
+          <synopsis>The type of parallelization this packet will
+                  go through</synopsis>
+          <typeRef>ParallelTypes</typeRef>
+        </component>
+        <component componentID="2" access="read-write">
+          <name>ChunkSize</name>
+          <synopsis>The size of a chunk when a packet is split
+                  into multiple chunks of the same size</synopsis>
+          <typeRef>uint32</typeRef>
+        </component>
+      </components>
+      <capabilities>
+        <capability componentID="31">
+          <name>MinMaxChunkSize</name>
+          <synopsis>The minimum and maximum size of a chunk
+                  capable of split by this LFB</synopsis>
+          <struct>
+            <component componentID="1">
+              <name>MinChunkSize</name>
+              <synopsis>Minimum chunk size</synopsis>
+              <optional/>
+              <typeRef>uint32</typeRef>
+            </component>
+            <component componentID="2">
+              <name>MaxChunkSize</name>
+              <synopsis>Maximum chunk size</synopsis>
+              <typeRef>uint32</typeRef>
+            </component>
+          </struct>
+        </capability>
+      </capabilities>
+    </LFBClassDef>
+    <LFBClassDef LFBClassID="65538">
+      <name>Ext-Merger</name>
+      <synopsis>A Merger LFB receives multiple packets or multiple
+            chunks of the same packet and merge them into one merged
+            packet</synopsis>
+      <version>1.0</version>
+      <inputPorts>
+        <inputPort group="true">
+          <name>MergerIn</name>
+          <synopsis>A parallel input port that accepts packets
+                  or chunks from all output instances</synopsis>
+          <expectation>
+            <frameExpected>
+              <ref>Arbitrary</ref>
+              <ref>Chunk</ref>
+            </frameExpected>
+            <metadataExpected>
+              <ref>ParallelMetadataSet</ref>
+            </metadataExpected>
+          </expectation>
+        </inputPort>
+        <inputPort group="true">
+          <name>InvalidIn</name>
+          <synopsis>When a packet is sent out of an error port of
+                  an LFB in a parallel path, it will be sent to this
+                  output port in the Merger LFB</synopsis>
+          <expectation>
+            <frameExpected>
+              <ref>Arbitrary</ref>
+              <ref>Chunk</ref>
+            </frameExpected>
+            <metadataExpected>
+              <one-of>
+                <ref>ExceptionID</ref>
+                <ref>ValidateErrorID</ref>
+              </one-of>
+            </metadataExpected>
+          </expectation>
+        </inputPort>
+      </inputPorts>
+      <outputPorts>
+        <outputPort>
+          <name>MergerOut</name>
+          <synopsis>An output port expecting any kind of frame
+               </synopsis>
+          <product>
+            <frameProduced>
+              <ref>Arbitrary</ref>
+            </frameProduced>
+          </product>
+        </outputPort>
+      </outputPorts>
+      <components>
+        <component componentID="1" access="read-write">
+          <name>InvalidAction</name>
+          <synopsis>What the Merge LFB will do if an invalid
+                  chunk or packet is received</synopsis>
+          <atomic>
+            <baseType>uchar</baseType>
+            <specialValues>
+              <specialValue value="0">
+                <name>DropAll</name>
+                <synopsis>Drop all packets or chunks
+                        </synopsis>
+              </specialValue>
+              <specialValue value="1">
+                <name>Continue</name>
+                <synopsis>Continue with the merge</synopsis>
+              </specialValue>
+            </specialValues>
+          </atomic>
+        </component>
+        <component componentID="2" access="read-write">
+          <name>MergeWaitType</name>
+          <synopsis>Whether the Merge LFB will wait for all
+                  packets or chunks to be received prior to sending
+                  out a response</synopsis>
+          <typeRef>boolean</typeRef>
+        </component>
+        <component componentID="3" access="read-write">
+          <name>MergeWaitTimeoutTimer</name>
+          <synopsis>The time that the Merger will wait
+          for all packets or chunks within the same task to arrive
+          before considering them invalid.</synopsis>
+          <typeRef>uint32</typeRef>
+        </component>
+        <component componentID="4" access="read-reset">
+          <name>InvalidMergesCounter</name>
+          <synopsis>Counts the number of merges where there is at
+                  least one packet/chunk that entered the Merger LFB
+                  through the InvalidIn input port</synopsis>
+          <typeRef>uint32</typeRef>
+        </component>
+        <component componentID="5" access="read-reset">
+          <name>InvalidTotalCounter</name>
+          <synopsis>Counts the number of merges where all
+                  packets/chunks entered the Merger LFB through the
+                  InvalidIn input port</synopsis>
+          <typeRef>uint32</typeRef>
+        </component>
+        <component componentID="6" access="read-reset">
+          <name>InvalidIDCounters</name>
+          <synopsis>Counts the number of invalid merges where at
+                  least one packet/chunk entered through InvalidID per
+                  error ID</synopsis>
+          <struct>
+            <component componentID="1">
+              <name>InvalidExceptionID</name>
+              <synopsis>Per Exception ID</synopsis>
+              <array>
+                <typeRef>uint32</typeRef>
+              </array>
+            </component>
+            <component componentID="2">
+              <name>InvalidValidateErrorID</name>
+              <synopsis>Per Validate Error ID</synopsis>
+              <array>
+                <typeRef>uint32</typeRef>
+              </array>
+            </component>
+          </struct>
+        </component>
+      </components>
+      <events baseID="30">
+        <event eventID="1">
+          <name>ManyInvalids</name>
+          <synopsis>An event that specifies if there are too many
+                  invalids</synopsis>
+          <eventTarget>
+            <eventField>InvalidCounter</eventField>
+          </eventTarget>
+          <eventGreaterThan/>
+          <eventReports>
+            <eventReport>
+              <eventField>InvalidMergesCounter</eventField>
+            </eventReport>
+          </eventReports>
+        </event>
+        <event eventID="2">
+          <name>ManyTotalInvalids</name>
+          <synopsis>An event that specifies if there are too many
+                  invalids</synopsis>
+          <eventTarget>
+            <eventField>InvalidTotalCounter</eventField>
+          </eventTarget>
+          <eventGreaterThan/>
+          <eventReports>
+            <eventReport>
+              <eventField>InvalidTotalCounter</eventField>
+            </eventReport>
+          </eventReports>
+        </event>
+      </events>
+    </LFBClassDef>
+    <LFBClassDef LFBClassID="65539">
+      <name>Ext-CoreParallelization</name>
+      <synopsis>A core LFB that specifies that the FE supports 
+        parallelization instead of updating the FEObject 
+        LFB</synopsis>
+      <version>1.0</version>
+      <capabilities>
+        <capability componentID="10">
+          <name>ParallelLFBs</name>
+          <synopsis>A table that lists all the LFBs that can be
+              parallelized</synopsis>
+          <array>
+            <typeRef>ParallelLFBType</typeRef>
+          </array>
+        </capability>
+      </capabilities>
+    </LFBClassDef>
+  </LFBClassDefs>
+</LFBLibrary>
+		]]></artwork>
+          </figure>
+        </t>
+    </section>
+
+    <section anchor="IANA" title="IANA Considerations">
+      <section title="LFB Class Names and LFB Class Identifiers">
+      <t>LFB classes defined by this document do not belong to LFBs defined by
+   Standards Action.  As such, the corresponding values assigned in the "Logical Functional Block (LFB) Class Names and Class Identifiers" registry at &lt;http://www.iana.org/assignments/forces&gt; are above 65535.</t>
+
+   <t>This specification includes the following LFB class names and LFB class identifiers:</t>
+
+
+ <figure title="Logical Functional Block (LFB) Class Names and Class Identifiers">
+<artwork>
++-------+---------------------+-------+-----------------+---------+
+| LFB   |  LFB Class Name     |  LFB  |  Description    |   Ref   |
+| Class |                     |Version|                 |         |
+| ID    |                     |       |                 |         |
++-------+---------------------+-------+-----------------+---------+
+| 65537 |   Ext-Splitter      |  1.0  | A Splitter LFB  |   RFC   |
+|       |                     |       |  will send      |   7409  |
+|       |                     |       |either the same  |         |
+|       |                     |       |   packet or     |         |
+|       |                     |       | chunks of one   |         |
+|       |                     |       |   packet to     |         |
+|       |                     |       | multiple LFBs.  |         |
++-------+---------------------+-------+-----------------+---------+
+| 65538 |    Ext-Merger       |   1.0 |  A Merger LFB   |   RFC   |
+|       |                     |       |    receives     |   7409  |
+|       |                     |       |    multiple     |         |
+|       |                     |       |   packets or    |         |
+|       |                     |       |    multiple     |         |
+|       |                     |       | chunks of the   |         |
+|       |                     |       |  same packet    |         |
+|       |                     |       |   and merges    |         |
+|       |                     |       | them into one.  |         |
++-------+---------------------+-------+-----------------+---------+
+| 65539 | Ext-                |   1.0 | A core LFB to   |   RFC   |
+|       | CoreParallelization |       | signify the     |   7409  |
+|       |                     |       | parallelization |         |
+|       |                     |       |   capability    |         |
++-------+---------------------+-------+-----------------+---------+
+   </artwork>      </figure>
+      </section>
+
+      <section title="Metadata ID">
+        <t>The Metadata ID namespace is 32-bits long.  Values assigned by this specification are:</t>
+        <texttable title="Metadata ID Assigned by this Specification">
+          <ttcol align="center">Value</ttcol>
+          <ttcol align="center">Name</ttcol>
+          <ttcol align="center">Reference</ttcol>
+          <c>0x00000010</c>
+          <c>ParallelMetadataSet</c>
+          <c>RFC 7409</c>
+        </texttable>
+      </section>
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+      <t>This document does not alter either the <xref target="RFC5812">ForCES model</xref> or the <xref target="RFC5810">ForCES protocol</xref>.  As such, it has no impact on their security considerations. This document simply defines the operational parameters and capabilities of LFBs that perform parallelization and not how parallelization is implemented. Finally, this document does not attempt to analyze the presence or possibility of security interactions created by allowing parallel operations on packets. Any such issues, if they exist, are for the designers of the particular data path, not the general mechanism.</t>
+    </section>
+  </middle>
+
+  <back>
+
+    <references title="Normative References">
+
+<reference anchor='RFC5810' target="http://www.rfc-editor.org/info/rfc5810">
+<front>
+<title>Forwarding and Control Element Separation (ForCES) Protocol Specification</title>
+<author initials='A.' surname='Doria' fullname='A. Doria'>
+<organization /></author>
+<author initials='J.' surname='Hadi Salim' fullname='J. Hadi Salim'>
+<organization /></author>
+<author initials='R.' surname='Haas' fullname='R. Haas'>
+<organization /></author>
+<author initials='H.' surname='Khosravi' fullname='H. Khosravi'>
+<organization /></author>
+<author initials='W.' surname='Wang' fullname='W. Wang'>
+<organization /></author>
+<author initials='L.' surname='Dong' fullname='L. Dong'>
+<organization /></author>
+<author initials='R.' surname='Gopal' fullname='R. Gopal'>
+<organization /></author>
+<author initials='J.' surname='Halpern' fullname='J. Halpern'>
+<organization /></author>
+<date year='2010' month='March' />
+</front>
+<seriesInfo name='RFC' value='5810' />
+<format type='TXT' octets='239754' target='http://www.rfc-editor.org/rfc/rfc5810.txt' />
+</reference>
+
+<reference anchor='RFC5812' target="http://www.rfc-editor.org/info/rfc5812">
+<front>
+<title>Forwarding and Control Element Separation (ForCES) Forwarding Element Model</title>
+<author initials='J.' surname='Halpern' fullname='J. Halpern'>
+<organization /></author>
+<author initials='J.' surname='Hadi Salim' fullname='J. Hadi Salim'>
+<organization /></author>
+<date year='2010' month='March' />
+</front>
+<seriesInfo name='RFC' value='5812' />
+<format type='TXT' octets='301491' target='http://www.rfc-editor.org/rfc/rfc5812.txt' />
+</reference>
+
+<reference anchor='RFC6956' target="http://www.rfc-editor.org/info/rfc6956">
+<front>
+<title>Forwarding and Control Element Separation (ForCES) Logical Function Block (LFB) Library</title>
+<author initials='W.' surname='Wang' fullname='W. Wang'>
+<organization /></author>
+<author initials='E.' surname='Haleplidis' fullname='E. Haleplidis'>
+<organization /></author>
+<author initials='K.' surname='Ogawa' fullname='K. Ogawa'>
+<organization /></author>
+<author initials='C.' surname='Li' fullname='C. Li'>
+<organization /></author>
+<author initials='J.' surname='Halpern' fullname='J. Halpern'>
+<organization /></author>
+<date year='2013' month='June' />
+</front>
+<seriesInfo name='RFC' value='6956' />
+<format type='TXT' octets='236056' target='http://www.rfc-editor.org/rfc/rfc6956.txt' />
+</reference>
+
+<!--draft-ietf-forces-model-extension-05: companion document -->
+<reference anchor='RFC7408' target="http://www.rfc-editor.org/info/rfc7408">
+<front>
+<title>Forwarding and Control Element Separation (ForCES) Model Extension</title>
+<author initials='E' surname='Haleplidis' fullname='Evangelos Haleplidis'>
+    <organization />
+</author>
+<date month='November' year='2014' />
+</front>
+<seriesInfo name='RFC' value='7408' />
+
+</reference>
+
+<reference anchor='RFC2119' target="http://www.rfc-editor.org/info/rfc2119">
+<front>
+<title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+<author initials='S.' surname='Bradner' fullname='Scott Bradner'>
+<organization>Harvard University</organization>
+<address>
+<postal>
+<street>1350 Mass. Ave.</street>
+<street>Cambridge</street>
+<street>MA 02138</street></postal>
+<phone>- +1 617 495 3864</phone>
+<email>sob@harvard.edu</email></address></author>
+<date year='1997' month='March' />
+<area>General</area>
+<keyword>keyword</keyword>
+</front>
+<seriesInfo name='BCP' value='14' />
+<seriesInfo name='RFC' value='2119' />
+<format type='TXT' octets='4723' target='http://www.rfc-editor.org/rfc/rfc2119.txt' />
+<format type='HTML' octets='17970' target='http://xml.resource.org/public/rfc/html/rfc2119.html' />
+<format type='XML' octets='5777' target='http://xml.resource.org/public/rfc/xml/rfc2119.xml' />
+</reference>
+
+    </references>
+
+    <references title="Informative References">
+
+    <reference anchor="Cilk" target="http://supertech.csail.mit.edu/cilk/">
+        <front>
+          <title>The Cilk Project</title>
+          <author>
+            <organization>Massachusetts Institute of Technology</organization>
+          </author>
+          <date/>
+        </front>
+      </reference>
+
+    </references>
+
+<section anchor="Acknowledgments" title="Acknowledgments">
+<t>The authors would like to thank Edward Crabbe for the initial discussion
+that led to the creation of this document.  They also thank Jamal Hadi Salim and Dave Hood for comments and discussions and Adrian Farrel for his AD review that made this document better. Finally, the authors thank Francis Dupont for his Gen-Art review and
+Magnus Nystroem for his security review both of which refined this document to
+its final shape.</t>
+</section>  
+</back>
+</rfc>

@@ -1,0 +1,1288 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc2119 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml">
+<!ENTITY rfc2434 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2434.xml">
+<!ENTITY rfc4106 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4106.xml">
+<!ENTITY rfc4309 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4309.xml">
+<!ENTITY rfc2104 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2104.xml">
+<!ENTITY rfc2202 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2202.xml">
+<!ENTITY rfc4086 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4086.xml">
+<!ENTITY rfc4107 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4107.xml">
+<!ENTITY rfc4303 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4303.xml">
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc rfcedstyle="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="5116" category="std" >
+  <front>
+    <title abbrev="Authenticated Encryption">An Interface and Algorithms for
+    Authenticated Encryption</title>
+
+    <author fullname="David A. McGrew" initials="D.A.M." surname="McGrew">
+      <organization>Cisco Systems, Inc.</organization>
+
+      <address>
+        <postal>
+          <street>510 McCarthy Blvd.</street>
+
+          <city>Milpitas</city>
+
+          <region>CA</region>
+
+          <code>95035</code>
+
+          <country>US</country>
+        </postal>
+
+        <phone>(408) 525 8651</phone>
+
+        <email>mcgrew@cisco.com</email>
+
+        <uri>http://www.mindspring.com/~dmcgrew/dam.htm</uri>
+      </address>
+    </author>
+
+    <date month="January" year="2008" />
+
+    <area>General</area>
+
+<!-- [rfced] Please insert any additional keywords (beyond those that appear in
+the title) for use on http://www.rfc-editor.org/rfcsearch.html. -->
+
+    <keyword>Encryption, Authentication</keyword>
+
+    <abstract>
+      <t>This document defines algorithms for Authenticated Encryption with
+      Associated Data (AEAD), and defines a uniform interface
+      and a registry for such algorithms. The interface and registry can be
+      used as an application-independent set of cryptoalgorithm suites. This
+      approach provides advantages in efficiency and security, and promotes
+      the reuse of crypto implementations.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t>Authenticated encryption <xref target="BN00"/> is a form of
+      encryption that, in addition to providing confidentiality for
+      the plaintext that is encrypted, provides a way to check its
+      integrity and authenticity. Authenticated Encryption with
+      Associated Data, or AEAD <xref target="R02"/>, adds the ability
+      to check the integrity and authenticity of some Associated Data
+      (AD), also called "additional authenticated data", that is not
+      encrypted. </t>
+
+      <section title="Background">
+        <t>Many cryptographic applications require both confidentiality and
+        message authentication. 
+
+	  Confidentiality is a security service that ensures that data
+	  is available only to those authorized to obtain it; usually
+	  it is realized through encryption.  Message authentication
+	  is the service that ensures that data has not been altered
+	  or forged by unauthorized entities; it can be achieved by
+	  using a Message Authentication Code (MAC).  This service is
+	  also called data integrity.  Many applications use an
+	  encryption method and a MAC together to provide both of
+	  those security services, with each algorithm using an
+	  independent key. More recently, the idea of providing both
+	  security services using a single cryptoalgorithm has become
+	  accepted. In this concept, the cipher and MAC are replaced
+	  by an Authenticated Encryption with Associated Data (AEAD)
+	  algorithm.
+	  </t>
+	<t>
+        Several crypto algorithms that implement AEAD algorithms have been
+        defined, including block cipher modes of operation and dedicated
+        algorithms. Some of these algorithms have been adopted and proven
+        useful in practice. Additionally, AEAD is close to an 'idealized' view
+        of encryption, such as those used in the automated analysis of
+        cryptographic protocols (see, for example, Section 2.5 of <xref target="BOYD"/>). 
+	</t>
+
+<t>
+The benefits of AEAD algorithms, and this interface, are outlined in
+<xref target="benefits"/>.
+</t>
+
+      </section>
+
+      <section title="Scope">
+        <t>In this document, we define an AEAD algorithm as an abstraction, by
+        specifying an interface to an AEAD and defining an IANA registry for
+        AEAD algorithms. We populate this registry with four AEAD algorithms 
+	based on the Advanced Encryption Standard (AES) in Galois/Counter Mode <xref target="GCM"></xref> with 128- and 256-bit keys, and AES in Counter and CBC MAC Mode <xref target="CCM"></xref>
+        with 128- and 256-bit keys. 
+	</t>
+
+        <t>In the following, we define the AEAD interface
+        (<xref target="interface"></xref>), and then provide guidance
+        on the use of AEAD algorithms (<xref target="algUse"></xref>),
+        and outline the requirements that each AEAD algorithm must
+        meet (<xref target="algRequirements"></xref>). Then we define
+        several AEAD algorithms (<xref target="algs"></xref>), and
+        establish an IANA registry for AEAD algorithms
+        (<xref target="iana"></xref>). Lastly, we discuss some other
+        considerations (<xref target="questions"></xref>).</t>
+
+        <t>The AEAD interface specification does not address security
+        protocol issues such as anti-replay services or access control
+        decisions that are made on authenticated data. Instead, the
+        specification aims to abstract the cryptography away from
+        those issues. The interface, and the guidance about how to use
+        it, are consistent with the recommendations from
+        <xref target="EEM04"></xref>.</t>
+      </section>
+
+      <t></t>
+
+      <section title="Benefits" anchor="benefits">
+        <t>
+	The AEAD approach enables applications that need cryptographic
+        security services to more easily adopt those services.  It
+        benefits the application designer by allowing them to focus on
+        important issues such as security services, canonicalization,
+        and data marshaling, and relieving them of the need to design
+        crypto mechanisms that meet their security goals. Importantly,
+        the security of an AEAD algorithm can be analyzed independent
+        from its use in a particular application. This property frees
+        the user of the AEAD of the need to consider security aspects
+        such as the relative order of authentication and encryption
+        and the security of the particular combination of cipher and
+        MAC, such as the potential loss of confidentiality through the
+        MAC. The application designer that uses the AEAD interface
+        need not select a particular AEAD algorithm during the design
+        stage. Additionally, the interface to the AEAD is relatively
+        simple, since it requires only a single key as input and 
+        requires only a single identifier to indicate the algorithm in
+        use in a particular case.</t>
+
+        <t>The AEAD approach benefits the implementer of the crypto
+        algorithms by making available optimizations that are
+        otherwise not possible to reduce the amount of computation,
+        the implementation cost, and/or the storage requirements. The
+        simpler interface makes testing easier; this is a considerable
+        benefit for a crypto algorithm implementation. By providing a
+        uniform interface to access cryptographic services, the AEAD
+        approach allows a single crypto implementation to more easily
+        support multiple applications. For example, a hardware module
+        that supports the AEAD interface can easily provide crypto
+        acceleration to any application using that interface, even to
+        applications that had not been designed when the module was
+        built.</t>
+      </section>
+
+      <section title="Conventions Used in This Document">
+        <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+        "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+        document are to be interpreted as described in <xref
+        target="RFC2119"></xref>.</t>
+      </section>
+    </section>
+
+    <section anchor="interface" title="AEAD Interface">
+      <t>An AEAD algorithm has two operations, authenticated encryption and
+      authenticated decryption. The inputs and outputs of these algorithms are
+      defined below in terms of octet strings.
+</t>
+
+      <t>An implementation MAY accept additional inputs. For example, an input
+      could be provided to allow the user to select between different
+      implementation strategies. However, such extensions MUST NOT affect
+      interoperability with other implementations.</t>
+
+
+      <section title="Authenticated Encryption">
+        <t>The authenticated encryption operation has four inputs, each of
+        which is an octet string: <list>
+            <t>A secret key K, which MUST be generated in a way that is
+            uniformly random or pseudorandom. </t>
+
+            <t>A nonce N. &nbsp;Each nonce provided to distinct invocations
+               of the Authenticated Encryption operation MUST be
+               distinct, for any particular value of the key, unless
+               each and every nonce is zero-length.  Applications that
+               can generate distinct nonces SHOULD use the nonce
+               formation method defined
+               in <xref target="RecommendedNonce"></xref>, and MAY use
+               any other method that meets the uniqueness requirement.
+               Other applications SHOULD use zero-length nonces.
+	    </t>
+		      
+
+            <t>A plaintext P, which contains the data to be encrypted and
+            authenticated.</t>
+
+            <t>The associated data A, which contains the data to
+            be authenticated, but not encrypted.
+	    </t>
+          </list>
+	</t>
+
+        <t>There is a single output: <list>
+            <t>A ciphertext C, which is at least as long as the plaintext,
+            or</t>
+
+            <t>an indication that the requested encryption operation could not
+            be performed.</t>
+          </list></t>
+
+        <t>All of the inputs and outputs are variable-length octet strings,
+        whose lengths obey the following restrictions: <list>
+            <t>The number of octets in the key K is between 1 and
+            255. For each AEAD algorithm, the length of K MUST be
+            fixed.</t>
+
+            <t>
+ For any particular value of the key, either 1) each
+	            nonce provided to distinct invocations of the
+	            Authenticated Encryption operation MUST be
+	            distinct, or 2) each and every nonce MUST be
+	            zero-length.  If zero-length nonces are used with
+	            a particular key, then each and every nonce used
+	            with that key MUST have a length of zero.
+	            Otherwise, the number of octets in the nonce
+	            SHOULD be twelve (12).  Nonces with different
+	            lengths MAY be used with a particular key.  Some
+	            algorithms cannot be used with zero-length nonces,
+	            but others can; see
+	            <xref target="algRequirements"/>.
+      
+      Applications that conform to the recommended nonce length will
+      avoid having to construct nonces with different lengths,
+      depending on the algorithm that is in use.  This guidance helps
+      to keep algorithm-specific logic out of applications.
+
+	    </t>
+
+            <t>The number of octets in the plaintext P MAY be zero.</t>
+
+            <t>The number of octets in the associated
+            data A MAY be zero.</t>
+
+            <t>The number of octets in the ciphertext C MAY be zero.</t>
+          </list>
+	  This specification does not put a maximum length on the
+	  nonce, the plaintext, the ciphertext, or the additional
+	  authenticated data.  However, a particular AEAD algorithm
+	  MAY further restrict the lengths of those inputs and
+	  outputs. A particular AEAD implementation MAY further
+	  restrict the lengths of its inputs and outputs. If a
+	  particular implementation of an AEAD algorithm is requested
+	  to process an input that is outside the range of admissible
+	  lengths, or an input that is outside the range of lengths
+	  supported by that implementation, it MUST return an error
+	  code and it MUST NOT output any other information. In
+	  particular, partially encrypted or partially decrypted data
+	  MUST NOT be returned.
+	</t>
+
+        <t>Both confidentiality and message authentication are provided on the
+        plaintext P. &nbsp;When the length of P is zero, the AEAD algorithm acts as
+        a Message Authentication Code on the input A.</t>
+
+        <t>The associated data A is used to protect information
+        that needs to be authenticated, but does not need to be kept
+        confidential. When using an AEAD to secure a network protocol, for
+        example, this input could include addresses, ports, sequence numbers,
+        protocol version numbers, and other fields that indicate how the
+        plaintext or ciphertext should be handled, forwarded, or processed. In
+        many situations, it is desirable to authenticate these fields, though
+        they must be left in the clear to allow the network or system to
+        function properly. When this data is included in the input A,
+        authentication is provided without copying the data into the
+        plaintext.</t>
+
+
+	<t>
+	  The secret key K MUST NOT be included in any of the other
+	  inputs (N, P, and A).  (This restriction does not mean that
+	  the values of those inputs must be checked to ensure that
+	  they do not include substrings that match the key; instead,
+	  it means that the key must not be explicitly copied into those
+	  inputs.)
+	  </t>
+
+
+        <t>The nonce is authenticated internally to the algorithm, and
+        it is not necessary to include it in the AD input. The nonce
+        MAY be included in P or A if it is convenient to the
+        application.</t>
+
+        <t>The nonce MAY be stored or transported with the ciphertext,
+	  or it MAY be reconstructed immediately prior to the
+	  authenticated decryption operation.  It is sufficient to
+	  provide the decryption module with enough information to
+	  allow it to construct the nonce.  (For example, a system
+	  could use a nonce consisting of a sequence number in a
+	  particular format, in which case it could be inferred from
+	  the order of the ciphertexts.) Because the authenticated
+	  decryption process detects incorrect nonce values, no
+	  security failure will result if a nonce is incorrectly
+	  reconstructed and fed into an authenticated decryption
+	  operation.  Any nonce reconstruction method will need to
+	  take into account the possibility of loss or reorder of
+	  ciphertexts between the encryption and decryption
+	  processes.</t>
+
+        <t>Applications MUST NOT assume any particular structure or formatting
+        of the ciphertext.</t>
+      </section>
+
+      <section title="Authenticated Decryption">
+        <t>The authenticated decryption operation has four inputs: K,
+        N, A, and C, as defined above. It has only a single output,
+        either a plaintext value P or a special symbol FAIL that
+        indicates that the inputs are not authentic. A ciphertext C, a
+        nonce N, and associated data A are authentic for key K when C
+        is generated by the encrypt operation with inputs K, N, P, and
+        A, for some values of N, P, and A. &nbsp;The authenticated decrypt
+        operation will, with high probability, return FAIL whenever
+        the inputs N, P, and A were crafted by a nonce-respecting
+        adversary that does not know the secret key (assuming that the
+        AEAD algorithm is secure).
+
+	</t>
+      </section>
+
+      <section title="Data Formatting">
+        <t>This document does not specify any particular encoding for the AEAD
+        inputs and outputs, since the encoding does not affect the security
+        services provided by an AEAD algorithm.</t>
+
+        <t>When choosing the format of application data, an
+        application SHOULD position the ciphertext C so that it
+        appears after any other data that is needed to construct the
+        other inputs to the authenticated decryption operation.  For
+        instance, if the nonce and ciphertext both appear in a packet,
+        the former value should precede the latter. This rule
+        facilitates efficient and simple hardware implementations of
+        AEAD algorithms.</t>
+      </section>
+
+
+    </section>
+
+
+
+    <section anchor="algUse"
+             title="Guidance on the Use of AEAD Algorithms">
+      <t>This section provides advice that must be followed in order to use an
+      AEAD algorithm securely.</t>
+
+      <t>
+If an application is unable to meet the uniqueness requirement on nonce
+generation, then it MUST use a zero-length nonce.  Randomized or stateful
+algorithms, which are defined below, are suitable for use with such
+applications.  Otherwise, an application SHOULD use nonces with a
+length of twelve octets.  Since algorithms are encouraged to support
+that length, applications should use that length to aid
+interoperability.
+	</t>
+
+    <section anchor="NonceReqts" title="Requirements on Nonce Generation">
+        <t>
+	  It is essential for security that the nonces be constructed
+        in a manner that respects the requirement that each nonce
+        value be distinct for each invocation of the authenticated
+        encryption operation, for any fixed value of the key.  In this
+        section, we call attention to some consequences of this
+        requirement in different scenarios.
+	</t>
+
+      <t>
+	When there are multiple devices performing encryption using a
+	single key, those devices must coordinate to ensure that the
+	nonces are unique.  A simple way to do this is to use a nonce
+	format that contains a field that is distinct for each one of
+	the devices, as described in
+	<xref target="RecommendedNonce"/>.  Note that there is no need
+	to coordinate the details of the nonce format between the
+	encrypter and the decrypter, as long the entire nonce is sent
+	or stored with the ciphertext and is thus available to the
+	decrypter.  If the complete nonce is not available to the
+	decrypter, then the decrypter will need to know how the nonce
+	is structured so that it can reconstruct it.  Applications
+	SHOULD provide encryption engines with some freedom in
+	choosing their nonces; for example, a nonce could contain both
+	a counter and a field that is set by the encrypter but is not
+	processed by the receiver.  This freedom allows a set of
+	encryption devices to more readily coordinate to ensure the
+	distinctness of their nonces.
+      </t>
+
+	<t>
+	  If a secret key will be used for a long period of time,
+	  e.g., across multiple reboots, then the nonce will need to be
+	  stored in non-volatile memory.  In such cases, it is
+	  essential to use checkpointing of the nonce; that is, the
+	  current nonce value should be stored to provide the state
+	  information needed to resume encryption in case of
+	  unexpected failure.  One simple way to provide a high
+	  assurance that a nonce value will not be used repeatedly is
+	  to wait until the encryption process receives confirmation
+	  from the storage process indicating that the succeeding
+	  nonce value has already been stored.  Because this method
+	  may add significant latency, it may be desirable to store a
+	  nonce value that is several values ahead in the sequence.
+	  As an example, the nonce 100 could be stored, after which
+	  the nonces 1 through 99 could be used for encryption.  The
+	  nonce value 200 could be stored at the same time that nonces
+	  1 through 99 are being used, and so on.  
+	</t>
+
+      <t>
+	Many problems with nonce reuse can be avoided by changing a
+	key in a situation in which nonce coordination is difficult.
+	</t>
+
+      <t>
+	Each AEAD algorithm SHOULD describe what security degradation
+	would result from an inadvertent reuse of a nonce value.
+      </t>
+
+
+      </section>
+
+      <section anchor="RecommendedNonce" title="Recommended Nonce Formation">
+
+        <t>The following method to construct nonces is RECOMMENDED. The nonce
+        is formatted as illustrated in <xref target="nonceformat"></xref>,
+        with the initial octets consisting of a Fixed field, and the final
+        octets consisting of a Counter field.  
+For each fixed
+	  key, the length of each of these fields, and thus the length
+	  of the nonce, is fixed.  Implementations SHOULD support
+	  12-octet nonces in which the Counter field is four octets
+	  long.
+	</t>
+
+        <figure anchor="nonceformat" title="Recommended nonce format">
+          <artwork><![CDATA[ 
+    <----- variable ----> <----------- variable ----------->          
+   +---------------------+----------------------------------+
+   |        Fixed        |              Counter             |
+   +---------------------+----------------------------------+
+]]></artwork>
+        </figure>
+
+        <t>
+        The Counter fields of successive nonces form a monotonically
+	increasing sequence, when those fields are regarded as
+	unsigned integers in network byte order.  The length of the
+	Counter field MUST remain constant for all nonces that are
+	generated for a given encryption device. The Counter part
+	SHOULD be equal to zero for the first nonce, and increment by
+	one for each successive nonce that is generated.  However, any
+	particular Counter value MAY be skipped over, and left out of
+	the sequence of values that are used, if it is convenient.
+	For example, an application could choose to skip the initial
+	Counter=0 value, and set the Counter field of the initial
+	nonce to 1.  Thus, at most 2^(8*C) nonces can be generated when
+	the Counter field is C octets in length.</t>
+
+        <t>The Fixed field MUST remain constant for all nonces that
+        are generated for a given encryption device. If different
+        devices are performing encryption with a single key, then each
+        distinct device MUST use a distinct Fixed field, to ensure the
+        uniqueness of the nonces. Thus, at most 2^(8*F) distinct
+        encrypters can share a key when the Fixed field is F octets in
+        length.  
+	</t>
+
+
+	<section title="Partially Implicit Nonces">
+
+        <t>In some cases, it is desirable to not transmit or store an
+        entire nonce, but instead to reconstruct that value from
+        contextual information immediately prior to decryption.  As an
+        example, ciphertexts could be stored in sequence on a disk,
+        and the nonce for a particular ciphertext could be inferred
+        from its location, as long as the rule for generating the
+        nonces is known by the decrypter.  We call the portion of the
+        nonce that is stored or sent with the ciphertext the explicit
+        part.  We call the portion of the nonce that is inferred
+	the implicit part.
+	  
+        When part of the nonce is implicit, the following
+        specialization of the above format is RECOMMENDED.  The Fixed
+        field is divided into two sub-fields: a Fixed-Common field and
+        a Fixed-Distinct field.  This format is shown in
+        <xref target="nonceexplicit"></xref>.  If different devices
+	are performing encryption with a single key, then each
+	distinct device MUST use a distinct Fixed-Distinct field.  The
+	Fixed-Common field is common to all nonces.  The
+	Fixed-Distinct field and the Counter field MUST be in the
+	explicit part of the nonce.  The Fixed-Common field MAY be in
+	the implicit part of the nonce.  These conventions ensure
+	that the nonce is easy to reconstruct from the explicit 
+	data.
+	</t>
+
+        <figure anchor="nonceexplicit"
+                title="Partially implicit nonce format">
+          <artwork><![CDATA[ 
+   +-------------------+--------------------+---------------+
+   |    Fixed-Common   |   Fixed-Distinct   |    Counter    |
+   +-------------------+--------------------+---------------+
+    <---- implicit ---> <------------ explicit ------------>]]></artwork>
+        </figure>
+
+        <t><list>
+            <t>The rationale for the partially implicit nonce format
+	      is as follows.  This method of nonce construction
+	      incorporates the best known practice; it is used by both
+	      GCM Encapuslating Security Payload (ESP)
+            <xref target="RFC4106"></xref> and CCM ESP <xref
+            target="RFC4309"></xref>, in which the Fixed field contains
+            the Salt value and the lowest eight octets of the nonce are
+            explicitly carried in the ESP packet. In GCM ESP, the Fixed field
+            must be at least four octets long, so that it can contain the Salt
+            value. In CCM ESP, the Fixed field must be at least three octets
+            long for the same reason. This nonce generation method is also
+            used by several counter mode variants including CTR ESP.</t>
+          </list></t>
+
+	</section>
+
+      </section>
+
+
+      <section title="Construction of AEAD Inputs "> 
+
+      <t>
+If the AD input is constructed out of multiple data elements, then it is
+essential that it be unambiguously parseable into its constituent elements,
+without the use of any unauthenticated data in the parsing process.  (In
+mathematical terms, the AD input must be an injective function of the data
+elements.)  If an application constructs its AD input in such a way that
+there are two distinct sets of data elements that result in the same AD
+value, then an attacker could cause a receiver to accept a bogus set by
+substituting one set for the other.
+      The requirement that the AD be uniquely
+      parseable ensures that this attack is not possible. This
+      requirement is trivially met if the AD is composed of
+      fixed-width elements. If the AD contains a variable-length
+      string, for example, this requirement can be met by also
+      including the length of the string in the AD.</t>
+
+      <t>Similarly, if the plaintext is constructed out of multiple data
+      elements, then it is essential that it be unambiguously parseable into
+      its constituent elements, without using any unauthenticated data in the
+      parsing process. Note that data included in the AD may be used
+      when parsing the plaintext, though of course since the AD is not
+      encrypted there is a potential loss of confidentiality when information
+      about the plaintext is included in the AD.</t>
+
+      </section>
+
+
+      <section title="Example Usage">
+	<t>
+	   To make use of an AEAD algorithm, an application must
+	   define how the encryption algorithm's inputs are defined in
+	   terms of application data, and how the ciphertext and nonce
+	   are conveyed.  The clearest way to do this is to express
+	   each input in terms of the data that form it, then to
+	   express the application data in terms of the outputs of the
+	   AEAD encryption operation.
+	   </t>
+	<t>
+	   For example, AES-GCM ESP <xref target="RFC4106"/> 
+	   can be expressed as follows.  The AEAD inputs
+	   are 
+	  <list>
+	    <t>
+	      P = RestOfPayloadData || TFCpadding || Padding || PadLength || NextHeader
+	    </t>
+	    <t>
+	      N = Salt || IV 
+	    </t>
+	    <t>
+              A = SPI || SequenceNumber
+	    </t>
+	  </list>
+	  where the symbol "||" denotes the concatenation operation,
+	  and the fields RestOfPayloadData, TFCpadding, Padding,
+	  PadLength, NextHeader, SPI, and SequenceNumber are as
+	  defined in <xref target="RFC4303"/>, and the fields Salt and
+	  IV are as defined in <xref target="RFC4106"/>.  The field
+	  RestOfPayloadData contains the plaintext data that is
+	  described by the NextHeader field, and no other data.
+	  (Recall that the PayloadData field contains both the IV and
+	  the RestOfPayloadData; see Figure 2 of
+	  <xref target="RFC4303"/> for an illustration.)
+	  </t>
+	<t>
+	  The format of the ESP packet can be expressed as
+	  <list>
+	    <t>
+	      ESP = SPI || SequenceNumber || IV || C 
+	    </t>
+	  </list>
+	  where C is the AEAD ciphertext (which in this case
+	  incorporates the authentication tag).  Please note that
+	  here we have not described the use of the ESP Extended
+	  Sequence Number.
+	</t>
+
+      </section>
+
+
+    </section>
+
+
+
+    <section anchor="algRequirements" 
+	     title="Requirements on AEAD Algorithm Specifications">
+      <t>Each AEAD algorithm MUST only accept keys with a fixed key length
+      K_LEN, and MUST NOT require any particular data format for the keys
+      provided as input. An algorithm that requires such structure 
+      (e.g., one with subkeys in a particular parity-check format) will need to
+      provide it internally.</t>
+
+      <t>Each AEAD algorithm MUST accept any plaintext with a length
+      between zero and P_MAX octets, inclusive, where the value P_MAX
+      is specific to that algorithm.
+	 The value of P_MAX MUST be larger than
+	zero, and SHOULD be at least 65,536 (2^16) octets.  This size
+	is a typical upper limit for network data packets.  Other
+	applications may use even larger values of P_MAX, so it is
+	desirable for general-purpose algorithms to support higher
+	values.
+      </t>
+
+      <t>Each AEAD algorithm MUST accept any associated
+      data with a length between zero and A_MAX octets,
+      inclusive, where the value A_MAX is specific to that
+      algorithm.
+	 The value of A_MAX MUST be larger than
+       zero, and SHOULD be at least 65,536 (2^16) octets.  Other
+       applications may use even larger values of A_MAX, so it is
+       desirable for general-purpose algorithms to support higher
+       values.
+      </t>
+
+      <t>Each AEAD algorithm MUST accept any nonce with a length
+      between N_MIN and N_MAX octets, inclusive, where the values of
+      N_MIN and N_MAX are specific to that algorithm.  The values of
+      N_MAX and N_MIN MAY be equal.  Each algorithm SHOULD accept a
+      nonce with a length of twelve (12) octets.
+
+     Randomized or stateful algorithms, which are described below, MAY
+     have an N_MAX value of zero.
+      </t>
+
+      <t>An AEAD algorithm MAY structure its ciphertext output in any way; for
+      example, the ciphertext can incorporate an authentication tag. Each
+      algorithm SHOULD choose a structure that is amenable to efficient
+      processing.</t>
+
+      <t>An Authenticated Encryption algorithm MAY incorporate or make
+	use of a random source, e.g., for the generation of an internal
+	initialization vector that is incorporated into the ciphertext
+	output.  An AEAD algorithm of this sort is called randomized;
+	though note that only encryption is random, and decryption is
+	always deterministic.  A randomized algorithm MAY have a value
+	of N_MAX that is equal to zero.
+      </t>
+
+
+      <t>
+      An Authenticated Encryption algorithm MAY incorporate internal
+      state information that is maintained between invocations of the
+      encrypt operation, e.g., to allow for the construction of
+      distinct values that are used as internal nonces by the
+      algorithm.  An AEAD algorithm of this sort is called stateful.
+      This method could be used by an algorithm to provide good
+      security even when the application inputs zero-length nonces.  A
+      stateful algorithm MAY have a value of N_MAX that is equal to
+      zero.
+      </t>
+
+      <t>The specification of an AEAD algorithm MUST include the values of
+      K_LEN, P_MAX, A_MAX, N_MIN, and N_MAX defined above. Additionally, it
+      MUST specify the number of octets in the largest possible ciphertext,
+      which we denote C_MAX.</t>
+
+      <t>Each AEAD algorithm MUST provide a description relating the
+      length of the plaintext to that of the ciphertext.  This
+      relation MUST NOT depend on external parameters, such as an
+      authentication strength parameter (e.g., authentication tag
+      length).  That sort of dependence would complicate the use of the
+      algorithm by creating a situation in which the information from
+      the AEAD registry was not sufficient to ensure interoperability.
+      </t>
+
+      <t>
+	EACH AEAD algorithm specification SHOULD describe what
+	security degradation would result from an inadvertent reuse
+	of a nonce value.
+	</t>
+
+      <t>
+	Each AEAD algorithm specification SHOULD provide a reference
+	to a detailed security analysis.  This document does not
+	specify a particular security model, because several different
+	models have been used in the literature.  The security
+	analysis SHOULD define or reference a security model.
+      </t>
+
+      <t>
+	An algorithm that is randomized or stateful, as defined above,
+	SHOULD describe itself using those terms.
+	</t>
+
+    </section>
+
+
+    <section anchor="algs" title="AEAD Algorithms">
+      <t>This section defines four AEAD algorithms; two are based on
+      AES GCM, two are based on AES CCM. Each pair includes an
+      algorithm with a key size of 128 bits and one with a key size of
+      256 bits.</t>
+
+      <section anchor="aesGCM" title="AEAD_AES_128_GCM">
+        <t>The AEAD_AES_128_GCM authenticated encryption algorithm
+        works as specified in <xref target="GCM"></xref>, using
+        AES-128 as the block cipher, by providing the key, nonce, and
+        plaintext, and associated data to that mode of operation. An
+        authentication tag with a length of 16 octets (128 bits) is
+        used. The AEAD_AES_128_GCM ciphertext is formed by appending
+        the authentication tag provided as an output to the GCM
+        encryption operation to the ciphertext that is output by that
+        operation. Test cases are provided in the appendix
+        of <xref target="GCM"></xref>. The input and output lengths
+        are as follows:</t>
+
+        <t><list>
+            <t>K_LEN is 16 octets,</t>
+
+            <t>P_MAX is 2^36 - 31 octets,</t>
+
+            <t>A_MAX is 2^61 - 1 octets,</t>
+
+            <t>N_MIN and N_MAX are both 12 octets, and</t>
+
+            <t>C_MAX is 2^36 - 15 octets.</t>
+          </list>
+	</t>
+
+	<t>
+	  An AEAD_AES_128_GCM ciphertext is exactly 16 octets
+	  longer than its corresponding plaintext.
+	</t>
+
+	<t>
+	  A security analysis of GCM is available in <xref target="MV04"/>.
+	  </t>
+
+	<section title="Nonce Reuse">
+	  <t>
+The inadvertent reuse of the same nonce by two invocations of the GCM
+encryption operation, with the same key, but with distinct plaintext
+values, undermines the confidentiality of the plaintexts protected in
+those two invocations, and undermines all of the authenticity and
+integrity protection provided by that key. For this reason, GCM should
+only be used whenever nonce uniqueness can be provided with assurance.
+The design feature that GCM uses to achieve minimal latency causes the
+vulnerabilities on the subsequent uses of the key.  Note that it is
+acceptable to input the same nonce value multiple times to the
+decryption operation.
+	  </t>
+	  <t>
+   The security consequences are quite serious if an
+   attacker observes two ciphertexts that were created using the same
+   nonce and key values, unless the plaintext and AD values in both
+   invocations of the encrypt operation were identical.
+First, a loss of
+  confidentiality ensues because he will be able to reconstruct the
+  bitwise exclusive-or of the two plaintext values. Second, a loss of
+  integrity ensues because the attacker will be able to recover the
+  internal hash key used to provide data integrity. Knowledge of this key
+  makes subsequent forgeries trivial.
+
+	  </t>
+
+	</section>
+
+      </section>
+
+        <section anchor="aesGCM256" title="AEAD_AES_256_GCM">
+          <t>This algorithm is identical to AEAD_AES_128_GCM, but with the
+          following differences: <list>
+              <t>K_LEN is 32 octets, instead of 16 octets, and</t>
+
+              <t>AES-256 GCM is used instead of AES-128 GCM.</t>
+            </list></t>
+        </section>
+
+
+      <section anchor="aesCCM" title="AEAD_AES_128_CCM">
+        <t>The AEAD_AES_128_CCM authenticated encryption algorithm
+        works as specified in <xref target="CCM"></xref>, using
+        AES-128 as the block cipher, by providing the key, nonce,
+        associated data, and plaintext to that mode of operation. The
+        formatting and counter generation function are as specified in
+        Appendix A of that reference, and the values of the parameters
+        identified in that appendix are as follows:</t>
+
+        <t><list>
+            <t>the nonce length n is 12,</t>
+
+            <t>the tag length t is 16, and</t>
+
+            <t>the value of q is 3.</t>
+          </list></t>
+
+        <t>An authentication tag with a length of 16 octets (128 bits) is
+        used. The AEAD_AES_128_CCM ciphertext is formed by appending the
+        authentication tag provided as an output to the CCM encryption
+        operation to the ciphertext that is output by that operation. Test
+        cases are provided in <xref target="CCM"></xref>. The input and output
+        lengths are as follows:</t>
+
+        <t><list>
+            <t>K_LEN is 16 octets,</t>
+
+            <t>P_MAX is 2^24 - 1 octets,</t>
+
+            <t>A_MAX is 2^64 - 1 octets,</t>
+
+            <t>N_MIN and N_MAX are both 12 octets, and</t>
+
+            <t>C_MAX is 2^24 + 15 octets.</t>
+          </list></t>
+
+
+	<t>
+	  An AEAD_AES_128_CCM ciphertext is exactly 16 octets
+	  longer than its corresponding plaintext.
+	</t>
+
+	<t>
+	  A security analysis of AES CCM is available in <xref target="J02"/>.
+	  </t>
+
+	<section title="Nonce Reuse">
+	  <t>
+	    Inadvertent reuse of the same nonce by two invocations of
+	    the CCM encryption operation, with the same key,
+	    undermines the security for the messages processed with
+	    those invocations.  A loss of confidentiality ensues
+	    because an adversary will be able to reconstruct the
+	    bitwise exclusive-or of the two plaintext values.
+	  </t>
+
+	</section>
+
+
+      </section>
+
+        <section anchor="aesCCM256" title="AEAD_AES_256_CCM">
+          <t>This algorithm is identical to AEAD_AES_128_CCM, but with the
+          following differences: <list>
+              <t>K_LEN is 32 octets, instead of 16, and</t>
+
+              <t>AES-256 CCM is used instead of AES-128 CCM.</t>
+            </list></t>
+        </section>
+
+    </section>
+
+
+    <section anchor="iana" title="IANA Considerations">
+      <t>The Internet Assigned Numbers Authority (IANA) has defined
+       the "AEAD Registry" described below.  An algorithm designer MAY
+       register an algorithm in order to facilitate its
+       use.   Additions to the AEAD Registry require that a
+       specification be documented in an RFC or another
+       permanent and readily available reference, in sufficient detail
+       that interoperability between independent implementations is
+       possible. Each entry in the registry contains the following
+       elements: <list>
+          <t>a short name, such as "AEAD_AES_128_GCM", that starts with the
+          string "AEAD",</t>
+
+          <t>a positive number, and</t>
+
+          <t>a reference to a specification that completely defines an AEAD
+          algorithm and provides test cases that can be used to verify the
+          correctness of an implementation.</t>
+        </list>Requests to add an entry to the registry MUST include
+      the name and the reference.  The number is assigned by
+      IANA. These number assignments SHOULD use the smallest available
+      positive number.  Submitters SHOULD have their requests reviewed
+      by the IRTF Crypto Forum Research Group (CFRG) at cfrg@ietf.org.
+      Interested applicants that are unfamiliar with IANA processes
+      should visit http://www.iana.org.
+      </t>
+
+      <t>
+        The numbers between 32,768 (binary 1000000000000000) and
+	65,535 (binary 1111111111111111) inclusive, will not be
+	assigned by IANA, and are reserved for private use; no attempt
+	will be made to prevent multiple sites from using the same
+	value in different (and incompatible) ways
+	<xref target="RFC2434"/>.
+	</t>
+
+      <t>IANA has added the following entries to the AEAD Registry:</t>
+
+      <texttable>
+        <ttcol align="left">Name</ttcol>
+
+        <ttcol align="center">Reference</ttcol>
+
+        <ttcol align="center">Numeric Identifier</ttcol>
+
+        <c>AEAD_AES_128_GCM</c>
+
+        <c><xref target="aesGCM"></xref></c>
+
+        <c>1</c>
+
+        <c>AEAD_AES_256_GCM</c>
+
+        <c><xref target="aesGCM256"></xref></c>
+
+        <c>2</c>
+
+        <c>AEAD_AES_128_CCM</c>
+
+        <c><xref target="aesCCM"></xref></c>
+
+        <c>3</c>
+
+        <c>AEAD_AES_256_CCM</c>
+
+        <c><xref target="aesCCM256"></xref></c>
+
+        <c>4</c>
+
+      </texttable>
+
+      <t>
+	An IANA registration of an AEAD does not constitute an
+	endorsement of that algorithm or its security.
+	</t>
+
+    </section>
+
+    <section anchor="questions" title="Other Considerations">
+
+      <t>Directly testing a randomized AEAD encryption algorithm using
+      test cases with fixed inputs and outputs is not possible, since
+      the encryption process is non-deterministic. However, it is
+      possible to test a randomized AEAD algorithm using the following
+      technique. The authenticated decryption algorithm is
+      deterministic, and it can be directly tested.  The authenticated
+      encryption algorithm can be tested by encrypting a plaintext,
+      decrypting the resulting ciphertext, and comparing the original
+      plaintext to the post-decryption plaintext.  Combining both of
+      these tests covers both the encryption and decryption
+      algorithms.
+      </t>
+
+      <t>The AEAD algorithms selected reflect those that have been
+      already adopted by standards.  It is an open question as to what
+      other AEAD algorithms should be added. Many variations on basic
+      algorithms are possible, each with its own advantages. While it
+      is desirable to admit any algorithms that are found to be useful
+      in practice, it is also desirable to limit the total number of
+      registered algorithms. The current specification requires that a
+      registered algorithm provide a complete specification and a set
+      of validation data; it is hoped that these prerequisites set the
+      admission criteria appropriately.</t>
+
+      <t>It may be desirable to define an AEAD algorithm that uses the
+	generic composition with the encrypt-then-MAC
+	method <xref target="BN00"></xref>, combining a common
+	encryption algorithm, such as
+	CBC <xref target="MODES"></xref>, with a common message
+	authentication code, such as HMAC-SHA1
+	<xref target="RFC2104"/> or AES
+	CMAC <xref target="CMAC"></xref>.  An AEAD algorithm of this
+	sort would reflect the best current practice, and might be
+	more easily supported by crypto modules that lack support for
+	other AEAD algorithms.
+      </t>
+
+
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+      <t>
+	This document describes authenticated encryption algorithms,
+	and provides guidance on their use.  While these algorithms
+	make it easier, in some ways, to design a cryptographic
+	application, it should be borne in mind that strong
+	cryptographic security is difficult to achieve.  While AEAD
+	algorithms are quite useful, they do nothing to address the
+	issues of key generation <xref target="RFC4086"/> and key
+	management <xref target="RFC4107"/>.
+      </t>
+      <t>
+	AEAD algorithms that rely on distinct nonces may be
+	inappropriate for some applications or for some scenarios.  
+	Application designers should understand the requirements
+	outlined in <xref target="NonceReqts"/>.
+      </t>
+      <t>
+	A software implementation of the AEAD encryption operation in
+	a Virtual Machine (VM) environment could inadvertently reuse
+	a nonce due to a "rollback" of the VM to an earlier state
+	<xref target="GR05"/>.  Applications are encouraged to
+	document potential issues to help the user of the application
+	and the VM avoid unintentional mistakes of this sort.  The
+	possibility exists that an attacker can cause a VM rollback;
+	threats and mitigations in that scenario are an area of active
+	research.  For perspective, we note that an attacker who can
+	trigger such a rollback may have already succeeded in
+	subverting the security of the system, e.g., by causing an
+	accounting error.
+	</t>
+
+      <t>
+	An IANA registration of an AEAD algorithm MUST NOT be regarded
+	as an endorsement of its security.  Furthermore, the perceived
+	security level of an algorithm can degrade over time, due to
+	cryptanalytic advances or to "Moore's Law", that is, the
+	diminishing cost of computational resources over time.
+	</t>
+
+
+    </section>
+
+    <section title="Acknowledgments">
+      <t>Many reviewers provided valuable comments on earlier drafts
+      of this document.  Some fruitful discussions took place on the
+      email list of the Crypto Forum Research Group in 2006. 
+      </t>
+    </section>
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      &rfc2119;
+
+      <reference anchor="GCM" target="http://csrc.nist.gov/publications/nistpubs/800-38D/SP-800-38D.pdf">
+        <front>
+          <title>NIST Special Publication 800-38D: Recommendation for
+                 Block Cipher Modes of Operation: Galois/Counter Mode
+                 (GCM) and GMAC. </title>
+
+          <author fullname="Morris Dworkin" initials="M." surname="Dworkin">
+            <organization>U. S. National Institute of Standards and
+            Technology (NIST)</organization>
+          </author>
+
+<date month="November" year="2007" />
+        </front>
+
+        <seriesInfo name="U.S. National Institute of Standards and" value="Technology"/>
+
+      </reference>
+
+
+      <reference anchor="CCM" target="http://csrc.nist.gov/publications/nistpubs/800-38C/SP800-38C.pdf">
+        <front>
+          <title>NIST Special Publication 800-38C: The CCM Mode for
+          Authentication and Confidentiality</title>
+
+          <author fullname="Morris Dworkin" initials="M." surname="Dworkin">
+            <organization>U. S. National Institute of Standards and
+            Technology (NIST)</organization>
+          </author>
+        </front>
+
+        <seriesInfo name="U.S. National Institute of Standards and" value="Technology"/>
+                    
+      </reference>
+
+    </references>
+
+    <references title="Informative References">
+
+      <reference anchor="BN00">
+        <front>
+          <title>Authenticated encryption: Relations among notions and
+          analysis of the generic composition paradigm</title>
+
+          <author fullname="Mihir Bellare and Chanathip Namprempre"
+		  initials="M." surname="Bellare">
+            <organization />
+          </author>
+	    <author initials="C." surname="Namprempre">
+	      <organization />
+	      </author>
+	    <date year="2002" />
+        </front>
+
+        <seriesInfo name="Proceedings of ASIACRYPT 2000, Springer-Verlag, LNCS 1976,"
+                    value="pp. 531-545" />
+      </reference>
+
+      <reference anchor="R02" target="http://www.cs.ucdavis.edu/~rogaway/papers/ad.html">
+        <front>
+          <title>Authenticated encryption with Associated-Data</title>
+
+          <author fullname="Phillip Rogaway"
+		  initials="P." surname="Rogaway">
+            <organization />
+          </author>
+	  <date year="2002" />
+        </front>
+
+        <seriesInfo name="ACM Conference on Computer and Communication Security (CCS'02), pp. 98-107,"
+                    value="ACM Press" />
+      </reference>
+
+
+
+      <reference anchor="BOYD">
+        <front>
+          <title>
+	  Protocols for Authentication and Key Establishment
+	  </title>
+
+          <author fullname="Colin Boyd" initials="C." surname="Boyd">
+            <organization />
+          </author>
+
+          <author fullname="Anish Mathuria" initials="A." surname="Mathuria">
+            <organization />
+          </author>
+
+        </front>
+
+        <seriesInfo 
+	   name="Springer"
+           value="2003" />
+      </reference>
+
+      <reference anchor="EEM04" target="http://www-cse.ucsd.edu/users/tkohno/papers/TISSEC04/">
+        <front>
+          <title>Breaking and provably repairing the SSH authenticated
+          encryption scheme: A case study of the Encode-then-Encrypt-and-MAC
+          paradigm</title>
+
+          <author   initials="M." surname="Bellare">
+            <organization />
+          </author>
+	    <author initials="C." surname="Namprempre">
+	      <organization />
+	      </author>
+	    <author initials="T." surname="Kohno">
+	      <organization />
+	      </author>
+        </front>
+
+        <seriesInfo name="ACM Transactions on Information and System"
+                    value="Security" />
+      </reference>
+
+      <reference anchor="GR05" target="http://www.stanford.edu/~talg/papers/HOTOS05/virtual-harder-hotos05.pdf">
+	<front>
+	  <title>
+             When Virtual is Harder than Real: Security Challenges in
+             Virtual Machine Based Computing Environments
+	    </title>
+	  <author fullname=" Tal Garfinkel" initials="T." surname="Garfinkel">
+	  <organization />
+	  </author>
+	  <author fullname="Mendel Rosenblum" initials="M." surname="Rosenblum" >
+	  <organization />
+	  </author>
+	  </front>
+	  <seriesInfo
+    name="Proceedings of the 10th Workshop on Hot Topics in Operating"
+    value="Systems" 
+	     />
+	</reference>
+
+
+      &rfc4106;
+
+      &rfc4309;
+
+      &rfc4303;
+
+
+
+
+
+
+	<reference anchor="MV04" target="http://eprint.iacr.org/2004/193">
+        <front>
+          <title>The Security and Performance of the Galois/Counter
+          Mode (GCM)</title>
+	  <author initials="D.A." surname="McGrew" fullname="David A. McGrew">
+	      <organization/>
+          </author>
+	  <author initials="J." surname="Viega" fullname="John Viega">
+	    <organization/>
+	  </author>
+	  <date month="December" year="2004"/>
+        </front>
+        <seriesInfo name="Proceedings of INDOCRYPT" value="'04"/>
+        </reference>
+
+
+	<reference anchor="J02" target="http://csrc.nist.gov/groups/ST/toolkit/BCM/documents/proposedmodes/ccm/ccm-ad1.pdf">
+        <front>
+          <title>On the Security of CTR + CBC-MAC</title>
+	  <author initials="J." surname="Jonsson" fullname="Jakob Jonsson">
+	      <organization/>
+          </author>
+	  <date  year="2002"/>
+        </front>
+        <seriesInfo name="Proceedings of the 9th Annual Workshop on Selected Areas on"
+		    value="Cryptography"/>
+        </reference>
+
+
+      <reference anchor="MODES" target="http://csrc.nist.gov/publications/nistpubs/800-38a/sp800-38a.pdf">
+        <front>
+          <title>NIST Special Publication 800-38: Recommendation for
+            Block Cipher Modes of Operation
+	  </title>
+
+          <author fullname="Morris Dworkin" initials="M." surname="Dworkin">
+            <organization />
+          </author>
+        </front>
+
+        <seriesInfo name="U.S. National Institute of Standards and" 
+                    value="Technology"/>
+      </reference>
+
+      &rfc2104;
+
+
+      <reference anchor="CMAC" target="http://csrc.nist.gov/publications/nistpubs/800-38B/SP_800-38B.pdf">
+        <front>
+          <title>NIST Special Publication 800-38B</title>
+
+          <author fullname="M. Dworkin, U.S. National Institute of Standards and Technology (NIST))">
+            <organization />
+          </author>
+        </front>
+      </reference>
+
+
+      &rfc2434;
+
+      &rfc4086;
+
+      &rfc4107;
+
+
+    </references>
+  </back>
+</rfc>

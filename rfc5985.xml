@@ -1,0 +1,2205 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!-- <!DOCTYPE rfc SYSTEM "rfc2629.dtd">-->
+
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc rfcedstyle="yes"?>
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+
+<rfc number="5985" category="std" ipr="trust200811">
+  <front>
+   <title abbrev="HELD">HTTP-Enabled Location Delivery (HELD)</title>
+
+    <author fullname="Mary Barnes" initials="M." role="editor"
+            surname="Barnes">
+      <organization>Polycom</organization>
+
+      <address>
+        <email>mary.ietf.barnes@gmail.com</email>
+      </address>
+    </author>
+
+    <date month="September" year="2010" />
+
+    <area>Real-time Applications and Infrastructure</area>
+
+    <workgroup>GEOPRIV WG</workgroup>
+
+    <keyword>HELD</keyword>
+
+    <keyword>HTTP</keyword>
+
+    <keyword>Location</keyword>
+
+    <abstract>
+      <t>
+	This document defines a Layer 7 Location Configuration Protocol (L7
+LCP) and describes the use of HTTP and HTTP/TLS as transports for
+the L7 LCP.  The L7 LCP is used for retrieving location information from a
+server within an access network. It includes options for retrieving
+location information in two forms: by value and by reference. The
+protocol is an extensible application-layer protocol that is
+independent of the session layer.
+      </t>
+    </abstract>
+
+  </front>
+
+  <middle>
+    <section anchor="intro" title="Introduction">
+      <t>The location of a Device is information that is useful for a number
+      of applications. The L7 Location Configuration Protocol (LCP) problem
+      statement and requirements document <xref
+      target="RFC5687"></xref> provides some scenarios in
+        which a Device might rely on its access network to provide location
+        information. The Location Information Server (LIS) service applies to 
+        access networks employing both
+        wired technology (e.g., DSL, cable) and wireless technology (e.g., WiMAX)
+        with varying degrees of Device mobility. This document describes a
+        protocol that can be used to acquire Location Information (LI) from a
+        LIS within an access network.</t>
+
+      <t>This specification identifies two types of location information that
+      may be retrieved from the LIS. Location may be retrieved from the LIS by
+      value; that is, the Device may acquire a literal location object
+      describing the location of the Device. The Device may also request that
+      the LIS provide a location reference in the form of a Location URI or
+      set of Location URIs, allowing the Device to distribute its LI by
+      reference. Both of these methods can be provided concurrently from the
+      same LIS to accommodate application requirements for different types of
+      location information.</t>
+
+      <t>
+        This specification defines an extensible XML-based protocol that
+        enables the retrieval of LI from a LIS by a Device. This protocol can be
+        bound to any session-layer protocol, particularly those capable of MIME
+        transport. This document describes the use of HTTP and HTTP/TLS
+        as transports for the protocol.
+      </t>
+    </section>
+
+    <section anchor="conventions" title="Conventions and Terminology">
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+      document are to be interpreted as described in <xref
+      target="RFC2119"></xref>.</t>
+
+      <t>This document uses the terms (and their acronym forms): Access
+      Provider (AP), Location Information (LI), Location Object (LO), Device,
+      Target, Location Generator (LG), Location Recipient (LR), and Rule Maker
+      (RM) and Rule Holder (RH) as defined in <xref target="RFC3693">GEOPRIV Requirements</xref>. The terms Location Information Server
+      (LIS), Access Network, Access Provider (AP), and Access Network Provider
+      are used in the same context as defined in the L7 LCP Problem statement
+      and Requirements document <xref
+      target="RFC5687"></xref>. The usage of the terms
+      Civic Location/Address and Geodetic Location follows the usage in many
+      of the referenced documents.</t>
+
+      <t>In describing the protocol, the terms "attribute" and "element" are
+      used according to their context in XML. The term "parameter" is used in
+      a more general protocol context and can refer to either an XML
+      "attribute" or "element".</t>
+    </section>
+
+    <section anchor="scope" title="Overview and Scope">
+      <t>
+        This document describes an interface between a Device and a Location
+        Information Server (LIS). This document assumes that the LIS is present
+        within the same administrative domain as the Device (e.g., the access
+        network). The LIS exists because not all Devices
+        are capable of determining LI, and because, even if a Device is able to
+        determine its own LI, it may be more efficient with assistance. This
+        document does not specify how LI is determined.
+        An Access Provider (AP) operates the LIS so that Devices (and
+        Targets) can retrieve their LI.
+        This document assumes that the Device
+        and Access Provider have no
+        prior relationship other than what is necessary for the Device to
+        obtain network access.
+      </t>
+
+      <t>This document is based on the attribution of the LI to a Device and
+      not specifically a person (end user) or Target, based on the premise
+      that location determination technologies are generally designed to
+      locate a Device and not a person. It is expected that, for most
+      applications, LI for the Device can be used as an adequate substitute
+      for the end user's LI. Since revealing the location of the Device almost
+      invariably reveals some information about the location of the user of
+      the Device, the same level of privacy protection demanded by a user is
+      required for the Device. This approach may require either some
+      additional assurances about the link between Device and target, or an
+      acceptance of the limitation that unless the Device requires active user
+      authentication, there is no guarantee that any particular individual is
+      using the Device at that instant.</t>
+
+      <figure anchor="pic" title="Significant Roles">
+        <preamble>The following diagram shows the logical configuration of
+        some of the functional elements identified in <xref
+        target="RFC3693"></xref> and the LIS defined in <xref
+        target="RFC5687"></xref>. It also shows where this protocol
+        applies, with the Rule Maker and Target represented by the role of the
+        Device.  Note that only the interfaces relevant to the Device are
+        identified in the diagram. </preamble>
+
+        <artwork><![CDATA[
+    
+                  +---------------------------------------------+
+                  | Access Network Provider                     |
+                  |                                             |
+                  |   +--------------------------------------+  |
+                  |   | Location Information Server          |  |
+                  |   |                                      |  |
+                  |   |                                      |  |
+                  |   |                                      |  |  
+                  |   |                                      |  |
+                  |   +------|-------------------------------+  |
+                  +----------|----------------------------------+
+                             |                      
+                             |                      
+                            HELD                    
+                             |                      
+  Rule Maker - - _     +-----------+         +-----------+
+        o          - - | Device    |         | Location  |
+       <U\             |           | - - - - | Recipient |
+       / \       _ - - |           |   APP   |           |
+      Target - -       +-----------+         +-----------+
+]]></artwork>
+      </figure>
+
+      <t>The interface between the Location Recipient (LR) and the Device
+      and/or LIS is application specific, as indicated by the APP annotation
+      in the diagram and it is outside the scope of the document. An example
+      of an APP interface between a Device and LR can be found in the SIP
+      Location Conveyance document <xref
+      target="LOC-CONVEY"></xref>.
+      </t>
+
+      <t></t>
+    </section>
+
+    <section anchor="overview" title="Protocol Overview">
+      <t>
+        A Device uses the HTTP-Enabled Location Delivery (HELD) protocol to retrieve its location either directly in the
+        form of a Presence Information Data Format Location Object (PIDF-LO)
+        document (by value) or indirectly as a Location URI (by reference).
+        The security necessary to ensure the accuracy, privacy, and confidentiality of the
+        Device's location is described in the <xref target="security"> Security Considerations </xref>.
+      </t>
+
+      <t>
+        As described in the L7 LCP problem statement and requirements document
+        <xref target="RFC5687"></xref>, the Device MUST first discover the URI
+        for the LIS for sending the HELD protocol requests.  The URI for the
+        LIS SHOULD be obtained from an authorized and authenticated entity.
+        The details for ensuring that an appropriate LIS is contacted are provided
+        in <xref target ="security"></xref> and in particular <xref target ="properLIS"></xref>.
+        The LIS discovery protocol details are out of scope of this document and
+        are specified in <xref target="RFC5986"></xref>. 
+        The type of URI provided
+        by LIS discovery is RECOMMENDED to be an HTTPS URI.
+      </t>
+      
+      <t>
+        The LIS requires an identifier for the Device in order to determine the
+        appropriate location to include in the location response message.
+        In this document, the IP address of the Device, as reflected by the source IP
+        address in the location request message, is used as the identifier.
+        Other identifiers are possible, but are beyond the scope of this
+        document.
+      </t>
+
+      <section anchor="DeviceID" title="Device Identifiers, NAT and VPNs">
+        <t>
+          Use of the HELD protocol is subject to the viability of the
+          identifier used by the LIS to determine location. This document
+          describes the use of the source IP address sent from the Device as the
+          identifier used by the LIS. When Network Address Translation (NAT), a
+          Virtual Private Network (VPN), or other forms of address modification
+          occur between the Device and the LIS, the location returned could be
+          inaccurate.
+        </t>
+
+        <t>
+          Not all cases of NATs introduce inaccuracies in the returned
+          location. For example, a NAT used in a residential Local Area Network
+          (LAN) is typically not a problem. The external IP address used on the
+          Wide Area Network (WAN) side of the NAT is an acceptable identifier
+          for all of the Devices in the residence (on the LAN side of the NAT),
+          since the covered geographical area is small.
+        </t>
+
+        <t>
+          On the other hand, if there is a VPN between the Device and the
+          LIS (for example, for a teleworker), then the IP address seen by a LIS
+          inside the enterprise network might not be the right address to
+          identify the location of the Device.
+          <xref target="LISVPN"/> provides
+          recommendations to address this issue.
+        </t>
+
+        <section anchor="deviceVPN" title="Devices and VPNs">
+          <t>
+
+To minimize the impact of connections or tunnels setup for security
+purposes or for traversing middleboxes, Devices that connect to servers
+such as VPN servers, SOCKS servers, and HTTP proxy servers should
+perform their HELD query on the LIS prior to establishing a connection
+to other servers.
+
+
+            It is RECOMMENDED that discovery <xref target="RFC5986"></xref> and
+            an initial query be performed before establishing any connections to other
+            servers.
+            If a Device performs the HELD query after establishing a
+            connection to
+            another server, the Device may receive inaccurate location
+            information.
+
+          </t>
+          
+          <t>
+            Devices that establish VPN connections for use by other Devices
+            inside a LAN or other closed network could serve as a LIS, that
+            implements the HELD protocol, for those other Devices. Devices
+            within the closed network are not necessarily able to detect the
+            presence of the VPN. In this case, a VPN
+            Device should provide the address of the LIS server it provides, in
+            response to discovery queries, rather than passing such queries
+            through the VPN tunnel. Otherwise, the other Devices would be
+            totally unaware that they
+            could receive inaccurate location information.
+          </t>
+
+          <t>
+            It could also be useful for a VPN Device to serve as a LIS for
+            other location configuration options such as  <xref target="RFC3825">Dynamic Host
+            Configuration Protocol (DHCP)</xref> or <xref target="LLDP-MED">Link
+            Layer Discovery Protocol - Media Endpoint Discovery</xref>. For this case, the VPN Device
+            that
+            serves as a LIS may first acquire its own location using HELD.
+          </t>
+
+        </section>
+
+        <section anchor="LISVPN" title="LIS Handling of NATs and VPNs">
+          <t>
+            In the cases where the Device connects to the LIS through a VPN
+            or a NAT that serves a large geographic area or multiple geographic
+            locations (for example, a NAT used by an enterprise to connect their
+            private network to the Internet), the LIS might not be able to return
+            accurate LI.  If the LIS cannot determine LI for the Device, it
+            should provide an error response to the requesting Device.
+            The LIS needs to be configured to recognize identifiers that
+            represent these conditions.
+          </t>
+
+          <t>
+            LIS operators have a large role in ensuring the best possible
+            environment for location determination.  The LIS operator needs to
+            ensure that the LIS is properly configured with identifiers that indicate
+            Devices on the remote side of a NAT or VPN.  In order to serve the Devices on
+            the remote side of a NAT or VPN, a LIS needs to have a presence on 
+            the side of the NAT or VPN nearest the Device.
+          </t>
+        </section>
+      </section>
+      
+      <section anchor="Location-by-value" title="Location by Value">
+        <t>Where a Device requires LI directly, it can request that the LIS
+        create a PIDF-LO document. This approach fits well with a
+        configuration whereby the Device directly makes use of the provided
+        PIDF-LO document. The details on the information that may be included
+        in the PIDF-LO MUST follow the subset of those rules relating to the
+        construction of the <spanx style="verb">location-info</spanx> element
+        in the PIDF-LO Usage Clarification, Considerations, and Recommendations
+        document <xref target="RFC5491"></xref>.
+        Further detail is included in "Protocol Parameters"
+        (<xref target="parameters"></xref>).
+	</t>
+      </section>
+
+      <section anchor="Location-by-reference" title="Location by Reference">
+        <t>
+          Requesting location directly does not always address the
+          requirements of an application. A Device can request a Location URI
+          instead of literal location. A Location URI is a URI <xref
+        target="RFC3986"></xref> of any scheme, which a Location Recipient
+          (LR) can use to retrieve LI. A Location URI provided by a LIS can be
+          assumed to be globally addressable; that is, anyone in possession of
+          the URI can access the LIS.
+        </t>
+
+        <t> However, possession of the URI does not in any way suggest that the LIS
+        indiscriminately reveals the location associated with the Location URI.
+        The specific requirements associated with the dereference of the
+        location are specified in 
+        <xref target="RFC5808"></xref>.
+        The location dereference protocol details are out of scope of
+        this document.  As such, many of the requirements in 
+        <xref target="RFC5808"></xref> (e.g., canceling 
+        of location references) are not intended
+        to be supported by this specification.  It is anticipated that future 
+        specifications may address these requirements. 
+      </t>
+
+      </section>
+
+      
+    </section>
+
+    <section anchor="protocol" title="Protocol Description">
+      <t>
+        As discussed in <xref target="overview"></xref>, the HELD
+        protocol provides for the retrieval of the Device's location in the form of a
+      PIDF-LO document and/or Location URI(s) from a LIS. Three messages are
+      defined to support the location retrieval: locationRequest,
+      locationResponse, and error. 
+<!-- [rfced] Sentence added, per the Protocol Action.
+Then removed, per request from the author.
+
+Messages are defined as XML documents that are always encoded in
+        UTF-8.  Note that when "application/held+xml" media type is
+        transported in HTTP, the charset parameter with value UTF-8 is
+        required.
+-->
+</t>
+
+      <t>The Location Request (locationRequest) message is described in <xref
+      target="locationRequest"></xref>. A Location Request message from a
+      Device indicates whether location should be
+      returned in the form of a PIDF-LO document
+      (with specific type(s) of location) and/or Location URI(s).  In
+      case of success, the LIS replies with a locationResponse message, including a
+      PIDF-LO document and/or one or more Location URIs. In
+      the case of an error, the LIS replies with an error message.</t>
+
+<!-- [rfced] Text replaced per author request.
+
+      <t>A MIME type <spanx style="verb">application/held+xml</spanx> is
+      registered in <xref target="iana-mime"></xref> to distinguish HELD
+      messages from other XML document bodies. This specification follows the
+      recommendations and conventions described in <xref
+      target="RFC3023"></xref>, including the naming convention of the type
+      ('+xml' suffix) and the usage of the 'charset' parameter.</t>
+-->
+
+<t> The HELD protocol messages are defined as XML documents that MUST
+      be encoded in UTF-8.   
+      A MIME type
+      <spanx style="verb">application/held+xml</spanx> is
+      registered in <xref target="iana-mime"></xref> to distinguish HELD
+      messages from other XML document bodies. This specification follows the
+   recommendations and conventions described in <xref target="RFC3023"></xref>,
+   including the naming convention of the type ('+xml' suffix) and the usage
+   of the 'charset' parameter.  The 'charset' parameter MUST be included with the
+   XML document.</t>
+
+      <t><xref target="parameters"></xref> contains a more thorough
+      description of the protocol parameters, valid values, and how each
+      should be handled. <xref target="schema"></xref> contains a more
+      specific definition of the structure of these messages in the form of an
+      XML Schema <xref target="W3C.REC-xmlschema-1-20041028"></xref>.</t>
+
+<!-- [rfced] Sentence replaced per author request.
+
+        <t><xref target="http"></xref> describes the use of a combination of <xref
+        target="RFC2616">HTTP</xref>, <xref target="RFC5246">TLS</xref>, and
+        <xref target="RFC0793">TCP</xref>.</t>
+-->
+
+<t><xref target="http"></xref> describes the use of a combination of <xref
+        target="RFC2616">HTTP</xref>, <xref target="RFC5246">TLS</xref>, and
+        <xref target="RFC0793">TCP</xref> for transporting the HELD
+messages. </t>
+
+      <section anchor="locationRequest" title="Location Request">
+        <t>A location request message is sent from the Device to the LIS when
+        the Device requires its own LI. The type of LI that a Device requests
+        is determined by the type of LI that is included in the <spanx
+        style="verb">locationType</spanx> element.</t>
+
+        <t>
+          The location request is made by sending a document formed of a
+          <spanx style="verb">locationRequest</spanx> element. The LIS uses the
+          source IP address of the location request message as the primary
+          source of identity for the requesting Device or target. It is
+          anticipated that other Device identities may be provided through
+          schema extensions.
+        </t>
+
+        <t>
+          The LIS MUST ignore any part of a location request message that it
+          does not understand, except the document element.  If the document
+          element of a request is not supported, the LIS MUST return an error
+          with the unsupportedMessage error code.
+        </t>
+      </section>
+
+      <section anchor="locationResponse" title="Location Response">
+        <t>A successful response to a location request MUST contain a PIDF-LO and/or
+        Location URI(s). The response SHOULD contain location information of
+        the requested <spanx style="verb">locationType</spanx>.  
+        The cases whereby
+        a different type of location information MAY be returned are described 
+        in <xref target="locationType"/>.
+     </t>
+      </section>
+
+      <section anchor="errors" title="Indicating Errors">
+        <t>If the LIS is unable to provide location information based on the
+        received locationRequest message, it MUST return an error message. The
+        LIS may return an error message in response to requests for any <spanx
+        style="verb">locationType</spanx>.</t>
+
+        <t>An error indication document consists of an <spanx
+        style="verb">error</spanx> element. The <spanx
+        style="verb">error</spanx> element MUST include a <spanx
+        style="verb">code</spanx> attribute that indicates the type of error.
+        A set of predefined error codes are included in <xref
+        target="code"></xref>. </t>
+
+        <t>Error responses MAY also include a <spanx
+        style="verb">message</spanx> attribute that can include additional
+        information. This information SHOULD be for diagnostic purposes only
+        and MAY be in any language. The language of the message SHOULD be
+        indicated with an <spanx style="verb">xml:lang</spanx> attribute.</t>
+      </section>
+    </section>
+
+    <section anchor="parameters" title="Protocol Parameters">
+      <t>This section describes in detail the parameters that are used for
+      this protocol. <xref target="message_params"></xref> lists the top-level
+      components used within the protocol and where they are mandatory
+      (m) or
+      optional (o) for each of the messages.</t>
+
+<?rfc compact="no"?>
+      <texttable anchor="message_params" title="Message Parameter Usage">
+        <ttcol align="left" width="20%">Parameter</ttcol>
+        <ttcol align="center" width="20%">Section</ttcol>
+        <ttcol align="center" width="20%">Location Request</ttcol>
+
+        <ttcol align="center" width="20%">Location Response</ttcol>
+
+        <ttcol align="center" width="20%">Error</ttcol>
+
+        <c>responseTime</c>
+        <c><xref target="responseTime" format="counter"/></c>
+        <c>o</c>
+
+        <c></c>
+
+        <c></c>
+
+        <c>locationType</c>
+        <c><xref target="locationType" format="counter"/></c>
+        <c>o</c>
+
+        <c></c>
+
+        <c></c>
+
+        <c>code</c>
+        <c><xref target="code" format="counter"/></c>
+        <c></c>
+
+        <c></c>
+
+        <c>m</c>
+
+        <c>message</c>
+        <c><xref target="message" format="counter"/></c>
+        <c></c>
+
+        <c></c>
+
+        <c>o</c>
+
+        <c>locationUriSet</c>
+        <c><xref target="locationUriSet" format="counter"/></c>
+        <c></c>
+
+        <c>o</c>
+
+        <c></c>
+
+        <c>Presence (PIDF-LO)</c>
+        <c><xref target="presence" format="counter"/></c>
+        <c></c>
+
+        <c>o</c>
+
+        <c></c>
+      </texttable>
+<?rfc compact="yes"?>
+
+      <section anchor="responseTime"
+               title="&quot;responseTime&quot; Parameter">
+        <t>
+          The <spanx style="verb">responseTime</spanx> attribute MAY be
+          included in a location request message. The 
+          <spanx style="verb">responseTime</spanx> attribute includes a time value
+          indicating to the LIS how long the Device is prepared to wait for a
+          response or a purpose for which the Device needs the location.
+        </t>
+
+        <t>
+          In the case of emergency services, the purpose of obtaining the LI could
+          be either for routing a call to the appropriate 
+          Public Safety Answering Point (PSAP) or indicating the
+          location to which responders should be dispatched. The values defined
+          for the purpose, <spanx style="verb">emergencyRouting</spanx> and
+          <spanx style="verb">emergencyDispatch</spanx>, will likely
+          be governed by jurisdictional policies and should be configurable on
+          the LIS.
+        </t>
+
+        <t>The time value in the <spanx style="verb">responseTime</spanx>
+        attribute is expressed as a non-negative integer in units of
+        milliseconds. The time value is indicative only, and the LIS is under
+        no obligation to strictly adhere to the time limit implied; any
+        enforcement of the time limit is left to the requesting Device. The
+        LIS provides the most accurate LI that can be determined within
+        the specified interval for the specific service.</t>
+
+        <t>The LIS may use the value of the time in the <spanx
+        style="verb">responseTime</spanx> attribute as input when selecting
+        the method of location determination, where multiple such methods
+        exist. If the <spanx style="verb">responseTime</spanx> attribute is
+        absent, then the LIS should return the most precise LI it is capable
+        of determining, with the time interval being implementation
+        dependent.</t>
+      </section>
+
+      <section anchor="locationType"
+               title="&quot;locationType&quot; Parameter">
+        <t>The <spanx style="verb">locationType</spanx> element MAY be
+        included in a location request message. It contains a list of LI types
+        that are requested by the Device. The following list describes the
+        possible values:</t>
+
+        <t><list style="hanging">
+            <t hangText="any:">
+              The LIS SHOULD attempt to provide LI in all
+              forms available to it. </t>
+
+            <t hangText="geodetic:">
+              The LIS SHOULD return a location by value in the form of a
+              geodetic location for the Target.
+            </t>
+
+            <t hangText="civic:">
+              The LIS SHOULD return a location by value in the form of
+              a civic address for the Target.
+            </t>
+
+            <t hangText="locationURI:">The LIS SHOULD return a set of Location URIs
+            for the Target.</t>
+          </list></t>
+
+        <t>
+          The LIS SHOULD return the requested location type or types.
+          The location types the LIS returns also depend on the
+          setting of the optional "exact" attribute. If the "exact" attribute is set to
+          "true", then the LIS MUST return either the requested location
+          type or provide an error response.  The "exact" attribute does not apply (is
+          ignored) for a request for a location type of "any". Further
+          detail of the "exact" attribute processing is provided in the
+          following <xref target="exactlt" />. 
+        </t>
+
+        <t>
+         When there is a request for specific locationType(s)
+          and the "exact" attribute is "false", the LIS MAY
+          provide additional location types, or it MAY provide alternative
+          types if the request cannot be satisfied for a requested location
+          type.  The "SHOULD"-strength requirements on this parameter for
+          specific location types are included to
+          allow for soft-failover.  This enables a fixed client configuration
+          that prefers a specific location type without causing location
+          requests to fail when that location type is unavailable.  For
+          example, a notebook computer could be configured to retrieve civic
+          addresses, which is usually available from typical home or work
+          situations.  However, when using a wireless modem, the LIS might be
+          unable to provide a civic address and thus provides a geodetic
+          address.
+        </t>
+
+        <t> The LIS SHOULD return location information
+          in a form that is suited for routing and responding to an
+          emergency call in its jurisdiction, specifically by value. The LIS
+          MAY alternatively or additionally return a Location URI.
+          If the <spanx style="verb">locationType</spanx> element is absent,
+          a value of "any" MUST be assumed as the default.
+          A Location URI provided by the LIS is a reference to the most
+          current available LI and is not a stable reference to a specific
+          location.
+        </t>
+
+        
+        <t> It should be noted that the protocol does not support a request to
+         just receive one of a subset of location types. For example,
+         in the case where a Device has a preference for just "geodetic" or
+         "civic", it is necessary to make
+         the request without an "exact" attribute, including both location
+         types.
+         In this case, if neither is
+         available, a LIS SHOULD return a locationURI if available. </t>
+
+        <t>
+          The LIS SHOULD provide the locations in the
+          response in the same order in which they were included in the
+          "locationType" element in the request. Indeed, the primary advantage
+          of including specific location types in a request when the "exact" 
+          attribute is set to "false" is to ensure that one receives the 
+          available locations in a specific order. For example, a locationRequest
+          for "civic" could yield any of the following location types in the response:
+        </t>
+        <t>
+          <list style="symbols">
+            <t>civic</t>
+            <t>civic, geodetic</t>
+            <t>civic, locationURI</t>
+            <t>civic, geodetic, locationURI</t>
+            <t>civic, locationURI, geodetic</t>
+            <t>geodetic, locationURI (only if civic is not available)</t>
+            <t>locationURI, geodetic (only if civic is not available)</t>
+            <t>geodetic (only if civic is not available)</t>
+            <t>locationURI (only if civic is not available)</t>   
+          </list>
+        </t>
+        <t>For the example above, if the "exact" attribute was "true", then the 
+        only possible response is either a "civic" location or an error message.</t>
+
+        <section anchor="exactlt" title="&quot;exact&quot; Attribute">
+          <t>The <spanx style="verb">exact</spanx> attribute MAY be included
+          in a location request message when the <spanx
+          style="verb">locationType</spanx> element is included. When the
+          <spanx style="verb">exact</spanx> attribute is set to <spanx
+          style="verb">true</spanx>, it indicates to the LIS that the contents
+          of the <spanx style="verb">locationType</spanx> parameter MUST be
+          strictly followed. The default value of <spanx
+          style="verb">false</spanx> allows the LIS the option of returning
+          something beyond what is specified, such as a set of Location URIs when only
+          a civic location was requested.</t>
+
+          <t>A value of <spanx style="verb">true</spanx> indicates that the
+          LIS MUST provide a location of the requested type or types or MUST
+          provide an error. The LIS MUST provide the requested types only. The
+          LIS MUST handle an exact request that includes a <spanx
+          style="verb">locationType</spanx> element set to <spanx
+          style="verb">any</spanx> as if the <spanx style="verb">exact</spanx>
+          attribute were set to <spanx style="verb">false</spanx>.</t>
+        </section>
+      </section>
+
+      <section anchor="code" title="&quot;code&quot; Parameter">
+        <t>All <spanx style="verb">error</spanx> responses MUST contain a
+        response code. All errors are application-level errors and MUST only
+        be provided in successfully processed transport-level responses. For
+        example, where HTTP/HTTPS is used as the transport, HELD error messages MUST
+        be carried by a 200 OK HTTP/HTTPS response.</t>
+
+        <t>
+          The value of the response code MUST be an IANA-registered value.  The
+          following tokens are registered by this document:
+        </t>
+
+        <t><list style="hanging">
+            <t hangText="requestError:">This code indicates that the request
+            was badly formed in some fashion (other than the XML content).</t>
+
+            <t hangText="xmlError:">This code indicates that the XML content
+            of the request was either badly formed or invalid.</t>
+
+            <t hangText="generalLisError:">This code indicates that an
+            unspecified error occurred at the LIS.</t>
+
+            <t hangText="locationUnknown:">
+              This code indicates that the LIS
+              could not determine the location of the Device. 
+              The same request can be sent by the Device at a later time.  
+              Devices MUST limit any attempts to retry requests.
+            </t>
+
+            <t hangText="unsupportedMessage:">
+              This code indicates that an element in the XML
+              document for the request was not supported or understood by the
+              LIS.  This error code is used when a HELD request contains a document
+              element that is not supported by the receiver.
+            </t>
+
+            <t hangText="timeout:">This code indicates that the LIS could not
+            satisfy the request within the time specified in the <spanx
+            style="verb">responseTime</spanx> parameter.</t>
+
+            <t hangText="cannotProvideLiType:">This code indicates that the
+            LIS was unable to provide LI of the type or types requested. This
+            code is used when the <spanx style="verb">exact</spanx> attribute
+            on the <spanx style="verb">locationType</spanx> parameter is set
+            to <spanx style="verb">true</spanx>.</t>
+
+          <t hangText="notLocatable:">
+            This code indicates that the LIS is unable to locate 
+            the Device and that the Device MUST NOT make further attempts 
+            to retrieve LI from this LIS. This error code is used to indicate 
+            that the Device is outside the access network served by the LIS,
+            for instance, the VPN and NAT scenarios discussed in 
+            <xref target="LISVPN"/>.
+          </t>
+          
+          </list></t>
+      </section>
+
+      <section anchor="message" title="&quot;message&quot; Parameter">
+        <t>The <spanx style="verb">error</spanx> message MAY include one or more 
+        <spanx style="verb">message</spanx> attributes to convey some additional,
+        human-readable information about the result of the request. The
+        message MAY be included in any language, which SHOULD be indicated by
+        the <spanx style="verb">xml:lang</spanx>, attribute.
+          The default
+          language is assumed to be English ("en") <xref target="RFC5646"></xref>.
+        </t>
+      </section>
+
+      <section anchor="locationUriSet" title="&quot;locationUriSet&quot; Parameter">
+        <t>
+          The <spanx style="verb">locationUriSet</spanx> element received in 
+          a <spanx style="verb">locationResponse</spanx> message MAY contain
+          any number of <spanx style="verb">locationURI</spanx> elements. It is
+          RECOMMENDED that the LIS allocate a Location URI for each scheme
+          that it supports and that each scheme is present only once. URI schemes and
+          their secure variants, such as HTTP and HTTPS, MUST be regarded as two
+          separate schemes.
+        </t>
+
+        <t>
+          If a <spanx style="verb">locationUriSet</spanx> element is received in
+          a <spanx style="verb">locationResponse</spanx> message, it MUST contain
+          an <spanx style="verb">expires</spanx> attribute, which defines the length of
+          time for which the set of <spanx style="verb">locationURI</spanx>
+          elements are valid.
+        </t>
+        
+        <section anchor="locationURI" title="&quot;locationURI&quot; Parameter">
+          <t>
+            The <spanx style="verb">locationURI</spanx> element includes a
+            single Location URI.
+            In order for a URI of any particular scheme to be included in
+            a response,
+            there MUST be a specification that defines how that URI can be used to
+            retrieve location information.  
+            The details of the protocol for dereferencing must meet the location 
+            dereference protocol requirements 
+            as specified in <xref target="RFC5808"/>
+            and
+            are outside the scope
+            of this base HELD specification. 
+          </t>
+
+          <t>Each Location URI that is allocated by the LIS is
+            unique to the Device that is requesting it.
+            At the time the Location
+            URI is provided in the response, there is no binding to a
+            specific
+            location type and the Location URI is totally independent of the 
+            specific type of location it might reference. 
+            The specific location type is determined at the time of
+            dereference.
+          </t>
+
+          <t>
+            A <spanx style="verb">locationURI</spanx> SHOULD NOT contain any
+            information that could be used to identify the Device or Target.
+            Thus, it is
+            RECOMMENDED that the <spanx style="verb">locationURI</spanx> element
+            contain a public address for the LIS and an anonymous identifier, such
+            as a local identifier or unlinked pseudonym.
+          </t>
+          <t>
+            When a LIS returns a <spanx style="verb">locationURI</spanx>  element to a Device, the policy on the
+          <spanx style="verb">locationURI</spanx> is set by the LIS alone.  This specification does not include
+          a mechanism for the HELD client to set access control
+          policies on a <spanx style="verb">locationURI</spanx>.  Conversely, there is no mechanism, in this protocol
+          as defined in this document, for the LIS to provide a Device the access control
+          policy to be applied to a "locationURI".
+          Since the Device is not aware of the access controls to be applied to (subsequent) requests
+          to dereference a <spanx style="verb">locationURI</spanx>, 
+          the client SHOULD protect a <spanx style="verb">locationURI</spanx> as if it were a
+          Location Object -- i.e., the Device SHOULD send a <spanx style="verb">locationURI</spanx> 
+            over encrypted channels
+          and only to entities that are authorized to have access to the location.
+        </t>
+          <t>Further guidelines
+          to ensure the privacy and confidentiality of the information contained in the
+          <spanx style="verb">locationResponse</spanx> message, including the <spanx style="verb">locationURI</spanx>, 
+            are included in <xref target="tls"></xref>. 
+          </t>
+
+        </section>
+
+        <section anchor="expires" title="&quot;expires&quot; Parameter">
+          <t>The <spanx style="verb">expires</spanx> attribute is only
+          included in a <spanx style="verb">locationResponse</spanx> message
+          when a <spanx style="verb">locationUriSet</spanx> element is included. The <spanx
+          style="verb">expires</spanx> attribute indicates the date/time at
+            which the Location URIs provided by the LIS will expire.
+            The <spanx style="verb">expires</spanx> attribute does not define the 
+            length of time a location received by dereferencing the Location URI 
+            will be valid. The <spanx style="verb">expires</spanx> attribute
+            is RECOMMENDED not to exceed 24 hours and SHOULD be a minimum of 30 
+            minutes. 
+        </t>
+          <t>
+            All date-time values used in HELD MUST be expressed in Universal
+            Coordinated Time (UTC) using the Gregorian calendar.  The XML schema allows
+            use of time zone identifiers to indicate offsets from the zero meridian,
+            but this option MUST NOT be used with HELD.  The extended date-time
+            form using upper case "T" and "Z" characters defined in
+            <xref target="W3C.REC-xmlschema-2-20041028"/> MUST be used to represent date-time
+            values.
+          </t>
+
+          <t>Location responses that contain a <spanx style="verb">locationUriSet</spanx> element 
+          MUST include the
+          expiry time in the <spanx style="verb">expires</spanx> attribute. If a Device dereferences a
+          Location URI after the expiry time, the dereference SHOULD fail.</t>
+        </section>
+      </section>
+
+      <section anchor="presence" title="&quot;Presence&quot; Parameter (PIDF-LO)">
+        <t>A single <spanx style="verb">presence</spanx> parameter MAY be included in the <spanx
+        style="verb">locationResponse</spanx> message when specific
+        locationTypes (e.g., "geodetic" or "civic") are requested or a <spanx
+        style="verb">locationType</spanx> of "any" is requested. 
+        The LIS MUST follow the
+        subset of the rules relating to the construction of the <spanx
+        style="verb">location-info</spanx> element in the PIDF-LO Usage
+        Clarification, Considerations, and Recommendations document <xref
+        target="RFC5491"></xref> in generating the PIDF-LO 
+        for the presence parameter.</t>
+        <t>
+          The LIS MUST NOT include any means of identifying the Device in
+          the PIDF-LO unless it is able to verify that the identifier is
+          correct and inclusion of identity is expressly permitted by a Rule
+          Maker.  Therefore, PIDF parameters that contain identity are either
+          omitted or contain unlinked pseudonyms <xref target="RFC3693"/>.  A unique,
+          unlinked presentity URI SHOULD be generated by the LIS for the
+          mandatory presence "entity" attribute of the PIDF document.
+          Optional parameters such as the "contact" and
+          "deviceID" elements <xref target="RFC4479"/> are not used.
+        </t>
+
+        <t>Note that the presence parameter is not explicitly shown in the XML schema
+        in <xref target="schema"></xref> for a location response message, due to
+          XML schema constraints, since PIDF is already defined and registered
+          separately. Thus, the "##other" namespace serves
+          as a placeholder for the presence parameter in the schema.
+        </t>
+      </section>
+    </section>
+
+    <section anchor="schema" title="XML Schema">
+      <t>
+        This section gives the XML Schema Definition <xref
+      target="W3C.REC-xmlschema-1-20041028"/> <xref
+      target="W3C.REC-xmlschema-2-20041028"/> of
+        the "application/held+xml" format. This is presented as a formal
+        definition of the "application/held+xml" format. Note that the XML
+        Schema Definition is not intended to be used with on-the-fly validation
+        of the presence XML document.
+        Whitespaces are included in the schema to conform to the line length restrictions of
+        the RFC format without having a negative impact on the readability of the document.
+        Any conforming processor should remove leading and trailing white spaces.
+      </t>
+
+      <figure>
+        <artwork>
+      <![CDATA[
+          
+<?xml version="1.0"?>
+<xs:schema
+    targetNamespace="urn:ietf:params:xml:ns:geopriv:held"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:held="urn:ietf:params:xml:ns:geopriv:held"
+    xmlns:xml="http://www.w3.org/XML/1998/namespace"
+    elementFormDefault="qualified"
+    attributeFormDefault="unqualified">
+
+  <xs:annotation>
+    <xs:documentation>
+      This document (RFC 5985) defines HELD messages.
+    </xs:documentation>
+  </xs:annotation>
+
+  <xs:import namespace="http://www.w3.org/XML/1998/namespace"/>
+
+  <!-- Return Location -->
+  <xs:complexType name="returnLocationType">
+    <xs:complexContent>
+      <xs:restriction base="xs:anyType">
+        <xs:sequence>
+          <xs:element name="locationURI" type="xs:anyURI"
+                      maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attribute name="expires" type="xs:dateTime"
+                      use="required"/>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <!-- responseTime Type -->
+  <xs:simpleType name="responseTimeType">
+    <xs:union>
+      <xs:simpleType>
+        <xs:restriction base="xs:token">
+          <xs:enumeration value="emergencyRouting"/>
+          <xs:enumeration value="emergencyDispatch"/>
+        </xs:restriction>
+      </xs:simpleType>
+      <xs:simpleType>
+        <xs:restriction base="xs:nonNegativeInteger">
+          <xs:minInclusive value="0"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+
+  <!-- Location Type -->
+  <xs:simpleType name="locationTypeBase">
+    <xs:union>
+      <xs:simpleType>
+        <xs:restriction base="xs:token">
+          <xs:enumeration value="any"/>
+        </xs:restriction>
+      </xs:simpleType>
+      <xs:simpleType>
+        <xs:restriction base="held:locationTypeList">
+          <xs:minLength value="1"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:union>
+  </xs:simpleType>
+
+  <xs:simpleType name="locationTypeList">
+    <xs:list>
+      <xs:simpleType>
+        <xs:restriction base="xs:token">
+          <xs:enumeration value="civic"/>
+          <xs:enumeration value="geodetic"/>
+          <xs:enumeration value="locationURI"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:list>
+  </xs:simpleType>
+
+  <xs:complexType name="locationTypeType">
+    <xs:simpleContent>
+      <xs:extension base="held:locationTypeBase">
+        <xs:attribute name="exact" type="xs:boolean"
+                      use="optional" default="false"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- Message Definitions -->
+  <xs:complexType name="baseRequestType">
+    <xs:complexContent>
+      <xs:restriction base="xs:anyType">
+        <xs:sequence/>
+        <xs:attribute name="responseTime" type="held:responseTimeType"
+                      use="optional"/>
+        <xs:anyAttribute namespace="##any" processContents="lax"/>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="errorType">
+    <xs:complexContent>
+      <xs:restriction base="xs:anyType">
+        <xs:sequence>
+          <xs:element name="message" type="held:errorMsgType"
+                      minOccurs="0" maxOccurs="unbounded"/>
+          <xs:any namespace="##other" processContents="lax"
+                  minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+        <xs:attribute name="code" type="xs:token"
+                      use="required"/>
+        <xs:anyAttribute namespace="##any" processContents="lax"/>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:complexType name="errorMsgType">
+    <xs:simpleContent>
+      <xs:extension base="xs:token">
+        <xs:attribute ref="xml:lang"/>
+        <xs:anyAttribute namespace="##any" processContents="lax"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:element name="error" type="held:errorType"/>
+
+  <!-- Location Response -->
+  <xs:complexType name="locationResponseType">
+    <xs:complexContent>
+      <xs:restriction base="xs:anyType">
+        <xs:sequence>
+          <xs:element name="locationUriSet"
+                      type="held:returnLocationType"
+                      minOccurs="0"/>
+          <xs:any namespace="##other" processContents="lax"
+                  minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:element name="locationResponse"
+              type="held:locationResponseType"/>
+
+
+  <!-- Location Request -->
+
+  <xs:complexType name="locationRequestType">
+    <xs:complexContent>
+      <xs:extension base="held:baseRequestType">
+        <xs:sequence>
+          <xs:element name="locationType"
+                      type="held:locationTypeType"
+                      minOccurs="0"/>
+          <xs:any namespace="##other" processContents="lax"
+                  minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+
+  <xs:element name="locationRequest"
+              type="held:locationRequestType"/>
+
+</xs:schema>
+
+]]></artwork>
+      </figure>
+    </section>
+
+    
+
+    <section anchor="http" title="HTTP Binding">
+
+      <t>
+      This section describes the use of <xref target="RFC2616">HTTP</xref>
+        and <xref target="RFC2818">HTTP over TLS</xref>
+      as transport mechanisms for the HELD protocol, which a conforming
+      LIS and Device MUST support.</t>
+
+      <t>
+        Although HELD uses HTTP as a transport, it uses a strict
+        subset of HTTP features, and due to the restrictions of some features,
+        a LIS is not a fully compliant HTTP server.  It is intended that a LIS can easily be built using
+        an HTTP server with extensibility mechanisms and that a HELD Device can trivially use existing HTTP libraries.
+        This subset of requirements helps implementors avoid ambiguity
+        with the many options that the full HTTP
+        protocol offers.
+      </t>
+      <t>
+        A Device that conforms to this specification MAY choose not to
+        support HTTP authentication <xref target="RFC2617"/> or 
+        cookies <xref target="RFC2965"></xref>.
+        Because the Device and the LIS may not necessarily have a prior
+        relationship, the LIS SHOULD NOT require a Device to authenticate,
+        either using the above HTTP authentication methods or TLS client
+        authentication.  Unless all Devices that access a LIS can be expected
+        to be able to authenticate in a certain fashion, denying access to
+        location information could prevent a Device from using
+        location-dependent services, such as emergency calling.
+        Extensions to this protocol
+        might result in the addition of request parameters that a LIS might
+        use to decide to request Device authentication.
+
+      </t>
+
+      <t>
+        A HELD request is carried in the body of an HTTP POST request.
+        The Device MUST include a Host header in the request.
+      </t>
+
+      <t>
+        The MIME type of HELD request and response bodies is
+        <spanx style="verb">application/held+xml</spanx>.  LIS and Device MUST provide this value in the HTTP
+        Content-Type and Accept header fields. If the LIS does not receive the appropriate Content-Type
+        and Accept header fields, the LIS SHOULD fail the request, returning a 406 (not acceptable) response.
+        HELD responses SHOULD include a Content-Length header.
+      </t>
+
+      <t>
+        Devices MUST NOT use the <spanx style="verb">Expect</spanx>
+        header or the
+        <spanx style="verb">Range</spanx> header in HELD requests.
+        The LIS MAY return 501 (not implemented) errors if either of these HTTP features are used.
+        In the case that the LIS receives a request from the Device containing an If-* (conditional) header,
+        the LIS SHOULD return a 412 (precondition failed) response.
+      </t>
+
+      <t> The POST method is the only method REQUIRED for HELD.  
+      If a LIS chooses to support GET or HEAD, it SHOULD consider the kind of application doing the GET.  
+      Since a HELD Device only uses a POST method, the GET or HEAD 
+      MUST be either an escaped URL (e.g., somebody found a URL in protocol traces or log files and 
+      fed it into their browser) or somebody doing testing/debugging.  
+      The LIS could provide information in the HELD response indicating that the URL corresponds 
+      to a LIS server and only responds to HELD POST requests, or the LIS could instead try to avoid 
+      any leak of information by returning a very generic HTTP error message such as 404 (not found).</t>
+
+
+      <t> The LIS populates the HTTP headers of responses so that they are consistent
+      with the contents of the message.  In particular, the "CacheControl"
+      header SHOULD be set to disable caching of any PIDF-LO
+      document or Location URIs by HTTP intermediaries.  Otherwise, there is the risk of stale
+      locations and/or the unauthorized disclosure of the LI.  This also
+      allows the LIS to control any caching with the HELD "expires" parameter.
+      The HTTP status code MUST indicate a 2xx series response for
+      all HELD locationResponse and HELD error messages.</t>
+
+      <t>
+        The LIS MAY redirect a HELD request.  A Device MUST handle redirects by using the Location header 
+        provided by the server in a 3xx response.  When redirecting, the Device MUST observe the delay 
+        indicated by the Retry-After header.  The Device MUST authenticate the server that returns the 
+        redirect response before following the redirect, if a Device requires that the server is authenticated.
+        A Device SHOULD authenticate the LIS indicated 
+        in a redirect.
+      </t>
+      <t> 
+      The LIS SHOULD support persistent connections and request pipelining. 
+      If pipelining is not supported, the LIS MUST NOT allow persistent connections. 
+      The Device MUST support termination of a response by the closing of a connection.
+       </t>
+
+      <t>
+        Implementations of HELD that implement HTTP transport MUST implement
+        transport over TLS <xref target="RFC2818"/>.  TLS provides message integrity and
+        confidentiality between the Device and LIS.  The Device MUST implement
+        the server authentication method described in Section 3.1 of
+        <xref target="RFC2818"/>, with an exception in how wildcards are handled.  The
+        leftmost label MAY contain the wildcard string "*", which matches
+        any single domain name label.  Additional characters in this leftmost
+        label are invalid (that is, "f*.example.com" is not a valid name and
+        does not match any domain name).
+      </t>
+      <t>
+        The Device uses the URI obtained during LIS discovery to authenticate the
+        server.  The details of this authentication method are provided in
+        Section 3.1 of HTTPS <xref target="RFC2818"/>.  When TLS is used, the Device SHOULD
+        fail a request if server authentication fails, except in the event of
+        an emergency.
+      </t>
+
+
+    </section>
+
+    <section anchor="security" title="Security Considerations">
+      <t>HELD is a location acquisition protocol whereby the client requests
+      its location from a LIS. Specific requirements and security
+      considerations for location acquisition protocols are provided in <xref
+      target="RFC5687"></xref>. An in-depth discussion of
+      the security considerations applicable to the use of Location URIs and
+      by-reference provision of LI is included in <xref
+      target="RFC5808"></xref>.</t>
+
+      <t>By using the HELD protocol, the client and the LIS expose themselves
+      to two types of risk:</t>
+
+      <t><list style="hanging">
+          <t hangText="Accuracy:">The client receives incorrect location
+          information.</t>
+
+          <t hangText="Privacy:">An unauthorized entity receives location
+          information.</t>
+        </list></t>
+
+        <t>The provision of an accurate and privacy- and confidentiality-protected location 
+        to the requestor
+        depends on the success of five steps:</t>
+
+        <t><list style="numbers">
+            <t>The client must determine the proper LIS.</t>
+
+            <t>The client must connect to the proper LIS.</t>
+
+            <t>The LIS must be able to identify the Device by its identifier 
+               (IP address).</t>
+
+            <t>The LIS must be able to return the desired location.</t>
+
+            <t>HELD messages must be transmitted unmodified between the LIS
+            and the client.</t>
+          </list></t>
+
+        <t>Of these, only steps 2, 3, and 5 are within the scope of
+        this document. Step 1 is based on either manual configuration
+        or on the LIS discovery defined in <xref
+        target="RFC5986"></xref>, in which appropriate
+        security considerations are already discussed.  Step 4 is
+        dependent on the specific positioning capabilities of the LIS and is
+        thus outside the scope of this document.</t>
+
+        <section anchor="properLIS"
+                 title="Assuring That the Proper LIS Has Been Contacted">
+          <t>This document assumes that the LIS to be contacted is identified
+          either by an IP address or a domain name, as is the case for a LIS 
+          discovered as described in  <xref target="RFC5986">LIS Discovery</xref>.  
+          When the HELD transaction is conducted using <xref target="RFC5246">TLS</xref>, 
+          the LIS can authenticate its identity, either as a domain name or as an 
+          IP address, to the client by presenting a certificate containing that 
+          identifier as a subjectAltName (i.e., as an iPAddress or dNSName, respectively).
+          In the case of the HTTP binding described above, this is exactly 
+          the authentication described by <xref target="RFC2818">TLS</xref>.
+          If the client has external information as to the expected identity or credentials of 
+          the proper LIS (e.g., a certificate fingerprint), these checks MAY be omitted.
+            Any binding of HELD MUST be capable of being transacted over
+            TLS so that the client can request the above authentication,
+            and a LIS implementation for a binding MUST include this feature.
+            Note that in order for the presented certificate to be valid at the client,
+            the client must be able to validate the certificate. In particular,
+            the validation path of the certificate must end in one of the client's
+            trust anchors, even if that trust anchor is the LIS certificate itself.</t>
+        </section>
+
+        <section anchor="protectResp"
+                 title="Protecting Responses from Modification">
+          <t>In order to prevent that response from being modified en route,
+          messages must be transmitted over an integrity-protected channel.
+          When the transaction is being conducted over TLS (a required feature
+          per <xref target="properLIS"></xref>), the channel will be integrity
+          protected by appropriate ciphersuites. When TLS is not used, this
+          protection will vary depending on the binding; in most cases,
+          without protection from TLS, the response will not be protected from
+          modification en route.</t>
+        </section>
+      
+      <section anchor="tls" title="Privacy and Confidentiality">
+        <t>Location information returned by the LIS must be protected from
+        access by unauthorized parties, whether those parties request the
+        location from the LIS or intercept it en route. As in <xref
+        target="protectResp"></xref>, transactions conducted over TLS with
+        appropriate ciphersuites are protected from access by unauthorized
+        parties en route. Conversely, in most cases, when not conducted over
+        TLS, the response will be accessible while en route from the LIS to
+        the requestor.</t>
+
+        <t>Because HELD is an LCP and identifies clients and targets by IP
+        addresses, a requestor is authorized to access location for an IP
+        address only if it is the holder of that IP address. The LIS MUST
+        verify that the client is the target of the returned location, i.e.,
+        the LIS MUST NOT provide location to other entities than the target.
+        Note that this is a necessary, but not sufficient, criterion for
+        authorization. A LIS MAY deny requests according to any local
+        policy.</t>
+
+        <t>A prerequisite for meeting this requirement is that the LIS must
+        have some assurance of the identity of the client. Since the target of
+        the returned location is identified by an IP address, simply sending
+        the response to this IP address will provide sufficient assurance in
+        many cases. This is the default mechanism in HELD for assuring that
+        location is given only to authorized clients; LIS implementations MUST
+        support a mode of operation in which this is the only client
+        authentication.</t>
+
+        <t>
+          Using IP return routability as an authenticator means that location
+          information is vulnerable to exposure through IP address spoofing
+          attacks.
+
+A temporary spoofing of an IP address could mean that when a Device
+requests a Location Object or Location URI, it receives another
+Device's location because the attacker is able to receive packets sent
+to the spoofed address.
+
+          In addition, in cases where a Device drops
+          off the network for various reasons, the re-use of the Device's IP
+          address could result
+          in another Device receiving the original Device's location rather than its
+          own location.
+          These exposures are limited by the following:</t>
+
+        <t>
+          <list style="symbols">
+
+            <t>Location URIs MUST have a limited lifetime, as reflected by the
+          value for the "expires" element in <xref target="expires"/>.  
+          The lifetime
+          of Location URIs necessarily depends on the nature of the access.</t>
+            
+            <t> The LIS and network SHOULD be configured so that the LIS is made
+          aware of Device movement within the network and addressing
+          changes.  If the LIS detects a change in the network that results
+          in it no longer being able to determine the location of the
+          Device, then all Location URIs for that Device SHOULD be
+          invalidated.</t>
+
+          </list>
+        </t>
+
+            <t> The above measures are dependent on network configuration, which
+          SHOULD be considered.  For instance, in a fixed Internet
+          access,
+          providers may be able to restrict the allocation of IP addresses to a
+          single physical line, ensuring that spoofing is not possible; in such
+          an environment, additional measures may not be necessary.</t>
+  
+
+      </section>
+
+    </section>
+
+    <section anchor="examples" title="Examples">
+
+      <t>The following sections provide examples of basic HTTP/HTTPS, a simple location request,
+      and a location request for multiple location types, along with the relevant
+      location responses. 
+      To focus on important portions of messages,
+      the examples in Sections <xref target="simple-ex"
+      format="counter"/> and <xref target="multi-ex" format="counter"/>
+        do not show HTTP/HTTPS headers
+        or the XML prologue. In addition, sections of XML not relevant to the
+        example are replaced with comments.
+      </t>
+
+      <section anchor="ex-http" title="Examples of HTTPS Messages">
+        <t>
+          The examples in this section show complete HTTP/HTTPS messages that
+          include the HELD request or response document.
+        </t>
+        <figure>
+          <preamble>
+            This example shows the most basic request for a LO. The POST includes an empty <spanx
+          style="verb">locationRequest</spanx> element.
+          </preamble>
+          <artwork>
+            <![CDATA[
+      POST /location HTTP/1.1
+      Host: lis.example.com:49152
+      Content-Type: application/held+xml;charset=utf-8
+      Content-Length: 87
+
+      <?xml version="1.0"?>
+      <locationRequest xmlns="urn:ietf:params:xml:ns:geopriv:held"/>
+      
+      ]]>
+          </artwork>
+        </figure>
+
+        <figure>
+          <preamble>
+            Since the above request does not include a
+            <spanx style="verb">locationType</spanx> element,
+            the successful response to the request may contain
+            any type of location.
+            The following shows a
+            response containing a minimal PIDF-LO.
+          </preamble>
+
+          <artwork>
+            <![CDATA[
+   HTTP/1.1 200 OK
+   Server: Example LIS
+   Date: Tue, 10 Jan 2006 03:42:29 GMT
+   Expires: Tue, 10 Jan 2006 03:42:29 GMT
+   Cache-control: private
+   Content-Type: application/held+xml;charset=utf-8
+   Content-Length: 856
+
+   <?xml version="1.0"?>
+    <locationResponse xmlns="urn:ietf:params:xml:ns:geopriv:held">
+     <presence xmlns="urn:ietf:params:xml:ns:pidf" 
+      entity="pres:3650n87934c@ls.example.com">
+      <tuple id="b650sf789nd">
+       <status> 
+        <geopriv xmlns="urn:ietf:params:xml:ns:pidf:geopriv10">
+         <location-info>
+          <Point xmlns="http://www.opengis.net/gml" 
+           srsName="urn:ogc:def:crs:EPSG::4326">
+           <pos>-34.407 150.88001</pos> 
+          </Point>
+         </location-info>
+         <usage-rules 
+          xmlns:gbp="urn:ietf:params:xml:ns:pidf:geopriv10:basicPolicy">
+          <gbp:retention-expiry>2006-01-11T03:42:28+00:00
+          </gbp:retention-expiry> 
+         </usage-rules>
+         <method>Wiremap</method> 
+        </geopriv>
+       </status>
+       <timestamp>2006-01-10T03:42:28+00:00</timestamp> 
+      </tuple>
+     </presence>
+    </locationResponse>
+      ]]>
+          </artwork>
+        </figure>
+
+        <figure>
+          <preamble>
+            The error response to the request is an error
+            document. The following response shows an example error
+            response.
+          </preamble>
+
+          <artwork>
+            <![CDATA[
+      HTTP/1.1 200 OK
+      Server: Example LIS
+      Expires: Tue, 10 Jan 2006 03:49:20 GMT
+      Cache-control: private
+      Content-Type: application/held+xml;charset=utf-8
+      Content-Length: 182
+
+      <?xml version="1.0"?>
+      <error xmlns="urn:ietf:params:xml:ns:geopriv:held" 
+         code="locationUnknown">
+        <message xml:lang="en">Unable to determine location
+        </message> 
+      </error>
+             
+      ]]>
+
+          </artwork>
+        </figure>
+
+      </section>
+      
+      <section anchor="simple-ex" title="Example of a Simple Location Request">
+        
+
+        <figure>
+          <preamble>The location request shown below doesn't specify any
+          location types or response time.</preamble>
+
+          <artwork><![CDATA[
+<locationRequest xmlns="urn:ietf:params:xml:ns:geopriv:held"/> 
+      ]]>
+          </artwork>
+        </figure>
+
+        <figure>
+          <preamble>The example response to this location request contains a list of
+          Location URIs.</preamble>
+
+          <artwork>
+  <![CDATA[
+<locationResponse xmlns="urn:ietf:params:xml:ns:geopriv:held">
+   <locationUriSet expires="2006-01-01T13:00:00.0Z">
+    <locationURI>https://ls.example.com:9768/357yc6s64ceyoiuy5ax3o
+    </locationURI>
+    <locationURI>sip:9769+357yc6s64ceyoiuy5ax3o@ls.example.com
+    </locationURI>
+  </locationUriSet>
+</locationResponse>
+   
+      ]]>
+          
+          </artwork>
+        </figure>
+
+        <figure>
+          <preamble>An error response to this location request is shown
+          below:</preamble>
+
+          <artwork><![CDATA[
+      <error xmlns="urn:ietf:params:xml:ns:geopriv:held" 
+                 code="locationUnknown"> 
+        <message xml:lang="en">Location not available
+        </message>
+      </error>  
+                 
+        ]]>   
+            
+          </artwork>
+        </figure>
+
+      </section>
+
+      <section anchor="multi-ex" title="An Example of a Location Request for Multiple Location Types">
+        <figure>
+          <preamble>The following Location Request message includes a request
+          for geodetic, civic, and any Location URIs.</preamble>
+
+          <artwork><![CDATA[
+      <locationRequest xmlns="urn:ietf:params:xml:ns:geopriv:held">
+       <locationType exact="true">
+         geodetic 
+         civic
+         locationURI
+       </locationType>
+       </locationRequest>
+]]></artwork>
+        </figure>
+
+        <figure>
+          <preamble>The corresponding Location Response message includes the
+          requested location information, including two Location
+          URIs.</preamble>
+
+          <artwork>
+        <![CDATA[
+  <locationResponse xmlns="urn:ietf:params:xml:ns:geopriv:held">
+    <locationUriSet expires="2006-01-01T13:00:00.0Z">
+    <locationURI>https://ls.example.com:9768/357yc6s64ceyoiuy5ax3o
+    </locationURI> 
+    <locationURI>sip:9769+357yc6s64ceyoiuy5ax3o@ls.example.com:
+    </locationURI> 
+   </locationUriSet>
+   <presence xmlns="urn:ietf:params:xml:ns:pidf" 
+     entity="pres:ae3be8585902e2253ce2@10.102.23.9">
+   <tuple id="lisLocation">
+    <status>
+     <geopriv xmlns="urn:ietf:params:xml:ns:pidf:geopriv10">
+     <location-info>
+      <gs:Circle xmlns:gs="http://www.opengis.net/pidflo/1.0" 
+        xmlns:gml="http://www.opengis.net/gml" 
+        srsName="urn:ogc:def:crs:EPSG::4326">
+       <gml:pos>-34.407242 150.882518</gml:pos> 
+       <gs:radius uom="urn:ogc:def:uom:EPSG::9001">30
+       </gs:radius> 
+      </gs:Circle>
+      <ca:civicAddress 
+        xmlns:ca="urn:ietf:params:xml:ns:pidf:geopriv10:civicAddr" 
+        xml:lang="en-au">
+       <ca:country>AU</ca:country> 
+       <ca:A1>NSW</ca:A1> 
+       <ca:A3>Wollongong</ca:A3> 
+       <ca:A4>Gwynneville</ca:A4> 
+       <ca:STS>Northfield Avenue</ca:STS> 
+       <ca:LMK>University of Wollongong</ca:LMK> 
+       <ca:FLR>2</ca:FLR> 
+       <ca:NAM>Andrew Corporation</ca:NAM> 
+       <ca:PC>2500</ca:PC> 
+       <ca:BLD>39</ca:BLD> 
+       <ca:SEAT>WS-183</ca:SEAT> 
+       <ca:POBOX>U40</ca:POBOX> 
+     </ca:civicAddress>
+    </location-info>
+    <usage-rules 
+      xmlns:gbp="urn:ietf:params:xml:ns:pidf:geopriv10:basicPolicy">
+     <gbp:retransmission-allowed>false
+     </gbp:retransmission-allowed> 
+     <gbp:retention-expiry>2007-05-25T12:35:02+10:00
+     </gbp:retention-expiry> 
+    </usage-rules>
+    <method>Wiremap</method> 
+   </geopriv>
+  </status>
+  <timestamp>2007-05-24T12:35:02+10:00</timestamp> 
+ </tuple>
+</presence>
+</locationResponse>
+      ]]></artwork>
+        </figure>
+      </section>
+    </section>
+
+    <section anchor="iana" title="IANA Considerations">
+      <t>IANA has made the registrations detailed in the
+      following sections.</t>
+
+        <section title="URN Sub-Namespace Registration for urn:ietf:params:xml:ns:geopriv:held">
+          <t>
+            This section registers a new XML namespace, <spanx
+          style="verb">urn:ietf:params:xml:ns:geopriv:held</spanx>, per the
+            guidelines in <xref target="RFC3688"></xref>.
+          </t>
+              <t>URI: urn:ietf:params:xml:ns:geopriv:held</t>
+
+              <t>Registrant Contact: IETF, GEOPRIV working group,
+              (geopriv@ietf.org), Mary Barnes (mary.ietf.barnes@gmail.com).</t>
+
+<t>
+            <list
+              style="empty">
+              <t>XML: <figure>
+                  <artwork><![CDATA[
+      BEGIN
+        <?xml version="1.0"?>
+        <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+        <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+          <head>
+            <title>HELD Messages</title>
+          </head>
+          <body>
+            <h1>Namespace for HELD Messages</h1>
+            <h2>urn:ietf:params:xml:ns:geopriv:held</h2>
+            <p>See RFC 5985</p>
+          </body>
+        </html>
+      END
+]]></artwork>
+                </figure></t>
+            </list>
+          </t>
+        </section>       
+
+      <section title="XML Schema Registration">
+        <t>
+          This section registers an XML schema as per the guidelines in <xref
+        target="RFC3688"></xref>.
+        </t>
+
+        <t>
+          <list style="hanging">
+            <t hangText="URI:">urn:ietf:params:xml:schema:geopriv:held</t>
+
+            <t hangText="Registrant Contact:">
+              IETF, GEOPRIV working group,
+              (geopriv@ietf.org), Mary Barnes (mary.ietf.barnes@gmail.com).
+            </t>
+
+            <t hangText="Schema:">
+              The XML for this schema can be found as the
+              entirety of <xref target="schema"></xref> of this document.
+            </t>
+          </list>
+        </t>
+        
+      </section>
+
+      <section anchor="iana-mime"
+               title="MIME Media Type Registration for 'application/held+xml'">
+        <t>
+          This section registers the <spanx
+        style="verb">application/held+xml</spanx> MIME type.
+        </t>
+
+        <t>
+          <list
+         style="hanging">
+            <t hangText="To:">ietf-types@iana.org</t>
+
+            <t hangText="Subject:">
+              Registration of MIME media type
+              application/held+xml
+            </t>
+
+            <t hangText="MIME media type name:">application</t>
+
+            <t hangText="MIME subtype name:">held+xml</t>
+
+            <t hangText="Required parameters:">(none)</t>
+
+            <t hangText="Optional parameters:">
+              charset<vspace />
+              Same as the charset parameter of "application/xml" as specified in
+              <xref target="RFC3023">RFC 3023</xref>, Section 3.2.
+
+            </t>
+
+            <t hangText="Encoding considerations:">
+              Same as the encoding considerations of
+              "application/xml" as specified in
+              <xref target="RFC3023">RFC 3023</xref>, Section 3.2.
+            </t>
+
+            <t hangText="Security considerations:">
+              This content type is
+              designed to carry protocol data related to the location of an
+              entity, which could include information that is considered
+              private. Appropriate precautions should be taken to limit
+              disclosure of this information.
+            </t>
+
+            <t hangText="Interoperability considerations:">
+              This content type
+              provides a basis for a protocol.  There are multiple interoperable implementations of this protocol.
+            </t>
+
+            <t hangText="Published specification:">
+              RFC 5985
+            </t>
+
+            <t hangText="Applications which use this media type:">
+              Location
+              information providers and consumers.
+            </t>
+
+            <t hangText="Additional Information:">
+	      <vspace/>
+              Magic Number(s): (none)
+	      <vspace />
+	      File extension(s): .heldxml
+	      <vspace />
+              Macintosh File Type Code(s): "TEXT"
+            </t>
+
+            <t
+            hangText="Person &amp; email address to contact for further information:">
+	      <vspace />
+              Mary
+              Barnes &lt;mary.ietf.barnes@gmail.com&gt;
+            </t>
+
+            <t hangText="Intended usage:">LIMITED USE</t>
+
+            <t hangText="Author/Change controller:">The IETF</t>
+
+            <t hangText="Other information:">
+              This media type is a
+              specialization of <xref target="RFC3023">application/xml</xref>,
+              and many of the considerations described there also apply to
+              application/held+xml.
+            </t>
+          </list>
+        </t>
+      </section>
+
+      <section title="Error Code Registry">
+        <t>As defined in this document, IANA created a new registry for the
+        HELD protocol including an initial registry for error codes. The error
+        codes are included in HELD error messages as described in <xref
+        target="code"></xref> and defined in the schema in the 'codeType'
+        token in the XML schema in <xref target="schema"/>.</t>
+
+        <t>The following is a summary of the registry:</t>
+
+        <t><list style="hanging">
+            <t hangText="Related Registry: ">Geopriv HELD Registries, Error
+            codes for HELD</t>
+
+            <t hangText="Defining RFC:">RFC &rfc.number;</t>
+
+            <t hangText="Registration/Assignment Procedures:">
+              Following the policies outlined in <xref target="RFC5226"/>,
+              the IANA policy for
+              assigning new values for the Error codes for HELD is
+              Standards Action: Values are assigned only for Standards Track
+              RFCs approved by the IESG.
+            </t>
+
+            <t hangText="Registrant Contact:">IETF, GEOPRIV working group,
+            (geopriv@ietf.org), Mary Barnes (mary.ietf.barnes@gmail.com).</t>
+          </list></t>
+
+        <t>This section registers the following eight initial error codes
+        as described in <xref target="code"></xref>:
+</t>
+
+        <t><list style="hanging">
+            <t hangText="requestError:">This code indicates that the request
+            was badly formed in some fashion.</t>
+
+            <t hangText="xmlError:">This code indicates that the XML content
+            of the request was either badly formed or invalid.</t>
+
+            <t hangText="generalLisError:">This code indicates that an
+            unspecified error occurred at the LIS.</t>
+
+            <t hangText="locationUnknown:">This code indicates that the LIS
+            could not determine the location of the Device.</t>
+
+            <t hangText="unsupportedMessage:">
+              This code indicates that the
+              request was not supported or understood by the LIS.
+              This error code is used when a HELD request contains a
+              document element that is not supported by the receiver.
+            </t>
+
+            <t hangText="timeout:">This code indicates that the LIS could not
+            satisfy the request within the time specified in the
+            "responseTime" parameter.</t>
+
+            <t hangText="cannotProvideLiType:">This code indicates that the
+            LIS was unable to provide LI of the type or types requested. This
+            code is used when the "exact" attribute on the "locationType"
+            parameter is set to "true".</t>
+
+          <t hangText="notLocatable:">
+            This code indicates that the LIS is unable to locate
+            the Device and that the Device MUST NOT make further attempts to
+            retrieve LI from this LIS.  This error code is used to indicate
+            that the Device is outside the access network served by the LIS;
+            for instance, the VPN and NAT scenarios discussed in
+            <xref target="LISVPN"/>.
+          </t>
+
+
+        </list></t>
+      </section>
+
+      
+    </section>
+
+    <section title="Contributors">
+
+<t>   James Winterbottom, Martin Thomson and Barbara Stark are the authors
+   of the original document, from which this WG document was derived.
+   Their contact information is included below. They made additional 
+   contributions to the WG document, including the XML schema.
+</t>
+
+<figure>
+  <artwork>
+   James Winterbottom
+   Andrew
+   Andrew Building (39)
+   University of Wollongong
+   Northfields Avenue
+   Wollongong, NSW  2522
+   AU
+   
+   Phone: +61 2 4221 2938
+   EMail: james.winterbottom@andrew.com
+   URI:   http://www.andrew.com/
+   
+   
+   Martin Thomson
+   Andrew
+   Andrew Building (39)
+   University of Wollongong
+   Northfields Avenue
+   Wollongong, NSW  2522
+   AU
+   
+   Phone: +61 2 4221 2915
+   EMail: martin.thomson@andrew.com
+   URI:   http://www.andrew.com/
+
+   Barbara Stark
+   BellSouth
+   Room 7A43
+   725 W Peachtree St.
+   Atlanta, GA  30308
+   US
+
+   EMail: barbara.stark@att.com
+  </artwork>
+</figure>
+
+    </section>
+
+    <section title="Acknowledgements">
+      <t>The author and contributors would like to thank the participants in the
+      GEOPRIV WG and the following people for their constructive input and
+      feedback on this document (in alphabetical order): Nadine Abbott, Bernard Aboba, Eric
+      Arolick, Richard Barnes (in particular, the security
+      considerations section), Peter
+      Blatherwick, Ben Campbell, Guy Caron, Eddy Corbett, Martin Dawson, Lisa Dusseault, 
+      Robins George, Jerome Grenier,
+      Ted Hardie, Cullen Jennings, Neil Justusson, Tat Lam, Marc Linsner, Patti McCalmont,
+      Alexey Melnikov, 
+      Roger Marshall, Tim Polk, Perry Prozeniuk, Carl Reed, Julian Reschke, Eric Rescorla, 
+      Dan Romascanu, Brian Rosen, John
+      Schnizlein, Shida Schubert, Henning Schulzrinne, Ed Shrum, Doug Stuard,
+      Hannes Tschofenig, and Karl Heinz Wolf.</t>
+    </section>
+
+  </middle>
+
+  <back>
+<?rfc rfcedstyle="no"?>
+
+    <references title="Normative References">
+
+      <?rfc include="reference.RFC.2119" ?>
+
+      <?rfc include="reference.RFC.5246" ?>
+
+      <?rfc include="reference.RFC.2965" ?>
+
+      <?rfc include="reference.RFC.2616" ?>
+
+      <?rfc include="reference.RFC.2818" ?>
+
+      <?rfc include="reference.RFC.3688" ?>
+
+      <?rfc include="reference.RFC.5491" ?>
+
+      <?rfc include="reference.RFC.5646" ?>
+
+      <?rfc include="reference.W3C.REC-xmlschema-1-20041028"?>
+
+      <?rfc include="reference.W3C.REC-xmlschema-2-20041028"?>
+
+<!--  ietf-geopriv-lis-discovery = 5986 -->
+
+<reference anchor="RFC5986">
+  <front>
+    <title>
+      Discovering the Local Location Information Server (LIS)
+    </title>
+    
+    <author  initials="M" surname="Thomson">
+      <organization></organization>
+    </author>
+    <author  initials="J" surname="Winterbottom">
+      <organization></organization>
+    </author>
+    
+    <date month="September" year="2010" />
+  </front>
+  <seriesInfo name="RFC" value="5986"/>
+</reference>
+     
+    </references>
+
+    <references title="Informative References">
+      <?rfc include="reference.RFC.0793" ?>
+
+      <?rfc include="reference.RFC.2617" ?>
+
+      <?rfc include="reference.RFC.3023" ?>
+
+      <?rfc include="reference.RFC.3693" ?>
+
+      <!-- DHCP -->
+      <?rfc include="reference.RFC.3825" ?>
+
+      <reference anchor="LLDP-MED" target="">
+        <front>
+          <title>
+            ANSI/TIA-1057 Link Layer Discovery Protocol - Media Endpoint
+            Discovery
+          </title>
+
+          <author fullname="TIA" initials="" surname="TIA">
+            <organization></organization>
+          </author>
+
+          <date day="" month="" year="" />
+
+          <abstract>
+            <t>
+              Geography Markup Language is an XML grammar written in XML
+              Schema for the modelling, transport, and storage of geographic
+              information.
+            </t>
+          </abstract>
+        </front>
+      </reference>
+      
+      <?rfc include="reference.RFC.3986" ?>
+      
+      <?rfc include="reference.RFC.4479" ?>
+      
+      <?rfc include="reference.RFC.5226"?>
+      
+      <?rfc include="reference.RFC.5687"?>
+      
+      <?rfc include="reference.RFC.5808" ?>
+
+<reference anchor='LOC-CONVEY'>
+<front>
+<title>Location Conveyance for the Session Initiation Protocol</title>
+
+<author initials='J' surname='Polk' fullname='James Polk'>
+    <organization />
+</author>
+
+<author initials='B' surname='Rosen' fullname='Brian Rosen'>
+    <organization />
+</author>
+
+<author initials='J' surname='Peterson' fullname='Jon Peterson'>
+    <organization />
+</author>
+
+<date month='July' day='12' year='2010' />
+
+</front>
+<seriesInfo name='Work in' value='Progress'/>
+
+</reference>
+
+    </references>
+
+<?rfc rfcedstyle="yes"?>
+
+    <section title="HELD Compliance to IETF LCP Requirements">
+      <t>This appendix describes HELD's compliance to the requirements
+      specified in <xref target="RFC5687"></xref>.</t>
+
+      <section title="L7-1: Identifier Choice">
+        <t><spanx style="verb">The L7 LCP MUST be able to carry different
+        identifiers or MUST define an identifier that is mandatory to
+        implement. Regarding the latter aspect, such an identifier is only
+        appropriate if it is from the same realm as the one for which the
+        location information service maintains identifier to location
+        mapping.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>HELD uses the IP address of the location request message as the
+        primary source of identity for the requesting Device or target. This
+        identity can be used with other contextual network information to
+        provide a physical location for the Target for many network
+        deployments. There may be network deployments where an IP address
+        alone is insufficient to identify a Target in a network. However, any
+        necessary identity extensions for these networks is beyond the scope
+        of this document.</t>
+      </section>
+
+      <section title="L7-2: Mobility Support">
+        <t><spanx style="verb">The GEOPRIV Layer 7 Location Configuration
+        Protocol MUST support a broad range of mobility from Devices that can
+        only move between reboots, to Devices that can change attachment
+        points with the impact that their IP address is changed, to Devices
+        that do not change their IP address while roaming, to Devices that
+        continuously move by being attached to the same network attachment
+        point.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>Mobility support is inherently a characteristic of the access
+        network technology, and HELD is designed to be access network agnostic.
+        Consequently, HELD complies with this requirement. In addition, HELD
+        provides specific support for mobile environments by providing an
+        optional responseTime attribute in location request messages. Wireless
+        networks often have several different mechanisms at their disposal for
+        position determination (e.g., assisted GPS versus determining
+        the location
+        based on the identity of the
+        serving base station), each providing different degrees of
+        accuracy and taking different amounts of time to yield a result. The
+        responseTime parameter provides the LIS with a criterion which it can
+        use to select a location determination technique.</t>
+      </section>
+
+      <section title="L7-3: ASP and Access Network Provider Relationship">
+        <t><spanx style="verb">The design of the L7 LCP MUST NOT assume a
+        business or trust relationship between the Application Service
+        Provider (ASP) and the Access Network Provider. Requirements for
+        resolving a reference to location information are not discussed in
+        this document.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>
+          HELD describes a location acquisition protocol between a Device and
+          a LIS. In the context of HELD, the LIS is within the Access Network.
+          Thus, HELD is independent of
+          the business or trust relationship between the Application Service
+          Provider (ASP)
+          and the Access Network Provider.  Location acquisition using HELD is
+          subject to the restrictions described in <xref
+        target="security"></xref>.</t>
+      </section>
+
+      <section title="L7-4: Layer 2 and Layer 3 Provider Relationship">
+        <t><spanx style="verb">The design of the GEOPRIV Layer 7 Location
+        Configuration Protocol MUST assume that there is a trust and business
+        relationship between the L2 and the L3 provider. The L3 provider
+        operates the LIS and needs to obtain location information from the L2
+        provider since this one is closest to the end host. If the L2 and L3
+        provider for the same host are different entities, they cooperate for
+        the purposes needed to determine end system locations.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>HELD was specifically designed with this model in mind and readily
+        allows itself to chaining requests between operators without a change
+        in protocol being required. HELD is a webservices protocol which can be
+        bound to transports other than HTTP, such as BEEP. Using a protocol 
+        such as BEEP offers the option of high
+        request throughput over a dedicated connection between an L3 provider
+        and an L2 provider without incurring the serial restriction imposed by
+        HTTP. This is less easy to do with protocols that do not decouple
+        themselves from the transport.</t>
+      </section>
+
+      <section anchor="L75" title="L7-5: Legacy Device Considerations">
+        <t><spanx style="verb">The design of the GEOPRIV Layer 7 Location
+        Configuration Protocol MUST consider legacy residential NAT Devices
+        and Network Termination Equipment (NTE)
+in an DSL environment that cannot be upgraded to support
+        additional protocols, for example to pass additional information
+        through DHCP.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>HELD is an application protocol and operates on top of IP. A HELD
+        request from a host behind a residential NAT will traverse the NAT
+        acquiring the external address of the home router. The location
+        provided to the host therefore will be the address of the home router
+        in this circumstance. No changes are required to the home router in
+        order to support this function, HELD was designed specifically to
+        address this deployment scenario.</t>
+      </section>
+
+      <section title="L7-6: VPN Awareness">
+        <t><spanx style="verb">The design of the GEOPRIV Layer 7 Location
+        Configuration Protocol MUST assume that at least one end of a VPN is
+        aware of the VPN functionality. In an enterprise scenario, the
+        enterprise side will provide the LIS used by the client and can
+        thereby detect whether the LIS request was initiated through a VPN
+        tunnel.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>HELD does not preclude a LIS on the far end of a VPN tunnel
+        from being
+        aware that the client request is occurring over that tunnel. It also
+        does not preclude a client Device from accessing a LIS serving the
+        local physical network and subsequently using the location information
+        with an application that is accessed over a VPN tunnel.</t>
+      </section>
+
+      <section title="L7-7: Network Access Authentication">
+        <t><spanx style="verb">The design of the GEOPRIV Layer 7 Location
+        Configuration Protocol MUST NOT assume prior network access
+        authentication.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>HELD makes no assumptions about prior network access
+        authentication. HELD strongly recommends the use of TLS with
+        server-side certificates for communication between the endpoint and
+        the LIS. There is no requirement for the endpoint to authenticate
+        with the LIS.</t>
+      </section>
+
+      <section title="L7-8: Network Topology Unawareness">
+        <t><spanx style="verb">The design of the GEOPRIV Layer 7 Location
+        Configuration Protocol MUST NOT assume end systems being aware of the
+        access network topology. End systems are, however, able to determine
+        their public IP address(es) via mechanisms such as STUN or NSIS NATFW
+        NSLP.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>HELD makes no assumption about the network topology. HELD doesn't
+        require that the Device know its external IP address, except where
+        that is required for discovery of the LIS.</t>
+      </section>
+
+      <section title="L7-9: Discovery Mechanism">
+        <t><spanx style="verb">The L7 LCP MUST define a single mandatory to
+        implement discovery mechanism.</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>HELD uses the discovery mechanism in <xref
+        target="RFC5986"></xref>.</t>
+
+        <t></t>
+      </section>
+
+      <section title="L7-10: PIDF-LO Creation">
+        <t><spanx style="verb">When a LIS creates a PIDF-LO per RFC 4119 then
+        it MUST put the &lt;geopriv&gt; element into the &lt;device&gt;
+        element of the presence document (see RFC 4479). This ensures that the
+        resulting PIDF-LO document, which is subsequently distributed to other
+        entities, conforms to the rules outlined in [now RFC 5941].</spanx></t>
+
+        <t>COMPLY</t>
+
+        <t>HELD protocol overview (<xref target="overview"></xref>) describes
+        the requirements on the LIS in creating the PIDF-LO and prescribes
+        that the PIDF-LO generated by the LIS MUST conform to <xref
+        target="RFC5491"></xref>.</t>
+
+        <t></t>
+      </section>
+    </section>
+  </back>
+</rfc>

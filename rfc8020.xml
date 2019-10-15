@@ -1,0 +1,443 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY rfc1034 SYSTEM "reference.RFC.1034.xml">
+<!ENTITY rfc1035 SYSTEM "reference.RFC.1035.xml">
+<!ENTITY rfc2119 SYSTEM "reference.RFC.2119.xml">
+<!ENTITY rfc2136 SYSTEM "reference.RFC.2136.xml">
+<!ENTITY rfc2308 SYSTEM "reference.RFC.2308.xml">
+<!ENTITY rfc4033 SYSTEM "reference.RFC.4033.xml">
+<!ENTITY rfc4035 SYSTEM "reference.RFC.4035.xml">
+<!ENTITY rfc4592 SYSTEM "reference.RFC.4592.xml">
+<!ENTITY rfc5246 SYSTEM "reference.RFC.5246.xml">
+<!ENTITY rfc5936 SYSTEM "reference.RFC.5936.xml">
+<!ENTITY rfc6347 SYSTEM "reference.RFC.6347.xml">
+<!ENTITY rfc6604 SYSTEM "reference.RFC.6604.xml">
+<!ENTITY rfc6973 SYSTEM "reference.RFC.6973.xml">
+<!ENTITY rfc7626 SYSTEM "reference.RFC.7626.xml">
+<!ENTITY rfc7719 SYSTEM "reference.RFC.7719.xml">
+<!ENTITY rfc7816 SYSTEM "reference.RFC.7816.xml">
+]>
+
+<rfc number="8020" submissionType="IETF" consensus="yes" category="std" ipr="trust200902" updates="1034, 2308">
+<?rfc toc="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="yes"?>
+<?rfc strict="yes"?>
+
+<front>
+<title abbrev="NXDOMAIN Cut">NXDOMAIN: There Really Is Nothing Underneath</title>
+<author fullname="Stephane Bortzmeyer" initials="S." surname="Bortzmeyer">
+<organization>AFNIC</organization>
+<address><postal><street>1, rue Stephenson</street><code>78180</code><city>Montigny-le-Bretonneux</city><country>France</country></postal> <phone>+33 1 39 30 83 46</phone><email>bortzmeyer+ietf@nic.fr</email><uri>https://www.afnic.fr/</uri></address>
+</author>
+<author fullname="Shumon Huque" initials="S." surname="Huque">
+<organization>Verisign Labs</organization>
+<address><postal><street>12061 Bluemont
+Way</street><code>20190</code><city>Reston</city><region>VA</region><country>United States of America</country></postal> <email>shuque@verisign.com</email><uri>http://www.verisignlabs.com/</uri></address>
+</author>
+<date month="November" year="2016"/>
+<workgroup>Domain Name System Operations (dnsop) Working Group</workgroup>
+<keyword>DNS</keyword>
+<keyword>caching</keyword>
+<keyword>performance</keyword>
+<keyword>dDoS</keyword>
+<keyword>resolver</keyword>
+<keyword>negative caching</keyword>
+<keyword>DNSSEC</keyword>
+
+<abstract>
+<t>This document states clearly that when a DNS resolver receives a
+response with a response code of NXDOMAIN, it means that
+the domain name which is thus denied AND ALL THE NAMES UNDER IT do not exist.</t>
+
+<t>This document clarifies RFC 1034 and modifies a portion of RFC
+2308: it updates both of them.</t>
+</abstract>
+
+</front>
+
+<middle>
+  <section anchor="intro" title="Introduction and Background">
+    <t>
+      The DNS protocol <xref target="RFC1035"/> defines response code 
+      3 as "Name Error", or "NXDOMAIN" <xref target="RFC2308"/>, which means that the queried domain name
+      does not exist in the DNS. Since domain names are represented as
+      a tree of labels (<xref target="RFC1034"/>, Section 3.1),
+      nonexistence of a node implies nonexistence of the entire subtree 
+      rooted at this node.
+    </t>
+    <t>
+      The DNS iterative resolution algorithm precisely interprets the
+      NXDOMAIN signal in this manner. If it encounters an NXDOMAIN
+      response code from an authoritative server, it immediately stops
+      iteration and returns the NXDOMAIN response to the querier.
+    </t>
+    <t>However, in most known existing resolvers today, a cached
+    nonexistence for a domain
+    is not considered "proof" that there can be no child domains
+    underneath. This is due to an ambiguity in <xref
+    target="RFC1034"/> that failed to distinguish Empty Non-Terminal (ENT) names (<xref target="RFC7719"/>) from nonexistent names
+    (<xref target="updates1034"/>).
+    The distinction became especially important for the development of DNSSEC,
+    which provides proof of nonexistence. <xref
+    target="RFC4035"/>, Section 3.1.3.2, describes
+    how security-aware authoritative name servers make the distinction, but no 
+    existing RFCs describe the behavior for recursive name servers.</t>
+    <t>
+      This document specifies that an NXDOMAIN response for a domain
+      name means that no child domains underneath the queried name
+      exist either; furthermore, it means that DNS resolvers should
+      interpret cached nonexistence in this manner. Since the
+      domain names are organized in a tree, it is a simple consequence
+      of the tree structure: nonexistence of a node implies
+      nonexistence of the entire subtree rooted at this node.</t>
+      <section title="Terminology">
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+   document are to be interpreted as described in <xref
+   target="RFC2119"/>.</t>
+<t>"QNAME": defined in <xref target="RFC1034"/> and
+in <xref target="RFC1035"/>, Section 4.1.2, but, because <xref
+target="RFC2308"/> provides a different definition, we repeat the
+original one here: the QNAME is the domain name in the
+question section.</t>
+   <t>"Denied name": the domain name whose existence has been denied
+   by a response RCODE of NXDOMAIN. In most cases, it is the QNAME
+   but, because of <xref target="RFC6604"/>, it is not always the
+   case.</t>
+   <t>Other terms are defined in <xref target="RFC1034"/>, <xref
+   target="RFC1035"/>, and (like NXDOMAIN itself) in the more recent
+   <xref target="RFC7719"/>.</t>
+   <t>The domain name space is conceptually defined in terms of a tree
+structure. The implementation of a DNS resolver/cache MAY use a tree
+or other data structures. The cache being a subset of the data in the domain name space, it
+is much easier to reason about it in terms of that tree structure and to
+describe things in those terms (names under/above, descendant names,
+subtrees, etc.). In fact, the DNS algorithm description in <xref target="RFC1034"/> even
+states an assumption that the cache is a tree structure, so the precedent
+is already well established: see its Section 4.3.2, which says "The following
+algorithm assumes that the RRs are organized in several tree structures,
+one for each zone, and another for the cache..." So, in this document,
+each time we talk about a tree or tree operations, we're referring to the
+model, not to the actual implementation.</t>
+      </section>
+  </section>
+
+  <section anchor="rule" title="Rules">
+    <t>When an iterative caching DNS resolver receives an NXDOMAIN response, it SHOULD store it in its cache and then
+all names and resource record sets (RRsets) at or below that node SHOULD be considered unreachable. Subsequent queries for such names SHOULD elicit an
+NXDOMAIN response.</t>
+
+<t>But, if a resolver has cached data under the NXDOMAIN cut, it MAY
+continue to send it as a reply (until the TTL of this cached data
+expires), since this may avoid additional processing when a query is
+received. <xref target="impladvice"/> provides more information about
+this.</t>
+
+<t>Another exception is that a validating resolver MAY decide to
+implement the "NXDOMAIN cut" behavior (described in the first
+paragraph of this section) only when the NXDOMAIN response has been
+validated with DNSSEC. See <xref
+target="security"/> for the rationale.</t>
+
+<t>The fact that a subtree does
+not exist is not forever: <xref
+target="RFC2308"/>, Section 3, already describes the
+amount of time
+that an NXDOMAIN response may be cached (the "negative TTL").</t>
+
+<t>If the NXDOMAIN response due to a cached nonexistence is from a DNSSEC-signed zone, then
+it will have accompanying NSEC or NSEC3 records that authenticate the
+nonexistence of the name. For a descendant name of the original
+NXDOMAIN name, the same set of NSEC or NSEC3 records proves the
+nonexistence of the descendant name. The iterative, caching resolver
+MUST return these NSEC or NSEC3 records in the response to the
+triggering query if the query had the DNSSEC OK (DO) bit set.
+</t>
+
+<t>Warning: if there is a chain of
+CNAME (or DNAME), the name that does not exist is the last of the
+chain (<xref target="RFC6604"/>) and not the QNAME. The NXDOMAIN
+stored in the cache is for the denied name, not always for the QNAME.</t>
+
+<t>As an example of the consequence of these rules, consider two successive queries to a resolver with a
+nonexisting domain 'foo.example': the first is for 'foo.example'
+(which results in an NXDOMAIN) and the second for 'bar.foo.example' (which
+also results in an NXDOMAIN).  Many resolvers today will forward both queries.  However, following the rules in this document ("NXDOMAIN cut"), a resolver would
+cache the first NXDOMAIN response, as a sign of nonexistence, and then immediately return
+an NXDOMAIN response for the second query, without transmitting it to an
+authoritative server.</t>
+
+<t>If the first request is for 'bar.foo.example' and the second for
+'baz.foo.example', then the first NXDOMAIN response won't tell anything
+about 'baz.foo.example'; therefore, the second query will be
+transmitted as it was before the use of "NXDOMAIN cut" optimization (see <xref target="future"/>).</t>
+  </section>
+	  
+<section anchor="updates" title="Updates to RFCs">
+
+<section anchor="updates1034" title="Updates to RFC 1034">
+
+<t>
+    This document clarifies possible ambiguities in <xref target="RFC1034"/> 
+    that did not clearly distinguish Empty Non-Terminal (ENT) names  
+    (<xref target="RFC7719"/>) from nonexistent names, and it refers to 
+    subsequent documents that do. ENTs are nodes in the DNS
+    that do not have resource record sets associated with them but have descendant
+    nodes that do. The correct response to ENTs is NODATA 
+    (i.e., a response code of NOERROR and an empty answer section). Additional
+    clarifying language on these points is provided in Section 7.16 of 
+    <xref target="RFC2136"/> and in Sections 2.2.2 and 2.2.3 of 
+    <xref target="RFC4592"/>.
+</t>
+
+</section>
+
+<section anchor="updates2308" title="Updates to RFC 2308">
+
+<t>The second paragraph of Section 5 in <xref target="RFC2308"/>
+states the following: 
+<list style="empty"><t>A negative answer that resulted from a name error 
+(NXDOMAIN) should be cached such that it can be retrieved and returned in 
+response to another query for the same &lt;QNAME, QCLASS&gt; that resulted in the
+cached negative response.</t></list>
+</t>
+
+<t>This document revises that paragraph to the following:<list style="empty"> 
+<t>A negative answer that resulted from a name error (NXDOMAIN) should
+   be cached such that it can be retrieved and returned in response to
+   another query for the same &lt;QNAME, QCLASS&gt; that resulted in the
+   cached negative response, or where the QNAME is a descendant of the
+   original QNAME and the QCLASS is the same.</t></list>
+</t>
+
+<t><xref target="rule"/> above elaborates on the revised rule and
+specifies when it may be reasonable to relax or ignore it.</t>
+
+</section>
+
+</section>
+
+<section anchor="benefits" title="Benefits">
+  <t>The main benefit is a better efficiency of the caches. In the
+  example above, the resolver sends only one query instead of two, the second one
+  being answered from the cache. This will benefit the entire DNS
+  ecosystem, since the authoritative name servers will have less
+  unnecessary traffic to process.</t>
+  <t>The correct behavior (in <xref target="RFC1034"/> and made
+  clearer in this document) is especially useful when combined with QNAME
+  minimization <xref
+  target="RFC7816"/> since it will allow a
+  resolver to stop searching as soon as an NXDOMAIN is encountered.</t>
+  <t>"NXDOMAIN cut" may also help mitigate certain types of random QNAME attacks <xref
+  target="joost-dnsterror"/> and <xref
+  target="balakrichenan-dafa888"/>, where there is a fixed suffix that
+  does not exist. In these attacks against the authoritative name
+  server, queries are sent to resolvers for a QNAME composed 
+  of a fixed suffix ("dafa888.wf" in one of the articles above), which is 
+  typically nonexistent, and a random prefix, different for each request. A
+  resolver receiving these requests has to forward them to the
+  authoritative servers. With "NXDOMAIN cut", a system administrator would just have to send
+  to the resolver a query for the fixed suffix, the resolver would get
+  a NXDOMAIN and then would stop forwarding the queries. (It would be
+  better if the SOA record in the NXDOMAIN response were sufficient to
+  find the nonexisting domain, but this is not the case, see 
+  <xref target="future"/>.)</t>
+</section>
+
+<section title="Possible Issues">
+  <t>Let's assume that the Top-Level Domain (TLD) example exists, but foobar.example is not
+  delegated (so the example's name servers will reply NXDOMAIN for a
+  query about anything.foobar.example). A system administrator decides
+  to name the internal machines of his organization under
+  office.foobar.example and uses a trick of his resolver to forward
+  requests about this zone to his local authoritative name
+  servers. "NXDOMAIN cut" would create problems here; depending
+  on the order of requests to the resolver, it may have cached the
+  nonexistence from example and therefore "deleted" everything under it. This
+  document assumes that such a setup is rare and does not need to be supported.</t>
+<t>Today, another possible issue exists; we see authoritative name servers that reply to ENT
+(<xref target="RFC7719"/>, Section 6) with
+NXDOMAIN instead of the normal NODATA (<xref
+target="RFC7719"/>, Section 3).</t>
+<t>Such name servers are definitely wrong and have always been.  Their
+behaviour is incompatible with DNSSEC.  Given the advantages of
+"NXDOMAIN cut", there is little reason to support this behavior.</t>
+
+</section>
+
+<section anchor="impladvice" title="Implementation Considerations">
+  <t>This section is non-normative and is composed only of various
+  things that may be useful for implementors. A recursive resolver
+  may implement its cache in many ways. The most obvious one is a tree
+  data structure, because it fits the data model of domain names. But,
+  in practice, other implementations are possible, as well as various
+  optimizations (such as a tree, augmented by an index of some common
+  domain names).</t>
+  <t>
+
+
+If a resolver implements its cache as a tree (without any
+  optimization), one way to follow the rules in <xref target="rule"/>
+  is as follows: when receiving the NXDOMAIN, prune the subtree of positive
+  cache entries at that node or delete all individual cache
+  entries for names below that node. Then, when searching downward in
+  its cache, this iterative caching DNS resolver will stop searching if it
+  encounters a cached nonexistence.
+  </t>
+  <t>Some resolvers may have a cache that is NOT organized as a tree
+  (but, for instance, as a dictionary); therefore, they have a 
+  reason to ignore the rules of <xref target="rule"/>. So these rules
+  use SHOULD and not MUST.</t>
+</section>
+
+<section anchor="security" title="Security Considerations">
+<t>The technique described in this document may help against a denial-of-service
+attack named "random qnames" described in <xref
+target="benefits"/>.</t>
+<t>If a resolver does not validate the answers with DNSSEC, or if the
+zone is not signed, the resolver can of
+course be poisoned with a false NXDOMAIN, thus, "deleting" a part of
+the domain name tree. This denial-of-service attack is already
+possible without the rules of this document (but "NXDOMAIN cut" may
+increase its effects). The only solution is to use DNSSEC.</t>
+</section>
+
+</middle>
+
+<back>
+
+<references title='Normative References'>
+&rfc1034;
+&rfc1035;
+&rfc2119;
+&rfc2136;
+&rfc2308;
+&rfc4592;
+&rfc6604;
+</references>
+
+<references title='Informative References'>
+&rfc4035;
+&rfc7719;
+&rfc7816;
+
+<!-- draft-vixie-dnsext-resimprove-00 IESG state: Expired -->
+
+<reference anchor='DNSRRR'>
+<front>
+<title>Improvements to DNS Resolvers for Resiliency, Robustness, and Responsiveness</title>
+
+<author initials='P' surname='Vixie' fullname='Paul Vixie'>
+    <organization />
+</author>
+
+<author initials='R' surname='Joffe' fullname='Rodney Joffe'>
+    <organization />
+</author>
+
+<author initials='F' surname='Neves' fullname='Frederico Neves'>
+    <organization />
+</author>
+
+<date month='June' day='23' year='2010' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-vixie-dnsext-resimprove-00' />
+</reference>
+
+<!-- ietf-dnsop-nsec-aggressiveuse IESG state: I-D Exists -->
+
+<reference anchor='NSEC'>
+<front>
+<title>Aggressive use of NSEC/NSEC3</title>
+
+<author initials='K' surname='Fujiwara' fullname='Kazunori Fujiwara'>
+    <organization />
+</author>
+
+<author initials='A' surname='Kato' fullname='Akira Kato'>
+    <organization />
+</author>
+
+<author initials='W' surname='Kumari' fullname='Warren Kumari'>
+    <organization />
+</author>
+
+<date month='September' day='13' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-dnsop-nsec-aggressiveuse-04' />
+
+</reference>
+
+
+<reference anchor="joost-dnsterror" target="http://www.michael-joost.de/dnsterror.html">
+<front>
+<title>About DNS Attacks and ICMP Destination Unreachable Reports</title>
+<author fullname="Michael Joost" initials="M." surname="Joost"/>
+<date month="December" year="2014"/>
+</front>
+</reference>
+
+
+<reference anchor="balakrichenan-dafa888"
+	   target="https://indico.dns-oarc.net/event/20/session/3/contribution/3">
+  <front>
+    <title>Disturbance in the DNS - "Random qnames", the dafa888 DoS
+    attack"</title>
+    <author fullname="Sandoche Balakrichenan" initials="S."
+	    surname="Balakrichenan"/>
+    <date month="October" year="2014"/>
+    <abstract><t>At the DNS-OARC meeting in Los Angeles</t></abstract>
+  </front>
+</reference>
+
+</references>
+
+<section anchor="future" title="Why can't we just use the owner name of the returned SOA?">
+<t>In this document, we deduce the nonexistence of a domain only
+  for NXDOMAIN answers where the denied name was the exact domain. If a
+  resolver sends a query to the name servers of the TLD example,
+  asking for the mail exchange (MX) record for www.foobar.example, and subsequently receives a NXDOMAIN,
+  it can only register the fact that www.foobar.example (and
+  everything underneath) does not exist. This is true regardless of whether or not the accompanying SOA
+  record is for the domain example only. One cannot infer that
+  foobar.example is nonexistent. The accompanying SOA record indicates the
+  apex of the zone, not the closest existing domain name. So, using
+  the owner name of the SOA record in the authority section to
+  deduce "NXDOMAIN cuts" is currently definitely not OK.</t>
+
+<t>Deducing the nonexistence of a node from the SOA
+  in the NXDOMAIN reply may certainly help with random qnames attacks,
+but this is out-of-scope for this document. It would require addressing
+the problems mentioned in the first paragraph of this section. A
+possible solution is, when receiving a NXDOMAIN with a SOA that is more than one
+label up in the tree, to send requests for the domains that are between the
+QNAME and the owner name of the SOA. (A resolver that does DNSSEC
+validation or QNAME minimization will need to do it anyway.)</t>
+</section>
+
+<section title="Related Approaches">
+<t>The document <xref
+target="NSEC"/> describes another way to
+address some of the same concerns (decreasing the traffic for
+nonexisting domain names). Unlike "NXDOMAIN cut",
+it requires DNSSEC, but it is more powerful since it can synthesize
+NXDOMAINs for domains that were not queried.</t>
+</section>
+
+<section title="Acknowledgments" numbered="no">
+<t>The main idea in this document is taken from 
+   <xref target="DNSRRR"/>, Section 3, "Stopping
+Downward Cache Search on NXDOMAIN". Thanks to its authors, Paul Vixie, 
+Rodney Joffe, and Frederico Neves. Additionally, Tony Finch, Ted Lemon, 
+John Levine, Jinmei Tatuya, Bob Harold, and Duane Wessels provided valuable 
+feedback and suggestions.</t>
+</section>
+
+</back>
+
+</rfc>

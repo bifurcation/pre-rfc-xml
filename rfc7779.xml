@@ -1,0 +1,994 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+
+
+<?rfc toc="yes" tocompact="yes" tocdepth="3" tocindent="yes" symrefs="yes" sortrefs="no" comments="yes" inline="yes" compact="yes" subcompact="no"?>
+
+<rfc number="7779" category="exp"  submissionType="IETF" consensus="yes" ipr="trust200902">
+	<front>
+		<title abbrev="Directional Airtime Metric OLSRv2">
+		Directional Airtime Metric Based on Packet Sequence Numbers for Optimized&nbsp;Link&nbsp;State&nbsp;Routing&nbsp;Version 2 (OLSRv2)</title>
+		<author initials="H.R." surname="Rogge" fullname="Henning Rogge">
+			<organization>Fraunhofer FKIE</organization>
+			<address>
+				<email>henning.rogge@fkie.fraunhofer.de</email>
+				<uri>http://www.fkie.fraunhofer.de</uri>
+			</address>
+		</author>
+
+		<author initials="E.B." surname="Baccelli" fullname="Emmanuel Baccelli">
+			<organization>INRIA</organization>
+			<address>
+				<email>Emmanuel.Baccelli@inria.fr</email>
+				<uri>http://www.emmanuelbaccelli.org/</uri>
+			</address>
+		</author>
+		<date month="April" year="2016"/>
+		<area>Routing Area</area>
+		<workgroup>MANET</workgroup>
+		<keyword>metric</keyword>
+		<keyword>ad hoc network</keyword>
+		<keyword>MANET</keyword>
+		<keyword>routing</keyword>
+		<keyword>IP networks</keyword>
+		<keyword>OLSR</keyword>
+		<keyword>ETT</keyword>
+		<keyword>ETX</keyword>
+		<keyword>Funkfeuer</keyword>
+		<abstract>
+			<t>This document specifies a Directional Airtime
+			(DAT) link metric for usage in Optimized Link State
+			Routing Version 2 (OLSRv2).</t>
+		</abstract>
+	</front>
+	<middle>
+		<section anchor="introduction" title="Introduction">
+			<t>One of the major shortcomings of Optimized Link
+			State Routing (OLSR) <xref target="RFC3626"/> is the
+			lack of a granular link-cost metric between OLSR
+			routers. Operational experience with OLSR networks
+			gathered since its publication has revealed that
+			wireless networks links can have highly variable and
+			heterogeneous properties. This makes a hop-count metric insufficient for effective OLSR routing.</t>
+			<t>Based on this experience, OLSRv2 <xref
+			target="RFC7181"/> integrates the concept of link
+			metrics directly into the core specification of the
+			routing protocol. The OLSRv2 routing metric is an
+			external process, and it can be any kind of dimensionless additive cost function that reports to the OLSRv2 protocol.</t>
+			<t>Since 2004, the OLSR.org <xref target="OLSR.org"/> implementation of OLSR has included an Estimated Transmission Count (ETX) metric <xref target="MOBICOM04"/> as a proprietary extension. While this metric is not perfect, it proved to be sufficient for a long time for Community Mesh Networks (see <xref target="olsrorg_history"/>). But the increasing maximum data rate of IEEE 802.11 made the ETX metric less efficient than in the past, which is one reason to move to a different metric.</t>
+			<t>This document describes a Directional Airtime routing metric for OLSRv2, a successor of the OLSR.org ETX-derived routing metric for OLSR. It takes both the loss rate and the link speed into account to provide a more accurate picture of the links within the network.</t>
+			<t>This specification allows OLSRv2 deployments with a
+			metric defined by the IETF Mobile Ad Hoc Networks
+			(MANET) working group. It enables easier
+			interoperability testing between implementations and
+			targets to deliver a useful baseline to compare with,
+			for experiments with this metric as well as other
+			metrics. 
+<xref target="future_work"/> contains a few
+			possible steps to improve the Directional Airtime
+			metric. Future experiments should also determine
+			whether the DAT metric can be useful for other IETF protocols,
+			both inside and outside of the MANET working group.
+This could lead to either moving this document to the Standards Track or replacing
+			it with an improved document.</t> 
+		</section>
+		<section anchor="terminology" title="Terminology">
+			<t>The key words "MUST", "MUST NOT", "REQUIRED",
+			"SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
+			"RECOMMENDED", "MAY", and "OPTIONAL" in this document
+			are to be interpreted as described in <xref
+			target="RFC2119"/>.</t> 
+			<t>The terminology introduced in <xref
+			target="RFC5444"/>, <xref target="RFC7181"/>, and
+			<xref target="RFC6130"/>, including the terms
+			"packet", "message" and "TLV", are to be interpreted
+			as described therein.</t> 
+			<t>Additionally, this document uses the following terminology and notational conventions:
+			<list style="hanging">
+				<t hangText="DAT -">Directional Airtime
+					     (metric). The link metric
+				specified in this document, which is a
+				directional variant of ETT. It does not take
+				reverse path loss into account.</t> 
+				<t hangText="QUEUE -">A first in, first out queue of integers.</t>
+				<t hangText="QUEUE[TAIL] -">The most recent element in the queue.</t>
+				<t hangText="add(QUEUE, value) -">Adds a new element to the TAIL of the queue.</t>
+				<t hangText="remove(QUEUE) -">Removes the HEAD element of the queue</t>
+				<t hangText="sum(QUEUE) -">An operation that returns the sum of all elements in a QUEUE.</t>
+				<t hangText="diff_seqno(new, old) -">An operation that returns the positive distance
+				between two elements of the circular sequence
+				number space defined in Section 5.1 of <xref
+				target="RFC5444"/>. Its value is either (new -
+				old) if this result is positive, or else its
+				value is (new - old + 65536).</t> 
+				<t hangText="MAX(a, b) -">The maximum of a and b.</t>
+				<t hangText="MIN(a, b) -">The minimum of a and b.</t>
+				<t hangText="UNDEFINED -">A value not in the normal value range of a variable.</t>
+				<t hangText="airtime -">The time a transmitted packet blocks the link layer, e.g., a wireless link.</t>
+				<t hangText="ETX -">Expected Transmission
+				Count. A link metric proportional to the
+				number of transmissions to successfully send
+				an IP packet over a link.</t> 
+				<t hangText="ETT -">Estimated Travel Time. A
+				link metric proportional to the amount of
+				airtime needed to successfully transmit an IP
+				packet over a link, not considering layer-2
+				overhead created by preamble, backoff time,
+				and queuing.</t> 
+			</list></t>
+		</section>
+		<section anchor="applicable" title="Applicability Statement">
+			<t>The Directional Airtime metric was designed and
+			tested (see <xref target="COMNET15"/>) in wireless
+			IEEE 802.11 OLSRv2 networks <xref
+			target="RFC7181"/>. These networks employ link-layer
+			retransmission to increase the delivery probability. A
+			dynamic rate selection algorithm selects the unicast
+			data rate independently for each neighbor.</t> 
+
+			<t>As specified in OLSRv2, the metric calculates only
+			the incoming link cost. It neither calculates the
+			outgoing metric, nor decides the link status
+			(heard, symmetric, lost).</t> 
+
+			<t>The metric works both for nodes that can
+			send/receive <xref target="RFC5444"/> packet sequence
+			numbers and
+			those that do not have this capability. In the absence
+			of such sequence numbers, the metric calculates the
+			packet loss based on HELLO message <xref target="RFC6130"/>
+			timeouts.</t>
+
+			<t>The metric must learn about the unicast data rate
+			towards each one-hop neighbor from an external
+			process, either by configuration or by an external
+			measurement process. This measurement could be done
+			via gathering cross-layer data from the operating
+			system, via an external daemon like Dynamic Link
+			Exchange Protocol <xref target="DLEP"/>, or via
+			indirect layer-3 measurements like packet-pair (see
+			<xref target="MOBICOM04"/>).</t> 
+
+			<t>The metric uses <xref target="RFC5444"/> multicast control traffic
+			to determine the link packet
+			loss. The administrator should take care that
+			link-layer multicast transmission do not have a higher
+			reception probability than the slowest unicast
+			transmission without retransmission. For example, with
+			802.11g, it might be necessary to increase the
+			data-rate of the multicast transmissions, e.g., set
+			the multicast data-rate to 6 Mbit/s.</t> 
+
+			<t>The metric can only handle a certain range of
+			packet loss and unicast data-rate. The maximum packet
+			loss that can be encoded into the metric is a loss of
+			7 of 8 packets (87.5%), without link-layer
+			retransmissions. The unicast data-rate that can be
+			encoded by this metric can be between 1 kbit/s and 2
+			Gbit/s. This metric has been designed for data-rates
+			of 1 Mbit/s and hundreds of Mbit/s.</t> 
+		</section>
+
+		<section anchor="datmetric" title="Directional Airtime Metric Rationale">
+			<t>The Directional Airtime metric has been inspired by
+			the publications on the ETX <xref target="MOBICOM03"/>
+			and ETT <xref target="MOBICOM04"/> metric, but
+			differs from both of these in several ways.</t> 
+
+			<t>Instead of measuring the combined loss probability
+			of a bidirectional transmission of a packet over a
+			link in both directions, the Directional Airtime
+			metric measures the incoming loss rate and integrates
+			the incoming link speed into the metric cost. There are multiple reasons for this decision:
+			<list style="symbols">
+				<t>OLSRv2 <xref target="RFC7181"/> defines the link metric as directional costs between routers.</t>
+				<t>Not all link-layer implementations use
+				acknowledgement mechanisms. Most link-layer
+				implementations that do use them use less
+				airtime and a more robust modulation for the
+				acknowledgement than the data transmission,
+				which makes it more likely for the data
+				transmission to be disrupted compared to the
+				acknowledgement.</t> 
+				<t>Incoming packet loss and link speed can be
+				measured locally, while symmetric link loss
+				would need an additional signaling TLV in the
+				HELLO <xref target="RFC6130"/> and would delay metric calculation by up to one HELLO interval.</t>
+			</list></t>
+			<t>The Directional Airtime metric does not integrate
+			the packet size into the link cost. Doing so is not
+			feasible in most link-state routing protocol
+			implementations. The routing decision of most
+			operation systems does not take packet size into
+			account. Multiplying all link costs of a topology with
+			the size of a data-plane packet would never change the
+			Dijkstra result in any way.</t>
+			<t>The queue-based packet-loss estimator specified in
+			this document has been tested extensively in the
+			OLSR.org ETX implementation; see <xref target="olsrorg_history"/>. The output is the average of the packet loss over a configured time period.</t>
+			
+<t>The metric normally measures the loss of a link by
+			tracking the incoming <xref target="RFC5444"/> packet sequence numbers. Without these packet sequence
+			numbers, the metric does calculate the loss of the
+			link based on the received and lost <xref
+			target="RFC6130"/> HELLO messages.
+It uses the incoming HELLO interval time (or if not present, the validity
+time) to decide when a HELLO is lost.</t> 
+			<t>When a neighbor router resets, its packet sequence
+			number might jump to a random value. The metric tries
+			to detect jumps in the packet sequence number and
+			removes them from the data set because the previously
+			gathered link-loss data should still be valid (see
+			<xref target="link_loss_gathering"/>). The link-loss
+			data is only removed from memory when a link times out
+			completely and its Link Set Tuple is removed from the
+			database.</t> 
+		</section>
+
+		<section anchor="functioning" title="Metric Functioning and Overview">
+			<t>The Directional Airtime metric is calculated for
+			each Link Set entry, as defined in <xref
+			target="RFC6130"/>, Section 7.1.</t> 
+
+			<t>The metric processes two kinds of data into the
+			metric value, namely packet-loss rate and link speed.
+			The link speed is taken from an external process not
+			defined in this document. The current packet-loss rate
+			is defined in this document by keeping track of packet
+			reception and packet-loss events. It could also be
+			calculated by an external process with a compatible
+			output.</t> 
+
+			<t>Multiple incoming packet-loss/reception events must
+			be combined into a loss rate to get a smooth
+			metric. Experiments with exponential weighted moving
+			average (EWMA) lead to a highly fluctuating or a slow
+			converging metric (or both). To get a smoother and
+			more controllable metric result, this metric uses two
+			fixed-length queues to measure and average the
+			incoming packet events, one queue for received packets
+			and one for the estimated number of packets sent by
+			the other side of the link.</t> 
+
+			<t>Because the rate of incoming packets is not uniform
+			over time, the queue contains a number of counters,
+			each representing a fixed time interval. Incoming
+			packet-loss and packet-reception events are
+			accumulated in the current queue element until a timer
+			adds a new empty counter to both queues and removes
+			the oldest counter from both.</t> 
+
+			<t>In addition to the packet loss stored in the queue,
+			this metric uses a timer to detect a total link
+			loss. For every <xref target="RFC6130"/> HELLO interval 
+			in which the metric received no
+			packet from a neighbor, it scales the number of
+			received packets in the queue based on the total time
+			interval the queue represents compared to the total
+			time of the lost HELLO intervals.</t> 
+
+			<t>The average packet-loss ratio is calculated as the
+			sum of the 'total packets' counters divided by the sum
+			of the 'packets received' counters. This value is then
+			divided through the current link speed and then scaled
+			into the range of metrics allowed for OLSRv2.</t> 
+ 
+			<t>The metric value is then used as L_in_metric of the
+			Link Set (as defined in Section 8.1. of <xref
+			target="RFC7181"/>).</t> 
+
+			<t>While this document does not add new <xref
+			target="RFC5444"/> elements
+			to HELLO <xref
+			target="RFC6130"/> or TC messages <xref
+			target="RFC7181"/>, 
+			it works best when both the
+			INTERVAL_TIME message TLV is present in the HELLO
+			messages and when each <xref target="RFC5444"/> packet
+			contains an
+			interface-specific sequence number. It also adds a
+			number of new data entries to be stored for each <xref
+			target="RFC6130"/> link.</t>
+		</section>
+		<section anchor="constants" title="Protocol Constants">
+			<t>This specification defines the following constants,
+			which define the range of metric values that can be
+			encoded by the DAT metric (see <xref
+			target="table_constants"/>). They cannot be changed
+			without making the metric outputs incomparable and
+			should only be changed for a MANET with a very slow or
+			a very fast link layer. See <xref target="example_metric_values"/> for example metric values.
+
+			<list style="hanging">
+				<t hangText="DAT_MAXIMUM_LOSS -">Fraction of
+				the loss rate used in this routing
+				metric. Loss rate will be between
+				0/DAT_MAXIMUM_LOSS and
+				(DAT_MAXIMUM_LOSS-1)/DAT_MAXIMUM_LOSS.</t> 
+
+				<t hangText="DAT_MINIMUM_BITRATE -">Minimal
+				bitrate in Bit/s used by this routing
+				metric.</t> 
+			</list></t>
+			<texttable anchor="table_constants" title="DAT Protocol Constants">
+				<ttcol align='center'>Name</ttcol>
+				<ttcol align='center'>Value</ttcol>
+				<c>DAT_MAXIMUM_LOSS</c>
+				<c>8</c>
+				<c>DAT_MINIMUM_BITRATE</c>
+				<c>1000</c>
+			</texttable>
+		</section>
+		<section anchor="parameter" title="Protocol Parameters">
+			<t>This specification defines the following parameters
+			for this routing metric. These parameters are: 
+			<list style="hanging">
+				<t hangText="DAT_MEMORY_LENGTH -">Queue length
+				for averaging packet loss. All received and
+				lost packets within the queue length are used
+				to calculate the cost of the link.</t> 
+
+				<t hangText="DAT_REFRESH_INTERVAL -">Interval
+				in seconds between two metric recalculations
+				as described in <xref
+				target="metric_recalc"/>. This value SHOULD be
+				smaller than a typical HELLO interval. The
+				interval can be a fraction of a second.</t> 
+
+				<t hangText="DAT_HELLO_TIMEOUT_FACTOR -">
+				Multiplier relative to the HELLO_INTERVAL (see
+				Section 5.3.1 of <xref target="RFC6130"/>)
+				after which the DAT metric considers a HELLO
+				as lost.</t> 
+
+				<t hangText="DAT_SEQNO_RESTART_DETECTION -">
+				Threshold in the number of missing packets
+				(based on received packet sequence numbers) at
+				which point the router considers the neighbor
+				has restarted. This parameter is only used for
+				loss estimation based on packet sequence
+				numbers. This number MUST be larger than
+				DAT_MAXIMUM_LOSS.</t> 
+			</list></t>
+
+			<section title="Recommended Values">
+				<t>The proposed values of the protocol
+				parameters are for Community Mesh Networks,
+				which mostly use routers that are not
+				mobile. Using this metric for mobile networks
+				might require shorter DAT_REFRESH_INTERVAL
+				and/or DAT_MEMORY_LENGTH. 
+				<list style="hanging">
+					<t hangText="DAT_MEMORY_LENGTH">:= 64</t>
+					<t hangText="DAT_REFRESH_INTERVAL">:= 1</t>
+					<t hangText="DAT_HELLO_TIMEOUT_FACTOR">:= 1.2</t>
+					<t hangText="DAT_SEQNO_RESTART_DETECTION">:= 256</t>
+				</list></t>
+			</section>
+		</section>
+
+		<section anchor="infobase" title="Data Structures">
+			<t>This specification extends the Link Set of the
+			Interface Information Base, as defined in Section 7.1
+			of <xref target="RFC6130"/>, by the adding the
+			following elements to each Link Tuple: 
+			<list style="hanging">
+				<t hangText="L_DAT_received -">A QUEUE with
+				DAT_MEMORY_LENGTH integer elements. Each entry
+				contains the number of successfully received
+				packets within an interval of
+				DAT_REFRESH_INTERVAL.</t> 
+				<t hangText="L_DAT_total -">A QUEUE with
+				DAT_MEMORY_LENGTH integer elements. Each entry
+				contains the estimated number of packets
+				transmitted by the neighbor, based on the
+				received packet sequence numbers within an
+				interval of DAT_REFRESH_INTERVAL.</t> 
+				<t hangText="L_DAT_packet_time -">The time
+				when the next <xref target="RFC5444"/> packet
+				should have arrived.</t>
+				<t hangText="L_DAT_hello_interval -">The
+				interval between two HELLO messages of the
+				links neighbor as signaled by the
+				INTERVAL_TIME TLV <xref target="RFC5497"/> of
+				NHDP messages <xref target="RFC6130"/>.</t> 
+				<t hangText="L_DAT_lost_packet_intervals -">
+				The estimated number of HELLO intervals from
+				this neighbor from which the metric has not received a
+				single packet. </t>
+
+				<t hangText="L_DAT_rx_bitrate -">The current bitrate of incoming unicast traffic for this neighbor.</t>
+				<t hangText="L_DAT_last_pkt_seqno -">The last received packet sequence number received from this link.</t>
+			</list></t>
+
+			<t>Methods to obtain the value of L_DAT_rx_bitrate are
+			out of the scope of this specification. Such methods
+			may include static configuration via a configuration
+			file or dynamic measurement through mechanisms
+			described in a separate specification (e.g., <xref
+			target="DLEP"/>).  Any Link Tuple with L_status =
+			HEARD or L_status = SYMMETRIC MUST have a specified
+			value of L_DAT_rx_bitrate if it is to be used by this
+			routing metric.</t> 
+
+			<t>The incoming bitrate value should be stabilized by
+			a hysteresis filter to improve the stability of this
+			metric. See <xref target="packetloss_hysteresis"/> for
+			an example.</t> 
+
+			<t>This specification updates the L_in_metric field of
+			the Link Set of the Interface Information Base, as
+			defined in Section 8.1. of <xref
+			target="RFC7181"/>).</t> 
+			
+			<section title="Initial Values">
+				<t>When generating a new tuple in the Link
+				Set, as defined in item 3 of Section 12.5 of
+				<xref target="RFC6130"/>, the values of the
+				elements specified in <xref
+				target="infobase"/> are set as follows: 
+				<list style="symbols">
+					<t>L_DAT_received := 0, ..., 0. The queue always has DAT_MEMORY_LENGTH elements.</t>
+					<t>L_DAT_total := 0, ..., 0. The queue always has DAT_MEMORY_LENGTH elements.</t>
+					<t>L_DAT_packet_time := EXPIRED (no
+					earlier <xref target="RFC5444"/> packet received).</t>
+					<t>L_DAT_hello_interval := UNDEFINED
+					(no earlier NHDP HELLO received).</t>
+					<t>L_DAT_lost_packet_intervals := 0 (no HELLO interval without packets).</t>
+					<t>L_DAT_last_pkt_seqno := UNDEFINED
+					(no earlier <xref target="RFC5444"/> packet with sequence number received).</t>
+				</list></t>
+			</section>
+		</section>
+		<section title="Packets and Messages">
+			<t>This section describes the necessary changes of
+			<xref target="RFC7181"/> implementations
+			with DAT metric for the processing and modification of
+			the incoming and outgoing <xref target="RFC5444"/> data.</t>
+			<section title="Definitions">
+				<t>For the purpose of this section, note the following definitions:
+				<list style="symbols">
+					<t>"pkt_seqno" is defined as the <xref
+					target="RFC5444"/> packet sequence
+					number of the
+					received packet.</t>
+					<t>"interval_time" is the time encoded
+					in the INTERVAL_TIME message TLV of a
+					received HELLO message <xref target="RFC6130"/>.</t>
+					<t>"validity_time" is the time encoded
+					in the VALIDITY_TIME message TLV of a
+					received HELLO message <xref target="RFC6130"/>.</t>
+				</list></t>
+			</section>
+
+			<section title="Requirements for Using DAT Metric in OLSRv2 Implementations">
+				<t>An implementation of OLSRv2 using the
+				metric specified by this document SHOULD
+				include the following parts into its <xref
+				target="RFC5444"/> output:
+				<list style="symbols">
+					<t>An INTERVAL_TIME message TLV in each HELLO message, as defined in <xref target="RFC6130"/>, Section 4.3.2.</t>
+					<t>An interface-specific packet
+					sequence number as defined in <xref
+					target="RFC5444"/>, Section 5.1 that is
+					incremented by 1 for each outgoing 
+					<xref target="RFC5444"/> packet on the interface.</t>
+				</list></t>
+				<t>An implementation of OLSRv2 using the
+				metric specified by this document that inserts
+				packet sequence numbers in some, but not all,
+				outgoing <xref target="RFC5444"/> packets will make this metric ignore all packets without the sequence number. Putting the INTERVAL_TIME TLV into some, but not all, HELLO messages will make the timeout-based loss detection slower. This will only matter in the absence of packet sequence numbers.</t>
+			</section>
+			<section anchor="link_loss_gathering" title="Link-Loss Data Gathering">
+				<t>For each incoming <xref target="RFC5444"/> packet,
+				additional processing SHOULD be carried out
+				after the packet messages have been processed
+				as specified in <xref target="RFC6130"/> and
+				<xref target="RFC7181"/> as described in this
+				section.</t>
+
+				<t><xref target="RFC5444"/> packets without packet sequence numbers MUST NOT be processed in the way described in this section.</t>
+				<t>The router updates the Link Set Tuple
+				corresponding to the originator of the packet: 
+				<list style="numbers">
+
+					<t>If L_DAT_last_pkt_seqno = UNDEFINED, then:
+					<list style="symbols">
+						<t>L_DAT_received[TAIL] := 1.</t>
+						<t>L_DAT_total[TAIL] := 1.</t>
+					</list></t>
+					<t>Otherwise:
+					<list style="symbols">
+						<t>L_DAT_received[TAIL] := L_DAT_received[TAIL] + 1.</t>
+						<t>diff := diff_seqno(pkt_seqno, L_DAT_last_pkt_seqno).</t>
+						<t>If diff &gt; DAT_SEQNO_RESTART_DETECTION, then:
+						<list style="none">
+							<t>diff := 1.</t>
+						</list></t>
+						<t>L_DAT_total[TAIL] := L_DAT_total[TAIL] + diff.</t>
+					</list></t>
+					<t>L_DAT_last_pkt_seqno := pkt_seqno.</t>
+					<t>If L_DAT_hello_interval != UNDEFINED, then:
+					<list style="symbols">
+						<t>L_DAT_packet_time := current time + (L_DAT_hello_interval * DAT_HELLO_TIMEOUT_FACTOR).</t>
+					</list></t>
+					<t>L_DAT_lost_packet_intervals := 0.</t>
+				</list></t>
+			</section>
+			<section title="HELLO Message Processing">
+				<t>For each incoming HELLO Message, after it
+				has been processed as defined in Section 12 of
+				<xref target="RFC6130"/>, the Link Set Tuple corresponding to the incoming HELLO message MUST be updated.
+				<list style="numbers">
+					<t>If the HELLO message contains an INTERVAL_TIME message TLV, then:
+					<list style="none">
+						<t>L_DAT_hello_interval := interval_time.</t>
+					</list></t>
+					<t>Otherwise:
+					<list style="none">
+						<t>L_DAT_hello_interval := validity_time.</t>
+					</list></t>
+					<t>If L_DAT_last_pkt_seqno = UNDEFINED, then:
+					<list style="symbols">
+						<t>L_DAT_received[TAIL] := L_DAT_received[TAIL] + 1.</t>
+						<t>L_DAT_total[TAIL] := L_DAT_total[TAIL] + 1.</t>
+						<t>L_DAT_packet_time := current time + (L_DAT_hello_interval * DAT_HELLO_TIMEOUT_FACTOR).</t>
+					</list></t>
+				</list></t>
+			</section>
+		</section>
+		<section title="Timer Event Handling">
+			<t>In addition to changes in the <xref
+			target="RFC5444"/> processing/generation code, the DAT
+			metric also uses two timer events.</t> 
+			<section title="Packet Timeout Processing">
+				<t>When L_DAT_packet_time has timed out, the following step MUST be done:
+				<list style="numbers">
+					<t>If L_DAT_last_pkt_seqno = UNDEFINED, then:
+					<list style="none">
+						<t>L_DAT_total[TAIL] := L_DAT_total[TAIL] + 1.</t>
+					</list></t>
+					<t>Otherwise:
+					<list style="none">
+						<t>L_DAT_lost_packet_intervals := L_DAT_lost_packet_intervals + 1.</t>
+					</list></t>
+					<t>L_DAT_packet_time := L_DAT_packet_time + L_DAT_hello_interval.</t>
+				</list></t>
+			</section>
+			<section anchor="metric_recalc" title="Metric Update">
+				<t>Once every DAT_REFRESH_INTERVAL, all L_in_metric values in all Link Set entries MUST be recalculated:
+				<list style="numbers">
+					<t>sum_received := sum(L_DAT_received).</t>
+					<t>sum_total := sum(L_DAT_total).</t>
+					<t>If L_DAT_hello_interval != UNDEFINED and L_DAT_lost_packet_intervals &gt; 0, then:
+					<list style="symbols">
+						<t>lost_time_proportion := L_DAT_hello_interval * L_DAT_lost_packet_intervals / DAT_MEMORY_LENGTH.</t>
+						<t>sum_received := sum_received * MAX ( 0, 1 - lost_time_proportion);</t>
+					</list></t>
+					<t>If sum_received &lt; 1, then:
+					<list style="none">
+						<t>L_in_metric := MAXIMUM_METRIC, as defined in <xref target="RFC7181"/>, Section 5.6.1.</t>
+					</list></t>
+					<t>Otherwise:
+					<list style="symbols">
+						<t>loss := MIN(sum_total / sum_received, DAT_MAXIMUM_LOSS).</t>
+						<t>bitrate := MAX(L_DAT_rx_bitrate, DAT_MINIMUM_BITRATE).</t>
+						<t>L_in_metric := (2^24 / DAT_MAXIMUM_LOSS) * loss / (bitrate / DAT_MINIMUM_BITRATE).</t>
+					</list></t>
+					<t>remove(L_DAT_total)</t>
+					<t>add(L_DAT_total, 0)</t>
+					<t>remove(L_DAT_received)</t>
+					<t>add(L_DAT_received, 0)</t>
+				</list></t>
+				<t>The calculated L_in_metric value should be stabilized by a hysteresis function. See <xref target="packetloss_hysteresis"/> for an example.</t>
+			</section>
+		</section>
+		<section anchor="security" title="Security Considerations">
+			<t>Artificial manipulation of metrics values can drastically alter network performance. In particular, advertising a higher L_in_metric value may decrease the amount of incoming traffic, while advertising lower L_in_metric may increase the amount of incoming traffic. </t>
+			<t>For example, by artificially attracting mesh routes and then
+dropping the incoming traffic, an attacker may achieve a Denial of Service (DoS) against other mesh nodes. Similarly, an attacker may achieve Man-in-the-Middle (MITM) attacks or traffic analysis by concentrating traffic being routed over a node the attacker controls (and end-to-end encryption is not used or somehow broken). Protection mechanisms against such MITM or DoS attacks are nevertheless out of scope of this document.</t>
+			<t>Security threats also include potential attacks on
+			the integrity of the control traffic passively
+			monitored by DAT to measure link quality. For example,
+			an attacker might inject packets pretending to be
+			somebody else and using incorrect sequence
+			numbers. This attack can be prevented by the true
+			originator of the <xref target="RFC5444"/> packets 
+			by adding an ICV Packet TLV and TIMESTAMP Packet
+			TLV <xref target="RFC7182"/> to each packet. This allows the receiver to drop
+			all incoming packets that have a forged packet source,
+			both packets generated by the attacker, or replayed
+			packets. However, the security mechanism described in
+			<xref target="RFC7183"/> does not protect the sequence
+			number used by the DAT metric because it only signs
+			the <xref target="RFC5444"/> messages,
+			not the <xref target="RFC5444"/> packet header (which
+			contains the <xref target="RFC5444"/> packet sequence 
+			number).</t>
+		</section>
+
+	</middle>
+	<back>
+		<references title="Normative References">
+<?rfc include="reference.RFC.2119" ?>
+<?rfc include="reference.RFC.5444" ?>
+<?rfc include="reference.RFC.5497" ?>
+<?rfc include="reference.RFC.6130" ?>
+<?rfc include="reference.RFC.7181" ?>
+
+		</references>
+
+
+		<references title="Informative References">
+<?rfc include="reference.RFC.3626" ?>
+<?rfc include="reference.RFC.7182" ?>
+<?rfc include="reference.RFC.7183" ?>
+
+			<reference anchor="COMNET15" target="http://dx.doi.org/10.1016/j.comnet.2015.09.022">
+				<front>
+					<title>OLSRv2 for Community Networks: Using Directional Airtime Metric with external radios</title>
+					<author initials="C.B." surname="Barz" fullname="C. Barz">
+						<organization abbrev="FKIE">Fraunhofer FKIE</organization>
+					</author>
+					<author initials="C.F." surname="Fuchs" fullname="C. Fuchs">
+						<organization abbrev="FKIE">Fraunhofer FKIE</organization>
+					</author>
+					<author initials="J.K." surname="Kirchhoff" fullname="C. Kirchhoff">
+						<organization abbrev="FKIE">Fraunhofer FKIE</organization>
+					</author>
+					<author initials="J.N." surname="Niewiejska" fullname="J. Niewiejska">
+						<organization abbrev="FKIE">Fraunhofer FKIE</organization>
+					</author>
+					<author initials="H.R." surname="Rogge" fullname="H. Rogge">
+						<organization abbrev="FKIE">Fraunhofer FKIE</organization>
+					</author>
+					<date month="September" year="2015"/>
+				</front>
+				<seriesInfo name="Elsevier Computer Networks" value="2015"/>
+			</reference>
+
+			<reference anchor="CONFINE" target="http://www.confine-project.eu">
+				<front>
+					<title>Community Networks Testbed for the Future Internet (CONFINE)</title>
+					<author/>
+					<date year=""/>
+				</front>
+			</reference>
+
+<reference anchor='DLEP'>
+<front>
+<title>Dynamic Link Exchange Protocol (DLEP)</title>
+
+<author initials='S' surname='Ratliff' fullname='Stan Ratliff'>
+    <organization />
+</author>
+
+<author initials='B' surname='Berry' fullname='Bo Berry'>
+    <organization />
+</author>
+
+<author initials='S' surname='Jury' fullname='Shawn Jury'>
+    <organization />
+</author>
+
+<author initials='D' surname='Satterwhite' fullname='Darryl Satterwhite'>
+    <organization />
+</author>
+
+<author initials='R' surname='Taylor' fullname='Rick Taylor'>
+    <organization />
+</author>
+
+<date month='April' day='7' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-manet-dlep-22' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-manet-dlep-21.txt' />
+</reference>
+
+<!-- draft-wunderlich-openmesh-manet-routing-00: I-D Exists. Expired -->
+
+<reference anchor='BATMAN'>
+<front>
+<title>Better Approach To Mobile Ad-hoc Networking (B.A.T.M.A.N.)</title>
+
+<author initials='A' surname='Neumann' fullname='Axel Neumann'>
+    <organization />
+</author>
+
+<author initials='C' surname='Aichele' fullname='Corinna Aichele'>
+    <organization />
+</author>
+
+<author initials='M' surname='Lindner' fullname='Marek Lindner'>
+    <organization />
+</author>
+
+<author initials='S' surname='Wunderlich' fullname='Simon Wunderlich'>
+    <organization />
+</author>
+
+<date month='April' day='7' year='2008' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-wunderlich-openmesh-manet-routing-00' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-wunderlich-openmesh-manet-routing-00.txt' />
+</reference>
+
+			<reference anchor="MOBICOM03">
+				<front>
+					<title>A High-Throughput Path Metric for Multi-Hop Wireless Routing</title>
+					<author initials="D." surname="De Couto" fullname="D. De Couto">
+						<organization abbrev=""/>
+					</author>
+					<author initials="D." surname="Aguayo" fullname="D. Aguayo">
+						<organization abbrev=""/>
+					</author>
+					<author initials="J." surname="Bicket" fullname="J. Bicket">
+						<organization abbrev=""/>
+					</author>
+					<author initials="R." surname="Morris" fullname="R. Morris">
+						<organization abbrev=""/>
+					</author>
+					<date year="2003"/>
+				</front>
+<seriesInfo name="Proceedings of the MOBICOM" value="Conference"/>
+			</reference>
+
+			<reference anchor="MOBICOM04">
+				<front>
+					<title>Routing in Multi-Radio, Multi-Hop Wireless Mesh Networks</title>
+					  
+					<author initials="R." surname="Draves" fullname="Richard Draves">
+						<organization abbrev=""/>
+					</author>
+					<author initials="J." surname="Padhye" fullname="Jitendra Padhye">
+						<organization abbrev=""/>
+					</author>
+					<author initials="B." surname="Zill" fullname="Brian Zill">
+						<organization abbrev=""/>
+					</author>
+					<date year="2004"/>
+				</front>
+<seriesInfo name="Proceedings of the MOBICOM" value="Conference"/>
+			</reference>
+
+			<reference anchor="OLSR.org" target="http://www.olsr.org/">
+				<front>
+					<title>OLSR.org Wiki</title>
+					<author/>
+					<date year=""/>
+				</front>
+			</reference>
+
+			<reference anchor="FREIFUNK" target="http://www.freifunk.net">
+				<front>
+					<title>Freifunk Wireless Community Networks</title>
+					<author/>
+					<date year=""/>
+				</front>
+			</reference>
+
+			<reference anchor="FUNKFEUER" target="http://www.funkfeuer.at">
+				<front>
+					<title>Austria Wireless Community Network</title>
+					<author/>
+					<date year=""/>
+				</front>
+			</reference>
+		</references>
+
+		<section anchor="future_work" title="Future Work">
+			<t>As the DAT metric proved to work reasonably well
+			for non- or slow-moving ad hoc networks <xref
+			target="COMNET15"/>, it should be considered a solid
+			first step on a way to better MANET metrics.  There
+			are multiple parts of the DAT metric that need to be
+			reviewed again in the context of real world
+			deployments and can be subject to later
+			improvements.</t> 
+			<t>The easiest part of the DAT metric to change and
+			test would be the timings parameters.  A 1-minute
+			interval for packet-loss statistics might be a good
+			compromise for some MANETs, but could easily be too
+			large or to small for others.  More data is needed to
+			verify or improve the current parameter selection.</t> 
+			<t>The DAT metric considers only the multicast <xref target="RFC5444"/>
+			packet loss for estimating the link, but it would
+			be good to integrate the unicast data loss into the
+			loss estimation.   This information could be provided
+			directly from the link layer. This could increase the
+			accuracy of the loss rate estimation in scenarios
+			where the assumptions regarding the ratio of multicast
+			vs. unicast loss do not hold.</t> 
+			<t>The packet-loss averaging algorithm could also be
+			improved.  While the DAT metric provides a stable
+			sliding time interval to average the incoming packet
+			loss and does not give the recent input too much
+			influence, first experiments suggest that the
+			algorithm tends to be less agile in detecting major
+			changes of link quality. This makes it less suited for
+			mobile networks.  A more agile algorithm is needed for
+			detecting major changes while filtering out random
+			fluctuations regarding frame loss.  However, the
+			current "queue of counters" algorithm suggested for
+			DAT outperforms the binary queue algorithm and the
+			exponential aging algorithms used for the ETX metric
+			in the OLSR [RFC3626] codebase of Olsr.org.</t> 
+		</section>
+		<section anchor="olsrorg_history" title="OLSR.org Metric History">
+			<t>The Funkfeuer <xref target="FUNKFEUER"/> and
+			Freifunk networks <xref target="FREIFUNK"/> are based
+			on OLSR <xref target="RFC3626"/> or
+			B.A.T.M.A.N.&nbsp;<xref target="BATMAN"/> wireless
+			community networks with hundreds of routers in
+			permanent operation. The Vienna Funkfeuer network in
+			Austria, for instance, consists of 400 routers
+			covering the whole city of Vienna and beyond, spanning
+			roughly 40 km in diameter. 
+It has been supplying its users with Internet access since 2003. 
+A particularity of the Vienna Funkfeuer
+			network is that it manages to provide Internet access
+			through a city-wide, large-scale Wi-Fi MANET, with
+			just a single Internet uplink.</t> 
+			<t>Operational experience of the OLSR project <xref
+			target="OLSR.org"/> with these networks has revealed
+			that the use of hop-count as a routing metric leads to
+			unsatisfactory network performance. Experiments with
+			the ETX metric <xref target="MOBICOM03"/> were
+			therefore undertaken in parallel in the Berlin
+			Freifunk network as well as in the Vienna Funkfeuer
+			network in 2004, and found satisfactory, i.e.,
+			sufficiently easy to implement and providing
+			sufficiently good performance. This metric has now
+			been in operational use in these networks for several
+			years. </t> 
+
+			<t>The ETX metric of a link is the estimated number of
+			transmissions required to successfully send a packet
+			(each packet equal to or smaller than MTU) over that
+			link, until a link-layer acknowledgement is
+			received. The ETX metric is additive, i.e., the ETX
+			metric of a path is the sum of the ETX metrics for
+			each link on this path.</t> 
+
+			<t>While the ETX metric delivers a reasonable
+			performance, it does not handle networks with
+			heterogeneous links that have different bitrates
+			well. When using the ETX metric, since every wireless
+			link is characterized only by its packet-loss ratio,
+			long-ranged links with low bitrate (with low loss
+			ratios) are preferred over short-ranged links with
+			high bitrate (with higher but reasonable loss
+			ratios). Such conditions, when they occur, can degrade
+			the performance of a network considerably, by not
+			taking advantage of higher capacity links.</t>
+ 
+			<t>Because of this, the OLSR.org project has
+			implemented the Directional Airtime metric for OLSRv2,
+			which has been inspired  by the Estimated Travel Time
+			(ETT) metric <xref target="MOBICOM04"/>. This metric
+			uses a unidirectional packet loss, but also takes the
+			bitrate into account to create a more accurate
+			description of the relative costs or capabilities of
+			OLSRv2 links.</t> 
+		</section>
+		<section anchor="linkspeed_stabilization" title="Link-Speed Stabilization">
+			<t>The DAT metric specifies how to generate a
+			reasonably stable packet-loss rate value based on
+			incoming packet reception/loss events, but the source
+			of the link speed used in this document is considered an external process.</t>
+			<t>In the presence of a layer-2 technology with
+			variable link speed, it is likely that the raw link
+			speed will be fluctuating too fast to be useful for
+			the DAT metric.</t> 
+
+			<t>The amount of stabilization necessary for the link
+			speed depends on the implementation of the MAC layer,
+			especially the rate-control algorithm.</t>
+
+			<t>Experiments with the Linux 802.11 Wi-Fi stack have
+			shown that a simple Median filter over a series of raw
+			link-speed measurements can smooth the calculated
+			value without introducing intermediate link-speed
+			values one would obtain by using averaging or an
+			exponential weighted moving average.</t>
+
+		</section>
+		<section anchor="packetloss_hysteresis" title="Packet-Loss Hysteresis">
+			<t>While the DAT metric uses a sliding window to
+			compute a reasonably stable frame loss, the
+			implementation might choose to integrate an additional
+			hysteresis to prevent undesirable oscillations between
+			two values (i.e., metric flapping).</t>
+
+			<t>In <xref target="metric_recalc"/>, DAT calculates a
+			fractional loss rate. The fraction of "loss :=
+			sum_total / sum_received" may result in minor
+			fluctuations in the advertised L_in_metric due to
+			minimal changes in sum_total or sum_received, which
+			can cause undesirable protocol churn.</t> 
+
+			<t>A hysteresis function applied to the fraction could
+			reduce the amount of changes in the loss rate and help
+			to further stabilize the metric output.</t>
+
+		</section>
+		<section anchor="example_metric_values" title="Example DAT Values">
+			<t>The DAT metric value can be expressed in terms of
+			link speed (bit/s) or used airtime (s). When using the
+			default protocol constants (see <xref
+			target="constants"/>), DAT encodes link speeds between
+			119 bit/s and 2 Gbit/s.</t>
+
+			<t><xref target="link_metric_example"/> contains a few examples for metric values and their meaning as a link speed:</t>
+			<texttable anchor="link_metric_example" title="DAT Link Cost Examples">
+				<ttcol align='center'>Metric</ttcol>
+				<ttcol align='center'>bit/s</ttcol>
+				<c>MINIMUM_METRIC (1)</c>
+				<c>2 Gbit/s</c>
+				<c>MAXIMUM_METRIC (16776960)</c>
+				<c>119 bit/s</c>
+				<c>2000</c>
+				<c>1 Mbit/s</c>
+			</texttable>
+			<t>A path metric value could also be expressed as a
+			link speed, but this would be less intuitive. An
+			easier way to transform a path metric value into a
+			textual representation is to divide it by the hop count
+			of the path and express the path cost as the average
+			link speed together with the hop count (see <xref target="path_metric_example"/>).</t>
+			<texttable anchor="path_metric_example" title="DAT Link Cost Examples">
+				<ttcol align='center'>Metric</ttcol>
+				<ttcol align='center'>hops</ttcol>
+				<ttcol align='center'>average bit/s</ttcol>
+				<c>4</c>
+				<c>2</c>
+				<c>1 Gbit/s</c>
+				<c>4000000</c>
+				<c>6</c>
+				<c>3 kbit/s</c>
+			</texttable>
+
+		</section>
+		<section anchor="acknowledgements" title="Acknowledgements" numbered="no">
+			<t>The authors would like to acknowledge the network
+			administrators from <xref target="FREIFUNK">Freifunk
+			Berlin</xref> and <xref target="FUNKFEUER">Funkfeuer
+			Vienna</xref> for endless hours of testing and
+			suggestions to improve the quality of the original ETX
+			metric for the OLSR.org routing daemon.</t> 
+
+			<t>This effort/activity is supported by the European
+			Community Framework Program 7 within the Future
+			Internet Research and Experimentation Initiative
+			(FIRE), Community Networks Testbed for the Future
+			Internet (<xref target="CONFINE"/>), contract
+			FP7-288535.</t> 
+
+			<t>The authors would like to gratefully acknowledge
+			the following people for intense technical
+			discussions, early reviews, and comments on the
+			specification and its components (listed
+			alphabetically): 
+
+			Teco Boot (Infinity Networks),
+			Juliusz Chroboczek (PPS, University of Paris 7),
+			Thomas Clausen,
+			Christopher Dearlove (BAE Systems Advanced Technology Centre),
+			Ulrich Herberg (Fujitsu Laboratories of America),
+			Markus Kittenberger (Funkfeuer Vienna), 
+			Joseph Macker (Naval Research Laboratory),
+                        Fabian Nack (Freie Universitaet Berlin), and
+			Stan Ratliff (Cisco Systems).
+			</t>
+		</section>
+
+	</back>
+</rfc>

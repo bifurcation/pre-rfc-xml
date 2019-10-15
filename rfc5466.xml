@@ -1,0 +1,625 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+	<!ENTITY rfc2119 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml'>
+	<!ENTITY rfc3501 PUBLIC '' 'http://xml.resource.org/public/rfc/bibxml/reference.RFC.3501.xml'>
+]>
+<rfc number="5466" category="std">
+	<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+	<?rfc toc="yes" ?>
+	<?rfc symrefs="yes" ?>
+	<?rfc sortrefs="yes"?>
+	<?rfc strict="yes" ?>
+	<?rfc rfcedstyle="yes"?>
+	<?rfc subcompact="no"?>
+
+	<front>
+		<title abbrev="IMAP Filters">IMAP4 Extension for Named
+		Searches (Filters)</title>
+
+		<author initials="A." surname="Melnikov" fullname="Alexey Melnikov">
+			<organization>Isode Ltd</organization>
+			<address>
+				<postal>
+					<street>5 Castle Business Village</street>
+					<street>36 Station Road</street>
+					<city>Hampton</city>
+					<region>Middlesex</region>
+					<code>TW12 2BX</code>
+					<country>UK</country>
+				</postal>
+				<email>Alexey.Melnikov@isode.com</email>
+			</address>
+		</author>
+		<author initials="C." surname="King" fullname="Curtis King">
+			<organization>Isode Ltd</organization>
+			<address>
+				<postal>
+					<street>5 Castle Business Village</street>
+					<street>36 Station Road</street>
+					<city>Hampton</city>
+					<region>Middlesex</region>
+					<code>TW12 2BX</code>
+					<country>UK</country>
+				</postal>
+				<email>Curtis.King@isode.com</email>
+			</address>
+		</author>
+		<date month="February" year="2009"/>
+		<abstract>
+			<t>
+				The document defines a way to persistently store named IMAP (RFC 3501)
+				searches on the server. Such named searches can be subsequently referenced
+				in a SEARCH or any other command that accepts a search criterion as a parameter.
+			</t>
+		</abstract>
+	</front>
+	<middle>
+
+		<section title="Introduction and Overview">
+			<t>
+			Persistent named searches described in this document allow clients
+			to save favorite searches on the server.
+			Such saved searches can save bandwidth for clients that need to
+			regularly repeat them.
+			</t>
+			
+			<t>
+			The FILTERS IMAP extension
+			adds a new FILTER search criterion for referencing persistent named
+			searches (a.k.a. "filters"), as well as reuses GETMETADATA/SETMETADATA
+			commands <xref target="METADATA"/> for listing/creating/updating/deleting
+			such filters.
+			</t>
+			
+			<t>
+			A filter can be private (only accessible to the logged-in user) or public
+			(accessible to all logged-in users). Both a private and a public filter
+			with the same name can exist at the same time. If both filter types with the same
+			name exist, the FILTER SEARCH criterion (see <xref target="filter-search-criterion"/>)
+			MUST use the value of the private filter; otherwise, it MUST use the value
+			of the filter that exists.
+			</t>
+			
+			<t>Let us call a pair of filter name and filter type a "typed filter".
+			Each typed filter can have a value (which is a valid IMAP SEARCH criteria
+			conforming to ABNF for the "search-criteria" non-terminal)
+			and an optional human-readable description. The SETMETADATA command creates
+			or updates the value and/or the description of a typed filter.
+			</t>
+			
+			<t>
+			Values of all search keys stored in a filter MUST be encoded in UTF-8.
+			</t>
+			
+		</section>
+
+		<section title="Conventions Used in This Document">
+			<t>
+			In examples, "C:" and "S:" indicate lines sent by
+			the client and server, respectively. If a single "C:" or "S:"
+			label applies to multiple lines, then the line breaks between
+			those lines are for editorial clarity only and are not part
+			of the actual protocol exchange.
+			</t>
+			
+			<t>
+			The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+            "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY",
+            and "OPTIONAL" in this document are to be interpreted as
+            described in <xref target="RFC2119"/>.
+			</t>
+
+			<t>
+			Basic familiarity with the METADATA-SERVER extension <xref target="METADATA"/>
+			and terms defined therein is required to understand this document.
+			</t>
+
+		</section>
+
+
+		<section title="IMAP Protocol Changes">
+			
+			<t>
+			The IMAP extension for persistent named searches is present in any
+			IMAP4 implementation that advertises "FILTERS"
+			 as one of the supported capabilities in
+			the CAPABILITY response or response code.
+			</t>
+
+			<section title="FILTER SEARCH Criterion" anchor="filter-search-criterion">
+
+				<t>
+					The FILTER criterion for the SEARCH command allows a client
+					to reference by name a filter stored on the server.
+					Such filter was created by setting the server
+					annotation named "/private/filters/values/&lt;filter_name&gt;" 
+					(or the server annotation "/shared/filters/values/&lt;filter_name&gt;", if
+					"/private/filters/values/&lt;filter_name&gt;" doesn't exist)
+					using the SETMETADATA command
+					as described in <xref target="filter-entries"/>.
+				</t>
+
+				<t>Syntax:  FILTER &lt;filter_name&gt;</t>
+
+				<t>
+					When the named filter exists, its search criterion (i.e., the associated
+					entry value) is inserted verbatim instead of the FILTER search-key.
+					For example, the following SEARCH command<vspace blankLines="1"/>
+					C: a SEARCH UID 300:900 FILTER on-the-road SINCE "3-Dec-2002"<vspace blankLines="1"/>
+					would be equivalent to the following<vspace blankLines="1"/>
+					C: a SEARCH UID 300:900 OR SMALLER 5000 FROM "boss@example.com"<vspace/>
+					SINCE "3-Dec-2002"<vspace blankLines="1"/>
+					assuming the filter "on-the-road" exists and contains the value
+					'OR SMALLER 5000 FROM "boss@example.com"'.
+				</t>
+
+				<t>
+					A reference to a nonexistent or unaccessible (e.g., due to access
+					control restrictions) filter MUST cause failure of the SEARCH
+					command with the tagged NO response that includes the UNDEFINED-FILTER
+					response code followed by the name of the nonexistent/unaccessible filter.
+				</t>
+
+				<t>
+					Note the server SHOULD verify that each search criterion referenced by
+					the FILTER search key is a full and correct search criterion. For example,
+					the server should fail the SEARCH command if its SEARCH criterion references
+					a filter containing "OR SMALLER" search criterion, because this value is lacking
+					one parameter and thus is not a fully specified search criterion.
+				</t>
+
+				<t>
+					Note that a named filter itself can reference another filter
+					using the FILTER search-key. Implementations MUST be able to
+					perform at least 3 substitution passes on the SEARCH command criterion.
+					If an implementation allows for more passes, it MUST implement
+					some kind of loop detection.
+					If an implementation detects a loop or still sees a FILTER search-key
+					after performing at least 3 substitutions, it MUST behave as if
+					the specified filter doesn't exist (as described above).
+				</t>
+
+				<t>
+					Note that use of the FILTER search key implies the CHARSET "UTF-8"
+					parameter to the SEARCH/UID SEARCH command. If the SEARCH/UID SEARCH
+					command includes the explicit CHARSET parameter with the value other
+					than "UTF-8" or "US-ASCII", then such command MUST result in the tagged
+					BAD response from the server. Such tagged response MUST contain the
+					BADCHARSET response code (see <xref target="RFC3501"/>).
+				</t>
+
+			</section>
+
+			<section title="Managing Filters Using SETMETADATA/GETMETADATA Commands" anchor="filter-entries">
+			
+				<t>
+				Any server compliant with this
+				document MUST either implement the
+				METADATA-SERVER (or METADATA)
+				<xref target="METADATA"/> extension,
+				or implement SETMETADATA/GETMETADATA
+				commands described in
+				<xref target="METADATA"/> so that they
+				work for the case of empty mailbox
+				name (i.e., for managing server
+				annotations) and for the entries
+				specified in this section.
+				</t>
+				
+				<t>
+					This document reserves two hierarchies of per-server entries under the
+					"/private/filters/values" and "/shared/filters/values" roots (see <xref target="METADATA"/>)
+					for storing filter values.
+
+					The value of a "/private/filters/values/&lt;filter_name&gt;" or
+					a "/shared/filters/values/&lt;filter_name&gt;" server
+					annotation is an IMAP SEARCH criteria, conforming to ABNF for
+					the "search-criteria" non-terminal.
+					A name of a filter is governed by the ABNF for the "filter-name"
+					non-terminal.
+				</t>
+
+				<t>
+					Note that values of all search keys stored in these entries
+					MUST be encoded in UTF-8.
+				</t>
+
+				<t>
+					A new filter named "&lt;filter_name&gt;" can be created
+					(or an existing filter can be modified) by storing a non-NIL
+					value in the "/private/filters/values/&lt;filter_name&gt;" server entry (or in the
+					"/shared/filters/values/&lt;filter_name&gt;")
+					using the SETMETADATA <xref target="METADATA"></xref> command.
+					The server SHOULD verify that each search criterion stored in
+					such a server entry is a full and correct search criterion.
+				</t>
+					
+				<t>
+					A filter can be deleted by storing the NIL value
+					in both the "/private/filters/values/&lt;filter_name&gt;" and the
+					"/shared/filters/values/&lt;filter_name&gt;" entries.
+				</t>
+					
+				<t>
+					A filter can be renamed by first creating a filter with the new name
+					(that has the same value as
+					the old one) and then deleting
+					the filter with the old one.
+				</t>
+
+				<t>
+					If both "/private/filters/values/&lt;filter_name&gt;" and
+					"/shared/filters/values/&lt;filter_name&gt;" server annotations exist,
+					then the value of the "/private/filters/values/&lt;filter_name&gt;"
+					is used when evaluating the corresponding
+					FILTER SEARCH key (see <xref target="filter-search-criterion"/>).
+					Otherwise the non-NIL (existent) value is used.
+				</t>
+
+				<t>
+				If the server is unable to create a new typed filter because the maximum
+				number of allowed filters has already been reached, the server
+				MUST return a tagged NO response with a "[METADATA TOOMANY]" response
+				code, as defined in <xref target="METADATA"/>.
+				</t>
+				
+				<figure><artwork>
+	C: a007 SETMETADATA "" ("/private/filters/values/on-the-road"
+	    "OR SMALLER 5000 FROM \"boss@example.com\"")
+	S: a007 OK SETMETADATA complete
+				</artwork>
+				</figure>
+
+				<t>
+				Client implementation note: As multiple clients might read and write
+				filter values, it is possible that one client will use
+				a SEARCH key that might not be recognized by another client
+				that tries to present a user interface for editing a filter value.
+				In order to help other clients to (partially) parse filter
+				values for editing purposes, a client storing a filter
+				value SHOULD use () around any SEARCH key not defined
+				in <xref target="RFC3501"/>. For example, if there is
+				an IMAP extension that defines a new x-dsfa SEARCH key
+				that takes 2 parameters, then the following SEARCH
+				criterion 'from "@example.com>" x-dsfa from 5' should be
+				stored as 'from "@example.com>" (x-dsfa from 5)'.
+				</t>
+				
+				<t>
+					Note that filter names are restricted to a subset of US-ASCII,
+					as described in <xref target="syntax"/>. So they might not
+					always be meaningful to users and thus not necessarily suitable
+					for display purposes.
+					In order to help with storing human-readable descriptions
+					of filters, this document also
+					reserves two hierarchies of server entries
+					under the "/private/filters/descriptions" and "/shared/filters/descriptions"
+					roots. The value of a "/private/filters/descriptions/&lt;filter_name&gt;" or
+					a "/shared/filters/descriptions/&lt;filter_name&gt;" server
+					annotation is a human-readable description for
+					the &lt;filter_name&gt; filter, encoded in UTF-8 <xref target="UTF-8"/>.
+					If the "/private/filters/descriptions/&lt;filter_name&gt;" server annotation
+					exists, its value is used by the client as the filter description. Otherwise,
+					the value of the "/shared/filters/descriptions/&lt;filter_name&gt;" server
+					annotation is used as the filter description.
+					In the absence of both the "/private/filters/descriptions/&lt;filter_name&gt;"
+					and the "/shared/filters/descriptions/&lt;filter_name&gt;" entries,
+					the client MAY display the name of the filter as its description.
+				</t>
+
+				<t>
+					The description string SHOULD be annotated with one or more language tags
+					<xref target="RFC4646"/> as specified in Chapter 16.9 of <xref target="Unicode"/>.
+					In the absence of any language tag, the "i-default" <xref target="RFC2277"/> language
+					SHOULD be assumed.
+					Description in multiple languages MAY be present in a single description
+					string. This is done by concatenating descriptions in multiple languages
+					into a single string, each description prefixed with its language tag, for example
+					"&lt;ru&gt;&lt;...description in Russian...&gt;&lt;fr-ca&gt;&lt;...description in French...&gt;".
+					Note that here &lt;ru&gt; is a language tag consisting of 3 Unicode characters:
+					&lt;U+E0001&gt;, &lt;U+E0072&gt;, &lt;U+E0075&gt;; and &lt;fr-ca&gt; is a language tag
+					consisting of 6 Unicode characters:
+					&lt;U+E0001&gt;,
+					&lt;U+E0066&gt;,
+					&lt;U+E0072&gt;,
+					&lt;U+E002D&gt;,
+					&lt;U+E0063&gt;,
+					&lt;U+E0061&gt;.
+				</t>
+
+			</section>
+		</section>
+		
+		<section title="Formal Syntax" anchor="syntax">
+			<t>
+			The following syntax specification uses the Augmented Backus-Naur 
+			Form (ABNF) notation as specified in <xref target="ABNF"/>.
+			</t>
+
+			<t>
+			Non-terminals referenced but not defined below are as defined by 
+			<xref target="RFC3501"/> or <xref target="IMAPABNF"/>.
+			</t>
+			<t>
+			Except as noted otherwise, all alphabetic characters are case-insensitive.  
+			The use of upper or lower case characters to define token strings is for 
+			editorial clarity only.  Implementations MUST accept these strings in a 
+			case-insensitive fashion.
+			</t>
+
+			<figure>
+			  <artwork type="ABNF"><![CDATA[
+   capability            =/ "FILTERS"
+
+   search-criteria       =  search-key *(SP search-key)
+
+   search-key            =/  "FILTER" SP filter-name
+                         ;; New SEARCH criterion for referencing filters
+
+   filter-name           =  1*<any ATOM-CHAR except "/">
+                         ;; Note that filter-name disallows UTF-8 or
+                         ;; the following characters: "(", ")", "{",
+                         ;; " ", "%", "*", "]".  See definition of
+                         ;; ATOM-CHAR [RFC3501].
+
+   resp-text-code        =/  "UNDEFINED-FILTER" SP filter-name
+]]></artwork>
+			</figure>
+
+		</section>
+		<section title="Security Considerations">
+			<t>
+			General issues relevant to <xref target="RFC3501"/> (in particular
+			to the SEARCH command) and METADATA-SERVER extension <xref target="METADATA"/> are also relevant
+			to this document.
+			</t>
+
+			<t>Note that excessive use of filters can potentially simplify denial-of-service attacks,
+			especially if combined with poor implementations and lack of loop detection
+			(i.e., detection of filters referencing each other to create a loop).
+			Servers that allow for anonymous access SHOULD NOT allow anonymous users
+			to create/edit/delete filters.</t>
+			
+			<t>Also note that stored filters can potentially disclose personal information
+			about users. When confidentiality of such information is important,
+			clients MUST use TLS and/or SASL security layer (or similar) as recommended
+			in <xref target="RFC3501"/>.
+			Also, clients should use private filters instead of public,
+			unless they desire to share such information with other users.
+			</t>
+		
+			<t>
+			As always, it is important to thoroughly test clients and servers when
+			implementing this extension.
+			</t>
+		</section>
+		
+		<section title="IANA Considerations">
+		    <t>
+		    IMAP4 capabilities are registered by publishing a
+		    Standards Track or IESG-approved Experimental RFC.
+		    The IMAP4 capabilities registry is available from
+		    http://www.iana.org.
+</t>
+
+		    <t>
+			This document defines the FILTERS IMAP capability.  IANA has added it to the registry.
+		    </t>
+
+			<t>
+			IANA has added the following 4 entries to the <xref target="METADATA"/> registry:
+			</t>
+
+	<?rfc subcompact="yes"?>
+			<t>
+				<list style="hanging">
+					<t hangText="To:">iana@iana.org</t>
+
+					<t hangText="Subject:">IMAP METADATA Entry Registration</t>
+
+					<t hangText="Type:">Server</t>
+
+					<t hangText="Name:">/private/filters/values/&lt;filter_name&gt;</t>
+
+					<t
+					hangText="Description:">Contains
+					an IMAP SEARCH
+					criteria. Defined in RFC &rfc.number;.</t>
+
+					<t hangText="Content-type:">text/plain; charset=utf-8</t>
+
+					<t hangText="Contact person:">Alexey Melnikov</t>
+
+					<t hangText="Email:">alexey.melnikov@isode.com</t>
+				</list>
+			</t>
+
+			<t>
+<vspace blankLines="1"/>
+				<list style="hanging">
+					<t hangText="To:">iana@iana.org</t>
+
+					<t hangText="Subject:">IMAP METADATA Entry Registration</t>
+
+					<t hangText="Type:">Server</t>
+
+					<t hangText="Name:">/shared/filters/values/&lt;filter_name&gt;</t>
+
+					<t hangText="Description:">Contains an IMAP SEARCH criterion. Defined in RFC &rfc.number;.</t>
+
+					<t hangText="Content-type:">text/plain; charset=utf-8</t>
+
+					<t hangText="Contact person:">Alexey Melnikov</t>
+
+					<t hangText="Email:">alexey.melnikov@isode.com</t>
+				</list>
+			</t>
+			
+
+			<t>
+<vspace blankLines="1"/>
+				<list style="hanging">
+					<t hangText="To:">iana@iana.org</t>
+
+					<t hangText="Subject:">IMAP METADATA Entry Registration</t>
+
+					<t hangText="Type:">Server</t>
+
+					<t hangText="Name:">/private/filters/descriptions/&lt;filter_name&gt;</t>
+
+					<t hangText="Description:">Contains a user-specific human-readable description
+					of a named SEARCH criterion stored in the /private/filters/values/&lt;filter_name&gt;
+					or /shared/filters/values/&lt;filter_name&gt;
+					annotation. The value is in UTF-8. Defined in RFC &rfc.number;.</t>
+
+					<t hangText="Content-type:">text/plain; charset=utf-8</t>
+
+					<t hangText="Contact person:">Alexey Melnikov</t>
+
+					<t hangText="Email:">alexey.melnikov@isode.com</t>
+				</list>
+			</t>
+
+			<t>
+<vspace blankLines="1"/>
+				<list style="hanging">
+					<t hangText="To:">iana@iana.org</t>
+
+					<t hangText="Subject:">IMAP METADATA Entry Registration</t>
+
+					<t hangText="Type:">Server</t>
+
+					<t hangText="Name:">/shared/filters/descriptions/&lt;filter_name&gt;</t>
+
+					<t hangText="Description:">Contains a global (shared among all users)
+					human-readable description of a named SEARCH criterion stored in
+					the /private/filters/values/&lt;filter_name&gt; or /shared/filters/values/&lt;filter_name&gt;
+					annotation. The value is in UTF-8. Defined in RFC &rfc.number;.</t>
+
+					<t hangText="Content-type:">text/plain; charset=utf-8</t>
+
+					<t hangText="Contact person:">Alexey Melnikov</t>
+
+					<t hangText="Email:">alexey.melnikov@isode.com</t>
+				</list>
+			</t>
+
+	<?rfc subcompact="no"?>
+		</section>
+
+		<section title="Acknowledgments">
+			<t>
+			Thanks to David Cridland, Arnt Gulbrandsen,
+			Chris Newman, and Timo Sirainen for comments and suggestions on this document.
+			Special thank you to Brian E. Carpenter for the GenArt review.
+			</t>
+		</section>
+			
+	</middle>
+	<back>
+		<references title="Normative References">
+			&rfc2119;
+			&rfc3501;
+			<reference anchor="ABNF">
+				<front>
+					<title>Augmented BNF for Syntax Specifications: ABNF</title>
+					<author initials="D" surname="Crocker" fullname="Dave Crocker" role="editor">
+						<organization />
+					</author>
+					<author initials="P" surname="Overell" fullname="Paul Overell" role="editor">
+						<organization />
+					</author>
+					<date year="2008" month="January"/>
+				</front>
+
+				<seriesInfo name="STD" value="68" /> 
+				<seriesInfo name="RFC" value="5234" /> 
+
+				<format type="TXT" target="http://www.rfc-editor.org/rfc/rfc5234.txt" /> 
+			</reference>
+			<reference anchor="IMAPABNF">
+				<front>
+					<title>Collected Extensions to IMAP4 ABNF</title>
+					<author initials="A" surname="Melnikov">
+						<organization>Isode Ltd.</organization>
+					</author>
+					<author initials="C" surname="Daboo">
+						<organization/>
+					</author>
+					<date year="2006" month="April"/>
+				</front>
+				<seriesInfo name="RFC" value="4466" />
+				<format type="TXT" target="http://www.rfc-editor.org/rfc/rfc4466.txt" />
+			</reference>
+
+			<reference anchor="UTF-8">
+				<front>
+					<title>UTF-8, a transformation format of ISO 10646</title>
+					<author initials="F" surname="Yergeau">
+						<organization>Alis Technologies</organization>
+					</author>
+					<date year="2003" month="November"/>
+				</front>
+
+				<seriesInfo name="STD" value="63" /> 
+				<seriesInfo name="RFC" value="3629" />
+				<format type="TXT" target="http://www.rfc-editor.org/rfc/rfc3629.txt" />
+			</reference>
+			
+            <reference anchor='RFC2277'>
+				<front>
+					<title>IETF Policy on Character Sets and Languages</title>
+						
+					<author initials='H.' surname='Alvestrand' fullname='H. Alvestrand'><organization /></author>
+						
+					<date year='1998' month='January' />
+				</front>
+
+				<seriesInfo name="BCP" value="18" /> 
+				<seriesInfo name='RFC' value='2277' />
+				<format type='TXT' target='http://www.rfc-editor.org/rfc/rfc2277.txt' />
+            </reference>
+			
+            <reference anchor='RFC4646'>
+				<front>
+					<title>Tags for Identifying Languages</title>
+
+					<author initials='A.' surname='Phillips' fullname='A. Phillips'><organization /></author>
+					<author initials='M.' surname='Davis' fullname='M. Davis'><organization /></author>
+						
+					<date year='2006' month='September' />
+				</front>
+
+				<seriesInfo name="BCP" value="47" /> 
+				<seriesInfo name='RFC' value='4646' />
+				<format type='TXT' target='http://www.rfc-editor.org/rfc/rfc4646.txt' />
+            </reference>
+			
+		    <reference anchor="Unicode" target="http://www.unicode.org/versions/Unicode5.0.0/">
+				<front>
+					<title>The Unicode Standard 5.0</title>
+					<author fullname='The Unicode Consortium'>
+						<organization/>
+					</author>
+					<date year="2007"/>
+				</front>
+				<seriesInfo name="Unicode" value="5.0"/>
+		    </reference>
+			
+<!-- daboo-imap-annotatemore became RFC 5464 -->
+			<reference anchor="METADATA">
+				<front>
+					<title>The IMAP METADATA Extension</title>
+					<author initials="C" surname="Daboo">
+						<organization/>
+					</author>
+					<date year="2009" month="February"/>
+				</front>
+				<seriesInfo name="RFC" value="5464"/>
+
+			</reference>
+		</references>
+	</back>
+</rfc>

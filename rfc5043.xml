@@ -1,0 +1,1099 @@
+<?xml version="1.0" encoding="US-ASCII" ?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc rfcedstyle="yes"?>
+<?rfc subcompact="no"?>
+<?rfc toc="yes"?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes" ?>
+
+<rfc number="5043" category="std">
+<front>
+<title abbrev="SCTP DDP Adaptation">
+Stream Control Transmission Protocol (SCTP)
+Direct&nbsp;Data&nbsp;Placement&nbsp;(DDP)&nbsp;Adaptation
+</title>
+
+<!-- [rfced] DDP is expanded as Direct Data Placement Protocol in the
+ Definitions section and in other documents in this set. 
+ Do you want to add the word "Protocol" here and in the abstract? -->
+
+<!-- ************** CAITLIN BESTLER ***************-->
+<author initials="C. B." surname="Bestler"
+	fullname="Caitlin Bestler" role="editor">
+<organization>Neterion</organization>
+<address>
+      <postal>
+          <street>20230 Stevens Creek Blvd.</street>
+          <street>Suite C</street>
+          <city>Cupertino</city> <region>CA</region>
+          <code>95014</code>
+          <country>USA</country>
+      </postal>
+      <phone>408-366-4639</phone>
+      <email>caitlin.bestler@neterion.com</email>
+</address>
+</author>
+<!-- ************** RANDALL STEWART ***************-->
+<author initials="R. R." surname="Stewart"
+	fullname="Randall R. Stewart" role="editor">
+<organization>Cisco Systems, Inc.</organization>
+<address>
+      <postal>
+          <street>Forest Drive</street>
+          <street></street>
+          <city>Columbia</city> <region>SC</region>
+          <code>29036</code>
+          <country>USA</country>
+      </postal>
+      <phone>+1-815-342-5222</phone>
+      <email>rrs@cisco.com</email>
+</address>
+</author>
+
+<date month="October" year="2007" />
+<area>Transport</area>
+<workgroup>Remote Direct Data Placement Working Group</workgroup>
+
+<!-- [rfced] Please insert any keywords (beyond those that appear in
+the title) for use on http://www.rfc-editor.org/rfcsearch.html. -->
+
+<keyword>example</keyword>
+
+<abstract>
+<t>
+This document specifies an adaptation layer to provide
+a Lower Layer Protocol (LLP) service for Direct Data
+Placement (DDP) using the Stream Control Transmission
+Protocol (SCTP).
+</t>
+
+<!-- [rfced] note that "Adaptation Layer" appeared both cap'd and
+  lowercased in the original. Is consistently lowercased in rddp-mpa 
+  and rddp-applicability. Was made consistently lowercased in this
+  document except in "Adaptation Layer Indication codepoint".-->
+
+</abstract>
+</front>
+
+<middle>
+
+<section title="Introduction">
+<t>
+This document describes a method to adapt Direct Data
+Placement <xref target="RFC5041"></xref>
+to Stream Control Transmission Protocol (SCTP)
+<xref target="RFC2960"></xref>.
+</t>
+<t>
+Some implementations may include this adaptation layer
+within their SCTP implementations to obtain maximum
+performance, but the behavior of SCTP will be unaffected.
+An SCTP layer used solely by this adaptation layer is 
+able to take certain optimizations based on the limited
+subset of SCTP capabilities used. In order to allow 
+optimization for these implementations, we specify the
+use of the new adaptation layer indication as defined in
+<xref target="RFC5061"></xref>
+</t>
+
+<section title="Conventions">
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+"SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+"OPTIONAL" in this document are to be
+interpreted as described in
+<xref target="RFC2119">RFC 2119</xref>.
+</t>
+</section>
+
+</section>
+
+<section title="Definitions">
+<list style="hanging">
+<t hangText="DDP -">
+See Direct Data Placement Protocol.
+</t>
+<t hangText="DDP Endpoint -">
+The logical sender/receiver of DDP Segments. An SCTP stream
+pair is not assumed to have a DDP Endpoint. DDP Segments
+may only be sent once a DDP Endpoint has been assigned to
+an SCTP stream pair by a local interface.
+</t>
+<t hangText="DDP Source Stream Sequence Number (DDP-SSN) -">
+A stream-specific sequence number assigned by the adaptation
+layer for each SCTP Data Chunk sent. This is the order that
+chunks were submitted to SCTP, no matter in what order they are
+actually sent or received.
+</t>
+<t hangText="DDP Segment -">
+The smallest unit of data transfer for the DDP 
+protocol. It includes a DDP Header and ULP Payload (if present). 
+A DDP Segment should be sized to fit within the Lower Layer 
+Protocol MULPDU (Marker PDU Aligned (MPA) Upper Layer PDU).
+</t>
+<t hangText="DDP Segment Chunk -">
+An SCTP Payload Data Chunk that encapsulates the DDP-SSN and a DDP Segment.
+</t>
+<t hangText="DDP Stream -">
+A sequence of DDP Segments whose ordering is defined by 
+the LLP. For SCTP, a DDP stream maps directly to a bidirectional
+pair of SCTP streams with the same Stream IDs. Note that DDP has no ordering 
+guarantees between DDP streams. 
+</t>
+<t hangText="DDP Stream Session -">
+A single pairing of DDP Endpoints over a DDP stream
+that lasts from an Initiation message through the
+Termination message(s).
+</t>
+<t hangText="DDP Stream Session Control Message -">
+A message that is used to control the
+association of the DDP Endpoint with the DDP stream.
+</t>
+<t hangText="Direct Data Placement Protocol (DDP) -">
+A wire protocol that supports Direct Data Placement by associating
+explicit memory buffer placement information with the LLP payload units.
+</t>
+<t hangText="Lower Layer Protocol (LLP) -">
+In the context of DDP, the protocol layer beneath RDMA that provides
+a reliable transport service. The SCTP DDP adaption is one of the
+initially defined LLPs for DDP.
+</t>
+<t hangText="Protection Domain -">
+A common local interface convention to control which
+Steering Tags (STags) are valid with which DDP Endpoints.
+Under this convention, both the Steering Tag and DDP Endpoint
+are created within the context of a Protection Domain, and 
+the Steering Tag may only be enabled for DDP Endpoints created
+under the same Protection Domain.
+</t>
+<t hangText="RDMA -">
+Remote Direct Memory Access.
+</t>
+<t hangText="RNIC -">
+RDMA Network Interface Card.
+</t>
+<t hangText="SCTP association -">
+A protocol relationship between two SCTP endpoints.
+An SCTP association supports multiple SCTP streams.
+</t>
+<t hangText="SCTP Data Chunk -">
+An SCTP Chunk used to convey Payload Data. There can
+be multiple Chunks within each SCTP packet. Other Chunks
+are used to control the SCTP Association.
+</t>
+<t hangText="SCTP endpoint -">
+The logical sender/receiver of SCTP packets.  On a
+multihomed host, an SCTP endpoint is represented to its
+peers as a combination of an SCTP port number and a set of
+eligible destination transport addresses to which SCTP
+packets can be sent.
+</t>
+<t hangText="SCTP Stream -">
+A unidirectional logical channel established from one to
+another associated SCTP endpoint. There can be multiple
+SCTP streams within each SCTP association. An SCTP stream
+is used to form one direction of a DDP stream.
+</t>
+<t hangText="Transmission Sequence Number (TSN) -">
+A 32-bit sequence number used internally by SCTP.  One TSN
+is attached to each chunk containing user data to permit
+the receiving SCTP endpoint to acknowledge its receipt and
+detect duplicate deliveries.
+</t>
+<t hangText="Upper Layer Protocol (ULP) -">
+In the context of RDMA protocol specifications, this is the
+layer using RDMA services. Typically, this is an application
+or middleware. A primary goal of RDMA protocols is to enable
+direct transfer of payload to/from ULP Buffers.
+</t>
+</list>
+</section>
+
+<!-- [rfced] note: made "Motivation" and "Overview" into top-level sections
+  because the original contained 2 sections titled "Introduction".-->
+
+<section title="Motivation" >
+<t>
+This document specifies an adaptation layer which fulfills
+the requirements of a Lower Layer Protocol (LLP) for DDP 
+using a specific subset of SCTP capabilities.
+</t>
+<t>
+The defined protocol is intended to be implementable over
+existing SCTP stacks, while clearly defining what portions
+of SCTP are required to enable an implementation to be
+optimized specifically to support DDP.
+</t>
+</section>
+<section title="Overview" >
+<t>
+The adaptation layer uses a pair of like-numbered SCTP streams
+within an SCTP Association to provide a reliable DDP stream
+between two DDP Endpoints. Except as specifically noted, each
+DDP Segment submitted by the DDP layer is encoded as a single
+unordered SCTP Data Chunk. In addition to the DDP Segment, the
+Data Chunk also contains a sequence number (DDP-SSN) that reflects
+the order in which DDP submitted the segments for that stream.
+</t>
+<t>
+A DDP Stream Session is defined by DDP Stream Session Control
+Chunks that manage the state of the DDP Stream Session. These
+Chunks dynamically bind DDP Endpoints to the DDP Stream Session,
+and DDP Segment Chunks are used to reliably deliver DDP Segments
+with the session.
+</t>
+</section>
+
+<section title="Data Formats" >
+<section anchor="adaptation" title="Adaptation Layer Indicator">
+<t>
+The DDP/SCTP adaptation layer uses all streams within an SCTP
+association. An SCTP Association that has had the DDP Adaptation
+Indication negotiated will carry only SCTP Data Chunks as defined
+in this document.
+</t>
+<t>It is presumed that the
+handling of incoming data chunks for DDP-enabled
+associations is sufficiently different than for routine
+SCTP associations that it is undesirable to require support
+for mixing DDP and non-DDP streams in a single association.
+More than a single association is required if an application
+desires to utilize both DDP and non-DDP traffic with the same
+remote host.
+</t>
+<t>
+We define an Adaptation Indication that MUST appear in the
+INIT or INIT-ACK with the following format as defined in
+<xref target="RFC5061" />.
+</t>
+<figure>
+<artwork>
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Type =0xC006           |    Length = Variable          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                    Adaptation Indication                      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+Adaptation Indication:
+
+The following value has been assigned for DDP.
+
+      DDP                        - 0x00000001
+
+</artwork>
+</figure>
+</section>
+
+<section title="Payload Data Chunks">
+<t>
+The DDP SCTP adaptation uses two types of SCTP Payload Data
+Chunks, differentiated by the Payload Protocol Identifier:
+<list type="symbols">
+<t>
+DDP Segment Chunks are used to reliably deliver DDP
+Segments sent between DDP Endpoints.
+</t>
+<t>
+DDP Stream Session Control Messages are used to establish and 
+tear down DDP Stream Sessions, specifically by controlling
+the binding of DDP Endpoints with SCTP streams.
+</t>
+</list>
+</t>
+<t>
+<figure>
+<artwork>
+Payload Protocol Identifier:
+
+The following value are defined for DDP in this document
+and have been assigned by IANA:
+
+      DDP Segment Chunk          - 16
+      DDP Stream Session Control - 17
+
+</artwork>
+</figure>
+</t>
+<section title="DDP Source Sequence Number (DDP-SSN)">
+<t>
+All SCTP Payload Data Chunks used by this adaptation layer
+include a DDP Source Sequence Number (DDP-SSN). The DDP-SSN
+tracks the sequence in which the messages were submitted to the SCTP layer
+for the SCTP stream in use. The DDP-SSN MUST have the same
+value that the SCTP Stream Sequence Number (SSN) would have
+been assigned had ordered SCTP Payload Data Chunks been used
+rather than unordered.
+</t>
+<t>
+The rationale for specifying the DDP-SSN is as follows:
+<list style="symbols">
+<t>
+The SCTP Stream Sequence Number (SSN) is not suitable for
+this purpose because all messages defined by this document
+use unordered Payload Data Chunks to ensure prompt delivery
+from the receiving SCTP layer.
+</t>
+<t>
+The SCTP Transmission Sequence Number (TSN) is not suitable
+for determining the original order of Data Chunks within a
+stream. The sending SCTP layer is allowed to optimize the
+transmission sequence of unordered Data Chunks to encourage
+Chunk Bundling, or for other purposes.
+</t>
+</list>
+</t>
+</section>
+<section title="DDP Segment Chunk">
+<figure>
+<artwork>
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|          DDP-SSN              |         DDP Segment           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
+|                                                               |
+|                         ...                                   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+<t>
+DDP Segments are as defined in
+<xref target="RFC5041"></xref>.
+The DDP Segment Chunk serves the same purpose as the MPA
+<xref target="RFC5044"></xref>
+Upper Layer PDU (MULPDU) in that it carries DDP Segments over
+a reliable protocol with added sequencing information.
+</t>
+</section>
+
+<section title="DDP Stream Session Control">
+
+<figure><artwork>
+0                   1                   2                   3
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|          DDP-SSN              |    Function Code              |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|            Private Data (Dependent on Function Code)          |
+|                         ...                                   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+The following function code values are defined for DDP in
+this document:
+
+      DDP Stream Session Initiate         - 0x001
+      DDP Stream Session Accept           - 0x002
+      DDP Stream Session Reject           - 0x003
+      DDP Stream Session Terminate        - 0x004
+</artwork>
+</figure>
+
+<t>
+ULP-supplied Private Data MUST be included for DDP Stream
+Session Initiate, DDP Stream Session Accept, and DDP Stream
+Session Reject messages. However, the ULP supplied Private
+DATA MAY be of zero length.
+</t>
+<t>
+Private Data length MUST NOT exceed 512 bytes in any message.
+</t>
+<t>
+Private Data MUST NOT be included in the DDP Stream Session
+Terminate message.
+</t>
+<t>
+Received DDP Stream Session Control messages SHOULD be
+reported to the ULP. If reported, any supplied Private
+Data MUST be available for the ULP to examine.
+</t>
+<t>
+The DDP/SCTP adaptation layer MAY limit the number of
+Session Initiate requests that it has submitted to the
+ULP. When a DDP Stream Session Initiate cannot be
+forwarded  to the ULP due to such a limit, the adaptation
+layer MUST respond with a DDP Stream Session Terminate
+message.
+</t>
+</section>
+</section>
+</section>
+<section title="DDP Stream Sessions">
+<t>
+A DDP Endpoint is the logical sender/receiver of DDP
+Segments. A DDP stream connects two DDP Endpoints using a
+matched pair of SCTP streams having the same SCTP Stream
+Identifiers.
+</t>
+<t>
+A DDP Stream Session defines the sequence of Data Chunks
+exchanged between two DDP Endpoints over a DDP stream that
+has a distinct beginning and end as defined in the following
+section. Data Chunks from one DDP Stream Session are never
+carried over to the next session. Each Data Chunk unambiguously
+belongs to exactly one session. The DDP-SSNs
+assigned to the Data Chunks for a session MUST NOT have any gaps.
+</t>
+<t>
+The local interface MAY dynamically associate a DDP Endpoint
+with the DDP stream based upon the initial exchanges of a DDP
+Session, and dynamically terminate that association at the
+session's end. Alternately, a specialized local interface
+could simply statically map DDP Endpoints to DDP streams.
+</t>
+<t>
+Conventionally, local interfaces for RDMA have deferred
+the selection of the DDP Endpoint until after the ULP
+decides to accept an RDMA connection request. But that
+is a local interface choice and not a wire protocol
+requirement.
+</t>
+<t>
+A DDP stream is associated with at most one Protection
+Domain during a single DDP Stream Session. On the passive
+side, the association is typically deferred until the
+DDP Stream Session Accept message.
+<!-- [rfced] How should "passive side" be capitalized?
+It appears passive side / Passive side / Passive Side -->
+
+</t>
+<section title="Sequencing">
+<t>
+The DDP-SSN is reset to zero at
+the beginning of each DDP Stream Session.
+</t>
+<t>
+The normative sequence for considering Payload Data Chunks
+within a given session is based upon each Data Chunk's DDP-SSN.
+When considered in this normative sequence, all sessions MUST
+conform to one of the patterns defined in this section.
+</t>
+
+<t>
+If the adaptation layer receives a Payload Data Chunk that
+conforms to none of the enumerated legal patterns, the
+DDP Stream Session MUST be terminated.
+</t>
+</section>
+<section title="Legal Sequence: Active/Passive Session Accepted">
+<t>
+In this DDP Stream Session sequence, one DDP Endpoint
+assumes the active role in requesting a DDP Stream Session,
+which the other side accepts.
+</t>
+<t>
+<list type="symbols">
+<t>
+Active side sends a DDP Stream Session Initiate message.
+</t>
+<t>
+Passive side sends a DDP Stream Session Accept message.
+</t>
+<t>
+Each side may then send zero or more DDP Segments with
+increasing DDP-SSNs, subject to any flow control imposed
+by other protocol layers.
+</t>
+<t>
+The final User Data Chunk for each side MAY be a DDP
+Stream Terminate. At least one side MUST send a DDP Stream
+Terminate. Note that this would follow any RDMAP
+Terminate message, which to the adaptation layer is simply
+another DDP Segment.
+</t>
+</list>
+</t>
+</section>
+<section title="Legal Sequence: Active/Passive Session Rejected">
+<t>
+DDP Stream Sessions allow each party to send a single
+non-payload message before the other end commits
+specific resources to the session. This allows each end to
+determine which resources are to be used, and how they are
+to be configured, or even if the session should be granted.
+</t>
+<t>
+These decisions MAY be influenced by the need to assign a
+specific Protection Domain, to determine how many RDMA Read
+Credits are required, or to determine how many receive
+operations the ULP should enable.
+</t>
+
+<?rfc needLines="7"?>
+<t>
+Because of these or other factors, the passive side MAY
+choose to reject a DDP Stream Session Request. This results
+in the following legal sequence:
+</t>
+<t>
+<list type="symbols">
+<t>
+Active side sends a DDP Stream Session Initiate message.
+</t>
+<t>
+Passive side sends a DDP Stream Session Reject message.
+</t>
+</list>
+</t>
+<t>
+A DDP Stream Session Reject message MUST NOT be sent unless
+the rejection is at the direction of the ULP.
+</t>
+</section>
+<section title="Legal Sequence: Active/Passive Session Non-ULP Rejected">
+<t>
+Acceptance or rejection of DDP Stream Session Initiate messages
+SHOULD be under the control of the ULP.  This MAY require passing
+an event to the ULP. There MUST be a finite limit on the number
+of such requests that are pending a ULP decision. When more
+session requests are received, the passive side MUST respond
+to the Initiate message with a DDP Stream Terminate Message.
+</t>
+</section>
+<section title="ULP-Specific Sequencing">
+<t>
+An implementation MAY choose to support additional
+ULP-specific sequences, but MUST NOT do so unless
+requested to do so by the ULP.
+</t>
+<t>
+A defined ULP MUST be able to operate using only
+the defined mandatory session sequences. Any additional
+sequences must be used only for optional optimizations.
+</t>
+</section>
+<section title="Other Sequencing Rules">
+<t>
+A DDP Stream Session Control message MUST NOT be sent
+if it may be received before a prior DDP Stream Session
+Control message within the same DDP Stream Session.
+</t>
+<t>
+An active side of a DDP Stream Session MUST NOT send a DDP
+Segment that might be received before the DDP Stream
+Session Initiate message.
+</t>
+<t>
+This MAY be determined by SCTP acking of the Data Chunk
+used to carry the DDP Stream Session Initiate message, or
+by receipt of a responsive DDP Stream Session Control
+message.
+</t>
+<t>
+A DDP Stream Identifier MUST NOT be reused for another DDP
+Stream Session while any Data Chunk from a prior session might
+be outstanding.
+</t>
+</section>
+</section>
+<section title="SCTP Endpoints">
+<section title ="Adaptation Layer Indication Restriction">
+<t>
+The local interface MUST allow the ULP to specify an SCTP
+endpoint to use a specific Adaptation Indication. It MAY
+require the ULP to do so.
+</t>
+<t>
+Once an endpoint decides on its acceptable Adaptation
+Indication(s), it SHOULD terminate all requests to
+establish an association with any different Adaptation
+Indication.
+</t>
+<t>
+An SCTP implementation MAY choose to accept association
+requests for a given SCTP endpoint only until one
+association for the endpoint has been established. At that
+point, it MAY choose to restrict all further associations
+for the same endpoint to use the same Adaptation
+Indication.
+</t>
+</section>
+<section title="Multihoming Implications">
+<t>
+SCTP allows an SCTP endpoint to be associated with multiple
+IP addresses, potentially representing different interface
+devices. Distribution of the logic for a single DDP stream
+across multiple input devices can be very undesirable,
+resulting in complex cache coherency challenges. Therefore,
+the local interface MAY restrict DDP-enabled SCTP endpoints
+to a single IP address, or to a set of IP addresses that
+are all assigned to the same input device ("RNIC").
+</t>
+<t>
+The default binding of a DDP-enabled SCTP endpoint SHOULD
+NOT cover more than a single IP address unless doing so
+results in neither additional bus traffic nor duplication of
+memory registration resources. 
+
+This will frequently result
+in a different default than for SCTP endpoints that are not
+DDP enabled.
+</t>
+<t>
+Applications MAY choose to avoid using out-of-band methods
+for communicating the set of IP addresses used by an SCTP
+endpoint when there is potential confusion as to the intended
+scope of the SCTP endpoint. For example, assuming the SCTP
+endpoint consists of all IP addresses Advertised by DNS may
+work for a general purpose SCTP endpoint but not a DDP-enabled one.
+</t>
+<t>
+Even when multihoming is supported, ULPs are cautioned
+that they SHOULD NOT use ULP control of the source address
+in an attempt to load-balance a stream across multiple paths.
+A receiving DDP/SCTP implementation that chooses to support
+multihoming SHOULD optimize its design on the assumption
+that multihoming will be used for network fault tolerance,
+and not to load-balance between paths. This is consistent
+with recommended SCTP practices.
+</t>
+</section>
+</section>
+<section title="Number of Streams">
+<t>
+DDP streams are bidirectional. They are always composed by
+pairing the inbound and outbound SCTP streams with the same
+SCTP Stream Identifier.
+</t>
+<t>
+The adaptation layer should request the maximum number of SCTP
+streams it will wish to use over the lifetime of the association.
+SCTP streams must still be bound to DDP Endpoints, and a DDP-enabled SCTP association does not support ordered
+Data Chunks. Therefore, the mere existence of an SCTP stream
+is unlikely to require significant supporting resources.
+</t>
+<t>
+This mapping uses an SCTP association to carry one or more
+DDP streams. Each DDP stream will be mapped to a pair of
+SCTP streams with the same SCTP stream number. The adaptation
+MUST initialize all of its SCTP associations with the same
+number of inbound and outbound streams.
+</t>
+</section>
+<section title="Fragmentation">
+<t>
+A DDP/SCTP Receiver already deals with fragmentation
+at both the IP and DDP layers. Therefore, use of SCTP
+layer segmenting will be avoided for most cases.
+</t>
+<t>
+As a Lower Layer Protocol (LLP) for DDP, the SCTP
+adaptation layer MUST inform the DDP layer of the
+maximum DDP Segment size that will be supported.
+This should be the largest value that can be supported
+without use of IP or SCTP fragmentation, or 516 bytes,
+whichever is larger.
+</t>
+<t>
+A minimum of 516 bytes is required to allow a DDP
+Stream Session Control Message with 512 bytes of 
+Private Data.
+</t>
+<t>
+SCTP data chunk fragmentation MUST NOT be used unless
+the alternative is IP fragmentation.
+</t>
+<t>
+The SCTP adaptation layer SHOULD set the maximum
+DDP Segment size below the theoretical maximum in
+order to allow bundling of Control Chunks in the
+same SCTP packet.
+</t>
+<t>
+The SCTP adaptation layer MUST reject DDP Segments
+that are larger than the maximum size specified.
+</t>
+</section>
+
+<?rfc needLines="8"?>
+<section title="Sequenced Unordered Operation">
+<t>
+The adaptation layer MUST use the Unordered option on all
+Data Chunks (U Flag set to one). The SCTP layer is expected
+to deliver unordered Data Chunks without delay.
+</t>
+<t>
+Because DDP employs unordered SCTP delivery, the receiver
+MUST NOT rely upon the SCTP Transmission Sequence Number
+(TSN) to imply ordering of DDP Segments. The fact that the
+SCTP Data Chunk for a DDP Segment is prior to the cumulative
+ack point does not guarantee that all prior DDP segments
+have been placed. The SCTP sender is not obligated to
+transmit unordered Data Chunks in the order presented.
+</t>
+<t>
+The DDP-SSN can be used without special logic to determine
+the submission sequence when the maximum number of
+in-flight messages is less than 32768.  This also
+applies if the sending SCTP accepts no more than
+32767 Data Chunks for a single stream without assigning
+TSNs.
+</t>
+<t>
+If SCTP does accept more than 32768 Data chunks for a
+single stream without assigning TSNs,  the sending DDP must
+simply refrain from sending more than 32767 Data Chunks
+for a single stream without acknowledgment.  Note that it
+MUST NOT rely upon ULP flow control for this purpose.
+Typical ULP flow control will deal exclusively with
+untagged messages, not with DDP segments.
+</t>
+<t>
+The receiver MAY perform a validity check on received DDP-SSNs
+to ensure that any gap could be accounted for by unreceived
+Data Chunks. Implementations SHOULD NOT allocate resources
+on the assumption that DDP-SSNs are valid without first
+performing such a validity check. An invalid DDP-SSN
+MAY result in termination of the DDP stream.
+</t>
+</section>
+
+<section title="Procedures" >
+<section title="Association Initialization" >
+<t>
+At the startup of an association, a DDP/SCTP adaptation
+layer MUST include an adaptation layer indication in its
+INIT or INIT-ACK (as defined in <xref target="adaptation" />).
+After the exchange of the initial first two SCTP chunks (INIT and
+INIT-ACK), an endpoint MUST verify and inspect the
+Adaptation Indication and compare it to the following table
+to determine proper action.
+</t>
+<figure>
+<artwork>
+       Indication |           Action
+         type     |
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                  | This indicates that the peer DOES NOT
+      NONE        | support ANY DDP or RDMA adaptation, and thus
+                  | RDMA and DDP procedures MUST NOT be
+                  | performed upon this association.
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                  | This indicates that the peer DOES support
+      DDP         | the DDP/SCTP adaptation layer defined here.
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                  | This indicates that the peer DOES NOT
+    ANY-OTHER     | support the DDP adaptation, and thus
+    Indication    | DDP procedures MUST NOT be performed
+                  | upon this association.
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+</artwork>
+</figure>
+<t>
+An implementation MAY require that all associations
+for a given SCTP endpoint be placed in the same mode.
+</t>
+<t>
+The local interface MAY allow the ULP to accept only
+requests to establish an association in a specified mode.
+</t>
+</section>
+
+<section title="Chunk Bundling">
+<t>
+SCTP allows multiple Data Chunks to be bundled in a single
+SCTP packet. Data chunks containing DDP Segments with
+untagged messages SHOULD NOT be delayed to facilitate
+bundling. Data chunks containing DDP Segments with tagged
+messages will generally be full sized, and hence not
+subject to bundling. However, partial-size tagged messages
+MAY be delayed, as they are frequently followed by a
+short untagged message.
+</t>
+</section>
+<section title="Association Termination">
+<t>
+Termination of an SCTP Association due to errors should be
+handled at the SCTP layer. The RDMAP-defined RDMAP Terminate
+Message SHOULD NOT be sent on each DDP stream when a
+determination has been made to terminate an SCTP association.
+Sending that message on each SCTP stream could severely
+delay the termination of the association.
+</t>
+<t>
+The local interface SHOULD notify all consumers of DDP
+streams when the underlying SCTP stream has been terminated.
+</t>
+<t>
+Other RDMAP-defined Terminate Messages MUST be
+generated as specified when a DDP stream is terminated.
+Note that with the SCTP mapping, termination of a DDP
+Stream does not mandate termination of the Association.
+</t>
+</section>
+</section>
+
+<section title="IANA Considerations">
+<t>
+This document defines a new SCTP Adaptation Layer Indication codepoint
+for DDP (0x00000001).  <xref target="RFC5061"></xref> creates
+the registry from which this codepoint has been assigned.
+</t>
+<t>
+This document also defines two new SCTP Payload Protocol
+Identifiers (PPIDs).
+<xref target="RFC2960">RFC 2960</xref>
+creates the registry
+from which these identifiers have been assigned.
+The following values have been assigned:
+<figure>
+<artwork>
+      DDP Segment Chunk           - 16
+      DDP Stream Session Control  - 17
+</artwork>
+</figure>
+</t>
+
+</section>
+
+<section title="Security Considerations">
+<t>
+Any direct placement of memory could pose a significant
+security risk if adequate local controls are not provided.
+These threats are addressed in the appropriate DDP
+<xref target="RFC5041"></xref>,
+RDMA <xref target="RFC5040"></xref>,
+or Security <xref target="RFC5042"></xref>
+documents. This document does not add any additional security
+risks over those found in <xref target="RFC2960">RFC 2960</xref>.
+</t>
+<t>
+The IPsec requirements for Remote Direct Data Placement (RDDP) are based on the version of
+IPsec specified in 
+<xref target="RFC2401">RFC 2401</xref>
+and related RFCs, as profiled by
+<xref target="RFC3723">RFC 3723</xref>,
+despite the existence of
+a newer version of IPsec specified in 
+<xref target="RFC4301">RFC 4301</xref>
+and related RFCs.  One of the important early applications of the
+RDDP protocols is their use with iSCSI
+<xref target="RFC5046">iSER</xref>;
+RDDP's IPsec
+requirements follow those of IPsec in order to facilitate
+that usage by allowing a common profile of IPsec to be used
+with iSCSI and the RDDP protocols.  In the future, RFC 3723
+may be updated to the newer version of IPsec; the IPsec
+security requirements of any such update should apply
+uniformly to iSCSI and the RDDP protocols.
+</t>
+
+<t>Additional requirements apply to security for RDDP over SCTP, due
+  to the use of SCTP as the transport protocol.  An implementation of
+  IPsec for RDDP over SCTP:
+<t><list style="format %d)">
+    <t>MUST support IPsec functionality for SCTP equivalent to the
+    IPsec functionality for TCP that is required by RFC 3723,</t>
+    <t>SHOULD support the same level of IPsec functionality for SCTP
+    and TCP unless there is no support for TCP, and</t>
+    <t>MUST support at least the level of protocol and port selector
+    functionality for SCTP that is supported for TCP.</t>
+</list></t>
+</t>
+
+</section>
+
+<!-- ************** SUKANTA GANGULY ***************-->
+<author initials="S." surname="Ganguly" fullname="Sukanta Ganguly">
+<organization>Consultant</organization> <address>
+      <phone>+1-858-748-5268</phone>
+      <email>sganguly@yahoo.com</email>
+</address>
+</author>
+<!-- ************** HEMAL SHAH ***************-->
+<author initials="H. V." surname="Shah" fullname="Hemal V. Shah">
+<organization>Broadcom Corporation</organization>
+<address>
+      <postal>
+          <street>5300 California Avenue</street>
+          <city>Irvine</city> <region>CA</region>
+          <code>92617</code>
+          <country>USA</country>
+      </postal>
+      <phone>949-926-6941</phone>
+      <email>hemal@broadcom.com</email>
+</address>
+</author>
+!-- ************** VIVEK KASHYAP ***************-->
+<author initials="V." surname="Kashyap" fullname="Vivek Kashyap">
+<organization>IBM</organization>
+<address>
+      <postal>
+          <street>15450 SW Koll Parkway</street>
+          <city>Beaverton</city> <region>OR</region>
+          <code>57006</code>
+          <country>USA</country>
+      </postal>
+      <phone>+1-503-578-3422</phone>
+      <email>vivk@us.ibm.com</email>
+</address>
+</author>
+<section title="Contributors">
+<t>
+Many thanks to our contributors who have spent many hours
+reading and reviewing keeping us straight:
+Sukanta Ganguly an independent consultant,
+Vivek Kashyap of IBM,
+Jim Pinkerton of Microsoft, and
+Hemal Shah of Broadcom. Thanks for all your hard work.
+</t>
+</section>
+
+<section title="Acknowledgments">
+<t>
+The authors would like to thank the following people that
+have provided comments and input: Stephen Bailey, David
+Black, Douglas Otis, Allyn Romanow, and Jim Williams.
+</t>
+</section>
+</middle>
+<back>
+<references title="Normative References">
+<?rfc include="reference.RFC.2119" ?>
+<?rfc include="reference.RFC.2960" ?>
+<?rfc include="reference.RFC.3723" ?>
+
+<!-- <?rfc include="reference.I-D.ietf-rddp-ddp" ?> -->
+<reference anchor='RFC5041'>
+<front>
+<title>Direct Data Placement over Reliable Transports</title>
+
+<author initials='H' surname='Shah' fullname='Hemal Shah'>
+    <organization />
+</author>
+<author initials='J' surname='Pinkerton'>
+    <organization />
+</author>
+<author initials='R' surname='Recio' >
+    <organization />
+</author>
+<author initials='P' surname='Culley' >
+    <organization />
+</author>
+
+<date month='October' year='2007' />
+
+</front>
+<seriesInfo name='RFC' value='5041' />
+
+</reference>
+
+<!-- <?rfc include="reference.I-D.ietf-rddp-rdmap" ?> -->
+<reference anchor='RFC5040'>
+<front>
+<title>A Remote Direct Memory Access Protocol Specification</title>
+
+<author initials='R' surname='Recio' fullname='Renato Recio'>
+    <organization />
+</author>
+<author initials='B' surname='Metzler'>
+    <organization />
+</author>
+<author initials='P' surname='Culley' >
+    <organization />
+</author>
+<author initials='J' surname='Hilland' >
+    <organization />
+</author>
+<author initials='D' surname='Garcia' >
+    <organization />
+</author>
+
+<date month='October' year='2007' />
+
+
+</front>
+<seriesInfo name='RFC' value='5040' />
+
+</reference>
+
+<!-- <?rfc include="reference.I-D.ietf-rddp-security" ?> -->
+<reference anchor='RFC5042'>
+<front>
+<title>Direct Data Placement Protocol (DDP) / Remote Direct Memory Access Protocol (RDMAP) Security</title>
+
+<author initials='J' surname='Pinkerton' fullname='Jim Pinkerton'>
+    <organization />
+</author>
+<author initials='E' surname='Deleganes'>
+    <organization />
+</author>
+
+<date month='October' year='2007' />
+</front>
+
+<seriesInfo name='RFC' value='5042' />
+
+</reference>
+
+<!-- <?rfc include="reference.I-D.ietf-tsvwg-addip-sctp" ?> -->
+<?rfc include="reference.RFC.5061" ?>
+
+</references>
+<references title="Informative References">
+
+<!-- <?rfc include="reference.I-D.ietf-rddp-mpa" ?> -->
+<reference anchor='RFC5044'>
+<front>
+<title>Marker PDU Aligned Framing for TCP Specification</title>
+
+<author initials='P' surname='Culley' fullname='Paul Culley'>
+    <organization />
+</author>
+<author initials='U' surname='Elzur' >
+    <organization />
+</author>
+<author initials='R' surname='Recio' >
+    <organization />
+</author>
+<author initials='S' surname='Bailey' >
+    <organization />
+</author>
+<author initials='J' surname='Carrier' >
+    <organization />
+</author>
+
+<date month='October' year='2007' />
+
+</front>
+
+<seriesInfo name='RFC' value='5044' />
+
+</reference>
+
+<?rfc include="reference.RFC.2401" ?>
+<?rfc include="reference.RFC.4301" ?>
+
+<!-- <?rfc include="reference.I-D.ietf-ips-iser" ?> -->
+<reference anchor='RFC5046'>
+<front>
+<title>Internet Small Computer System Interface (iSCSI) Extensions for the Remote Direct Memory Access (RDMA) Specification</title>
+
+<author initials='M' surname='Ko' fullname='Mike Ko'>
+    <organization />
+</author>
+<author initials='M' surname='Chadalapaka' >
+    <organization />
+</author>
+<author initials='U' surname='Elzur' >
+    <organization />
+</author>
+<author initials='H' surname='Shah' >
+    <organization />
+</author>
+<author initials='P' surname='Thaler' >
+    <organization />
+</author>
+
+<date month='October' year='2007' />
+
+</front>
+
+<seriesInfo name='RFC' value='5046' />
+
+</reference>
+
+</references>
+</back>
+</rfc>

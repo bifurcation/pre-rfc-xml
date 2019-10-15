@@ -1,0 +1,1265 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+
+<rfc category="std" number="8360" ipr="trust200902" submissionType="IETF" consensus="yes">
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+<?rfc toc="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+
+
+<front>
+<title abbrev="RPKI Validation">Resource Public Key Infrastructure (RPKI) Validation Reconsidered</title>
+
+<author fullname="Geoff Huston" initials="G." surname="Huston">
+<organization abbrev="APNIC">Asia Pacific Network Information Centre</organization>
+<address>
+<postal>
+  <street>6 Cordelia St</street>
+  <city>South Brisbane</city> <region>QLD</region> <code>4101</code>
+  <country>Australia</country>
+</postal>
+<phone>+61 7 3858 3100</phone>
+<email>gih@apnic.net</email>
+</address>
+</author>
+
+<author fullname="George Michaelson" initials="G." surname="Michaelson">
+<organization abbrev="APNIC">Asia Pacific Network Information Centre</organization>
+<address>
+<postal>
+  <street>6 Cordelia St</street>
+  <city>South Brisbane</city> <region>QLD</region> <code>4101</code>
+  <country>Australia</country>
+</postal>
+<phone>+61 7 3858 3100</phone>
+<email>ggm@apnic.net</email>
+</address>
+</author>
+
+<author fullname="Carlos M. Martinez" initials="C.M." surname="Martinez">
+<organization abbrev="LACNIC">Latin American and Caribbean IP Address Regional Registry</organization>
+<address>
+<postal>
+  <street>Rambla Mexico 6125</street>
+  <city>Montevideo</city><code>11400</code>
+  <country>Uruguay</country>
+</postal>
+<phone>+598 2604 2222</phone>
+<email>carlos@lacnic.net</email>
+</address>
+</author>
+
+<author fullname="Tim Bruijnzeels" initials="T" surname="Bruijnzeels">
+<organization abbrev="RIPE NCC">RIPE Network Coordination Centre</organization>
+<address>
+<postal>
+  <street>Singel 258</street>
+  <city>Amsterdam</city><code>1016 AB</code>
+  <country>The Netherlands</country>
+</postal>
+<email>tim@ripe.net</email>
+</address>
+</author>
+
+<author fullname="Andrew Lee Newton" initials="A.L." surname="Newton">
+<organization abbrev="ARIN">American Registry for Internet Numbers</organization>
+<address>
+<postal>
+  <street>3635 Concorde Parkway</street>
+  <city>Chantilly</city> <region>VA</region><code>20151</code>
+  <country>United States of America</country>
+</postal>
+<email>andy@arin.net</email>
+</address>
+</author>
+
+<author fullname="Daniel Shaw" initials="D." surname="Shaw">
+<organization abbrev="AFRINIC">African Network Information Centre (AFRINIC)</organization>
+<address>
+<postal>
+  <street>11th Floor, Standard Chartered Tower</street>
+  <city>Cybercity</city> <region>Ebene</region>
+  <country>Mauritius</country>
+</postal>
+<phone>+230 403 51 00</phone>
+<email>daniel@afrinic.net</email>
+</address>
+</author>
+
+<date month="April" year="2018"/>
+
+<abstract>
+
+
+<t>This document specifies an alternative to the certificate
+validation procedure specified in RFC 6487 that
+reduces aspects of operational fragility in the management of
+certificates in the Resource Public Key Infrastructure (RPKI), while retaining essential security
+features.</t>
+
+<t>The procedure specified in RFC 6487 requires that Resource
+Certificates are rejected entirely if they are found to overclaim any resources not
+contained on the issuing certificate, whereas the validation process defined
+here allows an issuing Certification Authority (CA) to chose to communicate
+that such Resource Certificates should be accepted for the intersection
+of their resources and the issuing certificate.</t>
+
+<t>It should be noted that the validation process defined here considers
+validation under a single trust anchor (TA) only. In particular, concerns regarding overclaims
+where multiple configured TAs claim overlapping resources are considered
+out of scope for this document.</t>
+
+<t>This choice is signaled by a set of alternative Object Identifiers (OIDs) per
+"X.509 Extensions for IP Addresses and AS Identifiers" (RFC 3779) and "Certificate Policy (CP) for
+the Resource Public Key Infrastructure (RPKI)" (RFC 6484). It should be noted that in case these
+OIDs are not used for any certificate under a trust anchor, the validation procedure
+defined here has the same outcome as the procedure defined in RFC 6487.</t>
+
+<t>Furthermore, this document provides an alternative to Route Origin Authorization (ROA) (RFC 6482) and BGPsec Router
+Certificate (BGPsec PKI Profiles -- publication requested) validation.</t>
+
+</abstract>
+</front>
+
+<middle>
+
+<section title="Overview">
+<t>
+This document specifies an alternative to the certificate validation
+procedure specified in RFC 6487. Where the procedure specified in
+RFC 6487 will require that Resource Certificates be rejected entirely
+if they are found to overclaim any resources not contained on the
+issuing certificate, the procedure defined here dictates that these
+Resource Certificates be accepted for the intersection of their
+resources and the issuing certificate only.</t>
+<t>
+The outcome of both procedures is the same as long as no overclaims
+occur. Furthermore, the new procedure can never lead to the acceptance
+of resources that are not validly held on the path of issuing certificates.</t>
+<t>
+However, the procedure defined here will limit the impact in case
+resources are no longer validly held on the path of issuing certificates to
+attestations, such as Route Origin Authorizations <xref target="RFC6482"/> that
+refer to these resources only.</t>
+
+
+<section title="Requirements Notation">
+  <t> The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+      NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+      "MAY", and "OPTIONAL" in this document are to be interpreted as
+      described in BCP 14 <xref target="RFC2119" /> <xref target="RFC8174" /> when, and only when, they
+      appear in all capitals, as shown here.</t>
+</section>
+</section>
+
+<section title="Certificate Validation in the RPKI">
+
+<t>As currently defined in Section 7.2 of <xref target="RFC6487" />,
+validation of PKIX certificates that conform to the RPKI
+profile relies on the use of a path validation process where
+each certificate in the validation path is required to meet the
+certificate validation criteria.</t>
+
+<t>These criteria require, in particular, that the Internet Number
+Resources (INRs) of each certificate in the validation path are
+"encompassed" by INRs on the issuing certificate. The first certificate in
+the path is required to be a trust anchor, and its resources are
+considered valid by definition.</t>
+
+<t>For example, in the following sequence:</t>
+<figure><artwork><![CDATA[ 
+Certificate 1 (trust anchor):
+Issuer TA,
+Subject TA,
+Resources 192.0.2.0/24, 198.51.100.0/24,
+      2001:db8::/32, AS64496-AS64500
+
+Certificate 2: 
+Issuer TA,
+Subject CA1,
+Resources 192.0.2.0/24, 198.51.100.0/24, 2001:db8::/32
+
+Certificate 3: 
+Issuer CA1,
+Subject CA2,
+Resources 192.0.2.0/24, 198.51.100.0/24, 2001:db8::/32
+
+ROA 1:
+Embedded Certificate 4 (EE certificate): 
+Issuer CA2,
+Subject R1,
+Resources 192.0.2.0/24
+
+Prefix 192.0.2.0/24, Max Length 24, ASN 64496
+]]></artwork></figure>
+
+<t>All certificates in this scenario are considered valid since the INRs
+of each certificate are encompassed by those of the issuing certificate.
+ROA1 is valid because the specified prefix is encompassed by the embedded
+end entity (EE) certificate, as required by <xref target="RFC6482" />.</t>
+
+</section>
+
+<section title="Operational Considerations">
+
+<t>The allocations recorded in the RPKI change as a result of resource
+transfers. For example, the CAs involved in transfer might choose to 
+modify CA certificates in an order that causes some of these certificates
+to "overclaim" temporarily. A certificate is said to "overclaim" if it
+includes INRs not contained in the INRs of the CA that issued the
+certificate in question.</t>
+
+<t>It may also happen that a child CA does not voluntarily request a
+shrunk Resource Certificate when resources are being transferred or
+reclaimed by the parent. Furthermore, operational errors that may occur
+during management of RPKI databases also may create CA certificates that,
+temporarily, no longer encompass all of the INRs of subordinate
+certificates.</t>
+
+<t>Consider the following sequence:</t>
+<figure><artwork><![CDATA[ 
+Certificate 1 (trust anchor):
+Issuer TA,
+Subject TA,
+Resources 192.0.2.0/24, 198.51.100.0/24,
+     2001:db8::/32, AS64496-AS64500
+
+Certificate 2:
+Issuer TA,
+Subject CA1,
+Resources 192.0.2.0/24, 2001:db8::/32
+
+Certificate 3 (invalid):
+Issuer CA1,
+Subject CA2,
+Resources 192.0.2.0/24, 198.51.100.0/24, 2001:db8::/32
+
+ROA 1 (invalid):
+Embedded Certificate 4 (EE certificate, invalid): 
+Issuer CA2,
+Subject R1,
+Resources 192.0.2.0/24
+
+Prefix 192.0.2.0/24, Max Length 24, ASN 64496
+]]></artwork></figure>
+
+<t>Here, Certificate 2 from the previous example was reissued by
+TA to CA1, and the prefix 198.51.100.0/24 was removed. However, CA1
+failed to reissue a new Certificate 3 to CA2. As a result, Certificate 3
+is now overclaiming and considered invalid; by recursion, the embedded
+Certificate 4 used for ROA1 is also invalid. And ROA1 is invalid because
+the specified prefix contained in the ROA is no longer encompassed by a
+valid embedded EE certificate, as required by <xref target="RFC6482" />.</t>
+
+<t>However, it should be noted that ROA1 does not make use of any of the
+address resources that were removed from CA1's certificate; thus,
+it would be desirable if ROA1 could still be viewed as valid. Technically,
+CA1 should reissue a Certificate 3 to CA2 without 198.51.100.0/24, and
+then ROA1 would be considered valid according to <xref target="RFC6482" />.
+But as long as CA1 does not take this action, ROA1 remains invalid. It
+would be preferable if ROA1 could be considered valid, since the assertion
+it makes was not affected by the reduced scope of CA1's certificate.</t>
+      
+</section>
+
+<section title="An Amended RPKI Certification Validation Process">
+
+<section title="Verified Resource Sets">
+
+ <t>The problem described above can be considered a low probability
+ problem today. However, the potential impact on routing security
+ would be high if an overclaiming occurred near the apex of the RPKI
+ hierarchy, as this would invalidate the entirety of the subtree
+ located below this point.</t>
+
+ <t>The changes specified here to the validation procedure in
+ <xref target="RFC6487" /> do not change the probability of this
+ problem, but they do limit the impact to just the overclaimed
+ resources. This revised validation algorithm is intended to avoid
+ causing CA certificates to be treated as completely invalid as a result
+ of overclaims. However, these changes are designed to not degrade the
+ security offered by the RPKI. Specifically, ROAs and router
+ certificates will be treated as valid only if all of the resources
+ contained in them are encompassed by all superior certificates along a
+ path to a trust anchor.</t>
+
+ <t>The way this is achieved conceptually is by maintaining a Verified
+ Resource Set (VRS) for each certificate that is separate from the INRs
+ found in the resource extension <xref target="RFC3779" /> in the
+ certificate.</t>
+
+</section>
+
+<section title="Differences with Existing Standards">
+
+<section title="Certificate Policy (CP) for Use with Validation Reconsidered in the RPKI" anchor="amended_validation_policy">
+
+<t>Note that Section 1.2 of <xref target="RFC6484" /> defines the "Certificate Policy
+   (CP) for the Resource PKI (RPKI)" with the following OID:</t>
+<figure><artwork><![CDATA[ 
+id-cp-ipAddr-asNumber OBJECT IDENTIFIER ::= { iso(1)
+        identified-organization(3) dod(6) internet(1)
+        security(5) mechanisms(5) pkix(7) cp(14) 2 }
+]]></artwork></figure>
+
+<t>This document requests an assignment of a new OID for an alternative "Certificate Policy
+   (CP) for use with validation reconsidered in the Resource PKI (RPKI)" as follows:</t>
+<figure><artwork><![CDATA[ 
+id-cp-ipAddr-asNumber-v2 OBJECT IDENTIFIER ::= { iso(1)
+        identified-organization(3) dod(6) internet(1)
+        security(5) mechanisms(5) pkix(7) cp(14) 3 }
+]]></artwork></figure>
+
+<t>This alternative Certificate Policy is the same as the Certificate Policy described in
+   <xref target="RFC6484" />, except that it is used to drive the decision in Step 8
+   of the validation procedure described in <xref target="reconsidered_path_validation" />.</t>
+
+</section>
+
+<section title="An Alternative to X.509 Extensions for IP Addresses and AS Identifiers (RFC 3779)" anchor="amended_3779">
+
+<t>This document defines an alternative to <xref target="RFC3779" />. All specifications
+   and procedures described in <xref target="RFC3779" /> apply, with the
+   notable exceptions described in the following subsections.</t>
+
+   <section title="OID for id-pe-ipAddrBlocks-v2" anchor="amended_ip_ext">
+
+    <t>This document requests an OID for the extension id-pe-ipAddrBlocks-v2 (id-pe 28).
+    This OID MUST only be used in conjunction with the alternative Certificate Policy
+    OID defined in <xref target="amended_validation_policy" />.</t>
+    
+    <t>The following is an amended specification to be used as an alternative to the
+    specification in Section 2.2.1 of <xref target="RFC3779" />.</t>
+  
+  <t>The OID for this extension is id-pe-ipAddrBlocks-v2.</t>
+  <t><figure><artwork><![CDATA[ 
+id-pe-ipAddrBlocks-v2  OBJECT IDENTIFIER ::= { id-pe 28 }
+]]></artwork></figure></t>
+
+  <t>where <xref target="RFC5280" /> defines:</t>
+  <t><figure><artwork><![CDATA[ 
+id-pkix  OBJECT IDENTIFIER ::= { iso(1) identified-organization(3)
+       dod(6) internet(1) security(5) mechanisms(5) pkix(7) }
+
+id-pe    OBJECT IDENTIFIER ::= { id-pkix 1 }
+]]></artwork></figure></t>
+
+</section>
+
+<section title="Syntax for id-pe-ipAddrBlocks-v2">
+
+  <t><figure><artwork><![CDATA[ 
+id-pe-ipAddrBlocks-v2      OBJECT IDENTIFIER ::= { id-pe 28 }
+
+IPAddrBlocks        ::= SEQUENCE OF IPAddressFamily
+
+IPAddressFamily     ::= SEQUENCE {    -- AFI & optional SAFI --
+addressFamily        OCTET STRING (SIZE (2..3)),
+ipAddressChoice      IPAddressChoice }
+
+IPAddressChoice     ::= CHOICE {
+inherit              NULL, -- inherit from issuer --
+addressesOrRanges    SEQUENCE OF IPAddressOrRange }
+
+IPAddressOrRange    ::= CHOICE {
+addressPrefix        IPAddress,
+addressRange         IPAddressRange }
+
+IPAddressRange      ::= SEQUENCE {
+min                  IPAddress,
+max                  IPAddress }
+
+IPAddress           ::= BIT STRING          
+]]></artwork></figure></t>
+
+  <t>Note that the descriptions of objects referenced in the syntax above are defined
+  in Sections 2.2.3.1 through 2.2.3.9 of <xref target="RFC3779" />.</t>
+  
+</section> 
+
+<section title="OID for id-pe-autonomousSysIds-v2" anchor="amended_as_ext">
+
+  <t>This document requests an OID for the extension id-pe-autonomousSysIds-v2 (id-pe 29).
+  This OID MUST only be used in conjunction with the alternative Certificate Policy
+    OID defined in <xref target="amended_validation_policy" />.</t>
+
+  <t>The following is an amended specification to be used as an alternative to the
+    specification in Section 3.2.1 of <xref target="RFC3779" />.</t>
+  
+  <t>The OID for this extension is id-pe-autonomousSysIds-v2.</t>
+  <figure><artwork><![CDATA[ 
+id-pe-autonomousSysIds-v2  OBJECT IDENTIFIER ::= { id-pe 29 }
+]]></artwork></figure>
+
+  <t>where <xref target="RFC5280" /> defines:</t>
+  <figure><artwork><![CDATA[ 
+id-pkix  OBJECT IDENTIFIER ::= { iso(1) identified-organization(3)
+       dod(6) internet(1) security(5) mechanisms(5) pkix(7) }
+
+id-pe    OBJECT IDENTIFIER ::= { id-pkix 1 }
+]]></artwork></figure>        
+
+</section>
+
+<section title="Syntax for id-pe-autonomousSysIds-v2">
+
+  <t><figure><artwork><![CDATA[ 
+id-pe-autonomousSysIds-v2  OBJECT IDENTIFIER ::= { id-pe 29 }
+
+ASIdentifiers       ::= SEQUENCE {
+asnum               [0] EXPLICIT ASIdentifierChoice OPTIONAL,
+rdi                 [1] EXPLICIT ASIdentifierChoice OPTIONAL}
+
+ASIdentifierChoice  ::= CHOICE {
+inherit              NULL, -- inherit from issuer --
+asIdsOrRanges        SEQUENCE OF ASIdOrRange }
+
+ASIdOrRange         ::= CHOICE {
+id                  ASId,
+range               ASRange }
+
+ASRange             ::= SEQUENCE {
+min                 ASId,
+max                 ASId }
+
+ASId                ::= INTEGER         
+]]></artwork></figure></t>
+
+</section>
+
+<section title="Amended IP Address Delegation Extension Certification Path Validation">
+
+  <t>Certificate path validation is performed as specified in
+  <xref target="reconsidered_path_validation" />.</t>
+
+</section>
+
+<section title="Amended Autonomous System Identifier Delegation Extension Certification
+Path Validation">
+
+  <t>Certificate path validation is performed as specified in
+  <xref target="reconsidered_path_validation" />.</t>
+  
+</section>
+
+<section title="Amended ASN.1 Module" anchor="amended_3779_module">
+
+   <t>This document requests an OID for id-mod-ip-addr-and-as-ident-v2, as follows:</t>
+   <figure><artwork><![CDATA[ 
+IPAddrAndASCertExtn-v2 { iso(1) identified-organization(3) dod(6)
+   internet(1) security(5) mechanisms(5) pkix(7) mod(0)
+   id-mod-ip-addr-and-as-ident-v2(90) }   
+   ]]></artwork></figure>
+
+   <t>The following is an amended specification to be used as an alternative to the
+    specification in Appendix A of <xref target="RFC3779" />.</t>
+   
+   <t>This normative appendix describes the IP address and AS identifiers
+   extensions used by conforming PKI components in ASN.1 syntax.</t>
+   <figure><artwork><![CDATA[ 
+IPAddrAndASCertExtn-v2 { iso(1) identified-organization(3) dod(6)
+   internet(1) security(5) mechanisms(5) pkix(7) mod(0)
+   id-mod-ip-addr-and-as-ident-v2(90) }
+
+DEFINITIONS EXPLICIT TAGS ::=
+
+BEGIN
+
+-- EXPORTS ALL --
+
+IMPORTS
+
+-- PKIX specific OIDs and arcs --
+
+id-pe FROM PKIX1Explicit88 { iso(1) identified-organization(3)
+     dod(6) internet(1) security(5) mechanisms(5) pkix(7)
+     id-mod(0) id-pkix1-explicit(18) }
+
+-- IP Address Block and AS Identifiers Syntax --
+
+IPAddrBlocks, ASIdentifiers FROM  IPAddrAndASCertExtn { iso(1)
+   identified-organization(3) dod(6) internet(1) security(5)
+   mechanisms(5) pkix(7) mod(0) id-mod-ip-addr-and-as-ident(30) }
+;
+
+-- Validation Reconsidered IP Address Delegation Extension OID --
+
+id-pe-ipAddrBlocks-v2  OBJECT IDENTIFIER ::= { id-pe 28 }
+
+-- Validation Reconsidered IP Address Delegation Extension Syntax --
+-- Syntax is imported from RFC 3779 --
+
+-- Validation Reconsidered Autonomous System Identifier --
+--     Delegation Extension OID                         --
+
+id-pe-autonomousSysIds-v2  OBJECT IDENTIFIER ::= { id-pe 29 }
+
+-- Validation Reconsidered Autonomous System Identifier --
+--     Delegation Extension Syntax                      --
+
+-- Syntax is imported from RFC 3779 --
+
+END
+]]></artwork></figure>
+
+</section>    
+
+</section>
+
+<section title="Addendum to RFC 6268">
+
+         <t>This document requests an OID for id-mod-ip-addr-and-as-ident-2v2
+         as follows:</t>         
+         <figure><artwork><![CDATA[ 
+IPAddrAndASCertExtn-2010v2 { iso(1) identified-organization(3) dod(6)
+         internet(1) security(5) mechanisms(5) pkix(7) mod(0)
+         id-mod-ip-addr-and-as-ident-2v2(91) }
+]]></artwork></figure>
+
+         <t><xref target="RFC6268" /> is an informational RFC that updates some
+         auxiliary ASN.1 modules to conform to the 2008 version of ASN.1; the
+         1988 ASN.1 modules in <xref target="amended_3779_module" />
+         remain the normative version.</t>
+         
+         <t>The following is an additional module conforming to the 2008 version
+         of ASN.1 to be used with the extensions defined in Sections <xref target="amended_ip_ext" format="counter"/>
+         and <xref target="amended_as_ext" format="counter"/>.</t>
+         
+         <t><figure><artwork><![CDATA[ 
+IPAddrAndASCertExtn-2010v2 { iso(1) identified-organization(3) dod(6)
+         internet(1) security(5) mechanisms(5) pkix(7) mod(0)
+         id-mod-ip-addr-and-as-ident-2v2(91) }
+
+  DEFINITIONS EXPLICIT TAGS ::=
+
+  BEGIN
+
+     EXPORTS ALL;
+     IMPORTS
+
+     -- PKIX specific OIDs and arcs --
+
+     id-pe
+     FROM PKIX1Explicit-2009
+       { iso(1) identified-organization(3) dod(6) internet(1)
+         security(5) mechanisms(5) pkix(7) id-mod(0)
+         id-mod-pkix1-explicit-02(51)}
+
+     EXTENSION
+     FROM PKIX-CommonTypes-2009
+       { iso(1) identified-organization(3) dod(6) internet(1)
+         security(5) mechanisms(5) pkix(7) id-mod(0)
+         id-mod-pkixCommon-02(57)}
+
+  -- IP Address Block and AS Identifiers Syntax --
+
+     IPAddrBlocks, ASIdentifiers
+     FROM IPAddrAndASCertExtn-2010
+        { iso(1) identified-organization(3) dod(6)
+          internet(1) security(5) mechanisms(5) pkix(7) mod(0)
+          id-mod-ip-addr-and-as-ident-2(72) }
+     ;
+
+     --
+     -- Extensions contain the set of extensions defined in this
+     -- module
+     --
+     -- These are intended to be placed in public key certificates
+     -- and thus should be added to the CertExtensions extension
+     -- set in PKIXImplicit-2009 defined for RFC 5280
+     --
+
+     Extensions EXTENSION ::= {
+        ext-pe-ipAddrBlocks-v2 | ext-pe-autonomousSysIds-v2
+     }
+
+     -- Validation Reconsidered IP Address Delegation Extension OID --
+
+     ext-pe-ipAddrBlocks-v2 EXTENSION ::= {
+       SYNTAX IPAddrBlocks
+       IDENTIFIED BY id-pe-ipAddrBlocks-v2
+     }
+
+     id-pe-ipAddrBlocks-v2  OBJECT IDENTIFIER ::= { id-pe 28 }
+
+     -- Validation Reconsidered IP Address Delegation --
+     --      Extension Syntax                         --
+     
+     -- Syntax is imported from RFC 6268 --
+
+     -- Validation Reconsidered Autonomous System Identifier --
+     --      Delegation Extension OID                        --
+
+     ext-pe-autonomousSysIds-v2 EXTENSION ::= {
+       SYNTAX ASIdentifiers
+       IDENTIFIED BY id-pe-autonomousSysIds-v2
+     }
+
+     id-pe-autonomousSysIds OBJECT IDENTIFIER ::= { id-pe 29 }
+
+  -- Validation Reconsidered Autonomous System Identifier --
+  --      Delegation Extension Syntax                     --
+  
+  -- Syntax is imported from RFC 6268 --
+
+  END         
+         
+]]></artwork></figure></t>
+      
+      </section>
+      
+      
+      <section title="An Alternative to the Profile for X.509 PKIX Resource Certificates" anchor="amended_6487">
+      
+         <t>This document defines an alternative profile for X.509 PKIX Resource
+         Certificates. This profile follows all definitions and procedures described
+         in <xref target="RFC6487" /> with the following notable exceptions.</t>
+         
+      <section title="Amended Certificate Policies" anchor="amended_6487_cp">
+      
+         <t>The following is an amended specification to be used in this profile, in place of
+         Section 4.8.9 of <xref target="RFC6487" />.</t>
+         
+         <t>This extension MUST be present and MUST be marked critical.  It MUST
+         include exactly one policy of type id-cp-ipAddr-asNumber-v2, as
+         specified in the updated RPKI CP in <xref target="amended_validation_policy" />.</t>
+      
+      </section>
+      
+      <section title="Amended IP Resources" anchor="amended_6487_ip">
+      
+          <t>The following is an amended specification to be used in this profile, in place of
+          Section 4.8.10 of <xref target="RFC6487" />.</t>
+ 
+          <t>Either the IP resources extension or the AS resources extension, or
+          both, MUST be present in all RPKI certificates and MUST
+          be marked critical.</t>
+          
+          <t>This extension contains the list of IP address resources as per
+          <xref target="amended_ip_ext" />.  The value may
+          specify the "inherit" element for a particular Address Family
+          Identifier (AFI) value.  In the context of Resource Certificates
+          describing public number resources for use in the public Internet, the
+          Subsequent AFI (SAFI) value MUST NOT be used.</t>
+          
+          <t>This extension MUST either specify a non-empty set of IP address
+          records or use the "inherit" setting to indicate that the IP address
+          resource set of this certificate is inherited from that of the
+          certificate's issuer.</t>
+      
+      </section>
+      
+      <section title="Amended AS Resources" anchor="amended_6487_as">
+      
+          <t>The following is an amended specification to be used in this profile, in place of
+          Section 4.8.11 of <xref target="RFC6487" />.</t>
+          
+          <t>Either the AS resources extension or the IP resources extension, or
+          both, MUST be present in all RPKI certificates and MUST
+          be marked critical.</t>
+          
+          <t>This extension contains the list of AS number resources as per
+          <xref target="amended_as_ext" />, or it may specify
+          the "inherit" element.  Routing Domain Identifier (RDI) values are NOT
+          supported in this profile and MUST NOT be used.</t>
+          
+          <t>This extension MUST either specify a non-empty set of AS number
+          records or use the "inherit" setting to indicate that the AS number
+          resource set of this certificate is inherited from that of the
+          certificate's issuer.</t>
+          
+      </section>
+      
+      <section title="Amended Resource Certificate Path Validation" anchor="reconsidered_path_validation">
+
+        <t>The following is an amended specification for path validation to be used in
+        place of Section 7.2 of <xref target="RFC6487" />, which allows for the validation of
+        both certificates following the profile defined in <xref target="RFC6487" />, as
+        well as certificates following the profile described above.</t>
+        
+        <t>The following algorithm is employed to validate CA and EE resource
+        certificates. It is modeled on the path validation algorithm from
+        <xref target="RFC5280" /> but is modified to make use of the IP Address
+        Delegation and AS Identifier Delegation extensions from
+        <xref target="RFC3779" />.</t>
+        
+        <t>There are two inputs to the validation algorithm:<list style="numbers">
+            <t>a trust anchor</t>
+            <t>a certificate to be validated</t>
+        </list></t>
+        
+        <t>The algorithm is initialized with two new variables for use in the
+        RPKI: Verified Resource Set-IP (VRS-IP) and Verified Resource Set&nbhy;AS
+        (VRS-AS). These sets are used to track the set of INRs (IP address
+        space and AS numbers) that are considered valid for each CA certificate.
+        The VRS-IP and VRS-AS sets are initially set to the IP Address
+        Delegation and AS Identifier Delegation values, respectively, from the
+        trust anchor used to perform validation.</t>
+        
+        <t>This path validation algorithm verifies, among other things, that a
+        prospective certification path (a sequence of n certificates) satisfies
+        the following conditions:<list style="letters">
+        
+            <t>for all 'x' in {1, ..., n-1}, the subject of certificate 'x' is the
+            issuer of certificate ('x' + 1);</t>
+            
+            <t>certificate '1' is issued by a trust anchor;</t>
+            
+            <t>certificate 'n' is the certificate to be validated; and</t>
+            
+            <t>for all 'x' in {1, ..., n}, certificate 'x' is valid.</t>
+        
+        </list></t>
+        
+        <t>Certificate validation requires verifying that all of the following
+        conditions hold, in addition to the certification path validation
+        criteria specified in Section 6 of <xref target="RFC5280" />. <list style="numbers">
+        
+            <t>The signature of certificate x (x>1) is verified using the public
+            key of the issuer's certificate (x-1), using the signature algorithm
+            specified for that public key (in certificate x-1).</t>
+            
+            <t>The current time lies within the interval defined by the
+            NotBefore and NotAfter values in the Validity field of certificate
+            x.</t>
+            
+            <t>The Version, Issuer, and Subject fields of certificate x satisfy
+            the constraints established in Sections 4.1 to 4.7 of RFC 6487.</t>
+            
+            <t>If certificate x uses the Certificate Policy defined in Section 4.8.9 of
+               <xref target="RFC6487" />, then the certificate MUST contain all extensions
+               defined in Section 4.8 of <xref target="RFC6487" /> that must be present.
+               The value(s) for each of these extensions MUST satisfy the constraints
+               established for each extension in the respective sections. Any extension not
+               thus identified MUST NOT appear in certificate x.</t>
+
+            <t>If certificate x uses the Certificate Policy defined in <xref target="amended_6487_cp" />,
+               then all extensions defined in Section 4.8 of <xref target="RFC6487" />,
+               except Sections 4.8.9, 4.8.10, and 4.8.11 MUST be present. The certificate
+               MUST contain an extension as defined in Sections <xref target="amended_6487_ip" format="counter"/> or
+               <xref target="amended_6487_as" format="counter"/>, or both. The value(s) for each of these
+               extensions MUST satisfy the constraints established for each extension
+               in the respective sections. Any extension not thus identified MUST NOT
+               appear in certificate x.</t>
+            
+            <t>Certificate x MUST NOT have been revoked, i.e., it MUST NOT
+            appear on a Certificate Revocation List (CRL) issued by the CA represented by certificate x-1.</t>            
+            <t>Compute the VRS-IP and VRS-AS set values as indicated below:
+                <list style="symbols">
+                    <t>If the IP Address Delegation extension is present in certificate x
+                    and x=1, set the VRS-IP to the resources found in this extension.</t>
+                
+                    <t>If the IP Address Delegation extension is present in certificate x
+                    and x>1, set the VRS-IP to the intersection of the resources between
+                    this extension and the value of the VRS&nbhy;IP computed for certificate x-1.</t>
+                    
+                    <t>If the IP Address Delegation extension is absent in
+                    certificate x, set the VRS-IP to NULL.</t>
+                    
+                    <t>If the IP Address Delegation extension is present in certificate x
+                    and x=1, set the VRS-IP to the resources found in this extension.</t>
+
+                    <t>If the AS Identifier Delegation extension is present in certificate x
+                    and x>1, set the VRS-AS to the intersection of the resources between
+                    this extension and the value of the VRS&nbhy;AS computed for certificate x-1.</t>
+                    
+                    <t>If the AS Identifier Delegation extension is absent in certificate x,
+                    set the VRS-AS to NULL.</t>
+                   
+                </list>
+            </t>
+            
+            <t>If there is any difference in resources in the VRS-IP and the IP
+            Address Delegation extension on certificate x, or the VRS-AS and the
+            AS Identifier Delegation extension on certificate x, then:
+            <list style="symbols">
+               <t>If certificate x uses the Certificate Policy defined in
+               <xref target="amended_6487_cp" />, a warning listing the
+               overclaiming resources for certificate x SHOULD be issued.</t>
+               <t>If certificate x uses the Certificate Policy defined in Section 4.8.9 of
+               <xref target="RFC6487" />, then certificate x MUST be rejected.</t>
+               </list>
+            </t>
+
+        </list></t>
+        
+        <t>These rules allow a CA certificate to contain resources that are not
+        present in (all of) the certificates along the path from the trust
+        anchor to the CA certificate. If none of the resources in the CA
+        certificate are present in all certificates along the path, no
+        subordinate certificates could be valid. However, the certificate is not
+        immediately rejected as this may be a transient condition. Not
+        immediately rejecting the certificate does not result in a security
+        problem because the associated VRS sets accurately reflect the resources
+        validly associated with the certificate in question.</t>
+        
+      </section>
+      
+      </section>
+      <section title="An Alternative ROA Validation" anchor="alt_roa">
+           
+        <t>Section 4 of <xref target="RFC6482" /> currently has the following
+        text on the validation of resources on a ROA:<list style="empty">
+        
+          <t>The IP address delegation extension <xref target="RFC3779" /> is present in the
+          end-entity (EE) certificate (contained within the ROA), and each
+          IP address prefix(es) in the ROA is contained within the set of IP
+          addresses specified by the EE certificate's IP address delegation
+          extension.</t>
+        </list></t>
+        
+        <t>If the end entity certificate uses the Certificate Policy defined in
+           <xref target="amended_6487_cp" />, then the following approach must be
+           used instead.<list style="empty">
+
+          <t>The amended IP Address Delegation extension described in
+          <xref target="amended_6487_ip" /> is present in the end entity (EE) certificate
+          (contained within the ROA), and each IP address prefix(es) in the ROA is
+          contained within the VRS-IP set that is specified as an outcome of EE 
+          certificate validation described in <xref target="reconsidered_path_validation" />.</t>
+                  
+        </list></t>
+        
+        <t>Note that this ensures that ROAs can be valid only if all IP address
+        prefixes in the ROA are encompassed by the VRS-IP of all certificates
+        along the path to the trust anchor used to verify it.</t>
+
+        <t>Operators MAY issue separate ROAs for each IP address prefix, so that
+        the loss of one or more IP address prefixes from the VRS-IP of any certificate
+        along the path to the trust anchor would not invalidate authorizations
+        for other IP address prefixes.</t>
+        
+      </section>
+      
+      <section title="An Alternative to BGPsec Router Certificate Validation" anchor="alt_bgpcert">
+      
+        <t>If a BGPsec Router Certificate <xref target="RFC8209" />
+        uses the Certificate Policy defined in <xref target="amended_6487_cp" />, then
+        in addition to the BGPsec Router Certificate Validation defined in
+        Section 3.3 of <xref target="RFC8209" />, the
+        following constraint MUST be met:
+        <list style="symbols">
+            <t>The VRS-AS of BGPsec Router Certificates MUST encompass all Autonomous System Numbers (ASNs)
+            in the AS Resource Identifier Delegation extension.</t>
+        </list>
+        </t>        
+          
+        <t>Operators MAY issue separate BGPsec Router Certificates for different ASNs, so
+        that the loss of an ASN from the VRS-AS of any certificate along the path to the
+        trust anchor would not invalidate router keys for other ASNs.</t>
+          
+      </section>
+   
+      </section>
+    </section>
+      <section title="Validation Examples">
+      
+        <t>In this section, we will demonstrate the outcome of RPKI validation performed
+        using the algorithm and procedures described in Sections <xref target="reconsidered_path_validation" format="counter"/>, 
+        <xref target="alt_roa" format="counter"/>, and <xref target="alt_bgpcert" format="counter"/>, under three deployment
+        scenarios:<list style="symbols">
+        	<t>An RPKI tree consisting of certificates using the old OIDs only</t>
+        	<t>An RPKI tree consisting of certificates using the new OIDs only</t>
+        	<t>An RPKI tree consisting of a mix of certificates using either the old or the new OIDs</t>
+        </list></t>
+
+        <t>In this context, we refer to a certificate as using the 'old' OIDs, if the
+        certificate uses a combination of the OIDs defined in Section 1.2 of <xref target="RFC6484"/>,
+        Section 2.2.1 of <xref target="RFC3779" />, and/or Section 3.2.1 of <xref target="RFC3779" />.
+        We refer to a certificate as using the 'new' OIDS, if the certificate uses a
+        combination of OIDs defined in Sections <xref target="amended_6487_cp" format="counter"/>, <xref target="amended_ip_ext" format="counter" />,
+        and/or <xref target="amended_as_ext" />.</t>     
+
+      	<section title="Example 1 -- An RPKI Tree Using the Old OIDs Only">
+      	
+      	<t>Consider the following example:</t>
+      	<figure><artwork><![CDATA[ 
+  Certificate 1 (trust anchor):
+   Issuer: TA,
+   Subject: TA,
+   OIDs: OLD,
+   Resources: 0/0, ::0, AS0-4294967295 (all resources)
+    
+    Verified Resource Set: 0/0, ::0, AS0-4294967295 (all resources)
+    Warnings: none
+
+  Certificate 2: 
+   Issuer: TA,
+   Subject: CA1,
+   OIDs: OLD,
+   Resources: 192.0.2.0/24, 2001:db8::/32, AS64496
+   
+    Verified Resource Set: 192.0.2.0/24,
+                           2001:db8::/32, AS64496
+    Warnings: none
+
+  Certificate 3 (invalid): 
+   Issuer: CA1,
+   Subject: CA2,
+   OIDs: OLD,
+   Resources: 192.0.2.0/24, 198.51.100.0/24, AS64496
+   
+    Verified Resource Set: 192.0.2.0/24, AS64496
+    
+    Certificate 3 is considered invalid because resources
+    contains 198.51.100.0/24, which is not found in the
+    Verified Resource Set.
+
+  ROA 1 (invalid):
+   Embedded Certificate 4 (EE certificate invalid):
+    Issuer: CA2,
+    Subject: R1,
+    OIDs: OLD,
+    Resources: 192.0.2.0/24
+      Prefix 192.0.2.0/24, Max Length 24, ASN 64496
+          
+    ROA1 is considered invalid because Certificate 3 is invalid.
+
+  ROA 2 (invalid):
+   Embedded Certificate 5 (EE certificate invalid):
+    Issuer: CA2,
+    Subject: R2,
+    OIDs: OLD,
+    Resources: 198.51.100.0/24
+     Prefix 198.51.100.0/24, Max Length 24, ASN 64496
+     
+    ROA2 is considered invalid because Certificate 3 is invalid.
+     
+  BGPsec Certificate 1 (invalid):
+   Issuer: CA2,
+   Subject: ROUTER-64496,
+   OIDs: NEW,
+   Resources: AS64496
+    
+    BGPsec Certificate 1 is invalid because Certificate 3 is invalid.
+     
+  BGPsec Certificate 2 (invalid):
+   Issuer: CA2,
+   Subject: ALL-ROUTERS,
+   OIDs: NEW,
+   Resources: AS64496-AS64497
+    
+    BGPsec Certificate 2 is invalid because Certificate 3 is invalid.
+]]></artwork></figure>
+      	
+      	</section>
+      	
+      	<section title="Example 2 -- An RPKI Tree Using the New OIDs Only">
+      
+          <t>Consider the following example under the amended approach:</t>
+
+<figure><artwork><![CDATA[ 
+  Certificate 1 (trust anchor):
+   Issuer: TA,
+   Subject: TA,
+   OIDs: NEW,
+   Resources: 0/0, ::0, AS0-4294967295 (all resources)
+    
+    Verified Resource Set: 0/0, ::0, AS0-4294967295 (all resources)
+    Warnings: none
+
+  Certificate 2: 
+   Issuer: TA,
+   Subject: CA1,
+   OIDs: NEW,
+   Resources: 192.0.2.0/24, 2001:db8::/32, AS64496
+   
+    Verified Resource Set: 192.0.2.0/24,
+                           2001:db8::/32, AS64496
+    Warnings: none
+
+  Certificate 3: 
+   Issuer: CA1,
+   Subject: CA2,
+   OIDs: NEW,
+   Resources: 192.0.2.0/24, 198.51.100.0/24, AS64496
+   
+    Verified Resource Set: 192.0.2.0/24, AS64496
+    Warnings: overclaim for 198.51.100.0/24
+
+  ROA 1 (valid):
+   Embedded Certificate 4 (EE certificate):
+    Issuer: CA2,
+    Subject: R1,
+    OIDs: NEW,
+    Resources: 192.0.2.0/24
+     Prefix 192.0.2.0/24, Max Length 24, ASN 64496
+     
+     Verified Resource Set: 192.0.2.0/24
+     Warnings: none
+     
+    ROA1 is considered valid because the prefix matches the Verified
+    Resource Set on the embedded EE certificate.
+
+  ROA 2 (invalid):
+   Embedded Certificate 5 (EE certificate invalid):
+    Issuer: CA2,
+    Subject: R2,
+    OIDs: NEW,
+    Resources: 198.51.100.0/24
+      Prefix 198.51.100.0/24, Max Length 24, ASN 64496
+      
+      Verified Resource Set: none (empty set)
+      Warnings: 198.51.100.0/24
+      
+    ROA2 is considered invalid because the ROA prefix 198.51.100.0/24
+    is not contained in the Verified Resource Set.
+    
+  BGPsec Certificate 1 (valid):
+   Issuer: CA2,
+   Subject: ROUTER-64496,
+   OIDs: NEW,
+   Resources: AS64496
+    
+    Verified Resource Set: AS64496
+    Warnings: none
+     
+  BGPsec Certificate 2 (invalid):
+   Issuer: CA2,
+   Subject: ALL-ROUTERS,
+   OIDs: NEW,
+   Resources: AS64496-AS64497
+
+     Verified Resource Set: AS64496
+    
+    BGPsec Certificate 2 is invalid because not all of its resources
+    are contained in the Verified Resource Set.
+    
+    Note that this problem can be mitigated by issuing separate
+    certificates for each AS number.
+]]></artwork></figure>
+            
+            </section>
+            
+            <section title="Example 3 -- An RPKI Tree Using a Mix of Old and New OIDs" anchor="example3">
+            
+      	<t>In the following example, new OIDs are used only for CA certificates where
+      	the issuing CA anticipates that an overclaim could occur and has a desire
+      	to limit the impact of this to just the overclaimed resources in question:</t>
+
+     	
+<figure><artwork><![CDATA[ 
+
+
+  Certificate 1 (trust anchor):
+   Issuer: TA,
+   Subject: TA,
+   OIDs: OLD,
+   Resources: 0/0, ::0, AS0-4294967295 (all resources)
+    
+    Verified Resource Set: 0/0, ::0, AS0-4294967295 (all resources)
+    Warnings: none
+    
+    Note that a trust anchor certificate cannot be found to
+    overclaim.  So, using the new OIDs here would not change
+    anything with regards to the validity of this certificate.
+
+  Certificate 2: 
+   Issuer: TA,
+   Subject: CA1,
+   OIDs: OLD,
+   Resources: 192.0.2.0/24, 2001:db8::/32, AS64496
+   
+    Verified Resource Set: 192.0.2.0/24,
+                           2001:db8::/32, AS64496
+    Warnings: none
+    
+    Note that since the TA certificate claims all resources, it
+    is impossible to issue a certificate below it that could be
+    found to be overclaiming.  Therefore, there is no benefit 
+    in using the new OIDs for Certificate 2.
+
+  Certificate 3: 
+   Issuer: CA1,
+   Subject: CA2,
+   OIDs: NEW,
+   Resources: 192.0.2.0/24, 198.51.100.0/24, AS64496
+   
+    Verified Resource Set: 192.0.2.0/24, AS64496
+    Warnings: overclaim for 198.51.100.0/24
+    
+    Note that CA1 anticipated that it might invalid Certificate 3
+    issued to CA2, if its own resources on Certificate 2 were
+    modified and old OIDs were used on Certificate 3.
+
+  ROA 1 (valid):
+   Embedded Certificate 4 (EE certificate):
+    Issuer: CA2,
+    Subject: R1,
+    OIDs: OLD,
+    Resources: 192.0.2.0/24
+     Prefix 192.0.2.0/24, Max Length 24, ASN 64496
+     
+     Verified Resource Set: 192.0.2.0/24
+     Warnings: none
+     
+    ROA1 is considered valid because the prefix matches the Verified
+    Resource Set on the embedded EE certificate.
+
+  ROA 2 (invalid):
+   Embedded Certificate 5 (EE certificate invalid):
+    Issuer: CA2,
+    Subject: R2,
+    OIDs: OLD,
+    Resources: 198.51.100.0/24
+      Prefix 198.51.100.0/24, Max Length 24, ASN 64496
+      
+      Verified Resource Set: none (empty set)
+      
+    ROA2 is considered invalid because resources on its EE 
+    certificate contains 198.51.100.0/24, which is not contained 
+    in its Verified Resource Set.
+    
+    Note that if new OIDs were used here (as in example 2), ROA 2
+    would be considered invalid because the prefix is not
+    contained in the Verified Resource Set.
+    
+    So, if there is no difference in the validity outcome, one could
+    argue that using old OIDs here is clearest, because any 
+    overclaim of ROA prefixes MUST result in it being considered 
+    invalid (as described in Section 4.2.5).
+    
+  BGPsec Certificate 1 (valid):
+   Issuer: CA2,
+   Subject: ROUTER-64496,
+   OIDs: OLD,
+   Resources: AS64496
+    
+    Verified Resource Set: AS64496
+    Warnings: none
+     
+  BGPsec Certificate 2 (invalid):
+   Issuer: CA2,
+   Subject: ALL-ROUTERS,
+   OIDs: OLD,
+   Resources: AS64496-AS64497
+
+     Verified Resource Set: AS64496
+    
+    BGPsec Certificate 2 is considered invalid because resources
+    contains AS64497, which is not contained in its Verified Resource 
+    Set.
+    
+    Note that if new OIDs were used here (as in example 2), BGPsec
+    Certificate 2 would be considered invalid because the prefix is not
+    contained in the Verified Resource Set.
+    
+    So, if there is no difference in the validity outcome, one could
+    argue that using old OIDs here is the clearest, because any 
+    overclaim on this certificate MUST result in it being considered
+    invalid (as described in Section 4.2.6).
+    
+    Also note that, as in example 2, this problem can be mitigated by
+    issuing separate certificates for each AS number.
+]]></artwork></figure>
+            
+            </section>
+
+    </section>
+    
+    <section title="Deployment Considerations">
+
+       <t>This document defines an alternative RPKI validation algorithm, but it does not
+       dictate how this algorithm will be deployed. This should be discussed as a separate
+       effort. That said, the following observations may help this discussion.</t>
+           
+       <t>Because this document introduces new OIDs and an alternative to the profile for
+       X.509 PKIX Resource Certificates described in <xref target="RFC6487" />, the use
+       of such certificates in the global RPKI will lead to the rejection of such
+       certificates by Relying Party tools that do not (yet) implement the alternative
+       profile described in this document.</t>
+
+       <t>For this reason, it is important that such tools are updated before Certification
+       Authorities start to use this specification.</t>
+      
+       <t>However, because the OIDs are defined in each RPKI certificate, there is no
+       strict requirement for all Certification Authorities, or even for all the certificates 
+       they issue, to migrate to the new OIDs at
+       the same time. The example in
+       <xref target="example3" /> illustrates a possible deployment where the new OIDs
+       are used only in CA certificates where an accidental overclaim may occur.</t>
+    
+    </section>
+    
+    <section title="Security Considerations">
+    
+      <t>The authors believe that the revised validation algorithm introduces no
+      new security vulnerabilities into the RPKI, because it cannot lead to any
+      ROA and/or router certificates to be accepted if they contain resources
+      that are not held by the issuer.</t>
+
+    </section>
+    
+    <section title="IANA Considerations">
+    
+      <t>IANA has added the following to the "SMI Security for PKIX Certificate
+      Policies" registry:</t>
+      
+      <t><figure><artwork><![CDATA[
+      Decimal  Description                       References
+
+        3     id-cp-ipAddr-asNumber-v2           Section 4.2.1
+]]></artwork></figure></t>
+
+      <t>IANA has added the following to the "SMI Security for PKIX Certificate
+      Extension" registry:</t>
+      
+      <t><figure><artwork><![CDATA[ 
+      Decimal  Description                       References
+
+        28     id-pe-ipAddrBlocks-v2             Section 4.2.2.1
+        29     id-pe-autonomousSysIds-v2         Section 4.2.2.3
+]]></artwork></figure></t>
+
+      <t>IANA has added the following to the "SMI Security for PKIX Module
+      Identifier" registry:</t>
+      
+      <t><figure><artwork><![CDATA[ 
+      Decimal  Description                       References
+
+        90   id-mod-ip-addr-and-as-ident-v2      Section 4.2.2.7
+        91   id-mod-ip-addr-and-as-ident-2v2     Section 4.2.3
+]]></artwork></figure></t>      
+
+    </section>
+ 
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2119.xml"?>
+      <?rfc include="reference.RFC.3779.xml"?>
+      <?rfc include="reference.RFC.5280.xml"?>
+      <?rfc include="reference.RFC.6482.xml"?>
+      <?rfc include="reference.RFC.6484.xml"?>
+      <?rfc include="reference.RFC.6487.xml"?>
+      <?rfc include="reference.RFC.8174.xml"?>
+
+<!--draft-ietf-sidr-bgpsec-pki-profiles is now RFC 8209-->
+      <?rfc include="reference.RFC.8209.xml"?>
+               
+    </references>
+    
+    <references title="Informative References">
+      <?rfc include="reference.RFC.6268.xml"?>
+    </references>
+
+   <section title="Acknowledgements" numbered="no">
+
+      <t>The authors would like to thank Stephen Kent for reviewing and
+      contributing to this document. We would like to thank Rob Austein for
+      suggesting that separate OIDs should be used to make the behavior of
+      Relying Party tools deterministic, and we would like to thank Russ Housley,
+      Sean Turner, and Tom Petch for their contributions on OID and ASN.1 updates.
+      Finally, we would like to thank Tom Harrison for a general review of this
+      document.</t>
+
+    </section>
+
+  </back>
+</rfc>

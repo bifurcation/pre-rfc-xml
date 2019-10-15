@@ -1,0 +1,2512 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc rfcedstyle="yes"?>
+
+<?rfc toc="yes"?>
+
+<?rfc tocdepth="3"?>
+
+<?rfc symrefs="yes"?>
+
+<?rfc sortrefs="no" ?>
+
+<?rfc compact="yes" ?>
+
+<?rfc subcompact="no" ?>
+
+<?rfc rfcprocack="yes" ?>
+
+
+<rfc category="exp" ipr="trust200902" number="7390" submissionType="IETF" consensus="yes">
+
+  <front>
+    <title abbrev="Group Communication for CoAP">Group Communication for the Constrained Application Protocol (CoAP)</title>
+    <author fullname="Akbar Rahman" initials="A." surname="Rahman" role="editor">
+      <organization>InterDigital Communications, LLC</organization>
+      <address>
+       <postal>
+          <street>1000 Sherbrooke Street West</street>
+
+          <city>Montreal</city>
+
+          <region>Quebec</region>
+
+          <code>H3A 3G4</code>
+
+          <country>Canada</country>
+        </postal>
+
+        <email>Akbar.Rahman@InterDigital.com</email>
+      </address>
+    </author>
+
+    <author fullname="Esko Dijk" initials="E.O." surname="Dijk" role="editor">
+      <organization>Philips Research</organization>
+      <address>
+ <postal>
+          <street>High Tech Campus 34</street>
+
+          <city>Eindhoven</city>
+
+          <code>5656AE</code>
+
+          <country>Netherlands</country>
+        </postal>
+        <email>esko.dijk@philips.com</email>
+      </address>
+    </author>
+    <date month="October" year="2014"/>
+    <area>Applications</area>
+    <workgroup>CoRE Working Group</workgroup>
+
+    <abstract>
+      <t>
+      The Constrained Application Protocol (CoAP) is a specialized web transfer
+	  protocol for constrained devices and constrained networks.  It is
+      anticipated that constrained devices will often naturally operate in groups 
+      (e.g., in a building automation scenario, all lights in a given room may
+      need to be switched on/off as a group). This specification defines
+      how CoAP should be used in a group communication context.  An approach for
+      using CoAP on top of IP multicast is detailed based on existing CoAP functionality
+	  as well as new features introduced in this specification.  Also, various use cases
+	  and corresponding protocol flows are provided to illustrate important concepts.
+	  Finally, guidance is provided for deployment in various network topologies.
+      </t>
+    </abstract>
+
+  </front>
+  <middle>
+
+<section title="Introduction">
+
+  <section title="Background">
+    <t>
+    CoAP is a web transfer protocol based on Representational State Transfer (REST)
+    for resource constrained devices operating in an IP
+    network <xref target="RFC7252" />.  CoAP has many similarities to HTTP <xref target="RFC7230" />
+    but also some key differences. Constrained devices can be large in numbers but are often related to
+    each other in function or by location. For example, all the light switches in a building may
+    belong to one group, and all the thermostats may belong to another group.
+    Groups may be preconfigured before deployment or dynamically formed during operation. If information
+    needs to be sent to or received from a group of devices, group communication
+    mechanisms can improve efficiency and latency of communication and reduce
+    bandwidth requirements for a given application.  HTTP does not
+    support any equivalent functionality to CoAP group communication.</t>
+  </section>
+
+  <!-- section anchor="sec-1.2" title="Scope" -->
+  <section title="Scope">
+    <t>Group communication involves a one-to-many relationship between CoAP endpoints.
+    Specifically, a single CoAP client can simultaneously get (or set) resources
+    from multiple CoAP servers using CoAP over IP multicast.  An example would be a CoAP light
+    switch turning on/off multiple lights in a room with a single CoAP group communication PUT
+    request and handling the potential multitude of (unicast) responses.</t>
+
+    <t>The base protocol aspects of sending CoAP requests on top of IP multicast and processing
+	the (unicast IP) responses are given in Section 8 of <xref target="RFC7252" />.  To provide
+	a more complete CoAP group communication functionality, this specification introduces new
+	CoAP processing functionality (e.g., new rules for reuse of Token values, request suppression, and proxy operation) 
+	and a new management interface for RESTful group membership configuration.</t>
+		
+    <t>CoAP group communication will run in the Any Source Multicast (ASM) mode <xref target="RFC5110" /> of IP multicast operation.       
+        This means that
+	there is no restriction on the source node that sends (originates) the CoAP messages to the IP multicast group.  
+        For example, the source
+	node may or may not be part of the IP multicast group.  Also, there is no restriction on the number of source nodes.</t>	
+	
+	<t>While Section 9.1 of <xref target="RFC7252" /> supports various modes of security based on Datagram Transport 
+        Layer Security (DTLS) for CoAP over unicast IP, 
+        it does not specify 
+	any security modes for CoAP over IP multicast.  That is, it is assumed per <xref target="RFC7252" /> that CoAP over IP multicast is not
+	encrypted, nor authenticated, nor access controlled.  This document assumes the same security model 
+	(see <xref target="SecurityConfig"/>). However, there are several promising security approaches being 
+	developed that should be considered in the future for protecting CoAP group communications
+	(see <xref target="SecurityEvolution"/>). </t>
+
+		
+  </section>
+
+
+  <!-- section anchor="sec-1.3" title="Conventions and Terminology" -->
+  <section title="Conventions and Terminology" anchor="terminology">
+  <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+     NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+	"MAY", and "OPTIONAL" in this document are to be interpreted as
+	described in <xref target="RFC2119" /> when they appear in ALL CAPS.  When these
+	words are not in ALL CAPS (such as "should" or "Should"), they
+	have their usual English meanings and are not to be interpreted
+	as <xref target="RFC2119" /> key words.
+  </t>
+ 
+  <t>Note that this document refers back to other RFCs, and especially
+  <xref target="RFC7252" />, to help explain overall CoAP group communication
+  features.  However, use of <xref target="RFC2119" /> key words
+  is reserved for new CoAP functionality introduced by this specification.
+ </t>
+  
+  <t>This document assumes readers are familiar with the terms and
+     concepts that are used in <xref target="RFC7252" />.  In
+     addition, this document defines the following terminology:
+
+  		      <list style="hanging">
+			     <t hangText="Group Communication:"><vspace />
+	     A source node sends a single application-layer (e.g., CoAP)
+					 message that is delivered to multiple destination nodes,
+					 where all destinations are identified to belong to a specific group.  The
+				     source node itself may be part of the group.  The underlying
+				     mechanisms for CoAP group communication are UDP/IP multicast
+				     for the requests and unicast UDP/IP for the responses.
+					 The network involved may be a constrained network 
+    			             such as a low-power, lossy network.</t>
+
+			      <t hangText="Reliable Group Communication:"><vspace />
+				      A special case of group communication where for each destination node, it is guaranteed
+				      that the node either 1) eventually receives the message sent by the source node
+				      or 2) does not receive the message and the source node
+				      is notified of the non-reception event.  An example of a reliable group
+					  communication protocol is <xref target="RFC5740" />.
+						</t>
+
+			      <t hangText="Multicast:"><vspace />
+				      Sending a message to multiple destination nodes with one network
+				      invocation. There are various options to implement multicast, including 
+				      layer 2 (Media Access Control) and layer 3 (IP) mechanisms.</t>
+
+			      <t hangText="IP Multicast:"><vspace />
+				      A specific multicast approach based on the use of IP multicast
+				      addresses as defined in "IANA Guidelines for IPv4 Multicast Address
+				      Assignments" <xref target="RFC5771" /> and "IP Version 6 Addressing
+				      Architecture" <xref target="RFC4291" />.  A complete IP multicast
+					  solution may include support for managing group memberships and
+					  IP multicast routing/forwarding (see <xref target="IPMulticastBackground"/>). </t>
+
+			      <t hangText="Low-Power and Lossy Network (LLN):"><vspace />
+				      A type of constrained IP network where devices are interconnected by
+				      low-power and lossy links.  The links may be composed of one or more
+				      technologies such as IEEE 802.15.4, Bluetooth Low Energy (BLE), Digital
+				      Enhanced Cordless Telecommunication (DECT), and IEEE P1901.2 power-line
+				      communication.</t>
+			 </list> 
+    </t>
+
+
+
+
+
+    </section>
+
+
+  </section>
+
+
+
+
+
+<!-- section anchor="sec-2" title="Protocol Considerations" -->
+<section title="Protocol Considerations" anchor="ProtocolConsiderations">
+
+  <!-- section anchor="sec-2.1" title="IP Multicast Background" -->
+  <section title="IP Multicast Background" anchor="IPMulticastBackground" >
+	  
+    <t>
+    IP multicast protocols have been evolving for decades, resulting in 
+    standards such as Protocol Independent Multicast - Sparse
+    Mode (PIM-SM) <xref target="RFC4601" />. IP multicast is very popular in specific
+    deployments such as in enterprise networks 
+    (e.g., for video conferencing), smart home networks (e.g., Universal Plug and Play (UPnP)), 
+    and carrier IPTV deployments.  The packet economy and minimal host complexity of
+    IP multicast make it attractive for group communication in constrained environments.
+    </t>
+    <t>To achieve IP multicast beyond link-local (LL) scope, an IP multicast routing or forwarding protocol needs to be
+	    active on IP routers. An example of a routing protocol specifically for LLNs is  
+	    the IPv6 Routing Protocol for Low-Power and Lossy Networks (RPL)
+	    (Section 12 of <xref target="RFC6550"/>), and an example of a forwarding protocol for LLNs
+	    is the Multicast Protocol for Low-Power and Lossy Networks (MPL) 
+	    <xref target="MCAST-MPL" />.  RPL and MPL do not depend on each other;
+	    each can be used in isolation, and both can be used in combination in a network.  
+	    Finally, PIM-SM  <xref target="RFC4601" /> is
+	    often used for multicast routing in traditional IP networks (i.e., networks that are not constrained). 
+    </t>
+
+    <t>IP multicast can also be run in an LL scope.  This means that there is no routing
+       involved, and an IP multicast message is only received over the link on which it was sent.
+    </t>
+
+    <t>For a complete IP multicast solution, in addition to a routing/forwarding protocol, a
+	    "listener" protocol may be needed for the devices to subscribe to groups 
+	    (see <xref target="deploy_mld"/>).  Also, a multicast forwarding proxy node
+		<xref target="RFC4605" /> may be required.
+    </t>
+
+    <t>IP multicast is generally classified as an unreliable service in that packets are not guaranteed
+	    to be delivered to each and every member of the group. In other words, it cannot be directly used
+	    as a basis for "reliable group communication" as defined in <xref target="terminology"/>.
+	    However, the level of reliability can be increased by employing a multicast protocol
+		that performs periodic retransmissions as is done, for example, in MPL. 
+    </t>
+
+  </section>
+
+  <!-- section anchor="sec-2.2" title="Group Definition and Naming" -->
+  <section title="Group Definition and Naming">
+    <t>
+    A CoAP group is defined as a set of CoAP endpoints, where each endpoint is configured to receive  
+    CoAP group communication requests that are sent to the group's associated IP multicast address. 
+	The individual response by each endpoint receiver to a CoAP group communication request is always sent
+	back as unicast.  An endpoint may be a member of multiple groups. Group membership of an
+	endpoint may dynamically change over time.
+    </t>
+    
+    <t>All CoAP server nodes SHOULD join the "All CoAP Nodes" multicast group (Section 12.8 of <xref target="RFC7252" />)
+	    by default to enable CoAP discovery. For IPv4, the address is 224.0.1.187,
+		and for IPv6, a server node joins at least both the link-local scoped address ff02::fd 
+		and the site-local scoped address ff05::fd. IPv6 addresses of other scopes MAY be enabled.
+    </t>
+	    
+    <t>A CoAP group URI has the scheme 'coap' and includes in the authority part either
+	   a group IP multicast address or a hostname (e.g., Group Fully Qualified Domain Name (FQDN))
+	   that can be resolved to the group IP multicast address. 
+       A group URI also contains an optional CoAP port number in the authority part.
+       Group URIs follow the regular CoAP URI syntax (Section 6 of <xref target="RFC7252" />).</t>  
+
+    <t>Note: A group URI is needed to initiate CoAP group communications.  For CoAP client implementations,
+	    it is recommended to use the URI decomposition method of Section 6.4 of <xref target="RFC7252" />
+	    in such a way that, from a group URI, a CoAP group communication request is generated.</t>  
+
+    <t> For sending nodes, it is recommended to use the IP multicast address literal in a group URI. 
+	(This is because DNS infrastructure may not be deployed in many constrained network deployments.)
+	However, in case a group hostname is used, it can be uniquely mapped to an IP multicast address via DNS
+	resolution (if supported). Some examples of hierarchical group FQDN naming (and scoping) for
+	a building control application are shown below:
+
+    <figure><artwork>
+  URI authority                           Targeted group of nodes
+  --------------------------------------- --------------------------
+  all.bldg6.example.com                   "all nodes in building 6"
+  all.west.bldg6.example.com              "all nodes in west wing, 
+                                           building 6"
+  all.floor1.west.bldg6.example.com       "all nodes in floor 1, 
+                                           west wing, building 6"
+  all.bu036.floor1.west.bldg6.example.com "all nodes in office bu036,
+                                           floor 1, west wing, 
+                                           building 6"
+    </artwork></figure>
+    </t>
+    
+    <t>Similarly, if supported, reverse mapping (from IP multicast address to Group FQDN) is possible
+	    using the reverse DNS resolution technique (<xref target="RFC1033" />).  Reverse mapping is
+		important, for example, in troubleshooting to translate IP multicast addresses back to
+		human-readable hostnames to show in a diagnostics user interface.
+    </t>
+  </section>
+
+
+
+ <!-- section anchor="sec-2.3" title="Port and URI Configuration" -->  
+  <section title="Port and URI Configuration">
+	 
+	<t>
+   A CoAP server that is a member of a group listens for CoAP messages
+   on the group's IP multicast address, usually on the CoAP default UDP
+   port, 5683.  If the group uses a specified non-default UDP port, be
+   careful to ensure that all group members are configured to use that
+   same port.</t>
+   
+   	<t>
+   Different ports for the same IP multicast address are preferably not used to specify different CoAP groups.
+   If disjoint groups share the same IP multicast address, then
+   all the devices interested in one group will accept IP traffic also for the other disjoint groups, only to ultimately discard the traffic 
+   higher in their IP stack (based on UDP port discrimination).
+    </t>
+	
+    <t>
+      CoAP group communication will not work if there is diversity in the authority
+      port (e.g., different dynamic port addresses across the group) or if other parts of the
+      group URI such as the path, or the query, differ on different endpoints.
+
+    	Therefore, some measures must be present to ensure uniformity in port number
+    	and resource names/locations within a group.  
+    
+	    All CoAP group communication requests MUST be sent using a port
+            number according to one of the below options:
+	    <list style="numbers">
+			<t> A preconfigured port number.</t>
+
+			<t> If the client is configured to use service discovery including
+			URI and port discovery, it uses the port number obtained via a service
+			discovery lookup operation for the targeted CoAP group.</t>
+
+			<t> Use the default CoAP UDP port (5683).</t>
+		</list>
+			
+		For a CoAP server node that supports resource discovery, the default
+		port 5683 must be supported (Section 7.1 of <xref target="RFC7252" />) for the "All
+		CoAP Nodes" group.  Regardless of the method of selecting the port number, the same
+		port MUST be used across all CoAP servers in a group and across all
+		CoAP clients performing the group requests.
+	</t>
+
+
+    <t>All CoAP group communication requests SHOULD operate on group URI paths in one of the following ways:
+			 <list style="numbers">
+			 	<t> Preconfigured group URI paths, if available.  Implementers are free to define the paths as they see fit.
+					However, note that <xref target="RFC7320" /> prescribes that
+					a specification must not constrain or define the structure or semantics for any path component.
+					So for this reason, a predefined URI path is not specified in this document and also must not be provided in
+					other specifications.</t>
+			 	<t> If the client is configured to use default Constrained RESTful Environments (CoRE) resource discovery, it uses URI paths 
+			 			retrieved from a "/.well-known/core" lookup on a 
+			 			group member. The URI paths the client will use MUST be known 
+			 			to be available also in all other endpoints in the group. The URI path configuration mechanism on servers
+			 			MUST ensure that these URIs (identified as being supported by the group) are configured on 
+			 			all group endpoints.</t>
+			 	<t> If the client is configured to use another form of service discovery, it uses group URI paths 
+						from an equivalent service discovery lookup that returns the resources supported by all group members.</t>
+				<t> If the client has received a group URI through a previous RESTful interaction with a trusted server, 
+			      it can use this URI in a CoAP group communication request.
+		    	  For example, a commissioning tool may instruct a sensor device in this way to which target group (group URI)
+				  it should report sensor events.</t>
+		   </list>
+	      	
+			However, when the URI path is selected, the same path MUST be used across all CoAP servers in a group and all CoAP clients performing
+			the group requests.			
+			   
+    </t>
+
+   </section>  
+
+
+
+
+
+  <!-- section anchor="sec-2.4" title="RESTful Methods" -->
+  <section title="RESTful Methods">
+      
+    <t>Group communication most often uses the idempotent CoAP methods GET and PUT. The idempotent method
+    	DELETE can also be used.  The non-idempotent CoAP method POST may only be used for group communication 
+    	if the resource being POSTed to has been designed to cope with the unreliable and lossy nature of IP multicast.
+    	For example, a client may resend a multicast POST request for additional reliability. Some servers will 
+    	receive the request two times while others may receive it only once. For idempotent methods, all these servers
+    	will be in the same state while for POST, this is not guaranteed; so, the resource POST operation must
+    	be specifically designed to take message loss into account.</t>
+
+	</section>
+  
+  <!-- section anchor="sec-2.5" title="Request and Response Model" -->
+  <section title="Request and Response Model">
+
+   <t>All CoAP requests that are sent via IP multicast must be Non-confirmable 
+   (Section 8.1 of <xref target="RFC7252" />). The Message ID
+   	in an IP multicast CoAP message is used for optional message deduplication as detailed in
+   	Section 4.5 of <xref target="RFC7252" />.
+   </t>
+   
+   <t>
+      A server optionally sends back a unicast response to the CoAP group communication request
+      (e.g., response "2.05 Content" to a group GET request).  The unicast responses received by the
+      CoAP client may be a mixture of success (e.g., 2.05 Content) and failure (e.g., 4.04 Not Found)
+      codes depending on the individual server processing results.  Detailed processing rules for 
+	  IP multicast request acceptance and unicast response suppression are given in <xref target="ResponseSuppression"/>.
+   </t>
+	  
+	  
+   <t>	  
+	  A CoAP request sent over IP multicast and any unicast response it causes must take into
+      account the congestion control rules defined in <xref target="Congestion_Control"/>.
+   </t>
+
+	<t>The CoAP client can distinguish the origin of multiple server responses by the source IP address
+		of the UDP message containing the CoAP response or any other available unique identifier 
+		(e.g., contained in the CoAP payload). In case a CoAP client sent multiple group
+		requests, the responses are as usual matched to a request using the CoAP Token.
+	</t>
+	
+	<t>For multicast CoAP requests, there are additional constraints on the reuse of Token values, compared to the
+		unicast case. In the unicast case, receiving a response effectively frees up its Token value for reuse since
+		no more responses will follow. However, for multicast CoAP, the number of responses is not bounded a priori. Therefore,
+		the reception of a response cannot be used as a trigger to "free up" a Token value for reuse. 
+		Reusing a Token value too early could lead to incorrect
+		response/request matching in the client and would be a 
+		protocol error. Therefore, the time between reuse of Token values used in multicast requests MUST be greater than:
+	</t>
+	<t>
+		NON_LIFETIME + MAX_LATENCY + MAX_SERVER_RESPONSE_DELAY
+	</t>
+	 <t>
+	 	where NON_LIFETIME and MAX_LATENCY are defined in Section 4.8 of <xref target="RFC7252" />.
+	 	MAX_SERVER_RESPONSE_DELAY is defined here as the expected maximum response delay over all servers that the client can send a 
+	 	multicast request to. This delay includes the maximum Leisure time period as defined in Section 8.2 
+	 	of <xref target="RFC7252" />. CoAP does not define a time limit for the server response delay. 
+	 	Using the default CoAP parameters, the Token reuse time MUST be greater than 250 seconds plus MAX_SERVER_RESPONSE_DELAY.
+	 	A preferred solution to meet this requirement is to generate a new unique Token for every multicast request, such that a Token
+	 	value is never reused. If a client has to reuse Token values for some reason, and also MAX_SERVER_RESPONSE_DELAY is
+	 	unknown, then using	MAX_SERVER_RESPONSE_DELAY = 250 seconds is a reasonable guideline. The time between Token reuses is
+	 	in that case set to a value greater than 500 seconds.
+	 </t>
+ </section>
+
+
+
+
+
+
+        <!-- section anchor="sec-2.6" title="Membership Configuration" --> 
+	<section title="Membership Configuration" anchor="ConfiguringMembers">
+
+
+        <!-- section anchor="sec-2.6.1" title="Background" --> 
+	    <section title="Background" anchor="ConfiguringMembersBackground">
+
+		<!-- section anchor="sec-2.6.1.1" title="Member Discovery" -->  
+		<section title="Member Discovery"  anchor="MemberDiscovery">
+	 
+		<t>CoAP groups, and the membership of these groups, can be discovered via the lookup interfaces
+		  in the Resource Directory (RD) defined in <xref target="CoRE-RD"/>.
+		  This discovery interface is not required to invoke CoAP group communications.  However, it is a
+		  potential complementary interface useful for overall management of CoAP groups.   Other
+		  methods to discover groups (e.g., proprietary management systems) can also be used.  An example 
+		  of doing some of the RD-based lookups is given in <xref target="CommissioningWithRD"/>.
+		</t>
+
+		</section>				
+		
+		
+            <!-- section anchor="sec-2.6.1.2" title="Configuring Members" --> 
+	    <section title="Configuring Members">
+		<t>The group membership of a CoAP endpoint may be configured in one of the following ways.
+		First, the group membership may be preconfigured before node deployment. Second, a node may
+		be programmed to discover (query) its group membership using a specific service
+		discovery means. Third, it may be configured by another node
+	  (e.g., a commissioning device). 
+		</t>
+
+		<t>
+		In the first case, the preconfigured group information may be either an IP multicast
+		address or a hostname (FQDN) that is resolved later (during operation) to an IP multicast address
+			by the endpoint using DNS (if supported). 
+		</t>
+
+		<t>
+		For the second case, a CoAP endpoint may look up its group membership using techniques such as
+		DNS-based Service Discovery (DNS-SD) and RD <xref target="CoRE-RD"/>.
+		</t>
+
+		<t>
+		In the third case, typical in scenarios such as building control, a dynamic commissioning tool
+		determines to which group(s) a sensor or actuator node belongs, and writes this information to the 
+		node, which can subsequently join the correct IP multicast group(s) on its network interface. The 
+		information written per group may again be an IP multicast address or a hostname.
+		</t>
+
+		</section>	
+
+	
+	
+    </section>
+   <!-- End Background Section --> 
+
+
+
+              <!-- section anchor="sec-2.6.2" title="Membership Configuration RESTful Interface" --> 
+	      <section title="Membership Configuration RESTful Interface" anchor="ConfiguringMembersRestful">
+
+	<t>
+	To achieve better interoperability between endpoints from different manufacturers, 
+	an OPTIONAL CoAP membership configuration RESTful interface for configuring endpoints with relevant group 
+	information is described here. This interface provides a solution for the third
+	case mentioned above. To access this interface, a client will use unicast CoAP methods (GET/PUT/POST/DELETE). 
+    This interface is a method of configuring group information in individual endpoints.
+	</t>
+
+	<t>		
+	Also, a form of authorization (preferably making use of unicast DTLS-secured CoAP per Section 9.1 of <xref target="RFC7252" />)
+		should be used such that only authorized controllers are allowed by an endpoint to configure its group membership.
+	</t>
+	
+
+	<t>
+	It is important to note that other approaches may be used to configure CoAP endpoints with relevant group information.
+	These alternative approaches may support a subset or superset of the membership configuration RESTful interface described in this document.
+	For example, a simple interface to just read the endpoint group information may be implemented via a classical
+	Management Information Base (MIB) approach (e.g., following the approach of <xref target="RFC3433" />).
+	</t>
+
+	      <section title="CoAP-Group Resource Type and Media Type">
+	<t>
+	CoAP endpoints implementing the membership configuration RESTful interface MUST
+	support the CoAP group configuration Internet Media Type "application/coap-group+json" 
+	(<xref  target="InternetMediaType"/>).
+	</t>
+	<t>
+	A resource offering this representation can be annotated for direct discovery
+	<xref target="RFC6690"/> using the Resource Type (rt=) Link Target Attribute "core.gp", where "gp" is shorthand for
+	"group" (<xref  target="ResourceType"/>). An authorized client uses this media type to query/manage group membership
+	of a CoAP endpoint as defined in the following subsections.
+	</t>
+
+	<t>
+	The Group Configuration resource and its sub-resources have a content format based on JavaScript Object Notation (JSON) (as indicated by the 
+	"application/coap-group+json" media type). The resource includes zero or more group membership JSON objects <xref target="RFC7159" />
+	in a format as defined in <xref target="ConfiguringMembersRestfulGetAll"/>.  A group membership JSON object contains one or more
+	key/value pairs as defined below, and represents a single IP multicast group membership for the CoAP endpoint.  Each key/value
+	pair is encoded as a member of the JSON object, where the key is the member name and the value is the member's value.
+	</t>
+	<t>
+		Examples of four different group membership objects are as follows:
+
+	<figure><artwork>
+   { "n": "All-Devices.floor1.west.bldg6.example.com",
+     "a": "[ff15::4200:f7fe:ed37:abcd]:4567" } 
+
+   { "n": "sensors.floor2.east.bldg6.example.com" } 
+
+   { "n": "coap-test",
+     "a": "224.0.1.187:56789" } 
+
+   { "a": "[ff15::c0a7:15:c001]" } 
+	</artwork></figure>
+		
+	</t>
+  <t>
+   The OPTIONAL "n" key/value pair stands for "name" and identifies the group 
+   with a hostname (and optionally the port number), for example, an FQDN.
+   The OPTIONAL "a" key/value pair specifies the IP multicast address (and optionally the port number)
+   of the group.  It contains an IPv4 address (in dotted-decimal notation) or an IPv6 address. 
+   The following ABNF rule can be used for parsing the address, referring to the definitions in Section 
+   3.2.2 of <xref target="RFC3986"/> that are also used in the base CoAP
+   (Section 6 of <xref target="RFC7252" />.
+
+<figure><artwork>
+   group-address = IPv4address [ ":" port ]
+                   / "[" IPv6address "]" [":" port ]
+</artwork></figure>
+   </t>
+
+  <t>
+   In any group membership object, if the IP address is known when the object is created, it is included in the "a" key/value pair.  If the
+   "a" value cannot be provided, the "n" value MUST be included, containing a valid hostname with an optional port number that can be
+   translated to an IP multicast address via DNS.
+
+   
+<figure><artwork>
+   group-name = host [ ":" port ]
+</artwork></figure>
+	
+
+	If the port number is not provided, then the endpoint will attempt to
+	look up the port number from DNS if it supports a method to do this.
+	The possible DNS methods include DNS SRV <xref target="RFC2782"/> or
+        DNS-SD <xref target="RFC6763"/>.
+	If port lookup is not supported or not provided by DNS, the default CoAP port (5683) is assumed.
+
+
+
+	
+ </t> 
+ 
+ <t>
+ After any change on a Group Configuration resource, the endpoint MUST effect
+		registration/deregistration from the corresponding IP multicast group(s)
+		by making use of APIs such as IPV6_RECVPKTINFO <xref target="RFC3542"/>.
+ </t>
+          </section>
+
+
+	      <section title="Creating a New Multicast Group Membership (POST)" anchor="ConfiguringMembersPost">
+<t>
+<figure><artwork>
+Method:       POST
+URI Template: /{+gp}
+Location-URI Template: /{+gp}/{index}
+URI Template Variables:
+  gp    - Group Configuration Function Set path (mandatory).
+  index - Group index.  Index MUST be a string of maximum two (2) 
+    alphanumeric ASCII characters (case insensitive).  It MUST be 
+    locally unique to the endpoint server.  It indexes the particular
+    endpoint's list of group memberships.
+    
+Example: 
+  Req: POST /coap-group 
+       Content-Format: application/coap-group+json
+    { "n": "All-Devices.floor1.west.bldg6.example.com",
+      "a": "[ff15::4200:f7fe:ed37:abcd]:4567" } 
+  Res: 2.01 Created 
+       Location-Path: /coap-group/12
+</artwork></figure>
+
+
+For the 'gp' variable, it is recommended to use the path "coap-group" by default.
+   The "a" key/value pair is always used if it is given.  The "n" pair
+   is only used when there is no "a" pair. If only the "n" pair is given, the CoAP
+   endpoint performs DNS resolution to obtain the IP
+   multicast address from the hostname in the "n" pair.  If DNS resolution is
+   not successful, then the endpoint does not attempt joining or listening 
+   to any multicast group for this case since the IP multicast address is unknown. 
+  
+   
+</t><t>
+   After any change on a Group Configuration resource, the endpoint MUST
+   effect registration/deregistration from the corresponding IP
+   multicast group(s) by making use of APIs 
+   such as IPV6_RECVPKTINFO <xref target="RFC3542"/>.  When a POST payload contains
+   an "a", an IP multicast address to which the endpoint is already
+   subscribed, no change to that subscription is needed.
+</t>		  
+		  	</section>
+
+		  	
+	      <section title="Deleting a Single Group Membership (DELETE)" anchor="ConfiguringMembersDelete">
+<t>
+<figure><artwork>
+Method:       DELETE
+URI Template: {+location}
+URI Template Variables:
+  location - The Location-Path returned by the CoAP server 
+    as a result of a successful group creation.
+
+Example: 
+  Req: DELETE /coap-group/12 
+  Res: 2.02 Deleted
+</artwork></figure>
+</t>
+				</section>
+
+
+
+	      <section title="Reading All Group Memberships at Once (GET)" anchor="ConfiguringMembersRestfulGetAll">
+<t>
+    A (unicast) GET on the CoAP-group resource returns a JSON object containing multiple keys and values. The keys (member names) are
+    group indices, and the values (member values) are the corresponding group membership objects.  Each group membership object describes
+    one IP multicast group membership.  If no group memberships are configured, then an empty JSON object is returned.</t>
+
+	
+<t>Method: GET</t>
+<t>URI Template: /{+gp}</t>
+<t>URI Template Variables:</t>
+<t>gp - see <xref target="ConfiguringMembersPost"/></t>
+
+
+<t>
+<figure><artwork>
+Example:
+  Req: GET /coap-group
+  Res: 2.05 Content 
+       Content-Format: application/coap-group+json
+    { "8" :{ "a": "[ff15::4200:f7fe:ed37:14ca]" },
+      "11":{ "n": "sensors.floor1.west.bldg6.example.com",
+             "a": "[ff15::4200:f7fe:ed37:25cb]" },
+      "12":{ "n": "All-Devices.floor1.west.bldg6.example.com",
+             "a": "[ff15::4200:f7fe:ed37:abcd]:4567" }
+    }
+</artwork></figure>
+
+Note: the returned IPv6 address string will represent the same IPv6 address that was originally submitted in group membership 
+creation, though it might be a different string because of different choices in IPv6 string representation formatting that
+may be allowed for the same address (see <xref target="RFC5952" />).
+</t>
+				</section>
+
+
+				<section title="Reading a Single Group Membership (GET)">
+
+<!-- [rfced] May we clarify this sentence by adding a subject?
+
+Original:
+ Similar to Section 2.6.2.4 but only a single group membership is read. 
+
+Perhaps:
+ This operation is similar to the one outlined in Section 2.6.2.4, but 
+ only a single group membership is read. -->
+
+<t>Similar to <xref target="ConfiguringMembersRestfulGetAll"/>, but only a single group membership is read.
+	If the requested group index does not exist, then a 4.04 Not Found response is returned.</t>
+				
+<t>Method: GET</t>
+<t>URI Template 1: {+location}</t>
+<t>URI Template 2: /{+gp}/{index}</t>
+<t>URI Template Variables:</t>
+<t>location - see <xref target="ConfiguringMembersDelete"/></t>
+<t>gp, index - see <xref target="ConfiguringMembersPost"/></t>
+
+<t>
+
+<figure><artwork>
+Example:
+  Req: GET /coap-group/12
+  Res: 2.05 Content
+       Content-Format: application/coap-group+json
+    {"n": "All-Devices.floor1.west.bldg6.example.com",
+     "a": "[ff15::4200:f7fe:ed37:abcd]:4567"}
+</artwork></figure>
+</t>
+				</section>
+				
+				
+				
+
+
+	      <section title="Creating/Updating All Group Memberships at Once (PUT)">
+<t>
+A (unicast) PUT with a group configuration media type as payload will replace all current group memberships
+in the endpoint with the new ones defined in the PUT request. This operation MUST only be used to delete
+ or update group membership objects for which the CoAP client, invoking this operation, is responsible.  The
+ responsibility is based on application-level knowledge.  For example, a commissioning tool will be responsible
+ for any group membership objects that it created.
+</t>
+
+
+
+<t>Method: PUT</t>
+<t>URI Template: /{+gp}</t>
+<t>URI Template Variables:</t>
+<t>gp - see <xref target="ConfiguringMembersPost"/></t>
+
+ <t> 
+<figure><artwork>
+Example: (replacing all existing group memberships with two new 
+          group memberships)
+  Req: PUT /coap-group
+       Content-Format: application/coap-group+json
+    { "1":{ "a": "[ff15::4200:f7fe:ed37:1234]" },
+      "2":{ "a": "[ff15::4200:f7fe:ed37:5678]" } 
+    }
+  Res: 2.04 Changed
+
+Example: (clearing all group memberships at once)
+  Req: PUT /coap-group
+       Content-Format: application/coap-group+json
+    {}
+  Res: 2.04 Changed
+</artwork></figure>
+
+</t>
+<t>
+	After a successful PUT on the Group Configuration resource, the endpoint MUST effect
+		registration to any new IP multicast group(s) and
+		deregistration from any previous IP multicast group(s), i.e., not any more present in the new memberships.
+		An API such as IPV6_RECVPKTINFO <xref target="RFC3542"/> should be used for this purpose.
+		Also, it MUST take into account the group indices present in the new resource during the generation 
+		of any new unique group indices in the future.
+</t>
+				</section>
+
+				
+
+			<section title="Updating a Single Group Membership (PUT)">
+<t>
+A (unicast) PUT with a group membership JSON object will replace an existing group membership 
+in the endpoint with the new one defined in the PUT request. This can be used to update the
+group membership.
+</t>
+
+<t>Method: PUT</t>
+<t>URI Template 1: {+location}</t>
+<t>URI Template 2: /{+gp}/{index}</t>
+<t>URI Template Variables:</t>
+<t>location - see <xref target="ConfiguringMembersDelete"/></t>
+<t>gp, index - see <xref target="ConfiguringMembersPost"/></t>
+
+
+<t>
+<figure><artwork>
+Example: (group name and IP multicast port change)
+  Req: PUT /coap-group/12
+       Content-Format: application/coap-group+json
+    {"n": "All-My-Devices.floor1.west.bldg6.example.com",
+     "a": "[ff15::4200:f7fe:ed37:abcd]"}
+  Res: 2.04 Changed
+</artwork></figure>
+</t>
+
+<t>
+	After a successful PUT on the Group Configuration resource, the endpoint MUST effect
+		registration to any new IP multicast group(s) and
+		deregistration from any previous IP multicast group(s), i.e., not any more present in the new membership.
+		An API such as IPV6_RECVPKTINFO <xref target="RFC3542"/> should be used for this purpose.
+</t>
+
+				</section>
+				
+				
+				
+	       </section>	
+	   
+
+	  </section>
+    
+
+
+
+
+
+
+        <!-- section anchor="sec-2.7" title="Request Acceptance and Response Suppression Rules" --> 
+	<section title="Request Acceptance and Response Suppression Rules" anchor="ResponseSuppression">
+	<t>
+	CoRE Link Format <xref target="RFC6690"/> and Section 8 of CoAP <xref target="RFC7252" /> define
+	behaviors for the following:
+	
+	<list style="numbers">
+		<t>IP multicast request acceptance -- in which cases a CoAP
+                request is accepted and executed, and when it is not.</t>
+		<t>IP multicast response suppression -- in which cases the CoAP response to an already executed request is returned to
+		the requesting endpoint, and when it is not.</t>
+	</list>
+	
+	A CoAP response differs from a CoAP ACK; ACKs are never sent by servers in response to an IP multicast CoAP 
+	request. This section first summarizes these behaviors and then presents additional guidelines
+	for response suppression.  Also, a number of IP multicast example applications are given to illustrate the overall approach.
+	</t>
+	<t>
+	To apply any rules for request and/or response suppression, a CoAP server must be aware that an incoming request
+	arrived via IP multicast by making use of APIs such as IPV6_RECVPKTINFO <xref target="RFC3542"/>.
+	</t>
+	<t>
+	For IP multicast request acceptance, the behaviors are as follows:
+	<list style="symbols">
+		<t>A server should not accept an IP multicast request that cannot be "authenticated" in some way (i.e, cryptographically 
+			or by some multicast boundary limiting the potential sources); see Section 11.3 of <xref target="RFC7252" />.  See 
+			<xref target="Security_Mitigation"/> for examples of multicast boundary limiting methods.
+		</t>
+		<t>A server should not accept an IP multicast discovery request with a query string (as defined in CoRE Link Format
+		<xref target="RFC6690"/>) if filtering <xref target="RFC6690"/> is not supported by the server.</t>
+		<t>A server should not accept an IP multicast request that acts on a specific resource for which IP multicast support 
+			is not required. (Note that for the resource "/.well-known/core", IP multicast support is required
+		       	if "multicast resource discovery" is supported as specified in Section 1.2.1 of <xref target="RFC6690"/>.)
+			Implementers are advised to disable IP multicast support by default on any other resource, until explicitly
+			enabled by an application or by	configuration.</t>
+		<t>Otherwise, accept the IP multicast request.</t>
+
+	</list>
+       </t>
+
+	<t>
+	For IP multicast response suppression, the behaviors are as follows: 
+	<list style="symbols">
+		<t>A server should not respond to an IP multicast discovery request if the filter specified by the request's
+		   query string does not match.</t>
+		<t>A server may choose not to respond to an IP multicast request if there's nothing useful to respond back (e.g., error 
+			 or empty response).</t>		 
+	</list>
+
+	</t>
+	
+	<t>
+	The above response suppression behaviors are complemented by the following guidelines.
+	CoAP servers should implement configurable response suppression, enabling at least
+	the following options per resource that supports IP multicast requests:
+	
+	<list style="symbols">
+		<t>Suppression of all 2.xx success responses;</t>
+		<t>Suppression of all 4.xx client errors;</t>
+		<t>Suppression of all 5.xx server errors; and</t>
+		<t>Suppression of all 2.05 responses with empty payload.</t>
+	</list>
+	</t>
+	
+	<t>
+	A number of CoAP group communication example applications are given below to illustrate
+	how to make use of response suppression:
+	
+	<list style="symbols">
+		<t>CoAP resource discovery: Suppress 2.05 responses with empty payload and all 4.xx and 5.xx errors.</t>
+		<t>Lighting control: Suppress all 2.xx responses after a lighting change command.</t>
+		<t>Update configuration data in a group of devices using group communication PUT: No suppression at all.
+			The client uses collected responses
+		   to identify which group members did not receive the new configuration and then attempts using CoAP CON unicast to
+		   update those specific group members. Note that in this case, the client implements a "reliable group communication"
+		   (as defined in <xref target="terminology"/>) function using additional, non-standardized functions above the CoAP layer.</t>
+		<t>IP multicast firmware update by sending blocks of data: Suppress all 2.xx and 5.xx responses. After having sent
+			 all IP multicast blocks, the client checks each endpoint by unicast to identify which data blocks are still missing
+			 in each endpoint.</t>
+		<t>Conditional reporting for a group (e.g., sensors) based on a group URI query: Suppress all 2.05 responses with empty payload (i.e., if
+				a query produces no matching results).</t>
+	</list>
+	</t>
+	
+
+	</section>
+
+	
+
+
+
+  <!-- section anchor="sec-2.8" title="Congestion Control" -->
+  <section title="Congestion Control" anchor="Congestion_Control">
+    <t>
+    CoAP group communication requests may result in a multitude of responses from
+    different nodes, potentially causing congestion.  Therefore, both the sending of IP multicast requests
+    and the sending of the unicast CoAP responses to these multicast requests should be conservatively controlled.
+    </t><t>
+    CoAP <xref target="RFC7252" /> reduces IP multicast-specific congestion 
+    risks through the following measures:
+    
+    <list style="symbols">    
+      <t>A server may choose not to respond to an IP multicast request if there's nothing useful 
+      to respond to (e.g., error or empty response); see Section 8.2 of <xref target="RFC7252" />. See <xref target="ResponseSuppression"/> for 
+      more detailed guidelines on response suppression.</t>
+      <t>A server should limit the support for IP multicast requests to specific resources 
+      where multicast operation is required (Section 11.3 of <xref target="RFC7252" />).</t>
+      <t>An IP  multicast request must be Non-confirmable (Section 8.1 of <xref target="RFC7252" />).</t>
+      <t>A response to an IP multicast request should be Non-confirmable (Section 5.2.3 of 
+	  <xref target="RFC7252" />).</t>
+      <t>A server does not respond immediately to an IP multicast request and should first wait for 
+      a time that is randomly picked within a predetermined time interval
+      called the Leisure (Section 8.2 of <xref target="RFC7252" />).</t>
+    </list>
+    
+    </t>
+    <t>
+    Additional guidelines to reduce congestion risks defined in this document are as follows:   
+    <list style="symbols">    
+      <t>A server in an LLN should only support group communication GET for resources that are small.  For example, the 
+	      payload of the response is limited to approximately 5% of the IP Maximum Transmit Unit (MTU) size, so it fits
+	      into a single link-layer frame in case 
+IPv6 over Low-Power Wireless Personal Area Networks (6LoWPAN) (see Section 4 of <xref target="RFC4944"/>) is used.</t>
+      <t>A server can minimize the payload length in response to a group communication GET on "/.well-known/core" 
+      by using hierarchy in arranging link descriptions for the response. An example of this is given 
+      in Section 5 of <xref target="RFC6690"/>.</t>
+      <t>A server can also minimize the payload length of a response to a group communication GET (e.g.,
+      on "/.well-known/core") using CoAP blockwise transfers <xref target="BLOCKWISE-CoAP"/>,
+      returning only a first block of the CoRE Link Format description.  For this reason, a CoAP client
+      sending an IP multicast CoAP request to "/.well-known/core" should support core-block.</t>
+      <t>A client should use CoAP group communication with the smallest possible IP multicast scope
+      that fulfills the application needs. As an example, site-local scope is always preferred
+      over global scope IP multicast if this fulfills the application needs.  Similarly, realm-local scope is always preferred over site-local scope if this fulfills the application needs.</t>
+    </list>
+    </t>
+    <t>More guidelines specific to the use of CoAP in 6LoWPAN networks <xref target="RFC4919"/>
+	    are given in <xref target="sixlowpanSpecific"/> of this document.</t>
+    
+  </section>
+
+
+
+
+
+  <!-- section anchor="sec-2.9" title="Proxy Operation" -->
+  <section title="Proxy Operation">
+	  <t> CoAP (Section 5.7.2 of <xref target="RFC7252" />) allows a client to request a forward-proxy to process
+		  its CoAP request. For this purpose, the client specifies either the request group URI as a string in the 
+		  Proxy-URI option or the Proxy-Scheme option with the group URI constructed from the
+		  usual Uri-* options. This approach
+		  works well for unicast requests.  However, there are certain issues and limitations of processing 
+		  the (unicast) responses to a CoAP group communication request made in this manner through a proxy.</t>
+
+
+	  <t>A proxy may buffer all the individual (unicast) responses to a CoAP group communication request and then
+		  send back only a single (aggregated) response to the client.  However, there are some issues with
+		  this aggregation approach:
+		  
+	<list style="symbols">
+		<t>Aggregation of (unicast) responses to a CoAP group communication request in a proxy is difficult.  This is
+		because the proxy does not know how many members there are in the group or how many group members
+		will actually respond.  Also, the proxy does not know how long to wait before deciding to send back
+	       	the aggregated response to the client.</t>
+
+
+		<t>There is no default format defined in CoAP for aggregation of multiple responses into a single
+			 response.</t>
+	</list>
+	
+	Alternatively, if a proxy follows directly the specification for a CoAP Proxy (Section 5.7.2 of <xref target="RFC7252" />),
+	the proxy would simply forward all the individual (unicast) responses to a CoAP group communication request
+	to the client (i.e., no aggregation).  There are also issues with this approach:
+  
+	<list style="symbols">
+		<t>The client may be confused as it may not have known that the Proxy-URI contained a group URI target.  
+			That is, the client may be expecting only one (unicast) response but instead receives multiple (unicast) 
+			responses, potentially leading to fault conditions in the application.</t>
+		<t>
+			Each individual CoAP response will appear to originate (IP source address) from the CoAP Proxy, and 
+			not from the server	that produced the response. This makes it impossible for the client to identify 
+			the server that	produced each response.
+		</t>
+	</list>
+    </t>
+    
+    <t>
+    	Due to the above issues, a CoAP Proxy SHOULD NOT support processing
+    	an IP multicast CoAP request but rather return a 501 (Not Implemented) response in such case. The
+    	exception case here (i.e., to process it) is allowed if all the following conditions are met:
+    	
+    	<list style="symbols">
+    	<t>The CoAP Proxy MUST be explicitly configured (whitelist) to allow proxied IP multicast requests by  
+    		a specific client(s).</t>
+	    <t>The proxy SHOULD return individual (unicast) CoAP responses to the client (i.e., not aggregated).  
+		The exception case here occurs when a (future) standardized aggregation format is being used.</t>
+    	<t>It MUST be known to the person/entity doing the configuration of the proxy, or otherwise verified in
+		some way, that the client configured in the whitelist supports receiving multiple responses
+	       	to a proxied unicast CoAP request.</t>
+    	</list>
+    </t>
+  </section>  
+
+
+  <!-- section anchor="sec-2.10" title="Exceptions" -->
+  <section title="Exceptions">
+    <t>CoAP group communication using IP multicast offers improved network efficiency and latency among
+	    other benefits.  However, group communication may not always be implementable in
+	    a given network.  The primary reason for this will be that IP multicast is not (fully) supported in
+	    the network.</t>  	    
+	    
+     <t>For example, if only RPL <xref target="RFC6550"/> is used in a network with its optional
+     	multicast support disabled, there will be no IP multicast routing at all. The only multicast that works
+     	in this case is link-local IPv6 multicast. This implies that any CoAP group communication request will 
+     	be delivered to nodes on the local link only, regardless of the scope value used in the IPv6 
+     	destination address.
+		 </t>     	
+    
+	 <t>CoAP Observe <xref target="OBSERVE-CoAP"/> is a feature for a client to "observe"
+        resources (i.e., to retrieve a representation of a resource and keep this representation updated
+        by the server over a period of time).  CoAP Observe does not support a group 
+	    communication mode.  CoAP Observe only supports a unicast mode of operation.</t> 
+	
+	
+  </section>
+
+
+
+
+</section>
+
+
+
+
+
+  <!-- section anchor="sec-3" title="Use Cases and Corresponding Protocol Flows" -->	
+  <section title="Use Cases and Corresponding Protocol Flows" anchor="Use_Cases">
+
+	<!-- section anchor="sec-3.1" title="Introduction" -->
+	<section title="Introduction">
+		<t>The use of CoAP group communication is shown in the context of the following two use
+		       	cases and corresponding protocol flows:
+		<list style="symbols">
+			<t>Discovery of RD <xref target="CoRE-RD"/>: 
+				discovering the local CoAP RD, which
+				contains links to resources stored on other CoAP servers
+			       	<xref target="RFC6690" />. 
+			</t>
+			<t>Lighting Control: synchronous operation of a group of
+			       	IPv6-connected lights (e.g., 6LoWPAN <xref target="RFC4944"/> lights).
+			</t>
+
+		</list>				
+	       </t>
+       </section>
+
+
+	<!-- section anchor="sec-3.2" title="Network Configuration" -->
+	<section title="Network Configuration">
+		<t>To illustrate the use cases, we define two IPv6 network configurations. Both are based on
+		  the topology as shown in <xref target="Example_Topology" />. The two configurations
+		  using this topology are as follows:
+	<list style="numbers">		  
+		<t>Subnets are 6LoWPAN networks; the routers Rtr-1 and Rtr-2 are 6LoWPAN Border Routers
+		   (6LBRs) <xref target="RFC6775"/>.</t>
+		<t>Subnets are Ethernet links; the routers Rtr-1 and Rtr-2 are multicast-capable Ethernet routers.</t>
+	</list>
+	
+	Both configurations are further specified by the following:
+	<list style="symbols">
+		<t>A large room (Room-A) with three lights (Light-1, Light-2, Light-3) controlled by a
+			light switch (Light Switch).  The devices are organized into two subnets. In reality, there could be
+			more lights (up to several hundreds) but, for clarity, only three are shown.</t>
+		<t>Light-1 and the light switch are connected to a router (Rtr-1).</t>
+		<t>Light-2 and Light-3 are connected to another router (Rtr-2).</t>
+		<t>The routers are connected to an IPv6 network backbone (Network Backbone) that is also multicast 
+			enabled.  In the general case, this means the network backbone and Rtr-1/Rtr-2 support
+			a PIM-based multicast routing protocol and Multicast Listener Discovery (MLD)
+		       	for forming groups.</t>
+	        <t>A CoAP RD is connected to the network backbone.</t>
+		<t>The DNS server (DNS Server) is optional.  If the server is there (connected to the network backbone),
+			then certain DNS-based features are available (e.g., DNS resolution of the hostname to the IP multicast
+		       	address). If the DNS server is not there, then different provisioning of the network
+		       	is required (e.g., IP multicast addresses are hard-coded into devices, or manually configured,
+		       	or obtained via a service discovery method).</t>
+		<t>A controller (CoAP client) is connected to the backbone, which is able to control
+			 various building functions including lighting.</t>
+		</list>				
+	  </t>
+	  
+      <figure anchor="Example_Topology" title="Network Topology of a Large Room (Room-A)" align="center">
+        <artwork>
+          
+<![CDATA[  ################################################                 
+  #         **********************        Room-A #                 
+  #       **  Subnet-1            **             #           Network       
+  #     *                           **           #          Backbone       
+  #    *     +----------+             *          #                 |
+  #   *      |  Light   |-------+      *         #                 |
+  #  *       |  Switch  |       |       *        #                 |
+  #  *       +----------+  +---------+  *        #                 |
+  #  *                     |  Rtr-1  |-----------------------------+
+  #  *                     +---------+  *        #                 |
+  #  *       +----------+        |      *        #                 |
+  #   *      |  Light-1 |--------+     *         #                 |
+  #    *     +----------+             *          #                 |
+  #     **                          **           #                 |
+  #       **************************             #                 |
+  #                                              #                 |
+  #         **********************               # +------------+  |
+  #       **  Subnet-2            **             # | DNS Server |  |
+  #     *                           **           # | (Optional) |--+
+  #    *     +----------+             *          # +------------+  |
+  #   *      |  Light-2 |-------+      *         #                 |
+  #  *       |          |       |       *        #                 |
+  #  *       +----------+  +---------+  *        #                 |
+  #  *                     |  Rtr-2  |-----------------------------+
+  #  *                     +---------+  *        #                 |
+  #  *       +----------+        |      *        #                 |
+  #   *      |  Light-3 |--------+     *         #                 |
+  #    *     +----------+             *          # +------------+  |
+  #     **                          **           # | Controller |--+
+  #       **************************             # | Client     |  |
+  ################################################ +------------+  |
+                                    +------------+                 |
+                                    |   CoAP     |                 |
+                                    |  Resource  |-----------------+
+                                    |  Directory |                 
+                                    +------------+                 
+          ]]>
+        </artwork>
+      </figure>
+
+     </section>
+
+
+
+	<!-- section anchor="sec-3.3" title="Discovery of Resource Directory" -->
+	<section title="Discovery of Resource Directory" anchor="Discovery_Use_Case">	
+          <t>
+	    The protocol flow for discovery of the CoAP RD for the given network 
+	    (of <xref target="Example_Topology" />) is shown in <xref target="Example_Protocol_Flow_1" />:
+
+	    		<list style="symbols">
+				<t>Light-2 is installed and powered on for the first time.</t>
+				<t>Light-2 will then search for the local CoAP RD by sending
+					out a group communication GET request (with the "/.well-known/core?rt=core.rd" request URI)
+				       	to the site-local "All CoAP Nodes" multicast address (ff05:::fd).</t>
+				<t>This multicast message will then go to each node in Subnet-2.  Rtr-2 will
+					then forward it into the network backbone where it will be received
+					by the CoAP RD.  All other nodes in Subnet-2 will ignore the group communication
+				       	GET request because it is qualified by the query string "?rt=core.rd" 
+					(which indicates it should only be processed by the endpoint if it contains a resource of type "core.rd").</t>
+				<t>The CoAP RD will then send back a unicast response containing the requested content,
+					which is a CoRE Link Format representation of a resource of type "core.rd".</t> 
+				<t>Note that the flow is shown only for Light-2 for clarity.  Similar flows will
+					happen for Light-1, Light-3, and light switch when they are first
+				       	installed.</t>  
+			</list>
+			The CoAP RD may also be discovered by other means such as by assuming a default location
+			(e.g., on a 6LBR), using DHCP, anycast address, etc.  However, these approaches do not 
+			invoke CoAP group communication so are not further discussed here.  (See 
+			<xref target="CoRE-RD"/> for more details.)</t>
+		
+      <t>For other discovery use cases such as discovering local CoAP servers, services, or resources, CoAP
+      group communication can be used in a similar fashion as in the above use case. For example, link-local, 
+      realm-local, admin-local, or site-local scoped discovery can be done this way.
+      </t>
+
+
+
+      <figure anchor="Example_Protocol_Flow_1" title="Resource Directory Discovery via Multicast Request" align="center">
+        <artwork>
+          <![CDATA[
+                                 Light                           CoAP
+Light-1   Light-2    Light-3     Switch     Rtr-1     Rtr-2       RD
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+ **********************************          |          |          |
+ *   Light-2 is installed         *          |          |          |
+ *   and powers on for first time *          |          |          |
+ **********************************          |          |          |
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+ |          | COAP NON Mcast(GET                        |          |
+ |          |           /.well-known/core?rt=core.rd)   |          |
+ |          |--------->-------------------------------->|          |
+ |          |          |          |          |          |--------->|
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+ |          | COAP NON (2.05 Content                    |          |
+ |          |         </rd>;rt="core.rd";ins="Primary") |<---------|
+ |          |<------------------------------------------|          |
+ |          |          |          |          |          |          |
+          ]]>
+        </artwork>
+     </figure>
+
+    </section>
+
+
+
+	<!-- section anchor="sec-3.4" title="Lighting Control" -->
+	<section title="Lighting Control" anchor="Lighting_Control_Use_Case">	     
+    <t>
+	    The protocol flow for a building automation lighting control scenario
+	    for the network (<xref target="Example_Topology" />) 
+	    is shown in <xref target="Example_Protocol_Flow_3" />.
+	    The network is assumed to be in a 6LoWPAN configuration. 
+	    Also, it is assumed that the CoAP servers
+	    in each light are configured to suppress CoAP responses for any IP multicast CoAP requests 
+	    related to lighting control. (See <xref target="ResponseSuppression"/> for more details on
+	    response suppression by a server.) 
+	  </t>
+	  
+	  <t>In addition, <xref target="Example_Protocol_Flow_4" />
+	    shows a protocol flow example for the case that servers do respond to a
+	    lighting control IP multicast request with (unicast) CoAP NON responses. 
+	    There are two success responses and one 5.00
+	    error response. In this particular case, the light switch does not check that all lights
+	    in the group received the IP multicast request by examining the responses.
+	    This is because the light switch is not configured with an exhaustive
+	    list of the IP addresses of all lights belonging to the group. 
+	    However, based on received error responses, it could take
+	    additional action such as logging a fault or alerting the user via its
+	    LCD display.  In case a CoAP message is delivered multiple times to a light,
+	    the subsequent CoAP messages can be filtered out as duplicates, based on the CoAP Message ID.
+          </t>
+	  
+	  <t>Reliability of IP multicast is not guaranteed. Therefore, one or more lights in the
+	  	group may not have received the CoAP control request due to packet loss. In this use case,
+	  	there is no detection nor correction of such situations: the application layer expects 
+	  	that the IP multicast forwarding/routing will be of sufficient quality to provide on average
+	  	a very high probability of packet delivery to all CoAP endpoints in an IP multicast group.
+	  	An example protocol to accomplish this using randomized retransmission is the MPL forwarding protocol for LLNs
+	  	<xref target="MCAST-MPL"/>.	  
+	  </t>
+	  
+	 <t>
+	    We assume the following steps have already occurred before the illustrated flows:
+
+    		<list style="hanging" hangIndent="4">
+				<t hangText="1)">Startup phase: 6LoWPANs are formed.  IPv6 addresses are assigned to all devices.  
+					The CoAP network is formed.</t>
+				<t hangText="2)">Network configuration (application independent): 6LBRs are configured with
+				   IP multicast addresses, or address blocks, to filter out or to pass through to/from the 6LoWPAN.</t>
+				<t hangText="3a)">Commissioning phase (application related): The IP multicast address of the group 
+					(Room-A-Lights) has been configured in all the lights and in the light switch.</t>
+				<t hangText="3b)">As an alternative to the previous step, when a DNS server is available, the 
+				 	light switch and/or the lights have been configured with a group hostname that each node 
+                                        resolves to the above IP multicast address of the group. </t>
+        </list>
+
+
+			Note for the Commissioning phase: the switch's 6LoWPAN/CoAP software stack supports sending 
+		  unicast, multicast, or proxied unicast CoAP requests, including processing of
+		  the multiple responses that may be generated by an IP multicast CoAP request.
+    </t>
+
+       <figure anchor="Example_Protocol_Flow_3" title="Light Switch Sends Multicast Control Message" align="center">
+        <artwork>
+          <![CDATA[
+                                 Light                       Network
+Light-1   Light-2    Light-3     Switch    Rtr-1      Rtr-2  Backbone
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+ |          |          ***********************          |          |
+ |          |          *   User flips on     *          |          |
+ |          |          *   light switch to   *          |          |
+ |          |          *   turn on all the   *          |          |
+ |          |          *   lights in Room-A  *          |          |
+ |          |          ***********************          |          |
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+ |          |          |    COAP NON Mcast(PUT,         |          |
+ |          |          |    Payload=lights ON)          |          |
+ |<-------------------------------+--------->|          |          |
+ ON         |          |          |          |-------------------->|
+ |          |          |          |          |          |<---------|
+ |          |<---------|<-------------------------------|          |
+ |          ON         ON         |          |          |          |
+ ^          ^          ^          |          |          |          |
+ ***********************          |          |          |          |
+ *   Lights in Room-A  *          |          |          |          |
+ *   turn on (nearly   *          |          |          |          |
+ *   simultaneously)   *          |          |          |          |
+ ***********************          |          |          |          |
+ |          |          |          |          |          |          |
+          ]]>
+        </artwork>
+      </figure>
+
+
+      <figure anchor="Example_Protocol_Flow_4" title="Lights (Optionally) Respond to Multicast CoAP Request" align="center">
+        <artwork>
+          <![CDATA[
+                                 Light                       Network
+Light-1   Light-2    Light-3     Switch    Rtr-1      Rtr-2  Backbone
+ |          |          |          |          |          |          |
+ |     COAP NON (2.04 Changed)    |          |          |          |
+ |------------------------------->|          |          |          |
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+ |          COAP NON (2.04 Changed)          |          |          |
+ |          |------------------------------------------>|          |
+ |          |          |          |          |          |--------->|
+ |          |          |          |          |<--------------------|
+ |          |          |          |<---------|          |          |
+ |          |          |          |          |          |          |
+ |          |        COAP NON (5.00 Internal Server Error)         |
+ |          |          |------------------------------->|          |
+ |          |          |          |          |          |--------->|
+ |          |          |          |          |<--------------------|
+ |          |          |          |<---------|          |          |
+ |          |          |          |          |          |          |
+          ]]>
+        </artwork>
+      </figure>
+ 
+			<t>
+				Another, but similar, lighting control use case is shown in <xref target="Example_Protocol_Flow_5"/>.
+				In this case, a controller connected to the network backbone sends a CoAP group communication request
+				to turn on all lights in Room-A. Every light sends back a CoAP response to the controller after
+				being turned on.
+			</t>
+			
+        <figure anchor="Example_Protocol_Flow_5" title="Controller on Backbone Sends Multicast Control Message" align="center">
+        <artwork>
+          <![CDATA[
+                                                   Network
+Light-1   Light-2    Light-3     Rtr-1      Rtr-2  Backbone Controller
+ |          |          |           |          |          |        |
+ |          |          |           |          |    COAP NON Mcast(PUT,
+ |          |          |           |          |    Payload=lights ON)
+ |          |          |           |          |          |<-------|
+ |          |          |           |<----------<---------|        |
+ |<--------------------------------|          |          |        |
+ ON         |          |           |          |          |        |
+ |          |<----------<---------------------|          |        |
+ |          ON         ON          |          |          |        |
+ ^          ^          ^           |          |          |        | 
+ ***********************           |          |          |        | 
+ *   Lights in Room-A  *           |          |          |        | 
+ *   turn on (nearly   *           |          |          |        | 
+ *   simultaneously)   *           |          |          |        | 
+ ***********************           |          |          |        | 
+ |          |          |           |          |          |        | 
+ |          |          |           |          |          |        |
+ |    COAP NON (2.04 Changed)      |          |          |        | 
+ |-------------------------------->|          |          |        | 
+ |          |          |           |-------------------->|        | 
+ |          |  COAP NON (2.04 Changed)        |          |------->| 
+ |          |-------------------------------->|          |        | 
+ |          |          |           |          |--------->|        |
+ |          |          | COAP NON (2.04 Changed)         |------->| 
+ |          |          |--------------------->|          |        | 
+ |          |          |           |          |--------->|        | 
+ |          |          |           |          |          |------->| 
+ |          |          |           |          |          |        | 
+          ]]>
+        </artwork>
+      </figure>
+
+
+  </section>
+
+
+        <!-- section anchor="sec-3.5" title="Lighting Control in MLD Enabled Network" -->
+	<section title="Lighting Control in MLD-Enabled Network" anchor="Lighting_Control_Use_Case_MLD">
+    <t>
+    The use case in the previous section can also apply in networks where nodes support the
+    MLD protocol <xref target="RFC3810" />. The lights then 
+    take on the role of MLDv2 listener, and the routers (Rtr-1 and Rtr-2) are MLDv2 routers.
+    In the Ethernet-based network configuration, MLD may be available on all involved network
+    interfaces. Use of MLD in the 6LoWPAN-based configuration is also possible but requires MLD support
+    in all nodes in the 6LoWPAN. In current 6LoWPAN implementations, MLD is, however, not supported.
+    </t><t>
+    The resulting protocol flow is shown in <xref target="Example_Protocol_Flow_2"/>. This flow
+    is executed after the commissioning phase, as soon as lights are configured with a group
+    address to listen to. The (unicast) MLD Reports may require periodic refresh activity as specified
+    by the MLD protocol. In the figure, 'LL' denotes link-local communication. 
+    </t><t>
+    After the shown sequence of MLD Report messages has been executed, both Rtr-1 and Rtr-2
+    are automatically configured to forward IP multicast traffic destined to Room-A-Lights onto
+    their connected subnet. Hence, no manual network configuration of routers, as previously indicated in  <xref target="Lighting_Control_Use_Case"/>, step 2, is needed anymore.
+    </t><t>
+    
+      <figure anchor="Example_Protocol_Flow_2" title="Joining Lighting Groups Using MLD" align="center">
+        <artwork>
+          <![CDATA[
+                                 Light                       Network
+Light-1   Light-2    Light-3     Switch    Rtr-1      Rtr-2  Backbone
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+ | MLD Report: Join    |          |          |          |          |
+ | Group (Room-A-Lights)          |          |          |          |
+ |---LL------------------------------------->|          |          |
+ |          |          |          |          |MLD Report: Join     |
+ |          |          |          |          |Group (Room-A-Lights)|
+ |          |          |          |          |---LL---->----LL---->|
+ |          |          |          |          |          |          |
+ |          | MLD Report: Join    |          |          |          |
+ |          | Group (Room-A-Lights)          |          |          |
+ |          |---LL------------------------------------->|          |
+ |          |          |          |          |          |          |
+ |          |          | MLD Report: Join    |          |          |
+ |          |          | Group (Room-A-Lights)          |          |
+ |          |          |---LL-------------------------->|          |
+ |          |          |          |          |          |          |
+ |          |          |          |          |MLD Report: Join     |
+ |          |          |          |          |Group (Room-A-Lights)|
+ |          |          |          |          |<--LL-----+---LL---->|
+ |          |          |          |          |          |          |
+ |          |          |          |          |          |          |
+          ]]>
+        </artwork>
+      </figure>
+    </t>
+  </section>
+
+
+
+        <!-- section anchor="sec-3.6" title="Commissioning the Network Based on Resource Directory" -->
+	<section title="Commissioning the Network Based on Resource Directory" anchor="CommissioningWithRD">  
+		<t>
+			This section outlines how devices in the lighting use case (both switches and lights) can
+			be commissioned, making use of the RD <xref target="CoRE-RD"/>
+			and its group configuration feature.		
+		</t><t>
+		Once the RD is discovered, the Switches and lights need to be discovered
+		and their groups need to be defined. For the commissioning of these devices, a commissioning
+		tool can be used that defines the entries in the RD. The commissioning tool has the authority
+		to change the contents of the RD and the light/switch nodes. DTLS-based unicast security is used by the commissioning
+	       	tool to modify operational data in RD, switches, and lights.
+		</t>
+		
+		<t>In our particular use case, a group of three lights is defined with one IP multicast address and hostname:
+		
+	    <list style="empty">
+		<t>"Room-A-Lights.floor1.west.bldg6.example.com"</t>
+		</list>
+		</t>
+		
+		<t>The commissioning tool has a list of the three lights
+		and the associated IP multicast address. For each light in the list, the tool learns the IP address of the
+		light and instructs the RD with three (unicast) POST commands to store the endpoints associated with the three lights
+		as prescribed by the RD specification <xref target="CoRE-RD"/>.  Finally, the commissioning
+		tool defines the group in the RD to contain these three endpoints. Also the commissioning tool writes the IP multicast
+	       	address in the light endpoints with, for example, the (unicast) POST command discussed in <xref target="ConfiguringMembersPost"/>.
+		</t><t>
+		The light switch can discover the group in RD and thus learn the IP multicast address of the group. The light
+		switch will use this address to send CoAP group communication requests to the members of the group. When the message
+	  arrives, the lights should recognize the IP multicast address and accept the message. 
+		</t>
+	</section>
+
+
+</section>
+
+
+
+<!-- section anchor="sec-4" title="Deployment Guidelines" -->
+<section title="Deployment Guidelines" anchor="Deploy_Guide">
+
+   <t>
+   This section provides guidelines on how IP multicast-based 
+   CoAP group communication can be deployed in various network configurations.  
+   </t>
+
+
+	<!-- section anchor="sec-4.1" title="Target Network Topologies" -->   
+	<section title="Target Network Topologies">
+		<t>
+		CoAP group communication can be deployed in various network topologies. First, the
+		target network may be a traditional IP network, or an LLN such as a 6LoWPAN network, or 
+		consist of mixed traditional/constrained network segments.
+		Second, it may be a single subnet only or a multi-subnet, e.g., multiple 6LoWPAN 
+		networks joined by a single backbone LAN. Third, a wireless network segment may have all its
+		nodes reachable in a single IP hop (fully connected), or it may require multiple IP hops for 
+		some pairs of nodes to reach each other.
+		</t><t>
+		Each topology may pose different requirements on the configuration of routers and protocol(s),
+		in order to enable efficient CoAP group communication. To enable all the above target
+		network topologies, an implementation of CoAP group communication needs to allow the following:
+		<list style="numbers">
+			<t>Routing/forwarding of IP multicast packets over multiple hops.</t>
+			<t>Routing/forwarding of IP multicast packets over subnet boundaries between traditional
+				 and constrained (e.g., LLN) networks.</t>
+		</list>
+		The remainder of this section discusses solutions to enable both features.
+		</t>
+	</section>
+	
+
+  <!-- section anchor="sec-4.2" title="Networks Using the MLD Protocol" -->
+  <section title="Networks Using the MLD Protocol" anchor="deploy_mld">
+    <t>
+    CoAP nodes that are IP hosts (i.e., not IP routers) are generally unaware of the specific IP multicast 
+    routing/forwarding protocol being used. When such a host needs to join a specific (CoAP) multicast 
+    group, it requires a way to signal to IP multicast routers which IP multicast traffic it wants to receive. 
+    </t>
+    <t>
+    The MLD protocol <xref target="RFC3810" /> (see <xref target="mld"/> of this document)
+    is the standard IPv6 method to achieve this; therefore, this approach should be used on traditional
+    IP networks. CoAP server nodes would then act in the role of MLD Multicast Address Listener.
+    </t>
+    <t>
+    The guidelines from <xref target="RFC6636"/> on the tuning of MLD
+    for mobile and wireless networks may be useful when implementing MLD in LLNs.
+    However, on LLNs and 6LoWPAN networks, the use of MLD may not be feasible at all due to constraints
+    on code size, memory, or network capacity.
+  	</t>
+  </section>
+
+  <!-- section anchor="sec-4.3" title="Networks Using RPL Multicast Without MLD" -->
+  <section title="Networks Using RPL Multicast without MLD"  anchor="deploy_rpl">
+    <t>
+    It is assumed in this section that the MLD protocol is not implemented in a network,
+    for example, due to resource constraints. The RPL routing protocol (see Section 12
+    of <xref target="RFC6550"/>) defines the advertisement of IP multicast
+    destinations using Destination Advertisement Object (DAO) messages and routing of multicast
+    IPv6 packets based on this. It requires the RPL mode of operation
+    to be 3 (Storing mode with multicast support).    
+    </t><t>
+    Hence, RPL DAO can be used by CoAP nodes that are RPL routers, or are RPL Leaf Nodes, 
+    to advertise IP multicast group membership to parent routers. Then, RPL is 
+    used to route IP multicast CoAP requests over multiple hops to the correct CoAP servers.
+    </t><t>
+    The same DAO mechanism can be used to convey IP multicast group membership
+    information to an edge router (e.g., 6LBR), in case the edge router is also the root
+    of the RPL Destination-Oriented Directed Acyclic Graph (DODAG). This is useful because 
+    the edge router then learns which IP multicast traffic it needs to pass through from
+    the backbone network into the LLN subnet. 
+    In 6LoWPAN networks, such selective "filtering" helps to avoid congestion of a 6LoWPAN subnet 
+    by IP multicast traffic from the traditional backbone IP network.
+    </t>
+	</section>
+
+  <!-- section anchor="sec-4.4" title="Networks Using MPL Forwarding Protocol Without MLD" -->
+    <section title="Networks Using MPL Forwarding without MLD" anchor="deploy_mpl">
+		<t>
+		The MPL forwarding protocol <xref target="MCAST-MPL" /> can be used 
+		for propagation of IPv6 multicast packets to all MPL Forwarders within a predefined network domain, over
+		multiple hops. MPL is designed to work in LLNs. In this section, it is again assumed
+		that MLD is not implemented in the network, for example, due to resource
+		limitations in an LLN.
+		</t>
+		
+		<t>The purpose of MPL is
+		to let a predefined group of Forwarders collectively work towards the goal of distributing an IPv6 multicast
+		packet throughout an MPL Domain. (A Forwarder node may be associated to multiple MPL Domains at the same
+		time.) 
+		So, it would appear that there is no need for CoAP servers to advertise their multicast group membership, since any IP
+		multicast packet that enters the MPL Domain is distributed to all MPL Forwarders without regard
+		to what multicast addresses the individual nodes are listening to. 
+		</t>
+		
+		<t>However, if an IP multicast request originates just outside the MPL Domain, the request will
+		not be propagated by MPL. An example of such a case is the network
+		topology of <xref target="Example_Topology" /> where the subnets are 6LoWPAN subnets and
+		for each 6LoWPAN subnet, one Realm-Local (<xref target="RFC7346"/>) MPL Domain is defined.	
+		The backbone network in this case is not part of any MPL Domain.
+		</t>
+		
+		<t>This situation can become a problem in building control use cases, for example, when the controller 
+			client needs to send a single IP multicast request to the group Room-A-Lights. 
+			By default, the request would be blocked
+		by Rtr-1 and by Rtr-2 and not enter the Realm-Local MPL Domains associated to Subnet-1 and Subnet-2. The
+		reason is that Rtr-1 and Rtr-2 do not have the knowledge that devices in Subnet-1/2 want to 
+		listen for IP packets destined to IP multicast group Room-A-Lights.
+		</t>
+				
+		<t>
+		To solve the above issue, the following solutions could be applied:
+		<list style="numbers">
+			<t>Extend the MPL Domain, e.g., in the above example, include the network backbone to be part 
+				of each of the two MPL Domains. Or, in the above example, create just a single MPL Domain
+				that includes both 6LoWPAN subnets plus the backbone link, which is possible since
+				MPL is not tied to a single link-layer technology.</t>
+
+			<t>Manual configuration of an edge router(s) as an MPL Seed(s) for specific IP multicast traffic.  
+                        In the above example, this could be
+			done through the following three steps: First, configure Rtr-1 and Rtr-2 to act as MLD Address 
+                        Listeners for the Room-A-Lights IP multicast group.  This step allows any (other) routers on the 
+                        backbone to learn that at least one node on the backbone link is interested in receiving 
+				any IP multicast traffic to Room&nbhy;A&nbhy;Lights.
+				Second, configure both routers to "inject" any IP multicast packets destined to group Room-A-Lights into
+				the (Realm-Local) MPL Domain that is associated to that router. Third, configure both routers to propagate
+				any IPv6 multicast packets originating from within their associated MPL Domain to the backbone, if at least
+				one node on the backbone has indicated
+				interest in receiving such IPv6 packets (for which MLD is used on 
+				the backbone).
+			</t>				
+			<t>Use an additional protocol/mechanism for injection of IP multicast traffic from outside an MPL Domain into 
+				that MPL Domain, based on IP multicast group subscriptions of Forwarders within the MPL Domain. 
+				Such a protocol is currently not defined in <xref target="MCAST-MPL" />.</t>
+		</list>
+		</t>
+		
+		<t>
+	In conclusion, MPL can be used directly in case all sources of IP multicast CoAP requests (CoAP clients) and also 
+		all the destinations
+		(CoAP servers) are inside a single MPL Domain. Then, each source node acts as an MPL Seed.
+		In all other cases, MPL can only be used with additional protocols and/or configuration on
+		how IP multicast packets can be injected from outside into an MPL Domain.
+	  </t>
+    </section>   
+  
+		<!-- section anchor="sec-4.5" title="6LoWPAN Specific Guidelines for the 6LBR" -->   
+		<section title="6LoWPAN Specific Guidelines for the 6LBR" anchor="sixlowpanSpecific">
+		  <t>
+		   To support multi-subnet scenarios for CoAP group communication,
+		   it is recommended that a 6LBR will act in an
+		   MLD router role on the backbone link.  If this is not possible, then
+		   the 6LBR should be configured to act as an MLD Multicast Address
+		   Listener (see <xref target="mld"/>) on the backbone link.
+		  </t>
+		</section>
+		
+</section>
+
+
+<!-- section anchor="sec-5" title="Security Considerations" -->
+<section title="Security Considerations" anchor="security">
+    <t>This section describes the relevant security configuration for CoAP group communication using
+	    IP multicast. The threats to CoAP group communication are also identified, and various approaches to
+	    mitigate these threats are summarized.</t>
+
+     <!-- section anchor="sec-5.1" title="Security Configuration" -->
+     <section title="Security Configuration" anchor="SecurityConfig">
+	<t>As defined in Sections 8.1 and 9.1 of <xref target="RFC7252" />, CoAP group communication 
+		based on IP multicast will do the following:
+		<list style="symbols">
+			<t>Operate in CoAP NoSec (No Security) mode, until a future group security
+			       	solution is developed (see also <xref target="SecurityEvolution" />).</t>
+					
+			<t>Use the "coap" scheme.  The "coaps" scheme should only be used when a 
+			    future group security solution is developed (see also <xref target="SecurityEvolution" />).</t>
+					
+		</list>
+		Essentially, the above configuration means that there is currently no security at the CoAP layer for
+		group communication.  Therefore, for sensitive and mission-critical applications 
+		(e.g., health monitoring systems and alarm monitoring systems),
+		it is currently recommended to deploy CoAP group communication with an application-layer security
+		mechanism (e.g., data object security) for improved security. 
+		
+	</t>	
+	
+        <t>Application-level security has many desirable properties, including maintaining security 
+		properties while forwarding traffic through intermediaries (proxies).  Application-level 
+                security also tends to more cleanly separate security
+		from the dynamics of group membership (e.g., the problem of distributing security keys across large groups 
+		with many members that come and go).</t>
+		
+		
+		<t>Without application-layer security, CoAP group communication
+		should only be currently deployed in non-critical applications (e.g., read-only temperature sensors).  
+		Only when security solutions at the CoAP layer are mature enough (see <xref target="SecurityEvolution"/>)
+		should CoAP group communication without application-layer security be considered for sensitive and 
+		mission-critical applications.</t>		
+		
+	</section>	
+
+     <!-- section anchor="sec-5.2" title="General Threats" -->
+     <section title="Threats">
+	     <t>As noted above, there is currently no security at the CoAP layer for
+		     group communication.  This is due to the fact that the current
+		     DTLS-based approach for CoAP is exclusively unicast oriented and does not support
+		     group security features such as group key exchange and group authentication. As a 
+		     direct consequence of this, CoAP group communication is vulnerable to all attacks mentioned in
+		     Section 11 of <xref target="RFC7252" /> for IP multicast.
+	</t>
+     </section>	
+
+
+     <!-- section anchor="sec-5.3" title="Threat Mitigation" -->
+     <section title="Threat Mitigation" anchor="Security_Mitigation">
+	     <t> Section 11 of <xref target="RFC7252" /> identifies various threat mitigation techniques for CoAP 
+		     group communication.  In addition to those guidelines, it is recommended that for sensitive data or
+		     safety-critical control, a combination of appropriate link-layer security and administrative
+		     control of IP multicast boundaries should be used.  Some examples are given below.</t> 
+		     
+
+     <!-- section anchor="sec-5.3.1" title="WiFi Scenario" -->
+         <section title="WiFi Scenario">	     
+	     <t> In a home automation scenario (using WiFi), the WiFi encryption should be enabled to prevent
+		     rogue nodes from joining.  The Customer Premises Equipment (CPE) that enables access to the
+		     Internet should also have its IP multicast filters set so that it enforces multicast scope
+		     boundaries to isolate local multicast groups from the rest of the Internet (e.g., as per
+		     <xref target="RFC6092"/>). In addition, the scope of the IP multicast should be set
+		     to be site-local or smaller scope.  For site-local scope, the CPE will
+		     be an appropriate multicast scope boundary point.
+	     </t>
+         </section>
+
+
+     <!-- section anchor="sec-5.3.2" title="6LoWPAN Scenario" -->
+         <section title="6LoWPAN Scenario">	     
+	     <t>In a building automation scenario, a particular room may  have a single 6LoWPAN network 
+		     with a single edge router (6LBR).  Nodes on the subnet can use link-layer encryption
+		     to prevent rogue nodes from joining.  The 6LBR can be configured so that it blocks any
+		     incoming (6LoWPAN-bound) IP multicast traffic.  Another example topology could be a multi-subnet
+		     6LoWPAN in a large conference room.  In this case, the backbone can implement port 
+		     authentication (IEEE 802.1X) to ensure only authorized devices can join the Ethernet
+		     backbone.  The access router to this secured network segment can also be configured to 
+		     block incoming IP multicast traffic.
+	     </t>
+         </section>
+
+     <!-- section anchor="sec-5.3.3" title="Future Evolution" -->
+         <section title="Future Evolution" anchor="SecurityEvolution">	     
+			<t>In the future, to further mitigate the threats, security enhancements need to be developed
+			at the IETF for group communications.  This will allow introduction of a secure mode of CoAP
+			group communication and use of the "coaps" scheme for that purpose.</t>
+		
+			<t>At the time of writing this specification, there are various approaches being considered for security enhancements
+			 for group communications.  Specifically, a lot of the
+             current effort at the IETF is geared towards developing DTLS-based
+             group communication.  This is primarily motivated by the fact that unicast CoAP security is DTLS based 
+			 (Section 9.1 of <xref target="RFC7252" />.
+			 For example, <xref target="MCAST-SECURITY" /> proposes DTLS-based IP multicast security.  However, 
+			 it is too early to conclude if this is the best approach.  Alternatively, 
+			 <xref target="IPSEC-PAYLOAD" /> proposes IPsec-based IP multicast security.  This 
+			 approach also needs further investigation and validation.</t>
+
+     	
+         </section>
+	 
+     </section>	 
+	 
+	 
+	 <!-- section anchor="sec-5.4" title="Monitoring Considerations" -->
+     <section title="Monitoring Considerations" anchor="Monitoring">
+
+        <!-- section anchor="sec-5.4.1" title="General Monitoring" -->
+        <section title="General Monitoring">
+	 	<t>CoAP group communication is meant to be used to control a set of related devices 
+		(e.g., simultaneously turn on all the lights in a room).  This intrinsically exposes the group to some
+		unique monitoring risks that solitary devices (i.e., devices not in a group) are not as vulnerable to.
+		For example, assume an attacker is able to physically see a set of lights turn on in a room.  Then
+		the attacker can correlate a CoAP group communication message to that easily observable coordinated group 
+		action even if the contents of the message are encrypted by a future security solution 
+		(see <xref target="SecurityEvolution"/>).  This will give the attacker
+		side-channel information to plan further attacks (e.g., by determining the members of the group, then
+		some network topology information may be deduced).</t>
+
+		<t>One mitigation to group communication monitoring risks that should be explored in the future is methods
+		to decorrelate coordinated group actions.  For example, if a CoAP group communication GET is sent to all
+		the alarm sensors in a house, then their (unicast) responses should be as decorrelated as possible. 
+		This will introduce greater entropy into the system and will make it harder for an attacker to monitor and gather
+		side-channel information. </t>
+		</section>
+		
+		
+        <!-- section anchor="sec-5.4.2" title="Pervasive Monitoring" -->
+        <section title="Pervasive Monitoring">
+	     <t>A key additional threat consideration for group communication is
+		pointed to by <xref target="RFC7258"/>, which warns of the dangers of pervasive
+		monitoring.  CoAP group communication solutions that are built on top of IP multicast
+		need to pay particular heed to these dangers.  This is because IP
+		multicast is easier to intercept (e.g., and to secretly record)
+		compared to unicast traffic.  Also, CoAP traffic is meant for the
+		Internet of Things.  This means that CoAP traffic (once future security solutions 
+		are developed as in <xref target="SecurityEvolution"/>) may be used for
+		the control and monitoring of critical infrastructure (e.g., lights,
+		alarms, etc.) that may be prime targets for attack.</t>
+		
+		<t>For example, an attacker may attempt to record all the CoAP traffic
+		going over the smart grid (i.e., networked electrical utility) of a country and try 
+		to determine critical nodes for further attacks.  For example, the source node (controller)
+		sends out the CoAP group communication messages.  CoAP multicast traffic is
+		inherently more vulnerable (compared to a unicast packet) as the same
+		packet may be replicated over many links, so there is a much higher
+		probability of it getting captured by a pervasive monitoring system.</t>
+		
+		<t>One useful mitigation to pervasive monitoring is to restrict the scope 
+		of the IP multicast to the minimal scope that fulfills the application need.
+		Thus, for example, site-local IP multicast scope is always preferred over
+		global scope IP multicast if this fulfills the application needs.  This approach
+		has the added advantage that it coincides with the guidelines for minimizing 
+		congestion control (see <xref target="Congestion_Control"/>).</t>
+		
+		<t>In the future, even if all the CoAP multicast traffic is encrypted, an attacker
+		may still attempt to capture the traffic and perform an off-line attack,
+		though of course having the multicast traffic protected is always desirable as it
+		significantly raises the cost to an attacker (e.g., to break the
+		encryption) versus unprotected multicast traffic.</t>
+        </section>
+		
+	 </section>	 	 
+		 
+
+
+</section>
+
+<!-- section anchor="sec-6" title="IANA Considerations" -->
+<section title="IANA Considerations">
+
+     <!-- section anchor="sec-6.1" title="New 'core.gp' Resource Type" -->
+         <section title="New 'core.gp' Resource Type" anchor="ResourceType">
+		 <t> This memo registers a new Resource Type (rt=) Link Target Attribute,
+ 'core.gp', in the "Resource Type (rt=) Link Target Attribute Values"
+ subregistry under the "Constrained RESTful Environments (CoRE)
+ Parameters" registry.</t>
+
+		<t>Attribute Value: core.gp
+		</t>
+
+		<t>Description: Group Configuration resource.  This resource is used to
+			query/manage the group membership of a CoAP server.
+		</t>
+
+
+		<t>Reference: See <xref target="ConfiguringMembersRestful"/>.
+		</t>
+
+          </section>			
+
+     <!-- section anchor="sec-6.2" title="New 'coap-group+json' Internet Media Type" -->
+         <section title="New 'coap-group+json' Internet Media Type" anchor="InternetMediaType">	   
+
+		 <t>This memo registers a new Internet media type for the CoAP
+ Group Configuration resource called 'application/coap-group+json'.
+		 </t>
+
+		 <t>Type name: application
+		 </t>
+
+		 <t>Subtype name: coap-group+json
+		 </t>
+
+		 <t>Required parameters: None
+		 </t>
+
+		 <t>Optional parameters: None
+		 </t>
+
+		 <t>Encoding considerations: 8-bit UTF-8.
+		 </t>
+
+		 <t>JSON to be represented using UTF-8, which is 8-bit
+		 compatible (and most efficient for resource constrained
+                 implementations).
+		 </t>
+
+		 <t>Security considerations:
+		 </t>
+
+		 <t>Denial-of-Service attacks could be performed by constantly (re-)setting
+			 the Group Configuration resource of a CoAP endpoint to different values.  This will cause 
+			 the endpoint to register (or deregister) from the related IP multicast group.  To prevent this, it is 
+			 recommended that a form of authorization (making use of unicast DTLS-secured CoAP) be used such that only
+			 authorized controllers are allowed by an endpoint to configure its group membership.
+		 </t>
+
+		 <t>Interoperability considerations: None
+		 </t>
+
+		 <t>Published specification: RFC 7390
+		 </t>
+
+		 <t>Applications that use this media type:
+		 </t>
+
+		 <t>CoAP client and server implementations that wish to
+                 set/read the Group Configuration resource via the
+                 'application/coap-group+json' payload as
+                 described in <xref target="ConfiguringMembersRestful"/>.
+		 </t>
+
+		 <t>Fragment identifier considerations: N/A
+		 </t>
+		 
+		 <t>Additional Information:
+		 	<list style="hanging">
+			<t>Deprecated alias names for this type: None</t>
+		    <t>Magic number(s): None</t>
+			<t>File extension(s): *.json</t>
+			<t>Macintosh file type code(s): TEXT</t>
+			</list>
+		 </t>
+		 <t>Person and email address to contact for further information:
+                  <list style="hanging">
+                  <t>Esko Dijk ("Esko.Dijk@Philips.com")</t></list></t>
+		 
+		 <t>Intended usage: COMMON
+		 </t>
+
+		 <t>Restrictions on usage: None
+		 </t>
+
+		 <t>Author: CoRE WG
+		 </t>
+
+		 <t>Change controller: IETF
+		 </t>
+
+		 <t>Provisional registration? (standards tree only): N/A
+		 </t>			 
+         </section>	
+	
+
+
+
+</section>
+
+
+
+
+
+	</middle>
+     <back>
+
+    <!-- section anchor="sec-8" title="References" -->
+    <references title="Normative References">
+
+<reference anchor='RFC2119' target='http://www.rfc-editor.org/info/rfc2119'>
+<front>
+<title abbrev='RFC Key Words'>Key words for use in RFCs to Indicate Requirement Levels</title>
+<author initials='S.' surname='Bradner' fullname='Scott Bradner'>
+<organization>Harvard University</organization>
+</author>
+<date year='1997' month='March' />
+<area>General</area>
+<keyword>keyword</keyword>
+</front>
+<seriesInfo name='BCP' value='14' />
+<seriesInfo name='RFC' value='2119' />
+</reference>
+
+<reference anchor='RFC2782' target='http://www.rfc-editor.org/info/rfc2782'>
+<front>
+<title abbrev='DNS SRV RR'>A DNS RR for specifying the location of services (DNS SRV)</title>
+<author initials='A.' surname='Gulbrandsen' fullname='Arnt Gulbrandsen'>
+<organization>Troll Tech</organization>
+</author>
+<author initials='P.' surname='Vixie' fullname='Paul Vixie'>
+<organization>Internet Software Consortium</organization>
+</author>
+<author initials='L.' surname='Esibov' fullname='Levon Esibov'>
+<organization>Microsoft Corporation</organization>
+</author>
+<date year='2000' month='February' />
+</front>
+<seriesInfo name='RFC' value='2782' />
+</reference>
+  
+<reference anchor='RFC3376' target='http://www.rfc-editor.org/info/rfc3376'>
+<front>
+<title>Internet Group Management Protocol, Version 3</title>
+<author initials='B.' surname='Cain' fullname='B. Cain'>
+<organization /></author>
+<author initials='S.' surname='Deering' fullname='S. Deering'>
+<organization /></author>
+<author initials='I.' surname='Kouvelas' fullname='I. Kouvelas'>
+<organization /></author>
+<author initials='B.' surname='Fenner' fullname='B. Fenner'>
+<organization /></author>
+<author initials='A.' surname='Thyagarajan' fullname='A. Thyagarajan'>
+<organization /></author>
+<date year='2002' month='October' /></front>
+<seriesInfo name='RFC' value='3376' />
+</reference>
+
+<reference anchor='RFC3433' target='http://www.rfc-editor.org/info/rfc3433'>
+<front>
+<title>Entity Sensor Management Information Base</title>
+<author initials='A.' surname='Bierman' fullname='A. Bierman'>
+<organization /></author>
+<author initials='D.' surname='Romascanu' fullname='D. Romascanu'>
+<organization /></author>
+<author initials='K.C.' surname='Norseth' fullname='K.C. Norseth'>
+<organization /></author>
+<date year='2002' month='December' />
+</front>
+<seriesInfo name='RFC' value='3433' />
+</reference>
+
+<reference anchor='RFC3542' target='http://www.rfc-editor.org/info/rfc3542'>
+<front>
+<title>Advanced Sockets Application Program Interface (API) for IPv6</title>
+<author initials='W.' surname='Stevens' fullname='W. Stevens'>
+<organization /></author>
+<author initials='M.' surname='Thomas' fullname='M. Thomas'>
+<organization /></author>
+<author initials='E.' surname='Nordmark' fullname='E. Nordmark'>
+<organization /></author>
+<author initials='T.' surname='Jinmei' fullname='T. Jinmei'>
+<organization /></author>
+<date year='2003' month='May' />
+</front>
+<seriesInfo name='RFC' value='3542' />
+</reference>
+
+<reference anchor='RFC3810' target='http://www.rfc-editor.org/info/rfc3810'>
+<front>
+<title>Multicast Listener Discovery Version 2 (MLDv2) for IPv6</title>
+<author initials='R.' surname='Vida' fullname='R. Vida'>
+<organization /></author>
+<author initials='L.' surname='Costa' fullname='L. Costa'>
+<organization /></author>
+<date year='2004' month='June' />
+</front>
+<seriesInfo name='RFC' value='3810' />
+</reference>
+<reference anchor='RFC3986' target='http://www.rfc-editor.org/info/rfc3986'>
+<front>
+<title abbrev='URI Generic Syntax'>Uniform Resource Identifier (URI): Generic Syntax</title>
+<author initials='T.' surname='Berners-Lee' fullname='Tim Berners-Lee'>
+<organization abbrev='W3C/MIT'>World Wide Web Consortium</organization>
+</author>
+<author initials='R.' surname='Fielding' fullname='Roy T. Fielding'>
+<organization abbrev='Day Software'>Day Software</organization>
+</author>
+<author initials='L.' surname='Masinter' fullname='Larry Masinter'>
+<organization abbrev='Adobe Systems'>Adobe Systems Incorporated</organization>
+</author>
+<date year='2005' month='January' />
+</front>
+<seriesInfo name='STD' value='66' />
+<seriesInfo name='RFC' value='3986' />
+</reference>
+  
+<reference anchor='RFC4291' target='http://www.rfc-editor.org/info/rfc4291'>
+<front>
+<title>IP Version 6 Addressing Architecture</title>
+<author initials='R.' surname='Hinden' fullname='R. Hinden'>
+<organization /></author>
+<author initials='S.' surname='Deering' fullname='S. Deering'>
+<organization /></author>
+<date year='2006' month='February' />
+</front>
+<seriesInfo name='RFC' value='4291' />
+</reference>
+
+<reference anchor='RFC4601' target='http://www.rfc-editor.org/info/rfc4601'>
+<front>
+<title>Protocol Independent Multicast - Sparse Mode (PIM-SM): Protocol Specification (Revised)</title>
+<author initials='B.' surname='Fenner' fullname='B. Fenner'>
+<organization /></author>
+<author initials='M.' surname='Handley' fullname='M. Handley'>
+<organization /></author>
+<author initials='H.' surname='Holbrook' fullname='H. Holbrook'>
+<organization /></author>
+<author initials='I.' surname='Kouvelas' fullname='I. Kouvelas'>
+<organization /></author>
+<date year='2006' month='August' />
+</front>
+<seriesInfo name='RFC' value='4601' />
+</reference>
+     
+<reference anchor='RFC4919' target='http://www.rfc-editor.org/info/rfc4919'>
+<front>
+<title>IPv6 over Low-Power Wireless Personal Area Networks (6LoWPANs): Overview, Assumptions, Problem Statement, and Goals</title>
+<author initials='N.' surname='Kushalnagar' fullname='N. Kushalnagar'>
+<organization /></author>
+<author initials='G.' surname='Montenegro' fullname='G. Montenegro'>
+<organization /></author>
+<author initials='C.' surname='Schumacher' fullname='C. Schumacher'>
+<organization /></author>
+<date year='2007' month='August' />
+</front>
+<seriesInfo name='RFC' value='4919' />
+</reference>
+   
+<reference anchor='RFC4944' target='http://www.rfc-editor.org/info/rfc4944'>
+<front>
+<title>Transmission of IPv6 Packets over IEEE 802.15.4 Networks</title>
+<author initials='G.' surname='Montenegro' fullname='G. Montenegro'>
+<organization /></author>
+<author initials='N.' surname='Kushalnagar' fullname='N. Kushalnagar'>
+<organization /></author>
+<author initials='J.' surname='Hui' fullname='J. Hui'>
+<organization /></author>
+<author initials='D.' surname='Culler' fullname='D. Culler'>
+<organization /></author>
+<date year='2007' month='September' />
+</front>
+<seriesInfo name='RFC' value='4944' />
+</reference>
+       
+<reference anchor='RFC5110' target='http://www.rfc-editor.org/info/rfc5110'>
+<front>
+<title>Overview of the Internet Multicast Routing Architecture</title>
+<author initials='P.' surname='Savola' fullname='P. Savola'>
+<organization /></author>
+<date year='2008' month='January' />
+</front>
+<seriesInfo name='RFC' value='5110' />
+</reference>
+   
+<reference anchor='RFC5771' target='http://www.rfc-editor.org/info/rfc5771'>
+<front>
+<title>IANA Guidelines for IPv4 Multicast Address Assignments</title>
+<author initials='M.' surname='Cotton' fullname='M. Cotton'>
+<organization /></author>
+<author initials='L.' surname='Vegoda' fullname='L. Vegoda'>
+<organization /></author>
+<author initials='D.' surname='Meyer' fullname='D. Meyer'>
+<organization /></author>
+<date year='2010' month='March' />
+</front>
+<seriesInfo name='BCP' value='51' />
+<seriesInfo name='RFC' value='5771' />
+</reference>
+      
+<reference anchor='RFC5952' target='http://www.rfc-editor.org/info/rfc5952'>
+<front>
+<title>A Recommendation for IPv6 Address Text Representation</title>
+<author initials='S.' surname='Kawamura' fullname='S. Kawamura'>
+<organization /></author>
+<author initials='M.' surname='Kawashima' fullname='M. Kawashima'>
+<organization /></author>
+<date year='2010' month='August' />
+</front>
+<seriesInfo name='RFC' value='5952' />
+</reference>
+      
+<reference anchor='RFC6092' target='http://www.rfc-editor.org/info/rfc6092'>
+<front>
+<title>Recommended Simple Security Capabilities in Customer Premises Equipment (CPE) for Providing Residential IPv6 Internet Service</title>
+<author initials='J.' surname='Woodyatt' fullname='J. Woodyatt'>
+<organization /></author>
+<date year='2011' month='January' />
+</front>
+<seriesInfo name='RFC' value='6092' />
+</reference>    
+    
+<reference anchor='RFC6550' target='http://www.rfc-editor.org/info/rfc6550'>
+<front>
+<title>RPL: IPv6 Routing Protocol for Low-Power and Lossy Networks</title>
+<author initials='T.' surname='Winter' fullname='T. Winter'>
+<organization /></author>
+<author initials='P.' surname='Thubert' fullname='P. Thubert'>
+<organization /></author>
+<author initials='A.' surname='Brandt' fullname='A. Brandt'>
+<organization /></author>
+<author initials='J.' surname='Hui' fullname='J. Hui'>
+<organization /></author>
+<author initials='R.' surname='Kelsey' fullname='R. Kelsey'>
+<organization /></author>
+<author initials='P.' surname='Levis' fullname='P. Levis'>
+<organization /></author>
+<author initials='K.' surname='Pister' fullname='K. Pister'>
+<organization /></author>
+<author initials='R.' surname='Struik' fullname='R. Struik'>
+<organization /></author>
+<author initials='JP.' surname='Vasseur' fullname='JP. Vasseur'>
+<organization /></author>
+<author initials='R.' surname='Alexander' fullname='R. Alexander'>
+<organization /></author>
+<date year='2012' month='March' />
+</front>
+<seriesInfo name='RFC' value='6550' />
+</reference>
+   
+<reference anchor='RFC6636' target='http://www.rfc-editor.org/info/rfc6636'>
+<front>
+<title>Tuning the Behavior of the Internet Group Management Protocol (IGMP) and Multicast Listener Discovery (MLD) for Routers in Mobile and Wireless Networks</title>
+<author initials='H.' surname='Asaeda' fullname='H. Asaeda'>
+<organization /></author>
+<author initials='H.' surname='Liu' fullname='H. Liu'>
+<organization /></author>
+<author initials='Q.' surname='Wu' fullname='Q. Wu'>
+<organization /></author>
+<date year='2012' month='May' />
+</front>
+<seriesInfo name='RFC' value='6636' />
+</reference>
+     
+<reference anchor='RFC6690' target='http://www.rfc-editor.org/info/rfc6690'>
+<front>
+<title>Constrained RESTful Environments (CoRE) Link Format</title>
+<author initials='Z.' surname='Shelby' fullname='Z. Shelby'>
+<organization /></author>
+<date year='2012' month='August' />
+</front>
+<seriesInfo name='RFC' value='6690' />
+</reference>
+	
+<reference anchor='RFC6763' target='http://www.rfc-editor.org/info/rfc6763'>
+<front>
+<title>DNS-Based Service Discovery</title>
+<author initials='S.' surname='Cheshire' fullname='S. Cheshire'>
+<organization /></author>
+<author initials='M.' surname='Krochmal' fullname='M. Krochmal'>
+<organization /></author>
+<date year='2013' month='February' />
+</front>
+<seriesInfo name='RFC' value='6763' />
+</reference>
+    
+<reference anchor='RFC6775' target='http://www.rfc-editor.org/info/rfc6775'>
+<front>
+<title>Neighbor Discovery Optimization for IPv6 over Low-Power Wireless Personal Area Networks (6LoWPANs)</title>
+<author initials='Z.' surname='Shelby' fullname='Z. Shelby'>
+<organization /></author>
+<author initials='S.' surname='Chakrabarti' fullname='S. Chakrabarti'>
+<organization /></author>
+<author initials='E.' surname='Nordmark' fullname='E. Nordmark'>
+<organization /></author>
+<author initials='C.' surname='Bormann' fullname='C. Bormann'>
+<organization /></author>
+<date year='2012' month='November' />
+</front>
+<seriesInfo name='RFC' value='6775' />
+</reference>
+
+<reference anchor='RFC7159' target='http://www.rfc-editor.org/info/rfc7159'>
+<front>
+<title>The JavaScript Object Notation (JSON) Data Interchange Format</title>
+<author initials='T.' surname='Bray' fullname='T. Bray'>
+<organization /></author>
+<date year='2014' month='March' />
+</front>
+<seriesInfo name='RFC' value='7159' />
+</reference>
+
+<reference anchor='RFC7230' target='http://www.rfc-editor.org/info/rfc7230'>
+<front>
+<title>Hypertext Transfer Protocol (HTTP/1.1): Message Syntax and Routing</title>
+<author initials='R.' surname='Fielding' fullname='R. Fielding'>
+<organization /></author>
+<author initials='J.' surname='Reschke' fullname='J. Reschke'>
+<organization /></author>
+<date year='2014' month='June' />
+</front>
+<seriesInfo name='RFC' value='7230' />
+</reference>
+
+<reference anchor='RFC7252' target='http://www.rfc-editor.org/info/rfc7252'>
+<front>
+<title>The Constrained Application Protocol (CoAP)</title>
+<author initials='Z.' surname='Shelby' fullname='Z. Shelby'>
+<organization /></author>
+<author initials='K.' surname='Hartke' fullname='K. Hartke'>
+<organization /></author>
+<author initials='C.' surname='Bormann' fullname='C. Bormann'>
+<organization /></author>
+<date year='2014' month='June' />
+</front>
+<seriesInfo name='RFC' value='7252' />
+</reference>
+
+<reference anchor='RFC7258' target='http://www.rfc-editor.org/info/rfc7258'>
+<front>
+<title>Pervasive Monitoring Is an Attack</title>
+<author initials='S.' surname='Farrell' fullname='S. Farrell'>
+<organization /></author>
+<author initials='H.' surname='Tschofenig' fullname='H. Tschofenig'>
+<organization /></author>
+<date year='2014' month='May' />
+</front>
+<seriesInfo name='BCP' value='188' />
+<seriesInfo name='RFC' value='7258' />
+</reference>
+
+<reference anchor='RFC7320' target='http://www.rfc-editor.org/info/rfc7320'>
+<front>
+<title>URI Design and Ownership</title>
+<author initials='M.' surname='Nottingham' fullname='M. Nottingham'>
+<organization /></author>
+<date year='2014' month='July' />
+</front>
+<seriesInfo name='BCP' value='190' />
+<seriesInfo name='RFC' value='7320' />
+</reference>
+
+    </references>
+    
+    <references title="Informative References">
+
+<reference anchor='RFC1033' target='http://www.rfc-editor.org/info/rfc1033'>
+<front>
+<title abbrev='DOMAIN OPERATIONS GUIDE'>Domain administrators operations guide</title>
+<author initials='M.' surname='Lottor' fullname='M. Lottor'>
+<organization>SRI International</organization></author>
+<date year='1987' day='1' month='November' /></front>
+<seriesInfo name='RFC' value='1033' />
+</reference>
+
+<reference anchor='RFC4605' target='http://www.rfc-editor.org/info/rfc4605'>
+<front>
+<title>Internet Group Management Protocol (IGMP) / Multicast Listener Discovery (MLD)-Based Multicast Forwarding ("IGMP/MLD Proxying")</title>
+<author initials='B.' surname='Fenner' fullname='B. Fenner'>
+<organization /></author>
+<author initials='H.' surname='He' fullname='H. He'>
+<organization /></author>
+<author initials='B.' surname='Haberman' fullname='B. Haberman'>
+<organization /></author>
+<author initials='H.' surname='Sandick' fullname='H. Sandick'>
+<organization /></author>
+<date year='2006' month='August' />
+</front>
+<seriesInfo name='RFC' value='4605' />
+</reference>
+
+<reference anchor='RFC5740' target='http://www.rfc-editor.org/info/rfc5740'>
+<front>
+<title>NACK-Oriented Reliable Multicast (NORM) Transport Protocol</title>
+<author initials='B.' surname='Adamson' fullname='B. Adamson'>
+<organization /></author>
+<author initials='C.' surname='Bormann' fullname='C. Bormann'>
+<organization /></author>
+<author initials='M.' surname='Handley' fullname='M. Handley'>
+<organization /></author>
+<author initials='J.' surname='Macker' fullname='J. Macker'>
+<organization /></author>
+<date year='2009' month='November' />
+</front>
+<seriesInfo name='RFC' value='5740' />
+</reference>
+
+<reference anchor='RFC7346' target='http://www.rfc-editor.org/info/rfc7346'>
+<front>
+<title>IPv6 Multicast Address Scopes</title>
+<author initials='R.' surname='Droms' fullname='R. Droms'>
+<organization /></author>
+<date year='2014' month='August' />
+</front>
+<seriesInfo name='RFC' value='7346' />
+</reference>
+
+<!--I-D.ietf-core-block; Active (not in queue yet)-->
+<reference anchor='BLOCKWISE-CoAP'>
+<front>
+<title>Blockwise transfers in CoAP</title>
+<author initials='C' surname='Bormann' fullname='Carsten Bormann'>
+    <organization />
+</author>
+<author initials='Z' surname='Shelby' fullname='Zach Shelby'>
+    <organization />
+</author>
+<date month='July' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-core-block-15' />
+</reference>
+
+<!--I-D.ietf-core-resource-directory; Expired-->
+<reference anchor='CoRE-RD'>
+<front>
+<title>CoRE Resource Directory</title>
+<author initials='Z' surname='Shelby' fullname='Zach Shelby'>
+    <organization />
+</author>
+<author initials='C' surname='Bormann' fullname='Carsten Bormann'>
+    <organization />
+</author>
+<author initials='S' surname='Krco' fullname='Srdjan Krco'>
+    <organization />
+</author>
+<date month='December' year='2013' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-core-resource-directory-01' />
+</reference>
+
+<!--I-D.ietf-core-observe; Active (not in queue yet)-->
+<reference anchor='OBSERVE-CoAP'>
+<front>
+<title>Observing Resources in CoAP</title>
+<author initials='K' surname='Hartke' fullname='Klaus Hartke'>
+    <organization />
+</author>
+<date month='June' day='30' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-core-observe-14' />
+</reference>
+
+<!--I-D.ietf-roll-trickle-mcast; Active (not in queue yet)-->
+<reference anchor='MCAST-MPL'>
+<front>
+<title>Multicast Protocol for Low power and Lossy Networks (MPL)</title>
+<author initials='J' surname='Hui' fullname='Jonathan Hui'>
+    <organization />
+</author>
+<author initials='R' surname='Kelsey' fullname='Richard Kelsey'>
+    <organization />
+</author>
+<date month='April' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-roll-trickle-mcast-09' />
+</reference>    
+ 
+<!--I-D.keoh-dice-multicast-security; Active (not in queue yet)-->
+<reference anchor='MCAST-SECURITY'>
+<front>
+<title>DTLS-based Multicast Security in Constrained Environments</title>
+<author initials='S' surname='Keoh' fullname='Sye Keoh'>
+    <organization />
+</author>
+<author initials='S' surname='Kumar' fullname='Sandeep Kumar'>
+    <organization />
+</author>
+<author initials='O' surname='Garcia-Morchon' fullname='Oscar Garcia-Morchon'>
+    <organization />
+</author>
+<author initials='E' surname='Dijk' fullname='Esko Dijk'>
+    <organization />
+</author>
+<author initials='A' surname='Rahman' fullname='Akbar Rahman'>
+    <organization />
+</author>
+<date month='July' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-keoh-dice-multicast-security-08' />
+</reference>
+
+
+<!--I-D.mglt-dice-ipsec-for-application-payload; Active (not in queue yet)-->
+<reference anchor='IPSEC-PAYLOAD'>
+<front>
+<title>IPsec/ESP for Application Payload</title>
+<author initials='D' surname='Migault' fullname='Daniel Migault'>
+    <organization />
+</author>
+<author initials='C' surname='Bormann' fullname='Carsten Bormann'>
+    <organization />
+</author>
+<date month='July' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-mglt-dice-ipsec-for-application-payload-00' />
+</reference>
+    </references>
+
+
+
+  <section anchor="mld" title="Multicast Listener Discovery (MLD)">
+  	<t>
+  	In order to extend the scope of IP multicast beyond link-local scope, an IP multicast 
+  	routing or forwarding protocol has to be active in routers on an LLN. To achieve efficient 
+  	IP multicast routing (i.e., avoid always flooding IP multicast packets), routers
+  	have to learn which hosts need to receive packets addressed to specific IP multicast 
+  	destinations.
+  	</t><t>
+  	The MLD protocol <xref target="RFC3810" /> 
+  	(or its IPv4 equivalent, IGMP <xref target="RFC3376" />) is today the method of choice used by a 
+  	(IP multicast-enabled) router to discover 
+  	the presence of IP multicast listeners on directly attached links, and to 
+  	discover which IP multicast addresses are of interest to those listening nodes. MLD 
+  	was specifically designed to cope with fairly dynamic situations in which IP multicast
+  	listeners may join and leave at any time.
+  	</t><t>
+	Optimal tuning of the parameters of MLD/IGMP for routers
+       	for mobile and wireless	networks is discussed in <xref target="RFC6636"/>. These guidelines may be useful when implementing MLD in LLNs.
+  	</t>
+  </section>
+
+
+<section title="Acknowledgements">
+      <t>
+      Thanks to Jari Arkko, Peter Bigot, Anders Brandt, Ben Campbell, Angelo Castellani, 
+	  Alissa Cooper, Spencer Dawkins, Badis Djamaa, Adrian Farrel, Stephen Farrell,
+	  Thomas Fossati, Brian Haberman, Bjoern Hoehrmann, Matthias Kovatsch, Guang Lu, 
+	  Salvatore Loreto, Kerry Lynn, Andrew McGregor, Kathleen Moriarty, Pete Resnick, Dale Seed, 
+	  Zach Shelby, Martin Stiemerling, Peter van der Stok, Gengyu Wei, and Juan Carlos Zuniga
+	  for their helpful comments and discussions that have helped shape this document.
+      </t>
+	  <t>
+      Special thanks to Carsten Bormann and Barry Leiba for their extensive and thoughtful 
+	  Chair and AD reviews of the document.  Their reviews helped to immeasurably improve the document quality.
+      </t>
+</section>
+    
+  </back>
+</rfc>

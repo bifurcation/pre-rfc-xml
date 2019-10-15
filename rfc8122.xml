@@ -1,0 +1,723 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM 'rfc2629.dtd' []>
+<rfc number="8122" ipr="trust200902" category="std" submissionType="IETF" consensus="yes"  obsoletes="4572">
+<?rfc toc="yes"?>
+<?rfc symrefs="no"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc private=""?>
+<?rfc topblock="yes"?>
+<?rfc comments="no"?>
+<front>
+
+<title abbrev="Comedia over TLS in SDP">Connection-Oriented&nbsp;Media&nbsp;Transport&nbsp;over
+the&nbsp;Transport&nbsp;Layer&nbsp;Security&nbsp;(TLS)&nbsp;Protocol in&nbsp;the&nbsp;Session&nbsp;Description&nbsp;Protocol&nbsp;(SDP)</title>
+
+<author initials="J." surname="Lennox" fullname="Jonathan Lennox">
+<organization>Vidyo</organization>
+<address>
+<postal>
+<street></street>
+<city></city>
+<code></code>
+<country></country>
+<region></region>
+</postal>
+<phone></phone>
+<email>jonathan@vidyo.com</email>
+<uri></uri>
+</address>
+</author>
+<author initials="C." surname="Holmberg" fullname="Christer Holmberg">
+<organization>Ericsson</organization>
+<address>
+<postal>
+<street></street>
+<city></city>
+<code></code>
+<country></country>
+<region></region>
+</postal>
+<phone></phone>
+<email>christer.holmberg@ericsson.com</email>
+<uri></uri>
+</address>
+</author>
+<date month="March" year="2017"/>
+
+<area>ART</area>
+<workgroup></workgroup>
+
+<abstract>
+<t>This document specifies how to establish secure connection-oriented
+media transport sessions over the Transport Layer Security (TLS)
+protocol using the Session Description Protocol (SDP).  It defines
+the SDP protocol identifier, 'TCP/TLS'.  It also defines the syntax
+and semantics for an SDP 'fingerprint' attribute that identifies the
+certificate that will be presented for the TLS session.  This
+mechanism allows media transport over TLS connections to be
+established securely, so long as the integrity of session descriptions
+is assured.
+</t>
+<t>This document obsoletes RFC 4572 by clarifying the usage of multiple
+fingerprints.
+</t>
+</abstract>
+
+
+</front>
+
+<middle>
+
+<section anchor="introduction" title="Introduction">
+<t>The Session Description Protocol (SDP) <xref target="RFC4566"/> provides a
+general-purpose format for describing multimedia sessions in
+announcements or invitations.  For many applications, it is desirable
+to establish, as part of a multimedia session, a media stream that
+uses a connection-oriented transport. 
+
+RFC 4145, "TCP-Based Media Transport in the Session Description
+Protocol (SDP)" <xref target="RFC4145"/>,
+specifies a general mechanism for describing and establishing such
+connection-oriented streams; however, the only transport protocol it
+directly supports is TCP.  In many cases, session participants wish to
+provide confidentiality, data integrity, and authentication for their
+media sessions.  Therefore, this document extends the
+TCP-Based Media specification to allow session descriptions
+to describe media sessions that use the Transport Layer Security (TLS)
+protocol <xref target="RFC5246"/>.
+</t>
+
+<t>The TLS protocol allows applications to communicate over a channel that
+provides confidentiality and data integrity.  The TLS specification,
+however, does not specify how specific protocols establish and use
+this secure channel; particularly, TLS leaves the question of how to
+interpret and validate authentication certificates as an issue for the
+protocols that run over TLS.  This document specifies such usage for
+the case of connection-oriented media transport.
+</t>
+<t>Complicating this issue, endpoints exchanging media will often be
+unable to obtain authentication certificates signed by a well-known
+root certification authority (CA).  Most certificate authorities
+charge for signed certificates, particularly host-based certificates;
+additionally, there is a substantial administrative overhead to
+obtaining signed certificates, as certification authorities must be
+able to confirm that they are issuing the signed certificates to the
+correct party.  Furthermore, in many cases the endpoints' IP addresses and
+host names are dynamic, for example, they may be obtained from DHCP.
+It is impractical to obtain a CA-signed certificate valid for the
+duration of a DHCP lease.  For such hosts, self-signed certificates
+are usually the only option.  This specification defines a mechanism
+that allows self-signed certificates to be used securely, provided
+that the integrity of the SDP description is assured.  It allows for
+endpoints to include a secure hash of their certificate, known as the
+&quot;certificate fingerprint&quot;, within the session description.  Provided
+that the fingerprint of the offered certificate matches the one in the
+session description, end hosts can trust even self-signed
+certificates.
+</t>
+<t>The rest of this document is laid out as follows.  An overview of the
+problem and threat model is given in <xref target="overview"/>.  <xref
+target="protocol-identifiers"/> gives the
+basic mechanism for establishing TLS-based connected-oriented media in
+SDP.  <xref target="fingerprint-attribute"/> describes the SDP fingerprint attribute, which,
+assuming that the integrity of the SDP content is assured, allows the
+secure use of self-signed certificates.  <xref
+target="endpoint-identification"/> describes which
+X.509 certificates are presented and how they are used in TLS.
+<xref target="security-considerations"/> discusses additional security considerations.
+</t>
+
+<section anchor="changes-from-rfc-4572" title="Changes from RFC 4572">
+<t>This document obsoletes RFC 4572 <xref target="RFC4572"/> but remains backwards compatible
+with older implementations.  The changes from RFC 4572 <xref target="RFC4572"/> are as follows:</t>                                        
+<t><list style="symbols">                                                                                   
+<t>clarifies that multiple 'fingerprint' attributes can be used to carry                                           fingerprints (calculated using different hash functions) associated with                                    a given certificate and to carry fingerprints associated with multiple                                      certificates.</t>      
+<t>clarifies the fingerprint matching procedure when multiple fingerprints                                      are provided.</t>                                                                                        
+<t>updates the preferred hash function with a stronger cipher suite and                                           removes the requirement to use the same hash function for calculating a                                     certificate fingerprint and certificate signature.</t>                                                    </list>                                                                                                  
+</t>                                    
+</section>
+</section>
+
+<section anchor="terminology" title="Terminology">
+<t>The key words &quot;MUST&quot;, &quot;MUST NOT&quot;, &quot;REQUIRED&quot;, &quot;SHALL&quot;, &quot;SHALL NOT&quot;,
+&quot;SHOULD&quot;, &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;, &quot;MAY&quot;, and &quot;OPTIONAL&quot; in this
+document are to be interpreted as described in RFC 2119 <xref target="RFC2119"/>.
+</t>
+</section>
+
+<section anchor="overview" title="Overview">
+<t>This section discusses the threat model that motivates TLS transport
+for connection-oriented media streams.  It also discusses, in more
+detail, the need for end systems to use self-signed certificates.
+</t>
+
+<section anchor="sdp-operational-modes" title="SDP Operational Modes">
+<t>There are two principal operational modes for multimedia sessions:
+advertised and offer-answer.  Advertised sessions are the simpler
+mode.  In this mode, a server publishes, in some manner, an SDP
+session description of a multimedia session it is making available.
+The classic example of this mode of operation is the Session
+Announcement Protocol (SAP) <xref target="RFC2974"/>, in which SDP session
+descriptions are periodically transmitted to a well-known multicast
+group.  Traditionally, these descriptions involve multicast
+conferences, but unicast sessions are also possible.
+(Obviously, connection-oriented media cannot use multicast.)
+Recipients of a session description connect to the addresses published
+in the session description.  These recipients may not have
+been previously known to the advertiser of the session description.
+</t>
+<t>Alternatively, SDP conferences can operate in offer-answer mode
+<xref target="RFC3264"/>.  This mode allows two participants in a multimedia
+session to negotiate the multimedia session between them.  In this
+model, one participant offers the other a description of the desired
+session from its perspective, and the other participant answers with
+the desired session from its own perspective.  In this mode, each of
+the participants in the session has knowledge of the other one.  This
+is the mode of operation used by the Session Initiation Protocol (SIP)
+<xref target="RFC3261"/>.
+</t>
+</section>
+
+<section anchor="threat-model" title="Threat Model">
+<t>Participants in multimedia conferences often wish to guarantee
+confidentiality, data integrity, and authentication for their media
+sessions.  This section describes various types of attackers and the
+ways they attempt to violate these guarantees.  It then describes how
+the TLS protocol can be used to thwart the attackers.
+</t>
+<t>The simplest type of attacker is one who listens passively to the
+traffic associated with a multimedia session.  This attacker might,
+for example, be on the same local-area or wireless network as one of
+the participants in a conference.  This sort of attacker does not
+threaten a connection's data integrity or authentication, and almost
+any operational mode of TLS can provide media-stream confidentiality.
+</t>
+<t>More sophisticated is an attacker who can send his own data traffic
+over the network, but who cannot modify or redirect valid traffic.  In
+SDP's 'advertised' operational mode, this can barely be considered an
+attack; media sessions are expected to be initiated from anywhere on
+the network.  In SDP's offer-answer mode, however, this type of attack
+is more serious.  An attacker could initiate a connection to one or
+both of the endpoints of a session, thus impersonating an endpoint or
+acting as a man in the middle to listen in on their communications.
+To thwart these attacks, TLS uses endpoint certificates.  
+So long as the certificates' private keys have not
+   been compromised, the endpoints have an externally trusted mechanism
+   (most commonly, a mutually trusted certification authority) to
+   validate certificates.  Because the endpoints know what certificate
+   identity to expect, endpoints can be certain that such an attack has
+   not taken place.
+</t>
+<t>Finally, the most serious type of attacker is one who can modify or
+redirect session descriptions: for example, a compromised or malicious
+SIP proxy server.  Neither TLS itself nor any mechanisms that use it
+can protect an SDP session against such an attacker.  Instead, the SDP
+description itself must be secured through some mechanism; SIP, for
+example, defines how S/MIME <xref target="RFC5751"/> can be used to secure session
+descriptions.
+</t>
+</section>
+
+<section anchor="the-need-for-selfsigned-certificates" title="The Need for Self-Signed Certificates">
+<t>SDP session descriptions are created by any endpoint that needs to
+participate in a multimedia session.  In many cases, such as SIP
+phones, such endpoints have dynamically configured IP addresses and
+host names and must be deployed with nearly zero configuration.  For
+such an endpoint, it is, for practical purposes, impossible to obtain a
+certificate signed by a well-known certification authority.
+</t>
+<t>If two endpoints have no prior relationship, self-signed certificates
+cannot generally be trusted, as there is no guarantee that an attacker
+is not launching a man-in-the-middle attack.  Fortunately, however, if
+the integrity of SDP session descriptions can be assured, it is
+possible to consider those SDP descriptions themselves as a prior
+relationship: certificates can be securely described in the session
+description itself.  This is done by providing a secure hash of a
+certificate, or &quot;certificate fingerprint&quot;, as an SDP attribute; this
+mechanism is described in <xref target="fingerprint-attribute"/>.
+</t>
+</section>
+
+<section anchor="example-sdp-description-for-tls-connection" title="Example SDP Description for TLS Connection">
+<t>Figure 1 illustrates an SDP offer that signals the availability of a
+T.38 fax session over TLS.  For the purpose of brevity, the main
+portion of the session description is omitted in the example, showing
+only the 'm' line and its attributes.  (This example is the same as
+the first one in RFC 4145 <xref target="RFC4145"/>, except for the proto parameter
+and the fingerprint attribute.)  See the subsequent sections for
+explanations of the example's TLS-specific attributes.
+</t>
+<t>Note: due to RFC formatting conventions, this document splits SDP
+across lines whose content would exceed 72 characters.  A backslash
+character marks where this line folding has taken place.  This
+backslash and its trailing CRLF and whitespace would not appear in
+actual SDP content.
+</t>
+
+<figure align="center"><artwork align="center">
+m=image 54111 TCP/TLS t38
+c=IN IP4 192.0.2.2
+a=setup:passive
+a=connection:new
+a=fingerprint:SHA-256 \
+   12:DF:3E:5D:49:6B:19:E5:7C:AB:4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF: \
+   3E:5D:49:6B:19:E5:7C:AB:4A:AD
+a=fingerprint:SHA-1 \
+   4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF:3E:5D:49:6B:19:E5:7C:AB
+</artwork></figure>
+<t>Figure 1: Example SDP Description Offering a TLS Media Stream
+</t>
+</section>
+</section>
+
+<section anchor="protocol-identifiers" title="Protocol Identifiers">
+<t>The 'm' line in SDP specifies, among other items, the transport
+protocol to be used for the media in the session.  See the &quot;Media
+Descriptions&quot; section of SDP <xref target="RFC4566"/> for a discussion on transport
+protocol identifiers.
+</t>
+<t>This specification defines the protocol identifier, 'TCP/TLS', which
+indicates that the media described will use the Transport Layer
+Security protocol <xref target="RFC5246"/> over TCP.  (Using TLS over other
+transport protocols is not discussed in this document.)  The 'TCP/TLS'
+protocol identifier describes only the transport protocol, not the
+upper-layer protocol.  An 'm' line that specifies 'TCP/TLS' MUST
+further qualify the protocol using an fmt identifier to indicate the
+application being run over TLS.
+</t>
+<t>Media sessions described with this identifier follow the procedures
+defined in RFC 4145 <xref target="RFC4145"/>.  They also use the SDP attributes
+defined in that specification, 'setup' and 'connection'.
+</t>
+</section>
+
+<section anchor="fingerprint-attribute" title="Fingerprint Attribute">
+<t>Parties to a TLS session indicate their identities by presenting
+authentication certificates as part of the TLS handshake procedure.
+Authentication certificates are X.509 <xref target="ITU.X509.2014"/> certificates,
+as profiled by RFCs 3279 <xref target="RFC3279"/>, 5280 <xref target="RFC5280"/>, and
+4055 <xref target="RFC4055"/>.
+</t>
+<t>In order to associate media streams with connections and to prevent
+unauthorized barge-in attacks on the media streams, endpoints MUST
+provide a certificate fingerprint.  If the X.509 certificate presented
+for the TLS connection matches the fingerprint presented in the SDP,
+the endpoint can be confident that the author of the SDP is indeed the
+initiator of the connection.
+</t>
+<t>A certificate fingerprint is a secure one-way hash of the Distinguished Encoding Rules (DER) form of the certificate.  (Certificate
+fingerprints are widely supported by tools that manipulate X.509
+certificates; for instance, the command &quot;openssl x509 -fingerprint&quot;
+causes the command-line tool of the openssl package to print a
+certificate fingerprint, and the certificate managers for Mozilla and
+Internet Explorer display them when viewing the details of a
+certificate.)
+</t>
+<t>A fingerprint is represented in SDP as an attribute (an 'a' line).  It
+consists of the name of the hash function used, followed by the hash
+value itself.  The hash value is represented as a sequence of
+uppercase hexadecimal bytes, separated by colons.  The number of bytes
+is defined by the hash function.  (This is the syntax used by openssl
+and by the browsers' certificate managers.  It is different from the
+syntax used to represent hash values in, for example, HTTP digest
+authentication <xref target="RFC7616"/>, which uses unseparated lowercase
+hexadecimal bytes.  Consistency with other
+applications of fingerprints was considered more important.)
+</t>
+<t>The formal syntax of the fingerprint attribute is given in Augmented
+Backus-Naur Form <xref target="RFC5234"/> in Figure 2.  This syntax extends the BNF
+syntax of SDP <xref target="RFC4566"/>.
+</t>
+
+<figure align="center"><artwork align="center">
+attribute              =/ fingerprint-attribute
+
+fingerprint-attribute  =  "fingerprint" ":" hash-func SP fingerprint
+
+hash-func              =  "sha-1" / "sha-224" / "sha-256" /
+                          "sha-384" / "sha-512" /
+                          "md5" / "md2" / token
+                          ; Additional hash functions can only come
+                          ; from updates to RFC 3279
+
+fingerprint            =  2UHEX *(":" 2UHEX)
+                          ; Each byte in upper-case hex, separated
+                          ; by colons.
+
+UHEX                   =  DIGIT / %x41-46 ; A-F uppercase
+</artwork></figure>
+<t>Figure 2: Augmented Backus-Naur Syntax for the Fingerprint Attribute
+</t>
+<t>Following RFC 3279 <xref target="RFC3279"/> as updated by RFC 4055 <xref
+target="RFC4055"/>, the defined hash functions are 'SHA-1' <xref
+target="FIPS.180-4.2015"/> <xref target="RFC3174"/>, 'SHA-224' <xref target="FIPS.180-4.2015"/>, 'SHA-256'
+<xref target="FIPS.180-4.2015"/>, 'SHA-384' <xref target="FIPS.180-4.2015"/>, 'SHA-512'
+<xref target="FIPS.180-4.2015"/>, 'MD5' <xref target="RFC1321"/>, and 'MD2' <xref target="RFC6149"/>, with
+'SHA-256' preferred. A new IANA registry, named "Hash Function Textual
+Names", specified in <xref target="iana-considerations"/>, allows for the addition of future tokens,
+but they may only be added if they are included in RFCs that update
+or obsolete RFC 3279 <xref target="RFC3279"/>.
+</t>
+<t>Implementations compliant with this specification MUST NOT use the
+MD2 and MD5 hash functions to calculate fingerprints or to verify received
+fingerprints that have been calculated using them.
+</t>
+<t>Note: The MD2 and MD5 hash functions are listed in this specification so
+that implementations can recognize them. Implementations that log unused
+hash functions might log occurrences of these algorithms differently to
+unknown hash algorithms.
+</t>
+<t>The fingerprint attribute may be either a session-level or a media-
+level SDP attribute.  If it is a session-level attribute, it applies
+to all TLS sessions for which no media-level fingerprint attribute is
+defined.
+</t>
+
+<section anchor="multiple-fingerprints" title="Multiple Fingerprints">
+<t>Multiple SDP fingerprint attributes can be associated with an 'm'
+line. This can occur if multiple fingerprints have been calculated for
+a certificate using different hash functions. It can also occur if one
+or more fingerprints associated with multiple certificates have been
+calculated. This might be needed if multiple certificates will be used
+for media associated with an 'm' line (e.g., if separate certificates
+are used for RTP and the RTP Control Protocol (RTCP)) or where it is not known which certificate
+will be used when the fingerprints are exchanged. In such cases, one
+or more fingerprints MUST be calculated for each possible certificate.
+</t>
+<t>An endpoint MUST, as a minimum, calculate a fingerprint using both the
+'SHA-256' hash function algorithm and the hash function used to
+generate the signature on the certificate for each possible
+certificate.  Including the hash from the signature algorithm ensures
+interoperability with strict implementations of RFC 4572 <xref target="RFC4572"/>.
+Either of these fingerprints MAY be omitted if the endpoint includes a
+hash with a stronger hash algorithm that it knows that the peer
+supports, if it is known that the peer does not support the hash
+algorithm, or if local policy mandates use of stronger algorithms.
+</t>
+<t>If fingerprints associated with multiple certificates are calculated,
+the same set of hash functions MUST be used to calculate fingerprints
+for each certificate associated with the 'm' line.
+</t>
+<t>An endpoint MUST select the set of fingerprints that use its most preferred
+hash function (out of those offered by the peer) and verify that each
+certificate used matches one fingerprint out of that set. If a certificate
+does not match any such fingerprint, the endpoint MUST NOT establish the
+TLS connection.
+</t>
+<t>Note: The SDP fingerprint attribute does not contain a reference to a
+specific certificate. Endpoints need to compare the fingerprint with a
+certificate hash in order to look for a match.
+</t>
+</section>
+</section>
+
+<section anchor="endpoint-identification" title="Endpoint Identification">
+
+<section anchor="certificate-choice" title="Certificate Choice">
+<t>An X.509 certificate binds an identity and a public key.  If SDP
+describing a TLS session is transmitted over a mechanism that provides
+integrity protection, a certificate asserting any syntactically valid
+identity MAY be used.  For example, an SDP description sent over
+HTTP/TLS <xref target="RFC2818"/> or secured by S/MIME <xref target="RFC5751"/> MAY assert any
+identity in the certificate securing the media connection.
+</t>
+<t>
+
+Security protocols that provide only hop-by-hop integrity protection
+(e.g., the SIPS scheme <xref target="RFC3261"/>, SIP over TLS) are considered
+sufficiently secure to allow the mode in which any valid identity is
+accepted.  However, see <xref target="security-considerations"/> for a discussion of some security
+implications of this fact.
+</t>
+
+<t>In situations where the SDP is not integrity-protected, the
+certificate provided for a TLS connection MUST certify an appropriate
+identity for the connection.  In these scenarios, the certificate
+presented by an endpoint MUST certify either the SDP connection
+address or the identity of the creator of the SDP message, as
+follows:
+</t>
+<t>
+<list style="symbols">
+<t>If the connection address for the media description is specified as
+an IP address, the endpoint MAY use a certificate with an iPAddress
+subjectAltName that exactly matches the IP in the connection-address
+in the session description's 'c' line.  Similarly, if the connection
+address for the media description is specified as a fully qualified
+domain name, the endpoint MAY use a certificate with a dNSName
+subjectAltName matching the specified 'c' line connection-address
+exactly.  (Wildcard patterns MUST NOT be used.)</t>
+<t>Alternately, if the SDP session description of the session was
+transmitted over a protocol (such as SIP <xref target="RFC3261"/>) for which the
+identities of session participants are defined by Uniform Resource
+Identifiers (URIs), the endpoint MAY use a certificate with a
+uniformResourceIdentifier subjectAltName corresponding to the
+identity of the endpoint that generated the SDP.  The details of
+what URIs are valid are dependent on the transmitting protocol.
+(For more details on the validity of URIs, see <xref target="security-considerations"/>.</t>
+</list>
+</t>
+<t>Identity matching is performed using the matching rules specified by
+RFC 5280 <xref target="RFC5280"/>.  If more than one identity of a given type is
+present in the certificate (e.g., more than one dNSName name), a match
+in any one of the set is considered acceptable.  To support the use of
+certificate caches, as described in <xref target="security-considerations"/>, endpoints SHOULD
+consistently provide the same certificate for each identity they
+support.
+</t>
+</section>
+
+<section anchor="certificate-presentation" title="Certificate Presentation">
+<t>In all cases, an endpoint acting as the TLS server (i.e., one taking
+the 'setup:passive' role, in the terminology of connection-oriented
+media) MUST present a certificate during TLS initiation, following the
+rules presented in <xref target="certificate-choice"/>.  If the certificate does not match the
+original fingerprint, the client endpoint MUST terminate the media
+connection with a bad_certificate error.
+</t>
+<t>If the SDP offer/answer model <xref target="RFC3264"/> is being used, the client
+(the endpoint with the 'setup:active' role) MUST also present a
+certificate following the rules of <xref target="certificate-choice"/>. The server MUST
+request a certificate; if the client does not provide one, or if
+the certificate does not match a provided fingerprint, the server
+endpoint MUST terminate the media connection with a bad_certificate
+error.
+</t>
+<t>Note that when the offer/answer model is being used, it is possible
+for a media connection to outrace the answer back to the offerer.
+Thus, if the offerer has offered a 'setup:passive' or 'setup:actpass'
+role, it MUST (as specified in RFC 4145 <xref target="RFC4145"/>) begin listening
+for an incoming connection as soon as it sends its offer.  However, it
+MUST NOT assume that the data transmitted over the TLS connection is
+valid until it has received a matching fingerprint in an SDP answer.
+If the fingerprint, once it arrives, does not match the client's
+certificate, the server endpoint MUST terminate the media connection
+with a bad_certificate error, as stated in the previous paragraph.
+</t>
+<t>If offer/answer is not being used (e.g., if the SDP was sent over the
+Session Announcement Protocol <xref target="RFC2974"/>), there is no secure channel
+available for clients to communicate certificate fingerprints to
+servers.  In this case, servers MAY request client certificates, which
+SHOULD be signed by a well-known certification authority, or MAY allow
+clients to connect without a certificate.
+</t>
+</section>
+</section>
+
+<section anchor="security-considerations" title="Security Considerations">
+<t>This entire document concerns itself with security.  The problem to be
+solved is addressed in <xref target="introduction"/>, and a high-level overview is
+presented in <xref target="overview"/>.  See the SDP specification <xref target="RFC4566"/> for
+security considerations applicable to SDP in general.
+</t>
+<t>Offering a TCP/TLS connection in SDP (or agreeing to one in the SDP
+offer/answer mode) does not create an obligation for an endpoint to
+accept any TLS connection with the given fingerprint.  Instead, the
+endpoint must engage in the standard TLS negotiation procedure to
+ensure that the TLS stream cipher and MAC algorithm chosen meet the
+security needs of the higher-level application.  (For example, an
+offered stream cipher of TLS_NULL_WITH_NULL_NULL SHOULD be rejected in
+almost every application scenario.)
+</t>
+<t>Like all SDP messages, SDP messages describing TLS streams are
+conveyed in an encapsulating application protocol (e.g., SIP, Media
+Gateway Control Protocol (MGCP), etc.).  It is the responsibility of
+the encapsulating protocol to ensure the integrity of the SDP security
+descriptions.  Therefore, the application protocol SHOULD either
+invoke its own security mechanisms (e.g., secure multiparts) or,
+alternatively, utilize a lower-layer security service (e.g., TLS or
+IPsec).  This security service SHOULD provide strong message
+authentication as well as effective replay protection.
+</t>
+<t>However, such integrity protection is not always possible.  For these
+cases, end systems SHOULD maintain a cache of certificates that other
+parties have previously presented using this mechanism.  If possible,
+users SHOULD be notified when an unsecured certificate associated with
+a previously unknown end system is presented and SHOULD be strongly
+warned if a different unsecured certificate is presented by a party
+with which they have communicated in the past.  In this way, even in
+the absence of integrity protection for SDP, the security of this
+document's mechanism is equivalent to that of the Secure Shell (SSH)
+protocol <xref target="RFC4251"/>, which is vulnerable to man-in-the-middle attacks
+when two parties first communicate but can detect ones that occur
+subsequently.  (Note that a precise definition of the &quot;other party&quot;
+depends on the application protocol carrying the SDP message.)  Users
+SHOULD NOT, however, in any circumstances be notified about
+certificates described in the SDP descriptions sent over an integrity-protected channel.
+</t>
+<t>To aid interoperability and deployment, security protocols that
+provide only hop-by-hop integrity protection (e.g., the SIPS scheme
+<xref target="RFC3261"/>, SIP over TLS) are considered sufficiently secure to allow
+the mode in which any syntactically valid identity is accepted in a
+certificate.  This decision was made because SIPS is currently the
+integrity mechanism most likely to be used in deployed networks in the
+short to medium term.  However, in this mode, SDP integrity is
+vulnerable to attacks by compromised or malicious middleboxes, e.g.,
+SIP proxy servers.  End systems MAY warn users about SDP sessions that
+are secured in only a hop-by-hop manner, and definitions of media
+formats running over TCP/TLS MAY specify that only end-to-end
+integrity mechanisms be used.
+</t>
+<t>Depending on how SDP messages are transmitted, it is not always
+possible to determine whether or not a subjectAltName presented in a
+remote certificate is expected for the remote party.  In particular,
+given call forwarding, third-party call control, or session
+descriptions generated by endpoints controlled by the Gateway Control
+Protocol <xref target="RFC5125"/>, it is not always possible in SIP to determine
+what entity ought to have generated a remote SDP response.  In
+general, when not using authenticity and integrity protection of the SDP
+descriptions, a certificate transmitted over SIP SHOULD assert the
+endpoint's SIP Address of Record as a uniformResourceIndicator
+subjectAltName.  When an endpoint receives a certificate over SIP
+asserting an identity (including an iPAddress or dNSName identity)
+other than the one to which it placed or received the call, it SHOULD
+alert the user and ask for confirmation.  This applies whether
+certificates are self-signed or signed by certification authorities;
+a certificate for <spanx style="verb">sip:bob@example.com</spanx> may be legitimately signed by
+a certification authority, but it may still not be acceptable for a call
+to <spanx style="verb">sip:alice@example.com</spanx>.  (This issue is not one specific to this
+specification; the same consideration applies for S/MIME-signed SDP
+carried over SIP.)
+</t>
+<t>This document does not define a mechanism for securely transporting
+RTP and RTCP packets over a connection-oriented
+channel. Please see RFC 7850 <xref target="RFC4571"/> for more details.
+</t>
+<t>TLS is not always the most appropriate choice for secure connection-
+oriented media; in some cases, a higher- or lower-level security
+protocol may be appropriate.
+</t>
+<t>This document improves security from RFC 4572 <xref target="RFC4572"/>.  It
+updates the preferred hash function from SHA-1 to
+SHA-256 and deprecates the usage of the MD2 and MD5 hash functions.</t>
+<t>By clarifying the usage and handling of multiple fingerprints, the
+document also enables hash agility and incremental deployment of
+newer and more secure hash functions.
+</t>
+</section>
+
+<section anchor="iana-considerations" title="IANA Considerations">
+<t>IANA has updated the registrations defined in RFC 4572
+<xref target="RFC4572"/> to refer to this specification.
+</t>
+<t>This document defines an SDP proto value: 'TCP/TLS'.  Its format is
+defined in <xref target="protocol-identifiers"/>.  This proto value has been registered by IANA
+under the &quot;proto&quot; registry within the &quot;Session Description
+Protocol (SDP) Parameters&quot; registry.
+</t>
+<t>This document defines an SDP session and media-level attribute:
+'fingerprint'.  Its format is defined in <xref target="fingerprint-attribute"/>.  This attribute
+has been registered by IANA under the &quot;att-field (both session and media
+level)&quot; registry within the &quot;Session Description Protocol (SDP)
+Parameters&quot; registry.
+</t>
+<t>The SDP specification <xref target="RFC4566"/> states that specifications defining
+new proto values, like the 'TCP/TLS' proto value defined in this one,
+must define the rules by which their media format (fmt) namespace is
+managed.  For the TCP/TLS protocol, new formats SHOULD have an
+associated MIME registration.  Use of an existing MIME subtype for the
+format is encouraged.  If no MIME subtype exists, it is RECOMMENDED
+that a suitable one be registered through the IETF process <xref target="RFC6838"/>
+by production of, or reference to, a Standards Track RFC that defines
+the transport protocol for the format.
+</t>
+<t>
+IANA has updated the "Hash Function Textual Names" registry (which was originally created in <xref target="RFC4572"/>) to refer to this document. 
+</t>
+<t>The names of hash functions used for certificate fingerprints are
+registered by the IANA. Hash functions MUST be defined by
+Standards Track RFCs that update or obsolete RFC 3279 <xref target="RFC3279"/>.
+</t>
+<t>When registering a new hash function textual name, the following
+information MUST be provided:
+</t>
+<t>
+<list style="symbols">
+<t>The textual name of the hash function.</t>
+<t>The Object Identifier (OID) of the hash function as used in X.509
+certificates.</t>
+<t>
+A reference to the Standards Track RFC that updates or obsoletes RFC
+3279 <xref target="RFC3279"/> and defines the use of the hash function in X.509
+certificates.</t>
+</list>
+</t>
+<t><xref target="hash-names"/> contains the initial values of this registry.
+</t>
+<texttable anchor="hash-names" title="IANA Hash Function Textual Name Registry
+">
+<ttcol align="center">Hash Function Name</ttcol>
+<ttcol align="center">OID</ttcol>
+<ttcol align="center">Reference</ttcol>
+
+<c>&quot;md2&quot;</c><c>1.2.840.113549.2.2</c><c>RFC 3279</c>
+<c>&quot;md5&quot;</c><c>1.2.840.113549.2.5</c><c>RFC 3279</c>
+<c>&quot;sha-1&quot;</c><c>1.3.14.3.2.26</c><c>RFC 3279</c>
+<c>&quot;sha-224&quot;</c><c>2.16.840.1.101.3.4.2.4</c><c>RFC 4055</c>
+<c>&quot;sha-256&quot;</c><c>2.16.840.1.101.3.4.2.1</c><c>RFC 4055</c>
+<c>&quot;sha-384&quot;</c><c>2.16.840.1.101.3.4.2.2</c><c>RFC 4055</c>
+<c>&quot;sha-512&quot;</c><c>2.16.840.1.101.3.4.2.3</c><c>RFC 4055</c>
+</texttable>
+</section>
+
+</middle>
+<back>
+<references title="Normative References">
+<reference anchor="FIPS.180-4.2015"
+	   target="http://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf">
+<front><title>Secure Hash Standard (SHS)</title><author>
+<organization>National Institute of Standards and
+Technology</organization></author>
+<date month="August" year="2015" />
+</front><seriesInfo name="FIPS" value="PUB 180-4" /> <seriesInfo name="DOI"
+value="10.6028/NIST.FIPS.180-4" /></reference>
+
+
+<reference anchor="ITU.X509.2014"
+	   target="https://www.iso.org/standard/64854.html">
+<front>
+<title>Information technology -- Open Systems Interconnection -- The Directory
+-- Part 8: Public-key and attribute certificate frameworks</title>
+<author><organization>International Organization for Standardization</organization></author>
+<date month="March" year="2014" />
+</front>
+<seriesInfo name="ISO/IEC" value="9594-8:2014"/>
+</reference>
+
+<?rfc include="reference.RFC.2119.xml"?>
+<?rfc include="reference.RFC.3264.xml"?>
+<?rfc include="reference.RFC.3279.xml"?>
+<?rfc include="reference.RFC.4055.xml"?>
+<?rfc include="reference.RFC.4145.xml"?>
+<?rfc include="reference.RFC.4566.xml"?>
+<?rfc include="reference.RFC.5234.xml"?>
+<?rfc include="reference.RFC.5246.xml"?>
+<?rfc include="reference.RFC.5280.xml"?>
+<?rfc include="reference.RFC.6838.xml"?>
+</references>
+<references title="Informative References">
+<?rfc include="reference.RFC.1321.xml"?>
+<?rfc include="reference.RFC.2818.xml"?>
+<?rfc include="reference.RFC.2974.xml"?>
+<?rfc include="reference.RFC.3174.xml"?>
+<?rfc include="reference.RFC.3261.xml"?>
+<?rfc include="reference.RFC.4251.xml"?>
+<?rfc include="reference.RFC.4571.xml"?>
+<?rfc include="reference.RFC.4572.xml"?>
+<?rfc include="reference.RFC.5125.xml"?>
+<?rfc include="reference.RFC.5751.xml"?>
+<?rfc include="reference.RFC.6149.xml"?>
+<?rfc include="reference.RFC.7616.xml"?>
+</references>
+
+<section anchor="acknowledgments" title="Acknowledgments" numbered="no">
+<t>This document included significant contributions by Cullen
+Jennings, Paul Kyzivat, Roman Shpount, and Martin Thomson. Elwyn Davies
+performed the Gen-ART review of the document.
+</t>
+</section>
+
+</back>
+</rfc>

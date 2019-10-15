@@ -1,0 +1,953 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc tocindent="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<rfc number="7923" category="info" submissionType="IETF" consensus="yes"
+     ipr="trust200902">
+  <front>
+    <title abbrev="YANG Subscription Requirements">Requirements for
+    Subscription to YANG Datastores</title>
+
+    <author fullname="Eric Voit" initials="E." surname="Voit">
+      <organization>Cisco Systems</organization>
+
+      <address>
+        <email>evoit@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Alexander Clemm" initials="A" surname="Clemm">
+      <organization>Cisco Systems</organization>
+
+      <address>
+        <email>alex@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Alberto Gonzalez Prieto" initials="A."
+            surname="Gonzalez Prieto">
+      <organization>Cisco Systems</organization>
+
+      <address>
+        <email>albertgo@cisco.com</email>
+      </address>
+    </author>
+
+    <date month="June" year="2016"/>
+
+    <area>Routing</area>
+
+    <workgroup>Interface to the Routing System (i2rs)</workgroup>
+
+    <abstract>
+      <t>This document provides requirements for a service that allows client
+      applications to subscribe to updates of a YANG datastore. Based on
+      criteria negotiated as part of a subscription, updates will be pushed to
+      targeted recipients. Such a capability eliminates the need for periodic
+      polling of YANG datastores by applications and fills a functional gap in
+      existing YANG transports (i.e., Network Configuration Protocol (NETCONF) and RESTCONF). Such a service
+      can be summarized as a "pub/sub" service for YANG datastore
+      updates. Beyond a set of basic requirements for the service, various
+      refinements are addressed. These refinements include: periodicity of
+      object updates, filtering out of objects underneath a requested a
+      subtree, and delivery QoS guarantees.</t>
+    </abstract>
+  </front>
+
+
+
+  <middle>
+    <section title="Introduction">
+      <t>Applications interacting with YANG datastores require capabilities
+      beyond the traditional client-server configuration of network elements.
+      One class of such applications are service-assurance applications, which
+      must maintain a continuous view of operational data and state. Another
+      class of applications are security applications, which must continuously
+      track changes made upon network elements to ensure compliance with
+      corporate policy.</t>
+
+      <t>Periodic fetching of data is not an adequate solution for
+      applications requiring frequent or prompt updates of remote object
+      state. Applying polling-based solutions here imposes a load on networks,
+      devices, and applications. Additionally, polling solutions are brittle
+      in the face of communication glitches, and have limitations in their
+      ability to synchronize and calibrate retrieval intervals across a
+      network. These limitations can be addressed by including generic object
+      subscription mechanisms within network elements, and allowing these
+      mechanisms to be applied in the context of data that is conceptually
+      contained in YANG datastores.</t>
+
+      <t>This document aggregates requirements for such subscription from a
+      variety of deployment scenarios.</t>
+
+      <t/>
+    </section>
+
+    <section title="Business Drivers">
+      <t>For decades, information delivery of current network state has been
+      accomplished either by fetching from operations interfaces, or via
+      dedicated, customized networking protocols. With the growth of
+      centralized orchestration infrastructures, imperative policy
+      distribution, and YANG's ascent as the dominant data modeling language
+      for use in programmatic interfaces to network elements, this mixture of
+      fetch plus custom networking protocols is no longer sufficient. What is
+      needed is a push mechanism that is able to deliver object changes as
+      they happen.</t>
+
+      <t>These push distribution mechanisms will not replace existing
+      networking protocols. Instead they will supplement these protocols,
+      providing different response time, peering, scale, and security
+      characteristics.</t>
+
+      <t>Push solutions will not displace all existing operations
+      infrastructure needs. And SNMP and MIBs will remain widely deployed and
+      the de facto choice for many monitoring solutions. But some functions
+      could be displaced. Arguably the biggest shortcoming of SNMP for those
+      applications concerns the need to rely on periodic polling, because it
+      introduces an additional load on the network and devices, because it is
+      brittle if polling cycles are missed, and because it is hard to
+      synchronize and calibrate across a network. If applications can only use
+      polling type interaction patterns with YANG datastores, similar issues
+      can be expected.</t>
+
+      <section title="Pub/Sub in the Interface to the Routing System (I2RS)">
+        <t>Various documents about the Interface to the Routing System (I2RS) highlight the need to provide pub/sub
+        capabilities between network elements. From <xref
+        target="RFC7921"/>, there are references throughout the document
+        beginning in Section 6.2. Some specific examples include:</t>
+
+        <t><list style="symbols">
+            <t>Section 7.6 of <xref target="RFC7921"/> provides high-level pub/sub (notification)
+            guidance.</t>
+
+            <t>Section 6.4.2 of <xref target="RFC7921"/> identifies "subscribing to an information
+            stream of route changes" and "receiving notifications about peers coming
+            up or going down".</t>
+
+            <t>Section 6.3 of <xref target="RFC7921"/> notes that when Local
+	    Configuration preempts I2RS,
+            external notification might be necessary.</t>
+          </list></t>
+
+        <t>In addition, <xref target="USECASE"/> has relevant
+        requirements. A small subset includes:</t>
+
+        <t><list style="symbols">
+            <t>L-Data-REQ-12: The I2RS interface should support user
+            subscriptions to data with the following parameters: push of data
+            synchronously or asynchronously via registered
+            subscriptions...</t>
+
+            <t>L-DATA-REQ-07: The I2RS interface (protocol and instant
+	    messages (IMs)) should
+            allow a subscriber to select portions of the data model.</t>
+
+            <t>PI-REQ01: Monitor the available routes installed in the Routing
+	    Information Base (RIB) of
+            each forwarding device, including near real-time notification of
+            route installation and removal.</t>
+
+            <t>BGP-REQ10: The I2RS client SHOULD be able to instruct the I2RS
+            agent(s) to notify the I2RS client when the BGP processes on an
+            associated routing system observe a route change to a specific set
+            of IP Prefixes and associated prefixes.... The I2RS agent
+            should be able to notify the client via the publish or subscribe
+            mechanism.</t>
+
+            <t>IGP-REQ-07: The I2RS interface (protocol and IMs) should
+            support a mechanism where the I2RS Clients can subscribe to the
+            I2RS Agent's notification of critical node IGP events.</t>
+
+            <t>MPLS-LDP-REQ-03: The I2RS Agent notifications should allow an
+            I2RS client to subscribe to a stream of state changes regarding
+            the LDP sessions or LDP Label Switched Paths (LSPs) from the I2RS Agent.</t>
+
+            <t>L-Data-REQ-01: I2RS must be able to collect large data sets from
+            the network with high frequency and resolution, and with minimal impact
+            to the device's CPU and memory.</t>
+          </list></t>
+
+        <t>Also, Section 7.4.3 of <xref target="RFC7922"/> includes this
+	pub/sub requirement:</t>
+
+        <t><list style="symbols">
+            <t>I2RS agents MUST support publishing I2RS trace log
+            information to that feed as described in 
+            [this document]. Subscribers would then receive a live stream
+            of I2RS interactions in trace log format and could flexibly choose
+            to do a number of things with the log messages.</t>
+          </list></t>
+
+        <t/>
+      </section>
+
+      <section title="Pub/Sub Variants on Network Elements ">
+        <t>This document is intended to cover requirements beyond I2RS.
+        Looking at history, there are many examples of switching and routing
+        protocols that have done explicit or implicit pub/sub in the past. In
+        addition, new policy notification mechanisms that operate on switches
+        and routers are being specified now. A small subset of current and
+        past subscription mechanisms includes:</t>
+
+        <t><list style="symbols">
+            <t>Multicast topology establishment is accomplished before any
+            content delivery is made to endpoints (IGMP, PIM, etc.).</t>
+
+            <t>Secure Automation and Continuous Monitoring (SACM) allows
+            subscription into devices, which may then push spontaneous changes
+            in their configured hardware and software <xref target="SACMREQ"/>.</t>
+
+            <t>In MPLS VPNs [RFC6513], a Customer Edge router exchanges PIM
+            control messages before Provider Edge (PE) Routing Adjacencies are passed <xref
+            target="RFC6513"/>.</t>
+
+            <t>After OSPF establishes its adjacencies, Link State
+            Advertisement will then commence <xref target="RFC2328"/>.</t>
+          </list>Worthy of note in the examples above is the wide variety of
+        underlying transports. A generalized pub/sub mechanism, therefore
+        should be structured to support alternative transports. Based on
+        current I2RS requirements, NETCONF should be the initially supported
+        transport due to the need for connection-oriented/unicast
+        communication. Eventual support for multicast and broadcast
+        subscription update distribution will be needed as well.</t>
+      </section>
+
+      <section title="Existing Generalized Pub/Sub Implementations">
+        <t>TIBCO, RSS, Common Object Request Broker Architecture (CORBA), and other technologies all show precursor
+        pub/sub technologies. However, there are new needs (described in <xref
+	target="reqs"/> below) that these technologies do not serve. We need a new pub/sub
+        technology.</t>
+
+        <t>There are at least two widely deployed generalized pub/sub
+        implementations that come close to current needs: Extensible
+	Messaging and Presence Protocol (XMPP) <xref
+        target="XEP-0060"/> and Data Distribution Service (DDS) <xref target="OMG-DDS"/>. Both serve as
+        proof-points that a highly scalable distributed datastore
+        implementation connecting millions of edge devices is possible.</t>
+
+        <t>Because of these proof-points, we can be comfortable that the
+        underlying technologies can enable reusable generalized YANG object
+        distribution. Analysis will need to fully dimension the speed and
+        scale of such object distribution for various subtree sizes and
+        transport types.</t>
+      </section>
+    </section>
+
+    <section title="Terminology">
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+      document are to be interpreted as described in <xref target="RFC2119"/>.
+      Although this document is not a protocol specification, the use of this
+      language clarifies the instructions to protocol designers producing
+      solutions that satisfy the requirements set out in this document.</t>
+
+      <t>A Subscriber makes requests for set(s) of YANG object data.</t>
+
+      <t>A Publisher is responsible for distributing subscribed YANG object
+      data per the terms of a subscription. In general, a Publisher is the
+      owner of the YANG datastore that is subjected to the subscription.</t>
+
+      <t>A Receiver is the target to which a Publisher pushes updates. In
+      general, the Receiver and Subscriber will be the same entity. A
+      Subscription Service provides subscriptions to Subscribers of YANG
+      data.</t>
+
+      <t>A Subscription Service interacts with the Publisher of the YANG data
+      as needed to provide the data per the terms of the subscription.</t>
+
+      <t>A subscription request for one or more YANG subtrees (including
+      single leafs) is made by the Subscriber of a Publisher and is targeted
+      to a Receiver. A subscription may include constraints that dictate how
+      often or under what conditions YANG information updates might be
+      sent.</t>
+
+      <t>A subscription is a contract between a Subscription Service and a
+      Subscriber that stipulates the data to be pushed and the associated
+      terms.</t>
+
+      <t>A datastore is defined in <xref target="RFC6241"/>.</t>
+
+      <t>An Update provides object changes that have occurred within
+      subscribed YANG subtree(s). 
+
+  An Update must include the current
+  status of (data) node instances for which filtering has indicated
+  they have different status than previously provided.
+An Update may include a
+      bundled set of ordered/sequential changes for a given object that have
+      been made since the last update.</t>
+
+      <t>A Filter contains evaluation criteria, which are evaluated against
+      YANG object(s) within a subscription. There are two types of Filters:
+      Subtree Filters, which identify selected objects/nodes published under a
+      target data node, and object element and attribute Filters where an
+      object should only be published if it has properties meeting specified
+      Filter criteria.</t>
+    </section>
+
+    <section anchor="reqs" title="Requirements">
+      <t>Many of the requirements within this section have been adapted from the
+      XMPP <xref target="XEP-0060"/> and DDS <xref target="OMG-DDS"/>
+      requirements specifications.</t>
+
+      <section title="Assumptions for Subscriber Behavior">
+        <t>This document provides requirements for the Subscription Service.
+        It does not define all the requirements for the Subscriber/Receiver.
+        However in order to frame the desired behavior of the Subscription
+        Service, it is important to specify key input constraints.</t>
+
+        <t>A Subscriber SHOULD avoid attempting to establish multiple
+        subscriptions pertaining to the same information, i.e., referring to
+        the same datastore YANG subtrees.</t>
+
+        <t>A Subscriber MAY provide subscription QoS criteria to the
+        Subscription Service; if the Subscription Service is unable to meet
+        those criteria, the subscription SHOULD NOT be established.</t>
+
+        <t>When a Subscriber and Receiver are the same entity and the
+        transport session is lost/terminated, the Subscriber MUST re-establish
+        any subscriptions it previously created via signaling over the
+        transport session. That is, there is no requirement for the life span of
+        such signaled subscriptions to extend beyond the life span of the
+        transport session.</t>
+
+        <t>A Subscriber MUST be able to infer when a Subscription Service is
+        no longer active and when no more updates are being sent.</t>
+
+        <t>A Subscriber MAY check with a Subscription Service to validate the
+        existence and monitored subtrees of a subscription.</t>
+
+        <t>A Subscriber MUST be able to periodically lease and extend the
+        lease of a subscription from a Subscription Service.</t>
+      </section>
+
+      <section title="Subscription Service Requirements">
+        <section title="General">
+          <t>A Subscription Service MUST support the ability to create, renew,
+          time out, and terminate a subscription.</t>
+
+          <t>A Subscription Service MUST be able to support and independently
+          track multiple subscription requests by the same Subscriber.</t>
+
+          <t>A Subscription Service MUST be able to support an
+          add/change/delete of subscriptions to multiple YANG subtrees as part
+          of the same subscription request.</t>
+
+          <t>A Subscription Service MUST support subscriptions against
+          operational datastores, configuration datastores, or both.</t>
+
+          <t>A Subscription Service MUST be able support filtering so that
+          the subscribed updates under a target node might publish only
+          operational data, only configuration data, or both.</t>
+
+          <t>A subscription MAY include Filters as defined within a
+          subscription request, therefore the Subscription Service MUST
+          publish only data nodes that meet the Filter criteria within a
+          subscription.</t>
+
+          <t>A Subscription Service MUST support the ability to subscribe to
+          periodic updates. The subscription period MUST be configurable as
+          part of the subscription request.</t>
+
+          <t>A Subscription Service SHOULD support the ability to subscribe to
+          updates on-change, i.e., whenever values of subscribed
+          data objects change.</t>
+
+          <t>For on-change updates, the Subscription Service
+          MUST support a dampening period that needs to be passed before the first
+          or subsequent on-change updates are sent. The
+          dampening period SHOULD be configurable as part of the subscription
+          request.</t>
+
+          <t>A Subscription Service MUST allow subscriptions to be monitored.
+          Specifically, a Subscription Service MUST at a minimum maintain
+          information about which subscriptions are being serviced, the terms
+          of those subscriptions (e.g., what data is being subscribed,
+          associated Filters, update policy -- on change, periodic), and
+          the overall status of the subscription -- e.g., active or
+          suspended.</t>
+
+          <t/>
+
+          <t>A Subscription Service MUST support the termination of a subscription
+          when requested by the Subscriber.</t>
+
+          <t>A Subscription Service SHOULD support the ability to suspend and
+          to resume a subscription on request of a client.</t>
+
+          <t>A Subscription Service MAY at its discretion revoke or suspend an
+          existing subscription. Reasons may include transitory resource
+          limitation, credential expiry, failure to reconfirm a subscription,
+          loss of connectivity with the Receiver, operator command-line
+	  interface (CLI), and/or others.
+          When this occurs, the Subscription Service MUST notify the
+          Subscriber and update the subscription status.</t>
+
+          <t>A Subscription Service MAY offer the ability to modify a
+          subscription Filter. If such an ability is offered, the service MUST
+          provide subscribers with an indication telling at what point the
+          modified subscription goes into effect.</t>
+        </section>
+
+        <section title="Negotiation">
+          <t>A Subscription Service MUST be able to negotiate the following
+          terms of a subscription:</t>
+
+          <t><list style="symbols">
+              <t>The policy, i.e., whether updates are on-change or
+              periodic</t>
+
+              <t>The interval, for periodic publication policy</t>
+
+              <t>The on-change policy dampening period (if the on-change
+              policy is supported)</t>
+
+              <t>Any Filters associated with a subtree subscription</t>
+            </list></t>
+
+          <t>A Subscription Service SHOULD be able to negotiate QoS criteria
+          for a subscription. Examples of subscription QoS criteria may
+          include reliability of the Subscription Service, reaction time
+          between a monitored YANG subtree/object change and a corresponding
+          notification push, and the Subscription Service's ability to support
+          certain levels of object liveliness.</t>
+
+          <t>In cases where a subscription request cannot be fulfilled due to
+          insufficient platform resources, the Subscription Service SHOULD
+          include within its decline hints on criteria that would have been
+          acceptable when the subscription request was made. For example, if
+          periodic updates were requested with update intervals that were too short for
+          the specified data set, an alternative acceptable interval period
+          might be returned from the Publisher. If on-change updates were
+          requested with too aggressive a dampening period, then an acceptable
+          dampening period may be returned, or alternatively an indication
+          that only periodic updates are supported for the requested
+          object(s).</t>
+
+          <t/>
+        </section>
+
+        <section title="Update Distribution ">
+          <t>For on-change updates, the Subscription Service
+          MUST only send deltas to the object data for which a change
+          occurred. (Otherwise the subscriber might not know what has actually
+          undergone change.) The updates for each object MUST include an
+          indication of whether it was removed, added, or changed.</t>
+
+          <t>When a Subscription Service is not able to send updates per its
+          subscription contract, the subscription MUST notify subscribers and
+          put the subscription into a state indicating that the subscription was
+          suspended by the service. When able to resume service, subscribers
+          need to be notified as well. If unable to resume service, the
+          Subscription Service MAY terminate the subscription and notify
+          Subscribers accordingly.</t>
+
+          <t>When a subscription with on-change updates is
+          suspended and then resumed, the first update SHOULD include updates
+          of any changes that occurred while the subscription was suspended,
+          with the current value. The Subscription Service MUST provide a
+          clear indication when this capability is not supported (because in
+          this case, a client application may have to synchronize state
+          separately).</t>
+
+          <t>Multiple objects being pushed to a Subscriber, perhaps from
+          different subscriptions, SHOULD be bundled together into a single
+          Update.</t>
+
+          <t>The sending of an Update MUST NOT be delayed beyond the Push
+          Latency of any enclosed object changes.</t>
+
+          <t>The sending of an Update MUST NOT be delayed beyond the dampening
+          period of any enclosed object changes.</t>
+
+          <t>The sending of an Update MUST NOT occur before the dampening
+          period expires for any enclosed object changes.</t>
+
+          <t>A Subscription Service MAY, as an option, support a replay
+          capability so that a set of updates generated during a previous time
+          internal can be sent to a Receiver.</t>
+        </section>
+
+        <section title="Transport">
+          <t>It is possible for updates coming from a Subscription Service to
+          be pushed over different types of transports such as NETCONF,
+          RESTCONF, and HTTP. Beyond existing transports, this Subscription
+          Service will be applicable for emerging protocols such as those being
+          defined in <xref target="USECASE"/>. The need for such
+          transport flexibility drives the following requirements:</t>
+<t><list style="symbols">
+          <t>A Subscription Service SHOULD support different transports.</t>
+
+          <t>A Subscription Service SHOULD support different encodings of a
+          payload.</t>
+
+          <t>It MUST be possible for Receivers to associate the update with a
+          specific subscription.</t>
+
+          <t>In the case of connection-oriented transport, when a transport
+          connection drops, the associated subscription SHOULD be terminated.
+          It is up the Subscriber to request a new subscription.</t>
+	</list></t>
+        </section>
+
+        <section anchor="secreq" title="Security Requirements">
+          <t>Some uses of this Subscription Service will push
+          privacy-sensitive updates and metadata. For privacy-sensitive
+          deployments, subscription information MUST be bound within secure,
+          encrypted transport-layer mechanisms. 
+
+
+For example, if NETCONF is used
+          as transport, then <xref target="RFC7589"/> would be a valid option
+          to secure the transported information. The Subscription Service can
+          also be used with emerging privacy-sensitive deployment contexts as
+          well. As an example, deployments based on <xref
+          target="USECASE"/> would apply these requirements in
+          conjunction with those documented within <xref
+          target="I2RS-ENV-SEC"/> and <xref
+          target="I2RS-PROT-SEC"/> to secure ephemeral state
+          information being pushed from a network element.</t>
+
+          <t>As part of the subscription establishment, mutual authentication
+          MUST be used between the Subscriber and the Subscription
+          Service.</t>
+
+          <t>Subscribers MUST NOT be able to pose as the original Subscription
+          Service.</t>
+
+          <t>Versioning of any subscription protocols MUST be supported so
+          that the capabilities and behaviors expected of specific technology
+          implementations can be exposed.</t>
+
+          <t>A subscription could be used to attempt to retrieve information
+          to which a client has no authorized access. Therefore, it is
+          important that data being pushed based on subscriptions is authorized in
+          the same way that regular data retrieval operations are authorized.
+          Data being pushed to a client MUST be filtered accordingly, just
+          like if the data were being retrieved on demand. For Unicast
+          transports, the NETCONF Authorization Control Model applies.</t>
+
+          <t>Additions or changes within a subscribed subtree structure MUST
+          be validated against authorization methods before subscription
+          updates, including new subtree information, are pushed.</t>
+
+          <t>A loss of authenticated access to the target subtree or node SHOULD
+          be communicated to the Subscriber.</t>
+
+          <t>For any encrypted information exchanges, commensurate strength
+          security mechanisms MUST be available and SHOULD be used. This
+          includes all stages of the subscription and update push process.</t>
+
+          <t>Subscription requests, including requests to create, terminate,
+          suspend, and resume subscriptions MUST be properly authorized.</t>
+
+          <t>When the Subscriber and Receiver are different, the Receiver MUST
+          be able to terminate any subscription to it where objects are being
+          delivered over a Unicast transport.</t>
+
+          <t>A Subscription Service SHOULD decline a subscription request if
+          it is likely to deplete its resources. It is preferable to decline a
+          subscription when originally requested, rather than having to
+          terminate it prematurely later.</t>
+
+          <t>When the Subscriber and Receiver are different, and when the
+          underlying transport connection passes credentials as part of
+          transport establishment, then potentially pushed objects MUST be
+          excluded from a push update if that object doesn't have read access
+          visibility for that Receiver.</t>
+        </section>
+
+        <section title="Subscription QoS">
+          <t>A Subscription Service SHOULD be able to negotiate the following
+          subscription QoS parameters with a Subscriber: Dampening,
+          Reliability, Deadline, and Bundling.</t>
+
+          <t>A Subscription Service SHOULD be able to interpret subscription
+          QoS parameters, and only establish a subscription if it is possible
+          to meet the QoS needs of the provided QoS parameters.</t>
+
+          <section title="Liveliness ">
+            <t>A Subscription Service MUST be able to respond to requests to
+            verify the Liveliness of a subscription.</t>
+
+            <t>A Subscription Service MUST be able to report the currently
+            monitored Nodes of a subscription.</t>
+
+            <t/>
+          </section>
+
+          <section title="Dampening">
+            <t>A Subscription Service MUST be able to negotiate the minimum
+            time separation since the previous update before transmitting a
+            subsequent update for subscription. (Note: this is intended to
+            confine the visibility of volatility into something digestible by
+            the receiver.)</t>
+
+            <t/>
+          </section>
+
+          <section title="Reliability">
+            <t>A Subscription Service MAY send Updates over Best Effort and
+            Reliable transports.</t>
+
+            <t/>
+          </section>
+
+          <section title="Coherence">
+            <t>For a particular subscription, every update to a subscribed
+            object MUST be sent to the Receiver in sequential order.</t>
+
+            <t/>
+          </section>
+
+          <section title="Presentation">
+            <t>The Subscription Service MAY have the ability to bundle a set
+            of discrete object notifications into a single publishable update
+            for a subscription. A bundle MAY include information on different
+            Data Nodes and/or multiple updates about a single Data Node.</t>
+
+            <t>For any bundled updates, the Subscription Service MUST provide
+            information for a Receiver to reconstruct the order and timing of
+            updates.</t>
+
+            <t/>
+          </section>
+
+          <section title="Deadline">
+            <t>The Subscription Service MUST be able to push updates at a
+            regular cadence that corresponds with the Subscriber's specified start
+            and end timestamps. (Note: the regular cadence can drive one update, a discrete quantity of updates, or an unbounded set of periodic updates.)</t>
+
+
+            <t/>
+          </section>
+
+          <section title="Push Latency ">
+            <t>The Subscription Service SHOULD be able to delay Updates on
+            object push for a configurable period per Subscriber.</t>
+
+            <t>It MUST be possible for an administrative entity to determine
+            the Push latency between object change in a monitored subtree and
+            the Subscription Service Push of the update transmission.</t>
+
+            <t/>
+          </section>
+
+          <section title="Relative Priority">
+            <t>The Subscription Service SHOULD support the relative
+            prioritization of subscriptions so that the dequeuing and discarding
+            of push updates can consider this if there is insufficient
+            bandwidth between the Publisher and the Receiver.</t>
+          </section>
+        </section>
+
+        <section title="Filtering">
+          <t>If no filtering criteria are provided, or if filtering criteria
+          are met, updates for a subscribed object MUST be pushed, subject to
+          the QoS limits established for the subscription.</t>
+
+          <t>It MUST be possible for the Subscription Service to receive
+          Filter(s) from a Subscriber and apply them to the corresponding
+          object(s) within a subscription.</t>
+
+          <t>It MUST be possible to attach one or more Subtree and/or object
+          element and attribute Filters to a subscription. Mandatory Filter
+          types include:</t>
+
+          <t><list style="symbols">
+              <t>For character-based object properties, Filter values that
+              are exactly equal to a provided string, not equal to the string,
+              or containing a string.</t>
+
+              <t>For numeric object properties, Filter values that are
+              =, !=, &lt;, &lt;=, &gt;, or &gt;= a provided number.</t>
+            </list>It SHOULD be possible for Filtering criteria to evaluate
+          more than one property of a particular subscribed object as well as
+          apply multiple Filters against a single object.</t>
+
+          <t>It SHOULD be possible to establish query match criteria on
+          additional objects to be used in conjunction with Filtering criteria
+          on a subscribed object. (For example, if A has changed and B=1, then
+          Push A.) Query match capability may be done on objects within the
+          datastore even if those objects are not included within the
+          subscription. This of course assumes that the subscriber has read access
+          to those objects.</t>
+
+          <t>For on-change subscription updates, an object MUST pass a Filter
+          through a Filter if it has changed since the previous update. This
+          includes if the object has changed multiple times since the last
+          update, and if the value happens to be the exact same value as the
+          last one sent.</t>
+
+          <t/>
+        </section>
+
+        <section title="Assurance and Monitoring">
+          <t>It MUST be possible to fetch the state of a single subscription
+          from a Subscription Service.</t>
+
+          <t>It MUST be possible to fetch the state of all subscriptions of a
+          particular Subscriber.</t>
+
+          <t>It MUST be possible to fetch a list and status of all
+          subscription requests over a period of time. If there is a failure,
+          some failure reasons might include:</t>
+
+          <t><list style="symbols">
+              <t>Improper security credentials provided to access the target
+              node;</t>
+
+              <t>Target node referenced does not exist;</t>
+
+              <t>Subscription type requested is not available upon the target
+              node;</t>
+
+              <t>Out of resources, or resources not available;</t>
+
+              <t>Incomplete negotiations with the Subscriber.</t>
+            </list></t>
+        </section>
+      </section>
+    </section>
+
+    <section title="Security Considerations">
+      <t>There are no additional security considerations beyond the
+      requirements listed in <xref target="secreq"/>.</t>
+    </section>
+
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      <?rfc include="reference.RFC.6513"?>
+
+      <?rfc include="reference.RFC.2328"?>
+
+      <?rfc include="reference.RFC.6241"?>
+
+      <?rfc include="reference.RFC.2119"?>
+
+      <?rfc include="reference.RFC.7589"?>
+
+<!--draft-ietf-i2rs-architecture cluster 292 -->
+
+<reference anchor='RFC7921' target="http://www.rfc-editor.org/info/rfc7921">
+<front>
+<title>An Architecture for the Interface to the Routing System</title>
+
+<author initials='A' surname='Atlas' fullname='Alia Atlas'>
+    <organization />
+</author>
+
+<author initials='J' surname='Halpern' fullname='Joel Halpern'>
+    <organization />
+</author>
+
+<author initials='S' surname='Hares' fullname='Susan Hares'>
+    <organization />
+</author>
+
+<author initials='D' surname='Ward' fullname='David Ward'>
+    <organization />
+</author>
+
+<author initials='T' surname='Nadeau' fullname='Tom Nadeau'>
+    <organization />
+</author>
+
+<date month='June' year='2016'/>
+
+</front>
+
+<seriesInfo name="RFC" value="7921"/>
+<seriesInfo name="DOI" value="10.17487/RFC7921"/>
+</reference>
+
+<!--draft-ietf-i2rs-traceability cluster 292 -->
+
+<reference anchor='RFC7922' target="http://www.rfc-editor.org/info/rfc7922">
+<front>
+<title>Interface to the Routing System (I2RS) Traceability: Framework and Information Model</title>
+
+<author initials='J' surname='Clarke' fullname='Joe Clarke'>
+    <organization />
+</author>
+
+<author initials='G' surname='Salgueiro' fullname='Gonzalo Salgueiro'>
+    <organization />
+</author>
+
+<author initials='C' surname='Pignataro' fullname='Carlos Pignataro'>
+    <organization />
+</author>
+
+<date month='June' year='2016'/>
+
+</front>
+<seriesInfo name="RFC" value="7922"/>
+<seriesInfo name="DOI" value="10.17487/RFC7922"/>
+
+</reference>
+
+
+      <?rfc ?>
+    </references>
+
+    <references title="Informative References">
+
+<!--draft-ietf-i2rs-usecase-reqs-summary IESG State: I-D Exists -->
+
+<reference anchor='USECASE'>
+<front>
+<title>Summary of I2RS Use Case Requirements</title>
+
+<author initials='S' surname='Hares' fullname='Susan Hares'>
+    <organization />
+</author>
+
+<author initials='M' surname='Chen' fullname='Mach Chen'>
+    <organization />
+</author>
+
+<date month='March' day='15' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-i2rs-usecase-reqs-summary-02' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-i2rs-usecase-reqs-summary-02.txt' />
+<format type='PDF'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-i2rs-usecase-reqs-summary-02.pdf' />
+</reference>
+
+
+      <reference anchor="OMG-DDS" target="http://www.omg.org/spec/DDS/1.2/">
+        <front>
+          <title>Data Distribution Service for Real-time Systems, Version
+          1.2</title>
+
+          <author>
+            <organization>Object Management Group (OMG)</organization>
+          </author>
+
+          <date month="January" year="2007"/>
+        </front>
+      </reference>
+
+
+      <reference anchor="XEP-0060" target="http://xmpp.org/extensions/xep-0060.html">
+        <front>
+          <title>Publish-Subscribe</title>
+
+          <author fullname="Peter Millard" initials="P" surname="Millard">
+            <organization/>
+          </author>
+          <author initials="P" surname="Saint-Andre">
+            <organization/>
+          </author>
+          <author initials="R" surname="Meijer">
+            <organization/>
+          </author>
+
+          <date day="12" month="July" year="2010"/>
+        </front>
+<seriesInfo name="XSF" value="XEP-0060" />
+      </reference>
+
+<!--draft-ietf-i2rs-protocol-security-requirements IESG State: Publication
+Requested -->
+
+<reference anchor='I2RS-PROT-SEC'>
+<front>
+<title>I2RS Security Related Requirements</title>
+
+<author initials='S' surname='Hares' fullname='Susan Hares'>
+    <organization />
+</author>
+
+<author initials='D' surname='Migault' fullname='Daniel Migault'>
+    <organization />
+</author>
+
+<author initials='J' surname='Halpern' fullname='Joel Halpern'>
+    <organization />
+</author>
+
+<date month='May' day='24' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-i2rs-protocol-security-requirements-06' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-i2rs-protocol-security-requirements-06.txt' />
+<format type='PDF'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-i2rs-protocol-security-requirements-06.pdf' />
+</reference>
+
+<!--draft-ietf-i2rs-security-environment-reqs IESG State: I-D Exists -->
+
+<reference anchor='I2RS-ENV-SEC'>
+<front>
+<title>I2RS Environment Security Requirements</title>
+
+<author initials='D' surname='Migault' fullname='Daniel Migault' role="editor">
+    <organization />
+</author>
+
+<author initials='J' surname='Halpern' fullname='Joel Halpern'>
+    <organization />
+</author>
+
+<author initials='S' surname='Hares' fullname='Susan Hares'>
+    <organization />
+</author>
+
+<date month='April' day='4' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-i2rs-security-environment-reqs-01' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-i2rs-security-environment-reqs-01.txt' />
+</reference>
+
+
+<!--draft-ietf-sacm-requirements ISEG State: I-D Exists -->
+
+<reference anchor='SACMREQ'>
+<front>
+<title>Security Automation and Continuous Monitoring (SACM) Requirements</title>
+
+<author initials='N' surname='Nancy' fullname='Nancy'>
+    <organization />
+</author>
+
+<author initials='L' surname='Lorenzin' fullname='Lisa Lorenzin'>
+    <organization />
+</author>
+
+<date month='March' day='17' year='2016' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-sacm-requirements-13' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-sacm-requirements-13.txt' />
+</reference>
+
+    </references>
+    <section title="Acknowledgments" numbered="no">
+      <t>We wish to acknowledge the helpful contributions, comments, and
+      suggestions that were received from Ambika Tripathy and Prabhakara
+      Yellai as well as the helpfulness of related end-to-end system context
+      info from Nancy Cam Winget, Ken Beck, and David McGrew.</t>
+    </section>
+
+  </back>
+</rfc>

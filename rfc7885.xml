@@ -1,0 +1,555 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc strict="yes" ?>
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc category="std" updates="5885" number="7885" ipr="trust200902"
+  submissionType="IETF" consensus="yes">
+
+  <front>
+    <title abbrev="Seamless BFD for VCCV">
+Seamless Bidirectional Forwarding Detection (S-BFD)
+for&nbsp;Virtual&nbsp;Circuit&nbsp;Connectivity&nbsp;Verification&nbsp;(VCCV)
+    </title>
+
+    <author fullname="Vengada Prasad Govindan" initials="V."
+            surname="Govindan">
+      <organization abbrev="Cisco">Cisco Systems, Inc.</organization>
+      <address>
+        <email>venggovi@cisco.com</email>
+      </address>
+    </author>
+
+    <author fullname="Carlos Pignataro" initials="C."
+            surname="Pignataro">
+      <organization abbrev="Cisco">Cisco Systems, Inc.</organization>
+      <address>
+        <email>cpignata@cisco.com</email>
+      </address>
+    </author>
+    <date month="July" year="2016"/>
+
+    <keyword>RFC5885</keyword>
+    <keyword>L2TPv3</keyword>
+    <keyword>VCCV</keyword>
+    <keyword>S-BFD</keyword>
+
+    <abstract>
+       <t>
+This document defines Seamless BFD (S-BFD) for VCCV by extending the
+procedures and Connectivity Verification (CV) types already defined
+for Bidirectional Forwarding Detection (BFD) for Virtual Circuit
+Connectivity Verification (VCCV).</t>
+
+<t>This document updates RFC 5885 by extending the CV Type values and
+the capability selection.
+</t>
+    </abstract>
+  </front>
+
+  <middle>
+
+    <section title="Background">
+    <t>Bidirectional Forwarding Detection (BFD) for Virtual Circuit
+    Connectivity Verification (VCCV) <xref target="RFC5885"></xref> defines
+    the CV Types for BFD using VCCV, protocol operation, and the
+    required packet encapsulation formats. This document extends those
+    procedures and CV&nbsp;Type values to enable Seamless BFD (S-BFD)
+    <xref target="RFC7880"/> operation for&nbsp;VCCV.</t>
+
+    <t>The new S-BFD CV Types are Pseudowire (PW) demultiplexer agnostic and
+    hence are applicable for both MPLS and Layer Two Tunneling Protocol
+    version 3 (L2TPv3) PW demultiplexers.  This document concerns
+    itself with the S-BFD VCCV operation over Single-Segment PWs
+    (SS-PWs). The scope of this document is as follows:
+
+    <list style="symbols">
+    <t>This specification describes procedures for S-BFD asynchronous
+    mode only.</t>
+    <t>S-BFD Echo mode is outside the scope of this specification. </t>
+    <t>S-BFD operation for fault detection and status signaling is outside the
+    scope of this specification. </t>
+    </list>
+    </t>
+
+<t>
+This document specifies the use of a single S-BFD Discriminator per
+PW. There are cases where multiple S-BFD Discriminators per PW can be
+useful. One such case involves using different S-BFD Discriminators per
+Flow within a Flow&nbhy;Aware Transport (FAT) PW <xref target="RFC6391"/>;
+however, the mapping between Flows and discriminators is a prerequisite.
+FAT PWs can be supported as described in Section&nbsp;7 of <xref
+target="RFC6391"/>, which details Operations, Administration, and
+Maintenance (OAM) considerations for FAT PWs.
+</t>
+
+    <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and 
+      "OPTIONAL" in this document are to be interpreted as described in <xref
+      target="RFC2119"></xref>.  </t>
+    </section>
+
+    <section anchor = "sbfd_cv_types" title="S-BFD Connectivity Verification">
+    <t>The S-BFD protocol provides continuity check services by monitoring
+    the S-BFD Control packets sent and received over the VCCV channel of the
+    PW. The term "Connectivity Verification" (CV) is used throughout this
+    document to be consistent with <xref target="RFC5885"/>. </t>
+
+    <t>This section defines the CV Types to be used for S-BFD. It also
+    defines the procedures for the S-BFD reflector and S-BFD initiator
+    operation.</t>
+
+    <t>Two CV Types are defined for S-BFD. <xref target="Table1"/> summarizes
+    the S-BFD CV&nbsp;Types, grouping them by encapsulation (i.e., with
+    IP&wj;/UDP headers, without IP&wj;/UDP headers) for fault detection
+    only. S-BFD for fault detection and status signaling is outside the scope
+    of this specification. </t>
+
+<?rfc compact="no"?>
+<texttable title="Bitmask Values for S-BFD CV Types" anchor="Table1"
+	   style="full"><preamble/><ttcol align="right"/><ttcol
+	   align="center">Fault Detection Only</ttcol><ttcol
+	   align="center">Fault Detection and Status
+Signaling</ttcol><c>S-BFD IP/UDP encapsulation (with IP/UDP
+headers)</c><c>0x40</c><c>N/A</c><c>S-BFD PW-ACH
+encapsulation when using MPLS PW or S-BFD L2-Specific
+Sublayer (L2SS) encapsulation when using L2TP PW (without IP/UDP
+headers)</c><c>0x80</c><c>N/A</c><postamble/></texttable>
+<?rfc compact="yes"?>
+
+    <t>IANA has assigned two new bits to indicate S-BFD operation. 
+   </t>
+
+    <section title="Co-existence of S-BFD and BFD Capabilities">
+    <t>
+    Since the CV Types for S-BFD and BFD are unique, BFD and S-BFD capabilities can be advertised concurrently.
+   </t>
+    </section>
+
+
+    <section title="S-BFD CV Operation">
+    <section title="S-BFD Initiator Operation">
+    <t>The S-BFD initiator SHOULD bootstrap S-BFD sessions after it learns the
+    discriminator of the remote target identifier. This can be achieved,
+    for example, through one or more of the following methods. (This list is
+    not exhaustive.)
+
+<list style="numbers">
+    <t>Advertisements of S-BFD Discriminators made through a
+    PW&nbsp;signaling protocol -- for example, AVPs/TLVs defined in
+    L2TP&wj;/LDP.</t>
+
+    <t>Provisioning of S-BFD Discriminators by manual configuration of the
+    Provider Edge (PE) or L2TP Control Connection Endpoints (LCCEs).
+</t>
+    <t>Assignment of S-BFD Discriminators by a controller.</t>
+    <t>Probing remote S-BFD Discriminators through a mechanism such as S-BFD
+    Alert Discriminators <xref target="SBFD-ALERT-DISCRIM"/>.
+</t>
+</list>
+</t>
+    <t>The S-BFD initiator operation MUST be done as specified in
+    Section&nbsp;7.3 of <xref target="RFC7880"/>.
+    </t>
+    </section>
+
+    <section title="S-BFD Reflector Operation">
+    <t>When a PW signaling protocol such as LDP or L2TPv3 is in use,
+    the S-BFD reflector can advertise its target discriminators using that
+    signaling protocol. When static PWs are in use, the target discriminator
+    of S-BFD needs to be provisioned on the S-BFD initiator&nbsp;nodes.
+    </t>
+    <t>All point-to-point PWs are bidirectional; the S-BFD reflector
+    therefore reflects the S-BFD packet back to the initiator using the VCCV
+    channel of the reverse direction of the PW on which it was received.
+    </t>
+    <t>The reflector has enough information to reflect the S-BFD Async packet
+    received by it back to the S-BFD initiator using the PW context
+    (e.g., fields of the L2TPv3 headers).
+</t>
+    <t>The S-BFD reflector operation for BFD protocol fields MUST be 
+    performed as specified in <xref target="RFC7880"/>.
+    </t>
+
+    <section title="Demultiplexing">
+    <t>Demultiplexing of S-BFD is achieved using the PW context, following the
+    procedures in Section&nbsp;7.1 of <xref target="RFC7880"/>.</t>
+    </section>
+
+    <section title="Transmission of Control Packets">
+    <t>S-BFD reflector procedures as described in <xref target="RFC7880"/>
+    apply for S-BFD using VCCV.</t>
+    </section>
+
+    <section title="Advertisement of Target Discriminators Using LDP">
+    <t>The advertisement of the target discriminator using LDP is left for
+    further study. It should be noted that S-BFD can still be used with
+    signaled PWs over an MPLS Packet Switched Network (PSN) by
+    provisioning the S-BFD Discriminators or by learning the
+    S-BFD Discriminators via some other means.
+    </t>
+    </section>
+
+    <section title="Advertisement of Target Discriminators Using L2TP">
+    <t>The S-BFD reflector MUST use the AVP defined in
+    <xref target="RFC7886"/> for advertising its target discriminators
+    using L2TP.</t>
+    </section>
+
+    <section title="Provisioning of Target Discriminators">
+    <t>S-BFD target discriminators MAY be provisioned when static PWs
+    are&nbsp;used.</t>
+    </section>
+
+    </section>
+    </section>
+
+    <section title="S-BFD Encapsulation">
+    <t>Unless specified differently below, the encapsulation of S-BFD packets
+    is identical to the method specified in Section&nbsp;3.2 of <xref
+    target="RFC5885"/> and in <xref target="RFC5880"/> for the encapsulation
+    of BFD packets.
+    <list style="symbols">
+
+    <t>IP/UDP BFD encapsulation (BFD with IP/UDP headers):
+    <list>
+    <t>The destination UDP port for the IP-encapsulated S-BFD packet
+    MUST be 7784 <xref target="RFC7881"/>.</t>
+    <t>The contents of the S-BFD Control packets MUST be set according
+    to Section&nbsp;7.3.2 of <xref target="RFC7880"/>.
+    </t>
+    <t>The Time to Live (TTL) (IPv4) or Hop Limit (IPv6) is set
+    to&nbsp;255.</t>
+    </list>
+    </t>
+
+    <t>PW-ACH/L2SS BFD encapsulation (BFD without IP/UDP headers):
+    <list>
+    <t>The encapsulation of S-BFD packets using this format MUST be
+    performed according to Section&nbsp;3.2 of <xref target="RFC5885"/>,
+    with the exception of the value for the PW-ACH/L2SS type.</t>
+
+    <t>When VCCV carries PW-ACH/L2SS-encapsulated S-BFD
+    (i.e., "raw" S-BFD), the Channel Type of PW-ACH (the PW Control
+    Word (CW)) or L2SS MUST be set to 0x0008 to indicate
+    "S-BFD Control, PW&nbhy;ACH&wj;/L2SS&nbhy;encapsulated"
+    (i.e., S-BFD without IP/UDP headers; see <xref target="pw_ach_iana"/>).
+    This is done to allow the identification of the encapsulated S-BFD
+    payload when demultiplexing the VCCV control channel.</t>
+    </list>
+    </t>
+
+    </list>
+
+    </t>
+    </section>
+
+    </section>
+    
+    <section anchor="sbfd_cap_sel" title="Capability Selection">
+<t>When multiple S-BFD CV Types are advertised, and after applying the rules
+in <xref target="RFC5885"/>, the set that both ends of the PW have in
+common is determined. If the two ends have more than one S-BFD CV Type in
+common, the following list of S-BFD CV Types is considered in order,
+from the lowest list number CV Type to the highest list number CV&nbsp;Type,
+and the CV Type with the lowest list number is used: </t>
+
+    <t><list style="numbers">
+    <t>0x40 - S-BFD IP/UDP-encapsulated, for PW Fault Detection only.</t>
+
+    <t>0x80 - S-BFD PW-ACH/L2SS-encapsulated (without IP/UDP headers), for
+    PW Fault Detection only.</t>
+
+    </list>
+    The order of capability selection between S-BFD and BFD is defined as
+    follows:
+
+    </t>
+<?rfc compact="no"?>
+<texttable title="Capability Selection Matrix for BFD and S-BFD" anchor="Table2" style="full"><preamble/> 
+<ttcol align="center">Advertised capabilities of PE1/PE2</ttcol><ttcol align="center">BFD Only</ttcol><ttcol align="center">S-BFD Only </ttcol> <ttcol align="center">Both S-BFD and BFD</ttcol>
+<c>BFD Only</c><c>BFD</c><c>None</c><c>BFD Only</c>
+<c>S-BFD Only</c><c>None</c><c>S-BFD</c><c>S-BFD Only</c>
+<c>Both S-BFD and BFD</c><c>BFD Only</c><c>S-BFD Only</c><c>Both S-BFD and BFD</c>
+<postamble/></texttable>
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+
+<t>
+   Security considerations for VCCV are addressed in Section 10 of <xref
+   target="RFC5085" />. The introduction of the S-BFD CV Types does not
+   present any new security risks for VCCV. Implementations of the
+   additional CV Types defined herein are subject to the same security
+   considerations as those defined in <xref target="RFC5085"/> as well
+   as <xref target="RFC7880"/>.
+</t>
+<t>
+   The IP/UDP encapsulation of S-BFD makes use of the TTL / Hop Limit
+   procedures described in the Generalized TTL Security Mechanism (GTSM)
+   specification <xref target="RFC5082"/> as a security mechanism.
+</t>
+<t>
+   This specification does not raise any additional security issues
+   beyond these.
+</t>
+
+    </section>
+
+    <section anchor="IANA_cons" title="IANA Considerations">
+
+      <section title="MPLS CV Types for the VCCV Interface Parameters Sub-TLV">
+<t>The VCCV Interface Parameters Sub-TLV codepoint is defined in <xref
+target="RFC4446"/>, and the "MPLS VCCV Connectivity Verification (CV) Types"
+registry is defined in <xref target ="RFC5085"/>.</t>
+
+<t>This section lists the new S-BFD CV Types.
+
+</t>
+
+<t>IANA has augmented the "MPLS VCCV Connectivity Verification (CV) Types"
+registry in the &quot;Pseudowire Name Spaces (PWE3)&quot; registry <xref
+target="IANA-PWE3"/>.  These are bitfield values.  CV Type values are
+specified in <xref target="sbfd_cv_types"/> of this document.
+
+<figure align="left"><preamble/><artwork align="left">
+   MPLS VCCV Connectivity Verification (CV) Types:
+
+   Bit (Value)  Description                       Reference
+   ===========  ===========                       ==============
+   6 (0x40)     S-BFD IP/UDP-encapsulated,        RFC 7885
+                for PW Fault Detection only
+
+   7 (0x80)     S-BFD PW-ACH-encapsulated,        RFC 7885
+                for PW Fault Detection only
+</artwork></figure>
+</t>
+      </section>
+
+<section title="L2TPv3 CV Types for the VCCV Capability AVP">
+
+<t>This section lists the new S-BFD "L2TPv3 Connectivity
+Verification (CV) Types" that have been added to the existing &quot;VCCV
+Capability AVP (Attribute Type 96) Values&quot; registry in the &quot;Layer Two
+Tunneling Protocol &apos;L2TP&apos;&quot; registry
+<xref target="IANA-L2TP"/>. IANA has assigned the following
+L2TPv3 Connectivity Verification (CV) Types in the &quot;VCCV Capability
+AVP (Attribute Type 96) Values&quot; registry.
+
+<figure align="left"><preamble/><artwork align="left">
+   VCCV Capability AVP (Attribute Type 96) Values
+   ----------------------------------------------
+
+   L2TPv3 Connectivity Verification (CV) Types:
+
+   Bit (Value)  Description                  Reference
+   ===========  ===========                  ==============
+   6 (0x40)     S-BFD IP/UDP-encapsulated,   RFC 7885 
+                for PW Fault Detection only
+
+   7 (0x80)     S-BFD L2SS-encapsulated,     RFC 7885
+                for PW Fault Detection only
+</artwork></figure>
+</t>
+      </section>
+
+      <section anchor="pw_ach_iana" title= "PW Associated Channel Type">
+
+<t>
+   As per the IANA considerations in <xref target="RFC5586"/>, IANA has
+   allocated a Channel Type in the "MPLS Generalized Associated Channel
+   (G-ACh) Types (including Pseudowire Associated Channel Types)" registry
+   <xref target="IANA-G-ACh"/>.
+</t>
+
+   <t>IANA has assigned a new Pseudowire Associated Channel Type value, as
+   follows:
+
+<figure align="left"><preamble/><artwork align="left">
+ Value   Description                          Reference
+ ------  ----------------------------------   ---------------
+ 0x0008  S-BFD Control, PW-ACH/L2SS           RFC 7885
+         encapsulation
+         (without IP/UDP Headers)
+</artwork></figure>
+</t>
+
+    </section>
+    </section>
+
+  </middle>
+
+  <back>
+
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2119"?>
+      <?rfc include="reference.RFC.4446"?>
+      <?rfc include="reference.RFC.5085"?>
+      <?rfc include="reference.RFC.5885"?>
+      <?rfc include="reference.RFC.5586"?>
+      <?rfc include="reference.RFC.5880"?>
+      <?rfc include="reference.RFC.5082"?>
+
+<!-- draft-ietf-bfd-seamless-base (RFC 7880) -->
+   <reference anchor="RFC7880"
+        target="http://www.rfc-editor.org/info/rfc7880">
+     <front>
+     <title>Seamless Bidirectional Forwarding Detection (S-BFD)</title>
+     <author initials='C' surname='Pignataro' fullname='Carlos Pignataro'>
+       <organization />
+     </author>
+     <author initials='D' surname='Ward' fullname='David Ward'>
+       <organization />
+     </author>
+     <author initials='N' surname='Akiya' fullname='Nobo Akiya'>
+       <organization />
+     </author>
+     <author initials='M' surname='Bhatia' fullname='Manav Bhatia'>
+       <organization />
+     </author>
+     <author initials='S' surname='Pallagatti' fullname='Santosh Pallagatti'>
+       <organization />
+     </author>
+     <date month='July' year='2016' />
+     </front>
+     <seriesInfo name='RFC' value='7880'/>
+     <seriesInfo name="DOI" value="10.17487/RFC7880"/>
+   </reference>
+
+<!-- draft-ietf-bfd-seamless-ip (RFC 7881) -->
+<reference anchor='RFC7881' target="http://www.rfc-editor.org/info/rfc7881">
+<front>
+<title>Seamless Bidirectional Forwarding Detection (S-BFD) for IPv4, IPv6,
+ and MPLS</title>
+<author initials='C' surname='Pignataro' fullname='Carlos Pignataro'>
+    <organization />
+</author>
+<author initials='D' surname='Ward' fullname='David Ward'>
+    <organization />
+</author>
+<author initials='N' surname='Akiya' fullname='Nobo Akiya'>
+    <organization />
+</author>
+<date month='July' year='2016' />
+</front>
+<seriesInfo name='RFC' value='7881'/>
+<seriesInfo name="DOI" value="10.17487/RFC7881"/>
+</reference>
+
+<!--  draft-ietf-l2tpext-sbfd-discriminator (RFC 7886) -->
+<reference anchor='RFC7886' target="http://www.rfc-editor.org/info/rfc7886">
+<front>
+<title>Advertising Seamless Bidirectional Forwarding Detection (S-BFD)
+Discriminators in the Layer Two Tunneling Protocol Version 3 (L2TPv3)
+</title>
+<author initials='V' surname='Govindan' fullname='Vengada Govindan'>
+    <organization />
+</author>
+<author initials='C' surname='Pignataro' fullname='Carlos Pignataro'>
+    <organization />
+</author>
+<date month='July' year='2016' />
+</front>
+<seriesInfo name='RFC' value='7886'/>
+<seriesInfo name="DOI" value="10.17487/RFC7886"/>
+</reference>
+
+    </references>
+
+    <references title="Informative References">
+          <?rfc include="reference.RFC.6391"?>
+
+<!-- draft-akiya-bfd-seamless-alert-discrim (Expired) -->
+<reference anchor='SBFD-ALERT-DISCRIM'>
+<front>
+<title>Seamless Bidirectional Forwarding Detection (S-BFD) Alert Discriminator</title>
+<author initials='N' surname='Akiya' fullname='Nobo Akiya'>
+    <organization />
+</author>
+<author initials='C' surname='Pignataro' fullname='Carlos Pignataro'>
+    <organization />
+</author>
+<author initials='D' surname='Ward' fullname='David Ward'>
+    <organization />
+</author>
+<date month='October' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-akiya-bfd-seamless-alert-discrim-03' />
+</reference>
+
+        <reference anchor='IANA-G-ACh'
+           target='http://www.iana.org/assignments/g-ach-parameters'>
+           <front>
+           <title>
+MPLS Generalized Associated Channel (G-ACh) Types (including Pseudowire
+Associated Channel Types)
+           </title>
+           <author>
+           <organization>
+                Internet Assigned Numbers Authority
+           </organization>
+           </author>
+           <date/>
+           </front>
+        </reference>
+
+        <reference anchor='IANA-PWE3'
+           target='http://www.iana.org/assignments/pwe3-parameters'>
+           <front>
+           <title>
+                Pseudowire Name Spaces (PWE3)
+           </title>
+           <author>
+           <organization>
+                Internet Assigned Numbers Authority
+           </organization>
+           </author>
+           <date/>
+           </front>
+        </reference>
+
+        <reference anchor='IANA-L2TP'
+           target='http://www.iana.org/assignments/l2tp-parameters'>
+           <front>
+           <title>
+                Layer Two Tunneling Protocol &apos;L2TP&apos;
+           </title>
+           <author>
+           <organization>
+                Internet Assigned Numbers Authority
+           </organization>
+           </author>
+           <date/>
+           </front>
+        </reference>
+
+    </references>
+
+    <section title="Acknowledgements" numbered="no">
+    <t>The authors would like to thank Nobo Akiya, Stewart Bryant,
+    Greg Mirsky, Pawel Sowinski, Yuanlong Jiang, Andrew Malis, and
+    Alexander Vainshtein for providing input to this document,
+    performing thorough reviews, and providing useful comments.
+</t>
+    </section>
+
+    <section title="Contributors" numbered="no">
+
+        <t>Mallik Mudigonda
+    <vspace blankLines="0" />
+        Cisco Systems, Inc.
+</t><t>
+    Email: mmudigon@cisco.com</t>
+
+    </section>
+  </back>
+</rfc>

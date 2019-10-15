@@ -1,0 +1,998 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+
+]>
+
+<rfc category="std" ipr="trust200902"
+     number="8182" submissionType="IETF" consensus="yes">
+
+<?xml-stylesheet type='text/xsl' href='rfc2629.xslt' ?>
+
+<?rfc toc="yes" ?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc subcompact="no" ?>
+<?rfc compact="yes" ?>
+
+  <front>
+    <title>The RPKI Repository Delta Protocol (RRDP)</title>
+    <author initials='T.' surname="Bruijnzeels" fullname='Tim Bruijnzeels'>
+      <organization>RIPE NCC</organization>
+      <address>
+        <email>tim@ripe.net</email>
+      </address>
+    </author>
+    <author initials='O.' surname="Muravskiy" fullname='Oleg Muravskiy'>
+      <organization>RIPE NCC</organization>
+      <address>
+        <email>oleg@ripe.net</email>
+      </address>
+    </author>
+    <author initials='B.' surname="Weber" fullname='Bryan Weber'>
+      <organization>Cobenian</organization>
+      <address>
+        <email>bryan@cobenian.com</email>
+      </address>
+    </author>
+    <author initials='R.' surname="Austein" fullname='Rob Austein'>
+      <organization>Dragon Research Labs</organization>
+      <address>
+        <email>sra@hactrn.net</email>
+      </address>
+    </author>
+    <date month="July" year="2017" />
+
+    <abstract>
+        <t>In the Resource Public Key Infrastructure (RPKI), Certificate
+	Authorities (CAs) publish certificates, including end-entity 
+            certificates, Certificate Revocation Lists (CRLs), and RPKI signed
+	    objects to repositories. Relying 
+            Parties retrieve the published information from those
+	    repositories. This document specifies a new RPKI 
+            Repository Delta Protocol (RRDP) for this purpose. RRDP was
+	    specifically designed for scaling. It relies on
+            an Update Notification File which lists the current Snapshot and Delta
+	    Files that can be retrieved using HTTPS (HTTP over Transport Layer
+	    Security (TLS)),
+            and it enables the use of Content Distribution Networks (CDNs) or
+	other caching infrastructures for the retrieval of these files.</t> 
+    </abstract>
+  </front>
+
+  <middle>
+
+    <section title="Introduction">
+      <t>In the Resource Public Key Infrastructure (RPKI), Certificate Authorities publish certificates <xref target="RFC6487" />,
+        RPKI signed objects <xref target="RFC6488" />, manifests <xref target="RFC6486" />, and CRLs to repositories.
+        CAs may have an embedded mechanism to publish to these repositories, or they may use a separate Repository Server
+        and publication protocol. RPKI repositories are currently accessible
+	using the rsync protocol <xref target="RSYNC" />, allowing Relying 
+        Parties to synchronize a local copy of the RPKI repository used for validation with the remote repositories
+        <xref target="RFC6481" />.
+      </t>
+
+      <t>rsync <xref target="RSYNC" /> has proven valuable in the early deployment of RPKI, because it allowed operators to gain experience
+      without the need to invent a custom protocol. However, operational experience has brought concerns to light that we wish to address
+      here:<list style="symbols">
+
+      	<t>rsync <xref target="RSYNC" /> is designed to limit the amount of
+	data that needs to be 
+      	transferred between client and server. However, the server needs to spend significant
+      	resources in terms of CPU and memory for every connection. This is a problem in an
+      	envisioned RPKI deployment where thousands of Relying Parties query a
+	small number of central repositories, 
+      	and it makes these repositories weak to denial-of-service attacks.</t>
+
+      	<t>A secondary concern is the lack of supported rsync server and client libraries.
+      	In practice, all implementations have to make system calls to an rsync
+	binary. This is inefficient; it 
+      	introduces fragility with regards to updates of this binary, makes it difficult to catch
+      	and report problems to operators, and complicates software development and testing.</t>
+
+      </list></t>
+
+      <t>This document specifies an alternative repository access protocol based on Update Notification, Snapshot, and Delta
+        Files that a Relying Party can retrieve over the HTTPS protocol. This allows Relying Parties to either perform a full (re-)synchronization
+        of their local copy of the repository using Snapshot Files or use Delta Files to keep their local repository
+        updated after initial synchronization. We call this the RPKI Repository Delta Protocol, or RRDP in short.
+      </t>
+
+
+      <t>RRDP was designed to support scaling in RPKI's asymmetric deployment. It is consistent
+      (in terms of data structures) with the publication protocol <xref target="RFC8181"/> and treats
+      publication events of one or more repository objects as discrete events that can be communicated to Relying Parties.
+      This approach helps to minimize the amount of data that traverses the
+      network and thus helps minimize the amount of time 
+      until repository convergence occurs. RRDP also provides a
+      standards-based way to obtain consistent, point-in-time views 
+      of a single repository, eliminating a number of consistency-related
+      issues. Finally, this approach allows these 
+      discrete events to be communicated as immutable files. This enables
+      Repository Servers to pre-calculate these files 
+      only once for all clients, thus limiting the CPU and memory investments
+      required, and enables the use of a caching 
+      infrastructure to reduce the load on a Repository Server when a large
+      number of Relying Parties are querying it.</t> 
+
+      <t>This document allows the use of RRDP as an additional repository
+      distribution mechanism for RPKI. In time, RRDP 
+      may replace rsync <xref target="RSYNC" /> as the only mandatory-to-implement
+      repository distribution mechanism. However, 
+      this transition is outside of the scope of this document.</t>
+
+    </section>
+
+  <section title="Requirements Notation">
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP 14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+      </t>
+    </section>
+
+    <section title="RPKI Repository Delta Protocol Implementation">
+
+      <section title="Informal Overview">
+        <t>Certification Authorities in the RPKI use a Repository Server to publish their RPKI products, such as
+          manifests, CRLs, signed certificates, and RPKI-signed objects. This Repository Server may be remote or embedded
+          in the Certificate Authority engine itself. Certificates in the RPKI that use a Repository Server that supports RRDP
+          include a special Subject Information Access (SIA) pointer referring to an Update Notification File.</t>
+
+        <t>The Update Notification File includes a globally unique session_id in the
+          form of a version 4 Universally Unique IDentifier (UUID) <xref target="RFC4122"/> and serial number that can be
+          used by the Relying Party to determine if it and the repository are synchronized. Furthermore, it includes a link to the
+          most recent complete snapshot of current objects that are published by the Repository Server, and a list of links to Delta
+          Files, for each revision starting at a point determined by the Repository Server, up to the current revision of the repository.</t>
+
+       <t>A Relying Party that learns about an Update Notification File location for
+       the first time can download it and then proceed to download 
+          the latest Snapshot File, thus creating a local copy of the
+	  repository that is in sync with the Repository 
+          Server. The Relying Party records the location of this Update Notification File, the
+          session_id, and the current serial number.</t>
+
+        <t>Relying Parties are encouraged to re-fetch this Update Notification File
+	at regular intervals, but not more often than once per minute. 
+          After re-fetching the Update Notification File, the Relying Party may find
+	  that there are one or more Delta Files available that allow it to 
+          synchronize its local repository with the current state of the
+	  Repository Server. If no contiguous chain of deltas from the Relying
+	  Party's serial to the latest repository serial is available, or if the
+          session_id has changed, the Relying Party performs a full
+          resynchronization instead.</t>
+
+        <t>As soon as the Relying Party fetches new content in this way, it could start a
+          validation process. An example of a reason why a Relying Party may
+	  not choose to do this 
+          immediately is because it has learned of more than one notification
+          location, and it prefers to complete all its updates before validating.
+        </t>
+
+        <t>The Repository Server could use a caching infrastructure to reduce its
+          load, particularly because snapshots
+          and deltas for any given session_id and serial number contain an
+	  immutable record of the state of the Repository 
+          Server at a certain point in time. For this reason, these files can
+	  be cached indefinitely. Update Notification Files 
+          are polled by Relying Parties to discover if updates exist; for this
+	  reason, Update Notification Files may not be cached for 
+          longer than one minute.</t>
+
+      </section>
+
+      <section title="Certificate Authority Use">
+
+        <t>
+          Certificate Authorities that use RRDP MUST include an instance of an SIA
+          AccessDescription extension in resource certificates they produce,
+	  in addition to the ones defined in <xref 
+          target="RFC6487" />:
+        </t>
+        <t>
+        <figure>
+            <artwork><![CDATA[
+          AccessDescription ::= SEQUENCE {
+            accessMethod OBJECT IDENTIFIER,
+            accessLocation GeneralName }
+            ]]></artwork>
+          </figure>
+        </t>
+        <t>
+          This extension MUST use an accessMethod of id-ad-rpkiNotify; see
+	  <xref target="iana_considerations" />: 
+        </t>
+        <t>
+          <figure>
+            <artwork><![CDATA[
+  id-pkix OBJECT IDENTIFIER ::= { iso(1) identified-organization(3)
+    dod(6) internet(1) security(5) mechanisms(5) pkix(7) }
+
+  id-ad OBJECT IDENTIFIER ::= { id-pkix 48 }
+
+  id-ad-rpkiNotify OBJECT IDENTIFIER ::= { id-ad 13 }
+            ]]></artwork>
+          </figure>
+        </t>
+        <t>The accessLocation MUST be an HTTPS URI as defined in <xref
+	target="RFC7230" /> that will point 
+           to the Update Notification File for the Repository Server that
+	publishes the products of this Certificate Authority certificate.</t> 
+      </section>
+
+    <section title="Repository Server Use">
+
+        <section title="Initialization" anchor="Initialize">
+          <t>When the Repository Server initializes, it performs the following
+            actions:
+            <list style="symbols">
+              <t>The server MUST generate a new random version 4 UUID (see
+	      Section 4.1.3 of <xref target="RFC4122"/>) to be used as the
+	      session_id.</t> 
+         <t>The server MUST then generate a Snapshot File for serial number
+	 ONE for this new session that includes 
+              all currently known published objects that the Repository Server
+	      is responsible for. Note that this Snapshot 
+              File may contain zero publish elements at this point if no
+	 objects have been submitted for publication yet.</t> 
+              <t>This Snapshot File MUST be made available at a URL that is
+	      unique to this session_id and serial number, 
+              so that it can be cached indefinitely. The format and caching
+	      concerns for Snapshot Files are explained in more detail in
+	      <xref target="Snapshot"/>.</t> 
+              <t>After the Snapshot File has been published, the Repository
+	      Server MUST publish a new Update Notification File 
+              that contains the new session_id, has serial number ONE, has one
+	      reference to the Snapshot File that was 
+              just published, and contains no delta references. The format and
+	      caching concerns for Update Notification Files are explained in
+	      more detail in <xref target="notification"/>.</t> 
+            </list>
+          </t>
+
+        </section>
+
+        <section title="Publishing Updates" anchor="publishing-updates">
+          <t>Whenever the Repository Server receives updates from a
+	  Certificate Authority, it MUST generate new snapshot and Delta Files
+	  within one minute. If a Repository Server services a large number of
+	  Certificate Authorities, it MAY choose to combine updates from
+	  multiple CAs. If a Repository Server combines updates in this way,
+	  it MUST ensure that publication never postponed for 
+          longer than one minute for any of the CAs involved.</t>
+
+          <t>Updates are processed as follows:
+             <list style="symbols">
+              <t>The new repository serial number MUST be one greater than the
+	      current repository serial number.</t> 
+              <t>A new Delta File MUST be generated for this new serial. This
+	      Delta File MUST include all new, replaced, and 
+                 withdrawn objects for multiple CAs, if applicable, as a single change set.</t>
+              <t>This Delta File MUST be made available at a URL that is unique to the current session_id and serial number,
+                so that it can be cached indefinitely.</t>
+              <t>The format and caching concerns for Delta Files are explained in more detail in <xref target="Delta"/>.</t>
+              <t>The Repository Server MUST also generate a new Snapshot File for this new serial. This file MUST contain all "publish"
+                 elements for all current objects.</t>
+              <t>The Snapshot File MUST be made available at a URL that is unique to this session and new serial, so
+                that it can be cached indefinitely. </t>
+               <t>The format and caching concerns for Snapshot Files are explained in more detail in <xref
+                 target="Snapshot" />.</t>
+               <t>Any older Delta Files that, when combined with all more recent Delta Files, will result in the total size
+                of deltas exceeding the size of the snapshot MUST be excluded to avoid that Relying Parties download more data
+                than necessary.</t>
+              <t>A new Update Notification File MUST now be created by the Repository Server. This new Update Notification File MUST
+                 include a reference to the new Snapshot File and all Delta Files selected in the previous steps.</t>
+               <t>The format and caching concerns for Update Notification Files are explained in more detail in <xref
+                 target="notification" />.</t>
+             </list>
+          </t>
+
+          <t>If the Repository Server is not capable of performing the above for some reason, then it MUST perform a full
+             re-initialization, as explained above in <xref target="Initialize"/>.</t>
+        </section>
+
+    </section>
+
+    <section title="Relying Party Use">
+
+         <section title="Processing the Update Notification File" anchor="validation">
+            <t>When a Relying Party performs RPKI validation and learns about a valid
+            certificate with an SIA entry for the RRDP protocol, it SHOULD use this protocol
+            as follows.</t>
+
+         	<t>The Relying Party MUST download the Update Notification File, unless an Update Notification
+         	File was already downloaded and processed from the same location in this validation
+         	run or a polling strategy was used (see <xref target="polling_notification"/>).</t>
+
+           <t>It is RECOMMENDED that the Relying Party uses a "User-Agent" header explained in
+             Section 5.5.3. of <xref target="RFC7231"/> to identify the name and
+             version of the Relying Party software used. It is useful to track capabilities
+             of Relying Parties in the event of changes to the RPKI standards.
+           </t>
+
+         	<t>When the Relying Party downloads an Update Notification File, it MUST verify the file format
+         	and validation steps described in <xref target="notification-file-validation" />.
+         	If this verification fails, the file MUST be rejected and RRDP cannot be used. See
+         	<xref target="operational_failures" /> for considerations.</t>
+
+           <t>The Relying Party MUST verify whether the session_id matches the
+             last known session_id for this Update Notification File location.
+             Note that even though the session_id is a random UUID value, it
+             alone MUST NOT be used by a Relying Party as a unique identifier of
+             a session but always together with the location of the
+             Update Notification File. The reason for this is that a malicious server
+             can use an existing session_id from another Repository Server.
+           </t>
+
+         	<t>If the session_id matches the last known session_id, then a Relying Party MAY download
+         	and process missing Delta Files as described in <xref target="process-deltas"/>,
+         	provided that all Delta Files for serial numbers between the last processed serial number
+         	and the current serial number in the Update Notification File can be processed this way.</t>
+
+         	<t>If the session_id matches the last known session_id, but Delta Files were not used, then the Relying Party MUST
+         	download and process the Snapshot File on the Update Notification File as described
+         	in <xref target="process-snapshot" />.</t>
+
+           <t>If the session_id does not match the last known session_id, the
+             Relying Party MUST update its last known session_id to the value
+             specified in the downloaded Update Notification File. The Relying Party
+             MUST then download and process the Snapshot File specified in the
+             downloaded Update Notification File as described in <xref
+               target="process-snapshot"/>.
+           </t>
+
+         </section>
+
+      <section title="Processing Delta Files" anchor="process-deltas">
+
+			<t>If an Update Notification File contains a contiguous chain of links to Delta Files from
+			the last processed serial number to the current serial number, then Relying Parties MUST attempt to download
+			and process all Delta Files in order of serial number as follows.</t>
+
+            <t>When the Relying Party downloads a Delta File, it MUST verify the file format and perform validation steps
+            described in <xref target="delta-file-validation" />. If this verification fails,
+            the file MUST be rejected.</t>
+
+			<t>Furthermore, the Relying Party MUST verify that the hash of the contents of this file matches the hash on
+			the Update Notification File that referenced it. In case of a mismatch of this hash, the file
+			MUST be rejected.</t>
+
+			<t>If a Relying Party retrieved a Delta File that is valid according to the above
+         	criteria, it performs the following actions:
+              <list style="symbols">
+
+                <t>The Relying Party MUST verify that the session_id matches the session_id of the Update Notification File.
+                If the session_id values do not match, the file MUST be rejected.</t>
+
+                <t>The Relying Party MUST verify that the serial number of this Delta File is exactly one greater
+                than the last processed serial number for this session_id, and
+		if not, this file MUST be rejected.</t>
+
+                <t>The Relying Party SHOULD add all publish elements to a local storage and update its last processed
+                serial number to the serial number of this Delta File.</t>
+
+                <t>When a Relying Party encounters a "withdraw" element, or a "publish" element where an object is replaced,
+                in a delta that it retrieves from a Repository Server, it MUST verify that the object to be withdrawn or replaced
+                was retrieved from this same Repository Server before applying the appropriate action. Failing to do so will leave the
+                Relying Party vulnerable to malicious Repository Servers instructing it to delete or change arbitrary objects.</t>
+
+              </list>
+            </t>
+
+            <t>If any Delta File is rejected, Relying Parties MUST process the current Snapshot File instead, as described
+            in <xref target="process-snapshot" />.</t>
+         </section>
+
+        <section title="Processing a Snapshot File" anchor="process-snapshot">
+
+            <t>Snapshot Files MUST only be used if Delta Files are unavailable
+            or were rejected; for a description of the process, see
+            <xref target="validation" />.</t>
+
+         	<t>When the Relying Party downloads a Snapshot File, it MUST verify the file format
+         	and validation steps described in <xref target="snapshot-file-validation" />.
+         	If this verification fails, the file MUST be rejected.</t>
+
+         	<t>Furthermore, the Relying Party MUST verify that the hash of the contents of this file
+         	matches the hash on the Update Notification File that referenced it. In case
+         	of a mismatch of this hash, the file MUST be rejected.</t>
+
+         	<t>If a Relying Party retrieved a Snapshot File that is valid according to the above
+         	criteria, it performs the following actions:
+              <list style="symbols">
+
+                <t>The Relying Party MUST verify that the session_id matches the session_id of the Update Notification File.
+                If the session_id values do not match, the file MUST be rejected.</t>
+
+                <t>The Relying Party MUST verify that the serial number of this Snapshot File is greater than the last
+                processed serial number for this session_id. If this fails, the file MUST be rejected.</t>
+
+                <t>The Relying Party SHOULD then add all publish elements to a local storage and update its last
+                processed serial number to the serial number of this Snapshot File.</t>
+
+         	  </list>
+         	</t>
+
+         	<t>If a Snapshot File is rejected, it means that RRDP cannot be used. See
+         	<xref target="operational_failures" /> for considerations.</t>
+         </section>
+
+         <section title="Polling the Update Notification File" anchor="polling_notification">
+
+           <t>Once a Relying Party has learned about the location, session_id, and
+           last processed serial number of the repository that uses the RRDP protocol,
+           the Relying Party MAY start polling the Repository Server for updates. However, the Relying Party
+           MUST NOT poll for updates more often than once every 1 minute, and in order
+           to reduce data usage, Relying Parties MUST use the "If-Modified-Since" header explained
+           in Section 3.3 of <xref target="RFC7232" /> in requests.</t>
+
+           <t>If a Relying Party finds that updates are available, it SHOULD download and process the file
+           as described in <xref target="validation"/> and initiate a new RPKI object validation
+           process. However, a detailed description of the RPKI object validation process itself
+           is out of scope of this document.</t>
+
+         </section>
+
+         <section title="Considerations Regarding Operational Failures in RRDP" anchor="operational_failures">
+
+            <t>If a Relying Party experiences any issues with retrieving or processing any of the files
+            used in this protocol, it will be unable to retrieve new RPKI data from the affected
+            Repository Server.</t>
+
+           <t>Relying Parties could attempt to use alternative repository access
+             mechanisms, if they are available, according to the accessMethod
+             element value(s) specified in the SIA of the associated
+             certificate (see Section 4.8.8 of <xref target="RFC6487"/>).
+           </t>
+
+           <t>Furthermore, Relying Parties may wish to employ re-try strategies
+             while fetching RRDP files. Relying Parties are also advised to keep
+             old objects in their local cache
+            so that validation can be done using old objects.</t>
+
+            <t>It is also recommendable that re-validation and retrieval is performed pro-actively
+            before manifests or CRLs go stale, or certificates expire, to ensure that problems
+            on the side of the Relying Party can be identified and resolved before they cause major concerns.</t>
+         </section>
+
+    </section>
+
+      <section title="File Definitions">
+
+      <section title="Update Notification File" anchor="notification">
+
+        <section title="Purpose">
+          <t>The Update Notification File is used by Relying Parties to discover whether any changes exist between the state of the
+            repository and the Relying Party's cache. It describes the location of the files containing the
+            snapshot and incremental deltas, which can be used by the Relying Party to synchronize with the repository.</t>
+        </section>
+
+        <section title="Cache Concerns" anchor="Notify-Cache">
+          <t>A Repository Server MAY use caching infrastructure to cache the Update Notification File and reduce the load
+             of HTTPS requests. However, since this file is used by Relying Parties to determine whether any updates are available,
+             the Repository Server SHOULD ensure that this file is not cached for longer than 1 minute. An exception to
+             this rule is that it is better to serve a stale Update Notification File rather than no Update Notification File.</t>
+
+          <t>How this is achieved exactly depends on the caching infrastructure used. In general, a Repository
+             Server may find certain HTTP headers to be useful, such as: "Cache-Control: max-age=60"
+             (see Section 5.2 of <xref target="RFC7234"/>). Another approach
+             can be to have the Repository Server push out new versions of the Update Notification File to the caching
+             infrastructure when appropriate.</t>
+
+          <t>In case of a high load on a Repository Server or its distribution
+            network, the Cache-Control HTTP header, or a similar mechanism, MAY
+            be used to suggest an optimal (for the Repository Server) poll
+            interval for Relying Parties. However, setting it to an interval
+            longer than 1 hour is NOT RECOMMENDED. Relying parties SHOULD align
+            the suggested interval with their operational practices and the
+            expected update frequency of RPKI repository data and MAY discard
+            the suggested value.
+          </t>
+
+        </section>
+
+        <section title="File Format and Validation" anchor="notification-file-validation">
+
+          <t>Example Update Notification File:</t>
+
+          <figure>
+            <artwork> <![CDATA[
+  <notification xmlns="http://www.ripe.net/rpki/rrdp"
+        version="1"
+        session_id="9df4b597-af9e-4dca-bdda-719cce2c4e28"
+        serial="3">
+    <snapshot uri="https://host/9d-8/3/snapshot.xml" hash="AB"/>
+    <delta serial="3" uri="https://host/9d-8/3/delta.xml" hash="CD"/>
+    <delta serial="2" uri="https://host/9d-8/2/delta.xml" hash="EF"/>
+  </notification>
+]]></artwork>
+          </figure>
+
+          <t>Note: URIs and hash values in this example are shortened because of formatting.</t>
+
+          <t>The following validation rules MUST be observed when creating or parsing Update Notification Files:
+            <list style="symbols">
+              <t>A Relying Party MUST reject any Update Notification File that is not well-formed or
+              does not conform to the RELAX NG schema outlined in <xref target="RELAX-NG" /> of this
+              document.</t>
+              <t>The XML namespace MUST be "http://www.ripe.net/rpki/rrdp".</t>
+              <t>The encoding MUST be "US-ASCII".</t>
+              <t>The version attribute in the notification root element MUST be "1".</t>
+              <t>The session_id attribute MUST be a random version 4 UUID
+                  <xref target="RFC4122" />, unique to this session.</t>
+              <t>The serial attribute MUST be an unbounded, unsigned positive integer in decimal format
+              indicating the current version of the repository.</t>
+              <t>The Update Notification File MUST contain exactly one 'snapshot' element for the current
+              repository version.</t>
+              <t>If delta elements are included, they MUST form a contiguous sequence of serial numbers
+              starting at a revision determined by the Repository Server, up to the serial number
+              mentioned in the notification element. Note that the elements may not be ordered.</t>
+              <t>The hash attribute in snapshot and delta elements MUST be the hexadecimal encoding
+              of the SHA-256 <xref target="SHS" /> hash of the referenced file. The Relying Party MUST verify this hash when the
+              file is retrieved and reject the file if the hash does not match.</t>
+            </list>
+          </t>
+
+        </section>
+      </section>
+
+      <section title="Snapshot File" anchor="Snapshot">
+
+        <section title="Purpose">
+          <t>A snapshot is intended to reflect the complete and current contents of the repository for a specific session and version.
+             Therefore, it  MUST contain all objects from the repository current as of the time of the publication.</t>
+        </section>
+
+        <section title="Cache Concerns" anchor="Snapshot-Cache">
+          <t>A snapshot reflects the content of the repository at a specific point in time; for that reason, it
+             can be considered immutable data. Snapshot Files MUST be published at a URL that is unique to the
+             specific session and serial.</t>
+
+          <t>Because these files never change, they MAY be cached indefinitely. However, in order to prevent
+             these files from using a lot of space in the caching infrastructure, it is RECOMMENDED that a limited interval
+             is used in the order of hours or days.</t>
+
+          <t>To avoid race conditions where a Relying Party downloads an Update Notification File moments before it's updated,
+             Repository Servers SHOULD retain old Snapshot Files for at least 5 minutes after a new Update Notification File
+             is published.</t>
+
+        </section>
+
+        <section title="File Format and Validation" anchor="snapshot-file-validation">
+
+          <t>Example Snapshot File:</t>
+
+          <figure>
+            <artwork> <![CDATA[
+   <snapshot xmlns="http://www.ripe.net/rpki/rrdp"
+          version="1"
+          session_id="9df4b597-af9e-4dca-bdda-719cce2c4e28"
+          serial="2">
+     <publish uri="rsync://rpki.ripe.net/Alice/Bob.cer">
+       ZXhhbXBsZTE=
+     </publish>
+     <publish uri="rsync://rpki.ripe.net/Alice/Alice.mft">
+       ZXhhbXBsZTI=
+     </publish>
+     <publish uri="rsync://rpki.ripe.net/Alice/Alice.crl">
+       ZXhhbXBsZTM=
+     </publish>
+   </snapshot>]]></artwork>
+        </figure>
+
+          <t>The following rules MUST be observed when creating or parsing Snapshot Files:
+            <list style="symbols">
+              <t>A Relying Party MUST reject any Snapshot File that is not well-formed or does not conform to the RELAX NG
+                 schema outlined in <xref target="RELAX-NG" /> of this document.</t>
+
+              <t>The XML namespace MUST be "http://www.ripe.net/rpki/rrdp".</t>
+              <t>The encoding MUST be "US-ASCII".</t>
+              <t>The version attribute in the notification root element MUST be "1".</t>
+              <t>The session_id attribute MUST match the expected session_id in the reference in the Update Notification File.</t>
+              <t>The serial attribute MUST match the expected serial in the reference in the Update Notification File.</t>
+              <t>Note that the publish element is similar to the publish element defined in the publication protocol
+                 <xref target="RFC8181"/>. However, the "tag" attribute is not used here because it is not
+                 relevant to Relying Parties. The "hash" attribute is not used here because this file represents
+                 a complete current state of the repository; therefore, it is not relevant to know which existing RPKI
+                 object (if any) is updated.</t>
+            </list>
+          </t>
+
+
+        </section>
+      </section>
+
+      <section title="Delta File" anchor="Delta">
+
+        <section title="Purpose">
+	        <t>An incremental Delta File contains all changes for exactly one serial increment of the Repository Server.
+	           In other words, a single delta will typically include all the new objects, updated objects, and withdrawn objects
+	           that a Certification Authority sent to the Repository Server. In its simplest form, the update could concern
+	           only a single object, but it is RECOMMENDED that CAs send all changes for one of their key pairs (updated
+	           objects as well as a new manifest and CRL) as one atomic update message.
+          </t>
+        </section>
+
+        <section title="Cache Concerns" anchor="Delta-Cache">
+
+          <t>Deltas reflect the difference between two consecutive versions of a repository for a given session. For
+             that reason, deltas can be considered immutable data. Delta Files MUST be published at a URL that is unique
+             to the specific session and serial.</t>
+
+          <t>Because these files never change, they MAY be cached indefinitely. However, in order to prevent these files
+             from using a lot of space in the caching infrastructure, it is RECOMMENDED that a limited interval is used in the
+             order of hours or days.</t>
+
+          <t>To avoid race conditions where a Relying Party downloads an Update Notification File moments before it's updated,
+             Repository Servers SHOULD retain old Delta Files for at least 5 minutes after they are no longer included
+             in the latest Update Notification File.</t>
+
+         </section>
+
+        <section title="File Format and Validation" anchor="delta-file-validation">
+
+          <t>Example Delta File:</t>
+
+          <figure>
+            <artwork> <![CDATA[
+  <delta xmlns="http://www.ripe.net/rpki/rrdp"
+         version="1"
+         session_id="9df4b597-af9e-4dca-bdda-719cce2c4e28"
+         serial="3">
+    <publish uri="rsync://rpki.ripe.net/repo/Alice/Alice.mft"
+             hash="50d8...545c">
+      ZXhhbXBsZTQ=
+    </publish>
+    <publish uri="rsync://rpki.ripe.net/repo/Alice/Alice.crl"
+             hash="5fb1...6a56">
+      ZXhhbXBsZTU=
+    </publish>
+    <withdraw uri="rsync://rpki.ripe.net/repo/Alice/Bob.cer"
+              hash="caeb...15c1"/>
+  </delta>]]></artwork>
+          </figure>
+
+          <t>Note that a formal RELAX NG specification of this file format is included later in this document. A Relying Party MUST
+             NOT process any Delta File that is incomplete or not well-formed.</t>
+
+          <t>The following validation rules MUST be observed when creating or parsing Delta Files:
+            <list style="symbols">
+              <t>A Relying Party MUST reject any Delta File that is not well-formed or does not conform to the RELAX NG
+                 schema outlined in <xref target="RELAX-NG" /> of this document.</t>
+              <t>The XML namespace MUST be "http://www.ripe.net/rpki/rrdp".</t>
+              <t>The encoding MUST be "US-ASCII".</t>
+              <t>The version attribute in the delta root element MUST be "1".</t>
+              <t>The session_id attribute MUST be a random version 4 UUID unique to this session.</t>
+              <t>The session_id attribute MUST match the expected session_id in the reference in the Update Notification File.</t>
+              <t>The serial attribute MUST match the expected serial in the reference in the Update Notification File.</t>
+              <t>Note that the publish element is similar to the publish element defined in the publication protocol
+                 <xref target="RFC8181"/>. However, the "tag" attribute is not used here because it is not
+                 relevant to Relying Parties.</t>
+            </list>
+          </t>
+
+        </section>
+      </section>
+
+    <section title="XML Schema" anchor="RELAX-NG">
+      <t>The following is a RELAX NG compact form schema describing version 1 of this protocol.</t>
+      <figure>
+        <artwork><![CDATA[
+#
+# RELAX NG schema for the RPKI Repository Delta Protocol (RRDP).
+#
+
+default namespace = "http://www.ripe.net/rpki/rrdp"
+
+version = xsd:positiveInteger   { maxInclusive="1" }
+serial  = xsd:positiveInteger
+uri     = xsd:anyURI
+uuid    = xsd:string            { pattern = "[\-0-9a-fA-F]+" }
+hash    = xsd:string            { pattern = "[0-9a-fA-F]+" }
+base64  = xsd:base64Binary
+
+# Notification File: lists current snapshots and deltas.
+
+start |= element notification {
+  attribute version    { version },
+  attribute session_id { uuid },
+  attribute serial     { serial },
+  element snapshot {
+    attribute uri  { uri },
+    attribute hash { hash }
+  },
+  element delta {
+    attribute serial { serial },
+    attribute uri    { uri },
+    attribute hash   { hash }
+  }*
+}
+
+# Snapshot segment: think DNS AXFR.
+
+start |= element snapshot {
+  attribute version    { version },
+  attribute session_id { uuid },
+  attribute serial     { serial },
+  element publish      {
+    attribute uri { uri },
+    base64
+  }*
+}
+
+# Delta segment: think DNS IXFR.
+
+start |= element delta {
+  attribute version    { version },
+  attribute session_id { uuid },
+  attribute serial     { serial },
+  delta_element+
+}
+
+delta_element |= element publish  {
+  attribute uri  { uri },
+  attribute hash { hash }?,
+  base64
+}
+
+delta_element |= element withdraw {
+  attribute uri  { uri },
+  attribute hash { hash }
+}
+
+# Local Variables:
+# indent-tabs-mode: nil
+# comment-start: "# "
+# comment-start-skip: "#[ \t]*"
+# End:
+        ]]></artwork>
+      </figure>
+
+    </section>
+
+      </section>
+
+    </section>
+
+    <section title="Operational Considerations"
+             anchor="operational-considerations">
+      <section title="Compatibility with previous standards">
+        <t>This protocol has been designed to replace rsync as a distribution
+          mechanism of an RPKI repository. However, it is also designed to
+          coexist with existing implementations based on rsync, to enable
+          smooth transition from one distribution mechanism to another.
+        </t>
+        <t>For every repository object listed in the Snapshot and Delta Files,
+          both the hash of the object's content and the <xref
+            target="RFC5781">rsync URI</xref> of its location in the repository
+          are listed. This
+          makes it possible to distribute the same RPKI repository, represented
+          by a set of files on a filesystem, using both rsync and RRDP. It also
+          enables Relying Parties tools to query, combine, and consequently
+          validate objects from repositories of different types.</t>
+      </section>
+
+      <section title="Distribution Considerations">
+        <t>One of the design goals of RRDP was to minimize load on a Repository
+          Server while serving clients. To achieve this, neither the content
+          nor the URLs of the Snapshot and Delta Files are modified after they
+          have been published in the Update Notification File. This allows their
+          effective distribution by using either a single HTTP server or a CDN.
+        </t>
+        <t>The RECOMMENDED way for Relying Parties to keep up with the repository updates is
+          to poll the Update Notification File for changes. The content of that
+          file is updated with every new serial version of a repository (while
+          its URL remains stable). To effectively implement distribution of the
+          Update Notification File, an "If&nbhy;Modified&nbhy;Since" HTTP request header is
+          required to be present in all requests for the Update Notification File (see
+          <xref target="polling_notification"/>). Therefore, it is RECOMMENDED
+          that Relying Party tools implement a mechanism to keep track of a previous
+          successful fetch of an Update Notification File.
+        </t>
+        <t>Implementations of RRDP should also take care of not producing new
+          versions of the repository (and subsequently, new Update Notification,
+          Snapshot, and Delta Files) too often. Usually the maintenance of the
+          RPKI repository includes regular updates of manifest and CRL objects
+          performed on a schedule. This often results in bursts of repository
+          updates during a short period of time. Since the Relying Parties are required to
+          poll for the Update Notification File not more often than once per
+          minute (<xref target="polling_notification"/>), it is not practical to
+          generate new serial versions of the repository much more often than 1
+          per minute. It is allowed to combine multiple updates, possibly from
+          different CAs, into a new serial repository version (<xref
+            target="publishing-updates"/>). This will significantly shorten the
+          size of the Update Notification File and total amount of data
+          distributed to all Relying Parties.
+        </t>
+      </section>
+
+      <section title="HTTPS Considerations" anchor="https_concerns">
+
+       <t>Note that a Man in the Middle (MITM) cannot produce validly signed
+          RPKI data but can perform withhold or replay attacks targeting a
+          Relying Party and keep the Relying Party from learning about changes in the RPKI.
+          Because of this, Relying Parties SHOULD do TLS certificate and host name validation
+          when they fetch from an RRDP Repository Server.
+        </t>
+
+        <t>Relying Party tools SHOULD log any TLS certificate or host name validation issues
+          found, so that an operator can investigate the cause. However, such
+          validation issues are often due to configuration errors or a lack of a
+          common TLS trust anchor. In these cases, it is better if the Relying Party
+          retrieves the signed RPKI data regardless and performs validation on
+          it. Therefore, the Relying Party MUST continue to retrieve the data in case of errors.
+          The Relying Party MAY choose to log encountered issues only when fetching the
+          Update Notification File, but not when it subsequently fetches Snapshot
+          or Delta Files from the same host. Furthermore, the Relying Party MAY provide a way
+          for operators to accept untrusted connections for a given host, after
+          the cause has been identified.
+        </t>
+
+        <t>It is RECOMMENDED that Relying Parties and Repository Servers follow
+          the Best Current Practices outlined in <xref target="RFC7525" /> on the
+          use of HTTP over TLS (HTTPS) <xref target="RFC7230"/>. Relying Parties
+          SHOULD do TLS certificate and host name validation using
+          subjectAltName dNSName identities as described in <xref target="RFC6125" />.
+          The rules and guidelines defined in <xref target="RFC6125" /> apply here,
+          with the following considerations:<list style="symbols">
+
+          <t>Relying Parties and Repository Servers SHOULD support the DNS-ID
+          identifier type. The DNS-ID identifier type SHOULD be present in
+          Repository Server certificates.</t>
+
+          <t>DNS names in Repository Server certificates SHOULD NOT contain the
+          wildcard character "*".</t>
+
+          <t>A Common Name (CN) field may be present in a Repository Server certificate's
+          subject name but SHOULD NOT be used for authentication within the
+          rules described in <xref target="RFC6125" />.</t>
+
+          <t>This protocol does not require the use of SRV-IDs.</t>
+
+          <t>This protocol does not require the use of URI-IDs.</t>
+
+        </list>
+
+        Note, however, that this validation is done on a best-effort basis
+        and serves to highlight potential issues, but RPKI object security
+        does not depend on this. Therefore, Relying Parties MAY deviate from
+        the validation steps listed above.
+        </t>
+
+
+      </section>
+    </section>
+
+    <section title="Security Considerations">
+      <t>RRDP deals exclusively with the transfer of RPKI objects from a Repository
+        Server to a Relying Party. The trust relation between a Certificate Authority and its
+        Repository Server is out of scope for this document. However, it
+        should be noted that from a Relying Party point of view, all RPKI objects
+        (certificates, CRLs, and objects wrapped in Cryptographic Message Syntax (CMS)) are already covered by
+        object security mechanisms including signed manifests. This allows
+      validation of these objects even though the Repository Server itself is
+      not trusted. This document makes no change to RPKI validation procedures
+      per se.</t>
+
+      <t>The original RPKI transport protocol is rsync, which offers no channel
+      security mechanism. RRDP replaces the use of rsync by HTTPS; while the
+      channel security mechanism underlying RRDP (HTTPS) is not a cure-all, it
+      does make some forms of denial-of-service attacks more difficult for the
+      attacker. HTTPS issues are discussed in more detail in
+      <xref target="https_concerns" />.</t>
+
+      <t>Supporting both RRDP and rsync necessarily increases the number of
+      opportunities for a malicious RPKI Certificate Authority to perform denial-of-service attacks
+      on Relying Parties, by expanding the number of URIs which the Relying Party may need
+      to contact in order to complete a validation run. However, other than the
+      relative cost of HTTPS versus rsync, adding RRDP to the mix does not
+      change this picture significantly: with either RRDP or rsync a malicious
+      Certificate Authority can supply an effectively infinite series of URIs for the Relying Party to follow.
+      The only real solution to this is for the Relying Party to apply some kind of bound
+      to the amount of work it is willing to do.  Note also that the attacker in
+      this scenario must be an RPKI Certificate Authority; otherwise, the normal RPKI object
+      security checks would reject the malicious URIs.</t>
+
+      <t>Processing costs for objects retrieved using RRDP may be somewhat
+      different from the same objects retrieved using rsync: because RRDP treats
+      an entire set of changes as a unit (one "delta"), it may not be practical
+      to start processing any of the objects in the delta until the entire delta
+      has been received.  With rsync, by contrast, incremental processing may be
+      easy, but the overall cost of transfer may be higher, as may be the number
+      of corner cases in which the Relying Party retrieves some but not all of the updated
+      objects.  Overall, RRDP's behavior is closer to a proper transactional
+      system, which (probably) leads to an overall reliability increase.</t>
+
+      <t>RRDP is designed to scale much better than rsync.  In particular, RRDP
+      is designed to allow use of an HTTPS caching infrastructure to reduce load on
+      primary Repository Servers and increase resilience against denial-of-service 
+      attacks on the RPKI publication service.</t>
+
+    </section>
+    <section anchor="iana_considerations" title="IANA Considerations">
+      <t>IANA has updated the reference for id-ad-rpkiNotify to point to this
+      document in the "SMI Security for PKIX Access Descriptor" registry
+      <xref target="IANA-AD-NUMBERS" />.</t>
+    </section>
+   
+  </middle>
+
+  <back>
+    <references title="Normative References">
+        <?rfc include="reference.RFC.2119.xml"?>
+        <?rfc include="reference.RFC.8174.xml"?>
+        <?rfc include="reference.RFC.4122.xml"?>
+        <?rfc include="reference.RFC.5781.xml"?>
+        <?rfc include="reference.RFC.6125.xml"?>
+        <?rfc include="reference.RFC.6481.xml"?>
+        <?rfc include="reference.RFC.6487.xml"?>
+        <?rfc include="reference.RFC.7525.xml"?>
+        <?rfc include="reference.RFC.7230.xml"?>
+        <?rfc include="reference.RFC.7231.xml"?>
+        <?rfc include="reference.RFC.7232.xml"?>
+        <?rfc include="reference.RFC.7234.xml"?>
+
+<reference anchor='RFC8181' target="http://www.rfc-editor.org/info/rfc8181">
+<front>
+<title>A Publication Protocol for the Resource Public Key Infrastructure (RPKI)</title>
+<author initials='S' surname='Weiler' fullname='Samuel Weiler'>
+    <organization />
+</author>
+<author initials='A' surname='Sonalker' fullname='Anuja Sonalker'>
+    <organization />
+</author>
+<author initials='R' surname='Austein' fullname='Rob Austein'>
+    <organization />
+</author>
+<date month='July' year='2017' />
+</front>
+<seriesInfo name='DOI' value='10.17487/RFC8181' />
+</reference>
+
+        <reference anchor="SHS" target="http://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf">
+        <front>
+          <title>Secure Hash Standard (SHS)</title>
+          <author>
+          <organization>National Institute of Standards and Technology</organization>
+          </author>
+          <date month="August" year="2015" />
+        </front>
+      <seriesInfo name='FIPS PUB' value='180-4' />
+      <seriesInfo name='DOI' value='10.6028/NIST.FIPS.180-4' />
+      </reference>
+    </references>
+
+
+    <references title="Informative References">
+      <reference anchor="IANA-AD-NUMBERS" target="http://www.iana.org/assignments/smi-numbers">
+        <front>
+          <title>Structure of Management Information (SMI) Numbers (MIB Module Registrations)</title>
+          <author><organization>IANA</organization></author>
+          <date/>
+        </front>
+      </reference>
+
+        <?rfc include="reference.RFC.6486.xml"?>
+        <?rfc include="reference.RFC.6488.xml"?>
+
+        <reference anchor="RSYNC" target="https://rsync.samba.org">
+            <front>
+              <title>rsync</title>
+              <author/>
+              <date />
+            </front>
+        </reference>
+    </references>
+
+ <section title="Acknowledgements" numbered='no'>
+      <t>The authors would like to thank David Mandelberg for reviewing this
+      document.</t>
+    </section>
+
+
+  </back>
+
+</rfc>

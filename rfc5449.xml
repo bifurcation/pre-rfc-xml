@@ -1,0 +1,1771 @@
+<?xml version="1.0" encoding="US-ASCII" ?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes"?>
+<?rfc rfcedstyle="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="5449" category="exp">
+<front>
+<title abbrev="OSPF MPR Extension for MANET">OSPF Multipoint Relay (MPR) Extension for Ad Hoc Networks</title>
+
+<author initials="E.B." surname="Baccelli" fullname="Emmanuel Baccelli">
+<organization>INRIA</organization>
+<address>
+<phone>+33 1 69 33 55 11</phone>
+<email>Emmanuel.Baccelli@inria.fr</email>
+<uri>http://www.emmanuelbaccelli.org/</uri>	
+</address>
+</author>
+
+<author initials="P.J." surname="Jacquet" fullname="Philippe Jacquet">
+<organization>INRIA</organization>
+<address>
+<phone>+33 1 3963 5263</phone>
+<email>Philippe.Jacquet@inria.fr</email>
+</address>
+</author>
+
+<author initials="D.N." surname="Nguyen" fullname="Dang-Quan Nguyen">
+<organization>CRC</organization>
+<address>
+<phone>+1-613-949-8216</phone>
+<email>dang.nguyen@crc.ca</email>
+</address>
+</author>
+
+<author initials="T.H.C." surname="Clausen" fullname="Thomas Heide Clausen">
+<organization>LIX, Ecole Polytechnique</organization>
+<address>
+<phone>+33 6 6058 9349</phone>
+<email>T.Clausen@computer.org</email>
+<uri>http://www.thomasclausen.org/</uri>
+</address>
+</author>
+
+   		<date month='February' year='2009'/>
+   		<area>Routing</area>
+   		<workgroup>Open Shortest Path (OSPF)</workgroup>
+	<keyword>MANET</keyword>
+	<keyword>OLSR</keyword>
+	<keyword>Topology Reduction</keyword>
+	<keyword>Flooding Reduction</keyword>
+	<keyword>Adjacency Reduction</keyword>
+	<keyword>Routing</keyword>
+	<keyword>Wireless</keyword>
+   		<abstract>
+   	<t>This document specifies an OSPFv3 interface type
+   	tailored for mobile ad hoc networks. This interface type is
+   	derived from the broadcast interface type, and is denoted the "OSPFv3 MANET
+   	interface type".</t> 
+        </abstract>
+
+</front>
+ <middle>
+
+<section anchor='introduction' title='Introduction'>
+<t>This document specifies an extension of OSPFv3
+   	<xref target="RFC5340"/> that is adapted to mobile ad hoc networks
+   	(MANETs) <xref target="RFC2501"/> and based on mechanisms
+   	providing: 
+
+<list style="hanging">
+ <t hangText="Flooding-reduction:">only a subset of all routers will
+   	be involved in (re)transmissions during a flooding
+   	operation. </t>		
+<t hangText="Topology-reduction:">only a subset of links are
+   	advertised, hence both the number and the size of Link State
+   	Advertisements (LSAs) are decreased.</t>
+<t hangText="Adjacency-reduction:">adjacencies are brought up only
+   	with a subset of neighbors for lower database synchronization
+   	overhead.</t>
+</list></t>
+
+<t>These mechanisms are based on multipoint relays (MPR), a technique
+   	developed in the Optimized Link State Routing Protocol (OLSR)
+   	<xref target="RFC3626"/>.</t>
+
+<t>The extension specified in this document integrates into the OSPF
+   	framework by defining the OSPFv3 MANET interface type. While
+   	this extension enables OSPFv3 to function efficiently on
+   	mobile ad hoc networks, operation of OSPFv3 on other types of
+   	interfaces or networks, or in areas without OSPFv3 MANET
+   	interfaces, remains unaltered.</t>
+</section>
+
+<section anchor="terminology" title="Terminology">
+<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+ "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+ "OPTIONAL" in this document are to be interpreted as described in
+ <xref target="RFC2119"/>.</t>
+
+<t>This document uses OSPF terminology as defined in
+  <xref target="RFC2328"/> and <xref target="RFC5340"/>, and
+  Link-Local Signaling (LLS) terminology as defined in
+  <xref target="RFC4813"/>; it introduces the following terminology to
+  the OSPF nomenclature:
+
+<list style="hanging">
+ <t hangText="OSPFv3 MANET interface"> - the OSPFv3 interface type
+ for MANETs, as specified in this document.</t>
+</list></t>
+
+<t>Additionally, the following terms are used in this document:
+<list style="hanging">
+ <t hangText="MANET router -">a router that has only OSPFv3 MANET
+ interfaces.</t>
+
+ <t hangText="Wired router -">a router that has only OSPFv3 interface
+ of types other than OSPFv3 MANET interfaces.</t>
+
+ <t hangText="Hybrid router -">a router that has OSPFv3 interfaces of
+ several types, including at least one of the OSPFv3 MANET interface
+ type.</t>
+
+ <t hangText="Neighbor -">a router, reachable through an OSPFv3
+ interface (of any type).</t>
+
+ <t hangText="MANET neighbor -">a neighbor, reachable through an
+ OSPFv3 MANET interface.</t>
+
+ <t hangText="Symmetric 1-hop neighbor -">a neighbor, in a state
+ greater than or equal to 2-Way (through an interface of any
+ type).</t>
+
+ <t hangText="Symmetric strict 2-hop neighbor -">a symmetric 1-hop
+ neighbor of a symmetric 1-hop neighbor, which is not itself a
+ symmetric 1-hop neighbor of the considered router.</t>
+
+ <t hangText="Symmetric strict 2-hop neighborhood -">the set formed
+ by all the symmetric strict 2-hop neighbors of the considered
+ router.</t>
+
+ <t hangText="Synch router -">a router that brings up adjacencies
+ with all of its MANET neighbors.</t>
+
+ <t hangText="Flooding-MPR -">a router that is selected by its
+ symmetric 1-hop neighbor, router X, to retransmit all broadcast
+ protocol packets that it receives from router X, provided that the
+ broadcast protocol packet is not a duplicate and that the Hop Limit field
+ of the protocol packet is greater than one.</t>
+
+ <t hangText="Path-MPR -">a router that is selected by a symmetric
+ 1-hop neighbor, X, as being on the shortest path from a router in the
+ symmetric strict 2-hop neighborhood of router X to router X.</t>
+
+<t hangText="Multipoint relay (MPR) -">a router that is selected by
+its symmetric 1-hop neighbor as either a Flooding-MPR, a Path-MPR, 
+or both.</t>
+
+<t hangText="Flooding-MPR-selector -">a router that has selected its 
+symmetric 1-hop neighbor, router X, as one of its Flooding-MPRs is a 
+Flooding-MPR-selector of router X.</t>
+
+<t hangText="Path-MPR-selector -">a router that has selected its
+symmetric 1-hop neighbor, router X, as one of its Path-MPRs is a Path-MPR
+selector of router X.</t>
+
+<t hangText="MPR-selector -">a router that has selected its symmetric
+1-hop neighbor, router X, as either one of its Flooding-MPRs, one of
+  its Path-MPRs, or both is an MPR-selector of router X.</t>
+</list></t>
+
+ </section>
+
+<section anchor="applicability" title="Applicability Statement">      
+<t>The OSPFv3 MANET interface type, defined in this specification,
+  allows OSPFv3 to be deployed within an area where parts of that area
+  are a mobile ad hoc network (MANET) with moderate mobility
+  properties.</t>
+
+<section anchor="MANET-characteristics" title="MANET Characteristics">
+<t>MANETs <xref target="RFC2501"/> are networks in which a dynamic
+  network topology is a frequently expected condition, often due to
+  router mobility and/or to varying quality of wireless links -- the
+  latter of which also generally entails bandwidth scarcity and
+  interference issues between neighbors.</t>
+
+<t>Moreover, MANETs often exhibit "semi-broadcast" properties, i.e., a
+  router R that makes a transmission within a MANET can only assume
+  that transmission to be received by a subset of the total number of
+  routers within that MANET. Further, if two routers, R1 and R2, each
+  make a transmission, neither of these transmissions is guaranteed to
+  be received by the same subset of routers within the MANET -- even
+  if R1 and R2 can mutually receive transmissions from each other.</t>
+
+<t>These characteristics are incompatible with several OSPFv3
+  mechanisms, including, but not limited to, existing mechanisms for
+  control-traffic reduction, such as flooding-reduction, topology-reduction, and adjacency-reduction (e.g., Designated Router).</t>
+
+</section>
+
+<section anchor="MANET-interface-characteristics" title="OSPFv3 MANET Interface Characteristics">
+
+<t>An interface of the OSPFv3 MANET interface type is the point of
+    attachment of an OSPFv3 router to a network that may have MANET
+    characteristics. That is, an interface of the OSPFv3 MANET
+    interface type is able to accommodate the MANET characteristics
+    described in <xref target="MANET-characteristics"/>. An OSPFv3
+    MANET interface type is not prescribing a set of behaviors or
+    expectations that the network is required to satisfy. Rather, it is
+    describing operating conditions under which protocols on an
+    interface towards that network must be able to function (i.e., the
+    protocols are required to be able to operate correctly when faced
+    with the characteristics described in
+    <xref target="MANET-characteristics"/>). As such, the OSPFv3 MANET
+    interface type is a generalization of other OSPFv3 interface
+    types; for example, a protocol operating correctly over an OSPFv3
+    MANET interface would also operate correctly over an OSPFv3
+    broadcast interface (whereas the inverse would not necessarily be
+    true).</t>
+
+<t>Efficient OSPFv3 operation over MANETs relies on control-traffic
+  reduction and on using mechanisms appropriate for semi-broadcast.
+  The OSPFv3 MANET interface type, defined in this document, allows
+  networks with MANET characteristics into the OSPFv3 framework by
+  integrating mechanisms (flooding-reduction, topology-reduction, and
+  adjacency-reduction) derived from solutions standardized by the
+  MANET working group.</t>
+
+</section>
+</section>
+
+<section anchor="functioning" title="Protocol Overview and
+  Functioning">
+<t>The OSPFv3 MANET interface type, defined in this specification,
+ makes use of flooding-reduction, topology-reduction, and adjacency-reduction, all based on MPR,
+ a technique derived from <xref target="RFC3626"/>, as standardized 
+ in the MANET working group. Multicast transmissions of protocol 
+ packets are used when possible.</t>
+
+<section anchor="MPR-Flooding" title="Efficient Flooding Using MPRs">
+<t>OSPFv3 MANET interfaces use a flooding-reduction mechanism, denoted
+  MPR flooding  <xref target="MPR"/>, whereby only a subset of MANET
+  neighbors (those selected as Flooding-MPR) participate in a flooding
+  operation. This reduces the number of (re)transmissions necessary
+  for a flooding operation <xref target="MPR-analysis"/>, while
+  retaining resilience against transmission errors (inherent when using
+  wireless links) and against obsolete two-hop neighbor information (e.g.,
+  as caused by router mobility) <xref target="MPR-robustness"/>.</t>
+
+</section>
+
+<section anchor="MPR-Topology-reduction" title="MPR Topology-Reduction">
+<t>OSPFv3 MANET interfaces use a topology-reduction mechanism, denoted
+ MPR topology-reduction, whereby only necessary links to MANET
+ neighbors  (those identified by Path-MPR selection as belonging to
+ shortest paths) are included in LSAs. Routers in a MANET periodically
+ generate and flood Router-LSAs describing their selection of such
+ links to their Path-MPRs. Such links are reported as
+ point-to-point links. This reduces the size of LSAs originated by
+ routers on a MANET <xref target="MPR-topology"/>, while retaining
+ classic OSPF properties: optimal paths using synchronized adjacencies
+ (if synchronized paths are preferred over non-synchronized paths of
+ equal cost).</t>
+
+</section>
+
+<section anchor="Ack-Multicast" title="Multicast Transmissions of
+ Protocol Packets">
+<t>OSPFv3 MANET interfaces employ multicast transmissions when
+ possible, thereby taking advantage of inherent broadcast capabilities
+ of the medium, if present (with wireless interfaces, this can often be the case
+ <xref target="RFC2501"/>).
+ 
+In particular, LSA acknowledgments are sent via multicast over these
+interfaces, and retransmissions over the same interfaces are
+considered as implicit acknowledgments. Jitter management, such as
+delaying packet (re)transmission, can be employed in order to allow
+several packets to be bundled into a single transmission, which may
+avoid superfluous retransmissions due to packet collisions
+<xref target="RFC5148"/>.</t>
+
+</section>
+
+<section anchor="adj-selction" title="MPR Adjacency-Reduction">
+
+<t>Adjacencies over OSPFv3 MANET interfaces are required to be formed
+  only with a subset of the neighbors of that OSPFv3 MANET
+  interface. No Designated Router or Backup Designated Router are
+  elected on an OSPFv3 MANET interface. Rather, adjacencies are
+  brought up over an OSPFv3 MANET interface only with MPRs and MPR
+  selectors. Only a small subset of routers in the MANET (called Synch
+  routers) are required to bring up adjacencies with all their MANET
+  neighbors. This reduces the amount of control traffic needed for
+  database synchronization, while ensuring that LSAs still describe
+  only synchronized adjacencies.</t>
+
+</section>
+</section>
+
+<section anchor="details" title="Protocol Details">
+<t>This section complements <xref target="RFC5340"/> and specifies the
+  information that must be maintained, processed, and transmitted by
+  routers that operate one or more OSPFv3 MANET interfaces.</t>
+
+<section title="Data Structures">
+<t>In addition to the values used in <xref target="RFC5340"/>, the
+  Type field in the interface data structure can take a new value,
+  "MANET". Furthermore, and in addition to the protocol structures
+  defined by <xref target="RFC5340"/>, routers that operate one or
+  more MANET interfaces make use of the data structures described
+  below.</t>
+
+<section title="N(i): Symmetric 1-Hop Neighbor Set">
+<t>The Symmetric 1-hop Neighbor set N(i) records router IDs of the
+ set of symmetric 1-hop neighbors of the router on interface i. More
+ precisely, N(i) records tuples of the form:
+
+<figure>
+<artwork>
+                (1_HOP_SYM_id, 1_HOP_SYM_time)
+</artwork>
+</figure>
+
+where:
+
+<list style="hanging">
+
+<t hangText="1_HOP_SYM_id:">is the router ID of the symmetric 1-hop
+  neighbor of this router over interface i.</t>
+
+<t hangText="1_HOP_SYM_time:">specifies the time at which the tuple
+  expires and MUST be removed from the set.</t>
+
+</list>
+</t>
+
+<t>For convenience throughout this document, N will denote the union
+	of all N(i) sets for all MANET interfaces on the router.</t>
+
+</section>
+
+<section title="N2(i): Symmetric Strict 2-Hop Neighbor Set">
+<t>The Symmetric strict 2-hop Neighbor set N2(i) records links between
+  routers in N(i) and their symmetric 1-hop neighbors, excluding:
+
+<list style="hanging">
+
+<t hangText="(i)  "> the router performing the computation, and</t>
+
+<t hangText="(ii)  "> all routers in N(i).</t>
+</list>
+More precisely, N2(i) records tuples of the form:
+<figure>
+<artwork>
+            (2_HOP_SYM_id, 1_HOP_SYM_id, 2_HOP_SYM_time)
+</artwork>
+</figure>
+where:
+<list style="hanging">
+<t hangText="2_HOP_SYM_id:">is the router ID of a symmetric strict
+  2-hop neighbor.</t>
+
+<t hangText="1_HOP_SYM_id:">is the router ID of the symmetric 1-hop
+  neighbor of this router through which the symmetric strict 2-hop
+  neighbor can be reached.</t>
+
+<t hangText="2_HOP_SYM_time:">specifies the time at which the tuple
+  expires and MUST be removed from the set.</t>
+
+</list>
+</t>	
+
+<t>For convenience throughout this document, N2 will denote the union
+  of all N2(i) sets for all MANET interfaces on the router.</t>
+
+</section>
+<section title="Flooding-MPR Set">
+
+<t>The Flooding-MPR set on interface i records router IDs of a subset
+  of the routers listed in N(i), selected such that, through this
+  subset, each router listed in N2(i) is reachable in 2 hops by this
+  router. There is one Flooding-MPR set per MANET interface. More
+  precisely, the Flooding-MPR set records tuples of the form:
+
+<figure>	                 
+<artwork>
+                 (Flooding_MPR_id, Flooding_MPR_time) 
+	              		
+</artwork>
+</figure>
+	              
+where:
+	              	
+<list style="hanging">
+	              		
+<t hangText="Flooding_MPR_id:">is the router ID of the symmetric 1-hop
+  neighbor of this router that is selected as Flooding-MPR.</t>
+
+<t hangText="Flooding_MPR_time:">specifies the time at which the tuple
+  expires and MUST be removed from the set.</t>
+
+</list>
+	             
+Flooding-MPR selection is detailed in <xref target="flooding-mpr-selection"/>.</t>
+
+</section>
+
+<section title="Flooding-MPR-Selector Set">	
+
+<t>The Flooding-MPR-selector set on interface i records router IDs of
+  the set of symmetric 1-hop neighbors of this router on interface i
+  that have selected this router as their Flooding-MPR. There is one
+  Flooding-MPR-selector set per MANET interface. More precisely, the
+  Flooding-MPR-selector set records tuples of the form:
+
+<figure>	                 	
+<artwork>        
+       (Flooding_MPR_SELECTOR_id, Flooding_MPR_SELECTOR_time)
+</artwork>                 
+</figure>
+	              
+where:	              	
+
+<list style="hanging">
+	              		
+<t hangText="Flooding_MPR_SELECTOR_id:">is the router ID of the
+  symmetric 1-hop neighbor of this router, that has selected this
+  router as its Flooding-MPR.</t>	              		
+
+<t hangText="Flooding_MPR_SELECTOR_time:">specifies the time at which
+  the tuple expires and MUST be removed from the set.</t>
+  
+</list>	             
+Flooding-MPR selection is detailed in
+<xref target="flooding-mpr-selection"/>.</t>
+
+</section>
+
+<section title="Path-MPR Set">	
+<t>The Path-MPR set records router IDs of routers in N that provide
+  shortest paths from routers in N2 to this router. There is one
+  Path-MPR set per router. More precisely, the Path-MPR set records
+  tuples of the form:
+
+<figure>	                 	
+<artwork>                
+                  (Path_MPR_id, Path_MPR_time)
+                 
+</artwork>                 
+</figure>	              
+
+where:	              	
+
+<list style="hanging">
+	              		
+<t hangText="Path_MPR_id:">is the router ID of the symmetric 1-hop
+  neighbor of this router, selected as Path-MPR.</t>
+
+<t hangText="Path_MPR_time:">specifies the time at which the tuple
+  expires and MUST be removed from the set.</t>
+
+</list>	            
+Path-MPR selection is detailed in
+<xref target="path-mpr-selection"/>.</t>
+
+</section>
+<section title="Path-MPR-Selector Set">	
+<t>The Path-MPR-selector set records router IDs of the set of
+  symmetric 1-hop neighbors over any MANET interface that have
+  selected this router as their Path-MPR. There is one Path-MPR-selector set
+  per router. More precisely, the Path-MPR-selector set records tuples
+  of the form:				
+<figure>	                 	
+<artwork>                 
+       (Path_MPR_SELECTOR_id, Path_MPR_SELECTOR_time)                 
+</artwork>                 
+</figure>	              
+where:	              	
+<list style="hanging">	              		
+<t hangText="Path_MPR_SELECTOR_id:">is the router ID of the symmetric
+  1-hop neighbor of this router that has selected this router as its
+  Path-MPR.</t>
+	              		
+<t hangText="Path_MPR_SELECTOR_time:">
+specifies the time at which the tuple expires and MUST be removed from
+the set.</t>
+
+</list>	            
+Path-MPR selection is detailed in <xref target="path-mpr-selection"/>.</t>
+	
+</section>
+
+<section title="MPR Set">
+<t>The MPR set is the union of the Flooding-MPR set(s) and the
+  Path-MPR set. There is one MPR set per router.</t>
+
+</section>
+
+<section title="MPR-Selector Set">	
+<t>		
+The MPR-selector set is the union of the Flooding-MPR-selector set(s)
+and the Path-MPR-selector set. There is one MPR-selector set per
+router.
+</t>
+</section>
+</section>   
+
+
+<section anchor="Hellos" title="Hello Protocol"> 
+
+<t>On OSPFv3 MANET interfaces, packets are sent, received, and
+  processed as defined in <xref target="RFC5340"/> and
+  <xref target="RFC2328"/>, and augmented for MPR selection as detailed in this section.
+	</t>
+ 	<t>
+ 		All additional signaling for OSPFv3 MANET interfaces
+ 		is done through inclusion of TLVs within an LLS block
+ 		<xref target="RFC4813"/>, which is appended to Hello
+ 		packets. If an LLS block is not already present, an
+ 		LLS block MUST be created and appended to the Hello packets. 
+ 	</t>
+	<t>
+		Hello packets sent over an OSPFv3 MANET interface MUST
+		have the L bit of the OSPF Options field set, as per
+		<xref target="RFC4813"/>, indicating the presence of an LLS block. 
+	</t>
+ 	<t>
+ 		This document defines and employs the following TLVs
+ 		in Hello packets sent over OSPFv3 MANET interfaces:
+ 		
+ 		<list style="hanging">
+ 			<t hangText="FMPR -">
+ 				signaling Flooding-MPR selection;
+ 			</t>
+ 			<t hangText="PMPR -">
+ 				signaling Path-MPR selection;
+ 			</t>
+ 			<t hangText="METRIC-MPR -">
+ 				signaling metrics. 
+ 			</t>
+ 		</list>
+ 		The layout and internal structure of these TLVs is detailed in <xref target="formats"/>.
+ 	</t>
+ 	
+  <section anchor="flooding-mpr-selection" title="Flooding-MPR Selection">
+	<t>
+		The objective of Flooding-MPR selection is for a
+		router to select a subset of its neighbors such that a
+		packet, retransmitted by these selected neighbors,
+		will be received by all routers 2 hops away. This
+		property is called the Flooding-MPR "coverage
+		criterion". The Flooding-MPR set of a router is
+		computed such that, for each OSPFv3 MANET interface,
+		it satisfies this criterion. The information required
+		to perform this calculation (i.e., link sensing and
+		neighborhood information) is acquired through periodic
+		exchange of OSPFv3 Hello packets.
+	</t>
+	<t>
+		Flooding-MPRs are computed by each router that
+		operates at least one OSPFv3 MANET interface. The
+		smaller the Flooding-MPR set is, the lower the
+		overhead will be. However, while it is not essential
+		that the Flooding-MPR set is minimal, the "coverage criterion" MUST be
+		satisfied by the selected Flooding-MPR set.
+
+	</t>
+	<t>
+		The willingness of a neighbor router to act as
+		Flooding-MPR MAY be taken into consideration by a
+		heuristic for Flooding-MPR selection. An example
+		heuristic that takes willingness into account is given 
+                in <xref target="flooding-mpr-heuristics"/>.
+	</t>
+</section>
+
+<section title="Flooding-MPR Selection Signaling - FMPR TLV">
+	<t>
+		A router MUST signal its Flooding-MPRs set to its
+		neighbors by including an FMPR TLV in generated Hello
+		packets.  Inclusion of this FMPR TLV signals the list
+		of symmetric 1-hop neighbors that the sending router
+		has selected as Flooding-MPRs, as well as the
+		willingness of the sending router to be elected
+		Flooding-MPR by other routers. The FMPR TLV structure
+		is detailed in <xref target="fmpr-structure"/>.
+	</t>
+</section>
+
+<section anchor="ordering" title="Neighbor Ordering">
+
+	<t>
+		Neighbors listed in the Hello packets sent over OSPFv3 MANET interfaces MUST be included in the order as given below:
+		
+		<list style="numbers">
+			<t>
+				symmetric 1-hop neighbors that are selected as Flooding-MPRs;
+			</t>
+			<t>
+				other symmetric 1-hop neighbors;
+			</t>
+			<t>
+				other 1-hop neighbors.
+			</t>
+		</list>
+		This ordering allows correct interpretation of an included FMPR TLV.
+	</t>
+</section>
+
+<section anchor="metrics-signaling" title="Metric Signaling - METRIC-MPR TLV and PMPR TLV">
+
+	<t>
+		Hello packets sent over OSPFv3 MANET interfaces MUST
+		advertise the costs of links towards ALL the symmetric
+		MANET neighbors of the sending router. If the sending
+		router has more than one OSPFv3 MANET interface, links
+		to ALL the symmetric MANET neighbors over ALL the
+		OSPFv3 MANET interfaces of that router MUST have their costs advertised.
+	</t>
+	
+	<t>
+		The costs of the links between the router and each of
+		its MANET neighbors on the OSPFv3 MANET interface over
+		which the Hello packet is sent MUST be signaled by
+		including METRIC-MPR TLVs.  The METRIC-MPR TLV
+		structure is detailed in <xref target="metric-structure"/>.
+
+	</t>
+	<t>
+		Moreover, the lowest cost from each MANET neighbor
+		towards the router (regardless of over which
+		interface) MUST be specified in the included PMPR
+		TLV. Note that the lowest cost can be over an
+		interface that is not an OSPFv3 MANET interface.
+	</t>
+
+</section>
+
+<section anchor="path-mpr-selection" title="Path-MPR Selection">
+
+	<t>
+		A router that has one or more OSPFv3 MANET interfaces
+		MUST select a Path-MPR set from among routers in
+		N.&nbsp;&nbsp;Routers in the Path-MPR set of a router are those
+		that take part in the shortest (with respect to the
+		metrics used) path from routers in N2 to this
+		router. A heuristic for Path-MPR selection is given in <xref target="path-mpr-heuristics"/>.
+	</t>
+
+</section>
+
+<section anchor="ordering-pmpr-tlv" title="Path-MPR Selection Signaling - PMPR TLV">
+
+	<t>
+		A router MUST signal its Path-MPR set to its neighbors
+		by including a PMPR TLV in generated Hello packets.
+	</t>
+	<t>
+		A PMPR TLV MUST contain a list of IDs of all symmetric
+		1-hop neighbors of all OSPFv3 MANET interfaces of the
+		router. These IDs MUST be included in the PMPR TLV in
+		the order as given below:
+		
+		<list style="numbers">
+
+			<t>
+				Neighbors that are both adjacent AND
+				selected as Path-MPR for any OSPFv3
+				MANET interface of the router generating the Hello packet.
+			</t>
+			<t>
+				Neighbors that are adjacent over any
+				OSPFv3 MANET interface of the router
+				generating the Hello packet.
+			</t>
+			<t>
+				Symmetric 1-hop neighbors on any
+				OSPFv3 MANET interface of the router
+				generating the Hello packet that
+				have not been previously included in
+				this PMPR TLV.
+			</t>
+		
+		</list>
+	</t>
+	<t>
+		The list of neighbor IDs is followed by a list of
+		costs for the links from these neighbors to the
+		router generating the Hello packet containing this
+		PMPR TLV, as detailed in
+		<xref target="metrics-signaling"/>. The PMPR TLV
+		structure is detailed in
+		<xref target="pmpr-structure"/>.
+	</t>
+
+</section>
+
+<section title="Hello Packet Processing">
+  	<t>
+In addition to the processing specified in <xref target="RFC5340"/>, N
+and N2 MUST be updated when received Hello packets indicate changes to
+the neighborhood of an OSPFv3 MANET interface i. In particular, if a
+received Hello packet signals that a tuple in N (or N2) is to be
+deleted, the deletion is done immediately, without waiting for the
+tuple to expire. Note that N2 records not only 2-hop neighbors listed
+in received Hellos but also 2-hop neighbors listed in the appended PMPR TLVs.</t>
+  		<t>
+The Flooding-MPR set MUST be recomputed when either of N(i) or N2(i)
+has changed. The Path-MPR set MUST be recomputed when either of N or
+N2 has changed. Moreover, the Path-MPR set MUST be recomputed if
+appended LLS information signals change with respect to one or more
+link costs.</t>
+	<t>
+The Flooding-MPR-selector set and the Path-MPR-selector set MUST be
+updated upon receipt of a Hello packet containing LLS information
+indicating changes in the list of neighbors that has selected the
+router as MPR.
+	</t>
+	<t>
+If a Hello with the S bit set is received on an OSPFv3 MANET interface
+of a router, from a non-adjacent neighbor, the router MUST transition
+this neighbor's state to ExStart.</t>
+	
+</section>
+  
+ </section>
+
+
+<section anchor="Adjacencies" title="Adjacencies">
+	<t>
+		Adjacencies are brought up between OSPFv3 MANET
+		interfaces as described in <xref target="RFC5340"/>
+		and <xref target="RFC2328"/>. However, in order to
+		reduce the control-traffic overhead over the OSPFv3
+		MANET interfaces, a router that has one or more such
+		OSPFv3 MANET interfaces MAY bring up adjacencies
+		with only a subset of its MANET neighbors.
+	</t>
+	<t>
+		Over an OSPFv3 MANET interface, a router MUST bring up
+		adjacencies with all MANET neighbors that are
+		included in its MPR set and its MPR-selector set; this
+		ensures that, beyond the first hop, routes use
+		synchronized links (if synchronized paths are
+		preferred over non-synchronized paths of equal
+		cost). A router MAY bring up adjacencies with other
+		MANET neighbors, at the expense of additional
+		synchronization overhead.
+</t>
+
+<section anchor="2-Way" title="Packets over 2-Way Links"> 
+	<t>
+		When a router does not form a full adjacency with a
+		MANET neighbor, the state of that neighbor does not
+		progress beyond 2-Way (as defined in
+		<xref target="RFC2328"/>). A router can send protocol
+		packets, such as LSAs, to a MANET neighbor in 2-Way
+		state. Therefore, any packet received from a symmetric
+		MANET neighbor MUST be processed. 
+	</t>
+	<t>
+		As with the OSPF broadcast interface
+		<xref target="RFC2328"/>, the next hop in the
+		forwarding table MAY be a neighbor that is not
+		adjacent. However, when a data packet has travelled
+		beyond its first hop, the MPR-selection process
+		guarantees that subsequent hops in the shortest path tree (SPT) 
+                will be over adjacencies (if synchronized paths are preferred
+		over non-synchronized paths of equal cost).
+	</t>
+</section>
+
+<section anchor="adj-conservation" title="Adjacency Conservation"> 
+<t>
+	Adjacencies are torn down  according to
+	<xref target="RFC2328"/>. When the MPR set or MPR-selector set
+	is updated (due to changes in the neighborhood), and when a
+	neighbor was formerly, but is no longer, in the MPR set or the
+	MPR-selector set, then the adjacency with that neighbor is
+	kept unless the change causes the neighbor to cease being a symmetric 1-hop neighbor.
+</t>
+<t>
+	When a router receives Hello packets from a symmetric 1-hop
+	neighbor that ceases to list this router as being adjacent
+	(see <xref target="ordering-pmpr-tlv"/>), the state of that
+	neighbor MUST be changed to: 
+<list style="numbers">
+<t>2-Way if the neighbor is not in the MPR set or MPR-selector set, or</t>
+<t>ExStart if either the neighbor is in the MPR set or MPR-selector
+  set, or the neighbor or the router itself is a Synch router. </t>
+</list>
+</t>
+</section>
+</section>
+
+<section anchor="LSA-generation" title="Link State Advertisements">
+ <t>Routers generate Router-LSAs periodically,  using the format specified in <xref target="RFC5340"/>
+and <xref target="RFC2328"/>. 
+</t>
+<t>
+	Routers that have one or more OSPFv3 MANET interfaces MUST include the following links in the Router-LSAs that they generate:
+	<list style="symbols">
+		<t>links to all neighbors that are in the Path-MPR set, AND</t>
+		<t>links to all neighbors that are in the Path-MPR-selector set.</t>
+	</list>
+	Routers that have one or more OSPFv3 MANET interfaces MAY list other links they have through those OSPFv3 MANET interfaces, at the expense of larger LSAs.
+</t>
+<t>
+	In addition, routers that have one or more OSPFv3 MANET interfaces MUST generate updated Router-LSAs when either of the following occurs:
+	<list style="symbols">
+		<t>a new adjacency has been brought up, reflecting a change in the Path-MPR set;</t>
+		<t>a new adjacency has been brought up, reflecting a change in the Path-MPR-selector set;</t>
+		<t> a formerly adjacent and advertised neighbor ceases to be adjacent;</t>
+		<t> the cost of a link to (or from) an advertised neighbor has changed.</t>
+	</list>
+</t>
+
+<section anchor="flooding" title="LSA Flooding"> 
+<t>
+An originated LSA is flooded, according to <xref target="RFC5340"/>, out all interfaces concerned by the scope of this LSA.
+</t>
+	<t>Link State Updates received on an interface of a type other than
+		OSPFv3 MANET interface are processed and flooded
+		according to <xref target="RFC2328"/> and
+		<xref target="RFC5340"/>, over every interface. If a
+		Link State Update was received on an OSPFv3 MANET
+		interface, it is processed as follows:
+
+
+<list style="numbers">
+
+<t>
+	Consistency checks are performed on the received packet according to <xref target="RFC2328"/> and <xref target="RFC5340"/>, and the Link State Update packet is thus associated with a particular neighbor and a particular area.
+</t>
+
+<t>
+	If the Link State Update was received from a router other than a symmetric 1-hop neighbor, the Link State Update MUST be discarded without further processing. 
+</t>
+<t>
+	Otherwise, for each LSA contained in Link State Updates received over an OSPFv3 MANET interface, the following steps replace steps 1 to 5 of Section 13.3 of <xref target="RFC2328"/>.
+
+ <list style="format (%d)">
+        <t>
+        	If an LSA exists in the Link State Database, with the
+        	same Link State ID, LS Type, and Advertising Router
+        	values as the received LSA, and if the received LSA is
+        	not newer (see Section 13.1 of <xref target="RFC2328"/>), then the received LSA MUST NOT be processed, except for acknowledgment as described in <xref target="LSA ack"/>.
+        </t>
+
+        <t>
+        	Otherwise, the LSA MUST be attributed a scope
+        	according to its type, as specified in Section 3.5 of <xref target="RFC5340"/>.</t>
+
+            
+             <t>If the scope of the LSA is link local or reserved,
+                  the LSA MUST NOT be flooded on any interface.</t>
+
+             <t>Otherwise:
+				<list style="symbols">
+					<t>
+						If the scope of the
+ LSA is the area,
+ the LSA MUST be flooded on all the OSPFv3 interfaces of the router in
+ that area, according to the default flooding algorithm described in <xref target="defaultflooding"/>.
+					</t>
+					<t>
+						Otherwise, the LSA MUST be flooded on all the OSPFv3 interfaces of the router according to the default flooding algorithm described in <xref target="defaultflooding"/>.
+					</t>
+				</list>
+                       </t></list>
+          </t>
+</list>
+</t>
+<section anchor="defaultflooding" title="Default LSA Flooding Algorithm">
+<t>
+   The default LSA flooding algorithm is as follows:
+
+<list style="numbers">
+
+        <t>The LSA MUST be installed in the Link State Database.</t>
+
+        <t>The Age of the LSA MUST be increased by InfTransDelay.</t>
+
+        <t>The LSA MUST be retransmitted over all OSPFv3 interfaces of types other than OSPFv3 MANET interface.</t>
+
+        <t>If the sending OSPFv3 interface is
+             a Flooding-MPR-selector of this router, then the LSA MUST also be
+             retransmitted over all OSPFv3 MANET interfaces concerned
+             by the scope, with the multicast address all_SPF_Routers.</t>
+</list>
+</t>
+<t>
+Note that MinLSArrival SHOULD be set to a value that is appropriate to dynamic topologies: LSA updating may need to be more frequent in MANET parts of an OSPF network than in other parts of an OSPF network.
+</t>
+</section>
+</section>
+<section anchor="LSA ack" title="Link State Acknowledgments">
+<t>
+When a router receives an LSA over an OSPFv3 MANET interface, the router MUST
+proceed to acknowledge the LSA as follows:
+<list style="numbers">
+
+<t>If the LSA was not received from an adjacent neighbor, 
+             the router MUST NOT acknowledge it.</t>
+
+        <t>Otherwise, if the LSA was received from an adjacent neighbor and
+if the LSA is already in the Link State Database
+             (i.e., the LSA has already been received and processed), then
+             the router MUST send an acknowledgment for
+             this LSA on all OSPFv3 MANET interfaces to the
+             multicast address all_SPF_Routers.</t>
+
+        <t>Otherwise, if the LSA is not already in the Link State Database:
+<list style="numbers">
+             <t> If the router decides to retransmit the LSA
+             (as part of the flooding procedure), the
+             router MUST NOT acknowledge it, as this
+             retransmission will be considered as an
+             implicit acknowledgment.</t>
+
+        <t>Otherwise, if the router decides to not retransmit
+             the LSA (as part of the flooding procedure),
+             the router MUST send an explicit acknowledgment for
+             this LSA on all OSPFv3 MANET interfaces to the
+             multicast address all_SPF_Routers.</t>
+</list>
+</t>
+</list>
+</t>
+<t>
+	If a router sends an LSA on an OSPFv3 MANET interface, it expects acknowledgments (explicit or implicit) from all adjacent neighbors. In the case where the router did not generate, but simply relays, the LSA, then the router MUST  expect acknowledgments (explicit or implicit) only from adjacent neighbors that have not previously acknowledged this LSA. If a router detects that some adjacent neighbor has not acknowledged the LSA, then that router MUST retransmit the LSA.
+</t>
+<t>
+	If, due to the MPR flooding-reduction mechanism employed for LSA flooding as described in <xref target="flooding"/>, a router decides to not relay an LSA, the router MUST still expect acknowledgments of this LSA (explicit or implicit) from adjacent neighbors that have not previously acknowledged this LSA. If a router detects that some adjacent neighbor has not acknowledged the LSA, then the router MUST retransmit the LSA.
+</t>
+<t>
+	Note that it may be beneficial to aggregate several acknowledgments in the same transmission, taking advantage of native multicasting (if available). A timer wait MAY thus be used before any acknowledgment transmission.
+</t>
+<t>
+	Additionally, jitter <xref target="RFC5148"/> on packet (re)transmission MAY be used in order to increase the opportunities to bundle several packets together in each transmission.
+</t>
+
+</section>
+  </section> 
+
+<section anchor="Hybrid-Routers" title="Hybrid Routers">
+<t>
+
+In addition to the operations described in <xref target="Hellos"/>, <xref target="Adjacencies"/> and <xref target="LSA-generation"/>, Hybrid routers MUST:
+<list style="symbols">
+<t>select ALL their MANET neighbors as Path-MPRs. </t>
+<t>list adjacencies over OSPFv3 interfaces of types other than OSPFv3 MANET interface, as specified in <xref target="RFC5340"/> and <xref target="RFC2328"/>, in generated Router-LSAs.</t>
+</list>
+</t>
+</section>
+
+<section anchor="Synch-Routers" title="Synch Routers">
+<t>
+	In a network with no Hybrid routers, at least one Synch router MUST be selected. A Synch router MUST:
+		<list style="symbols">
+	 		<t> set the S bit in the PMPR TLV appended to the Hello packets it generates, AND</t>
+	 		<t> become adjacent with ALL MANET neighbors.</t>
+	 	</list>
+</t>
+<t>
+	A proposed heuristic for selection of Sync routers is as follows:
+	
+<list style ="symbols">
+	<t> 
+		A router that has a MANET interface and an ID that is
+		higher than the ID of all of its current neighbors,
+		and whose ID is higher than any other ID present in
+		Router-LSAs currently in its Link State Database
+		selects itself as Synch router.</t>
+</list>
+</t>
+<t>
+Other heuristics are possible; however, any heuristic for selecting
+Synch routers MUST ensure the presence of at least one Synch or Hybrid
+router in the network.
+
+</t>
+
+</section>
+
+<section anchor="Routing-Table" title="Routing Table Computation">
+<t>
+When routing table (re)computation occurs, in addition to the processing of the Link State Database defined in <xref target="RFC5340"/>
+and <xref target="RFC2328"/>, routers that have one or more MANET interfaces MUST take into account links between themselves and MANET neighbors that are in state 2-Way or higher (as data and protocol packets may be sent, received, and processed over these links too). Thus, the connectivity matrix used to compute routes MUST reflect links between the root and all its neighbors in state 2-Way and higher, as well as links described in the Link State Database.
+</t>
+</section>
+
+</section>
+<section anchor="formats" title="Packet Formats">
+
+<t>
+	OSPFv3 packets are as defined by <xref target="RFC5340"/> and <xref target="RFC2328"/>. Additional LLS signaling <xref target="RFC4813"/> is used in Hello packets sent over OSPFv3 MANET interfaces, as detailed in this section.
+</t>
+<t>
+	This specification uses network byte order (most significant octet first) for all fields.
+</t>
+
+<section anchor="fmpr-structure" title="Flooding-MPR  TLV">
+<t>
+A TLV of Type FMPR is defined for signaling Flooding-MPR selection, shown in <xref target="FMPR"/>.
+</t>
+<figure anchor="FMPR" title="Flooding-MPR TLV (FMPR)">
+<artwork>
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |            Type=FMPR          |           Length              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |  Willingness  | # Sym. Neigh. |  # Flood MPR  |    Reserved   |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+<t>
+where:
+		<list style="hanging">
+	
+	<t hangText="Willingness -">
+	   is an 8-bit unsigned integer field that specifies the
+	   willingness of the router to flood link-state information
+	   on behalf of other routers.  It can be set to any integer
+	   value from 1 to 6. By default, a router SHOULD advertise a
+	   willingness of WILL_DEFAULT = 3.</t>
+
+	<t hangText="# Sym. Neigh. -">
+	   is an 8-bit unsigned integer field that specifies the
+	   number of symmetric 1-hop neighbors. These symmetric 1-hop
+	   neighbors are listed first among the neighbors in a Hello
+	   packet.</t>
+
+	<t hangText="# Flood MPR -">
+   		is an 8-bit unsigned integer field that specifies the
+		number of neighbors selected as Flooding-MPR. These
+		Flooding-MPRs are listed first among the symmetric
+		1-hop neighbors.</t>
+
+	<t hangText="Reserved -">
+   		is an 8-bit field that SHOULD be cleared ('0') on transmission and SHOULD be ignored on reception.</t>
+</list>
+</t>
+</section>
+
+<section anchor="metric-structure" title="Metric-MPR TLV">
+
+<t>
+A TLV of Type METRIC-MPR is defined for signaling costs of links to neighbors, shown in <xref target="METRIC"/>.
+</t>
+<figure anchor="METRIC" title="Metric TLV (METRIC-MPR)">
+<artwork>
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |        Type=METRIC-MPR        |           Length              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |         Reserved          |U|R|           Cost 0              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |           Cost 1              |           Cost 2              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ :                                                               :
+ :                                                               :
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |           Cost n              |            Padding            |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ </artwork>
+</figure>
+<t>
+
+where:
+<list style="hanging">
+	<t hangText="Reserved -">
+   		is a 14-bit field that SHOULD be cleared ('0') on transmission and SHOULD be ignored on reception.
+   	</t>
+
+	<t hangText="R -">
+   		is a binary flag, cleared ('0') if the costs
+   		advertised in the TLV are direct (i.e., the costs of
+   		the links from the router to the neighbors), or set ('1')
+   		if the costs advertised are reverse (i.e., the costs of
+   		the links from the neighbors to the router). By default, R is cleared ('0').
+   	</t>
+
+	<t hangText="U -">
+   		is a binary flag, cleared ('0') if the cost for
+   		each link from the sending router and to each
+   		advertised neighbor is explicitly included (shown in
+   		<xref target="METRIC1"/>), or set ('1') if a single
+   		metric value is included that applies to all links (shown in <xref target="METRIC2"/>).
+   	</t>
+   	
+	<t hangText="Cost n -">
+   		is an 8-bit unsigned integer field that specifies the
+   		cost of the link, in the direction specified by the R
+   		flag, between this router and the neighbor listed at
+   		the n-th position in the Hello packet when counting
+   		from the beginning of the Hello packet and with the
+   		first neighbor being at position 0.
+   	</t>
+
+	<t hangText="Padding -">
+		is a 16-bit field that SHOULD be cleared ('0') on
+		transmission and SHOULD be ignored on
+		reception. Padding is included in order that the TLV
+		is 32-bit aligned. Padding MUST be included when the
+		TLV contains an even number of Cost fields and MUST
+		NOT be included otherwise.
+	</t>
+</list>
+</t>
+
+<figure anchor="METRIC1" title="Metric Advertisement TLV (METRIC-MPR) example with explicit individual link costs (U=0) and an odd number of Costs (and, hence, no padding).">
+<artwork>
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |        Type=METRIC-MPR        |           Length              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |         Reserved          |0|R|           Cost 0              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |           Cost 1              |           Cost 2              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ </artwork>
+</figure>
+
+<figure anchor="METRIC2" title="Metric Advertisement TLV (METRIC-MPR) example with a single and uniform link cost (U=1) (and, hence, no padding).">
+<artwork>
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |        Type=METRIC-MPR        |           Length              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |         Reserved          |1|R|           Cost                |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+</section>
+
+
+<section anchor="pmpr-structure" title="Path-MPR TLV">
+
+<t>
+A TLV of Type PMPR is defined for signaling Path-MPR selection, shown in <xref target="FMPR"/>, as well as the link cost associated with these Path-MPRs.
+</t>
+
+<figure anchor="PMPR" title="Path-MPR TLV (PMPR)">
+<artwork>
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |            Type=PMPR          |           Length              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |  # Sym Neigh  |  # Adj. Neigh |   # Path-MPR  | Reserved  |U|S|
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |                           Neighbor ID                         |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |                           Neighbor ID                         |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ :                                                               :
+ :                                                               :
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |             Cost 0            |            Cost 1             |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ :                                                               :
+ :                                                               :
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |             Cost n            |            Padding            |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+<t>
+
+	<list style="hanging">
+	
+		<t hangText="# Sym Neigh. -"> 
+			is an 8-bit unsigned integer field that specifies the number of symmetric 1-hop MANET neighbors of all OSPFv3 MANET interfaces of the router, listed in the PMPR TLV.
+		</t>
+
+		<t hangText="# Adj. Neigh. -"> 
+			is an 8-bit unsigned integer field that
+			specifies the number of adjacent
+			neighbors. These adjacent neighbors are listed
+			first among the symmetric 1-hop MANET
+			neighbors of all OSPFv3 MANET interfaces of the
+			router in the PMPR TLV.
+		</t>
+
+		<t hangText="# Path-MPR -">
+      		is an 8-bit unsigned integer field that specifies the number of MANET neighbors selected as Path-MPR. These Path-MPRs are listed first among the adjacent MANET neighbors in the PMPR TLV.
+      	</t>
+
+		<t hangText="Reserved -">
+   			is a 6-bit field that SHOULD be cleared ('0') on transmission and SHOULD be ignored on reception.
+   		</t>
+
+		<t hangText="U -">
+   			is a binary flag, cleared ('0') if the cost
+   			for each link from each advertised neighbor in
+   			the PMPR TLV and to the sending router is
+   			explicitly included (as shown in
+   			<xref target="PMPR1"/>), or set ('1') if a single
+   			metric value is included that applies to all
+   			links (as shown in <xref target="PMPR2"/>).
+		</t>
+
+		<t hangText="S -">
+			is a binary flag, cleared ('0') if the router
+			brings up adjacencies only with neighbors in
+			its MPR set and MPR-selector set, as per
+			<xref target="Adjacencies"/>, or set ('1') if the
+			router brings up adjacencies with all MANET
+			neighbors as a Synch router, as per <xref target="Synch-Routers"/>.
+		</t>
+
+		<t hangText="Neighbor ID -">
+   			is a 32-bit field that specifies the router ID of a symmetric 1-hop neighbor of an OSPFv3 MANET interface of the router.
+   		</t>
+
+		<t hangText="Cost n -">
+			is a 16-bit unsigned integer field that
+			specifies the cost of the link in the
+			direction from the n-th listed advertised
+			neighbor in the PMPR TLV and towards this
+			router. A default value of 0xFFFF
+			(i.e., infinity) MUST be advertised unless
+			information received via Hello packets from
+			the neighbor specifies otherwise, in which
+			case the received information MUST be
+			advertised. If a neighbor is reachable via
+			more than one interface, the cost advertised
+			MUST be the minimum of the costs by which that
+			neighbor can be reached.</t>
+			
+	<t hangText="Padding -">
+		is a 16-bit field that SHOULD be cleared ('0') on
+		transmission and SHOULD be ignored on
+		reception. Padding is included in order that the PMPR
+		TLV is 32-bit aligned. Padding MUST be included when
+		the TLV contains an odd number of Cost fields and
+		MUST NOT be included otherwise.
+	</t>
+
+</list>
+</t>
+
+<figure anchor="PMPR1" title="Path-MPR TLV (PMPR) with explicit individual link costs (U=0) and an even number of Cost fields (hence, no padding).">
+<artwork>
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |            Type=PMPR          |           Length              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |  # Sym Neigh  |  # Adj. Neigh |   # Path-MPR  | Reserved  |0|S|
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |                           Neighbor ID                         |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |                           Neighbor ID                         |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ :                                                               :
+ :                                                               :
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |             Cost 1            |            Cost 2             |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ :                            .......                            :
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |            Cost n-1           |            Cost n             |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+
+<figure anchor="PMPR2" title="Path-MPR TLV (PMPR) with a single and uniform link cost (U=1) (hence, padding included).">
+<artwork>
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |         Type=PMPR             |           Length              |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |  # Sym Neigh  |  # Adj. Neigh |   # Path-MPR  | Reserved  |1|S|
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |                           Neighbor ID                         |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |                           Neighbor ID                         |
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ |             Cost              |            Padding            | 
+ +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</artwork>
+</figure>
+</section>
+</section>
+<section anchor="security" title="Security Considerations">
+    <t>
+        <xref target="RFC4593"/> describes generic threats to routing protocols, whose applicability to OSPFv3 <xref target="RFC5340"/> is not altered by the presence of OSPFv3 MANET interfaces. As such, the OSPFv3 MANET interface type does not introduce new security threats to <xref target="RFC5340"/>.
+    </t>
+    <t>
+        However, the use of a wireless medium and the lack of infrastructure, as enabled by the use of the OSPFv3 MANET interface type, may render some of the attacks described in <xref target="RFC4593"/> easier to undertake.
+    </t>
+    <t>
+        For example, control-traffic sniffing and control-traffic analysis are simpler tasks with wireless than with wires, as it is sufficient to be somewhere within radio range in order to "listen" to wireless traffic. Inconspicuous wiretapping of the right cable(s) is not necessary.
+    </t>
+    <t>
+        In a similar fashion, physical signal interference is also a simpler task with wireless than with wires, as it is sufficient to emit from somewhere within radio range in order to be able to disrupt the communication medium. No complex wire connection is required.
+    </t>
+    <t>
+        Other types of interference (including not forwarding packets), spoofing, and different types of falsification or overloading (as described in <xref target="RFC4593"/>) are also threats to which routers using OSPFv3 MANET interfaces may be subject. In these cases, the lack of predetermined infrastructure or authority, enabled by the use of OSPFv3 MANET interfaces, may facilitate such attacks by making it easier to forge legitimacy.
+    </t>
+    <t>
+        Moreover, the consequence zone of a given threat, and its
+        consequence period (as defined in <xref target="RFC4593"/>),
+        may also be slightly altered over the wireless medium,
+        compared to the same threat over wired networks. Indeed,
+        mobility and the fact that radio range spans "further" than a
+        mere cable may expand the consequence zone in some cases;
+        meanwhile, the more dynamic nature of MANET topologies may decrease the consequence period, as harmful information (or lack of information) will tend to be replaced quicker by legitimate information.
+    </t>
+
+</section>
+<section anchor="iana" title="IANA Considerations">
+<t>
+This document defines three LLS TLVs, for which type values have been
+allocated from the LLS TLV type registry defined in <xref target="RFC4813"/>. </t>
+
+    <texttable anchor="tlvtypes" title="LLS TLV Type Assignments">
+      <ttcol align="center">Mnemonic</ttcol>
+      <ttcol align="center">Type Value</ttcol>
+      <ttcol align="left">Name</ttcol>
+		<c>FMPR</c><c>3</c><c>Flooding-MPR</c>
+		<c>METRIC-MPR</c><c>4</c><c>Metric-MPR</c>
+		<c>PMPR</c><c>5</c><c>Path-MPR</c>
+    </texttable>
+
+</section>
+	</middle>
+
+	<back>
+  
+<references title="Normative References">
+  <reference anchor="RFC2119">
+    <front>
+      <title abbrev="RFC2119">Key words for use in RFCs to Indicate Requirement Levels</title>
+      <author initials="S." surname="Bradner" fullname="Scott Bradner">
+        <organization abbrev="HU">Harvard University</organization>
+      </author>
+      <date month="March" year="1997"/>
+    </front>
+    <seriesInfo name="BCP" value="14"/>
+    <seriesInfo name="RFC" value="2119"/>
+  </reference>
+    <reference anchor="RFC2328">
+        <front>
+            <title>OSPF Version 2</title>
+            <author initials="J." surname="Moy"
+                    fullname="J. Moy">
+		        <organization abbrev=""></organization>
+            </author>
+            <date month="April" year="1998" />
+        </front>
+        <seriesInfo name="STD" value="54" />
+        <seriesInfo name="RFC" value="2328" />
+    </reference>
+
+    <reference anchor="RFC5340">
+        <front>
+            <title>OSPF for IPv6</title>
+            <author initials="R." surname="Coltun"
+                    fullname="R. Coltun">
+		        <organization abbrev=""></organization>
+            </author>
+
+            <author initials="D." surname="Ferguson"
+                    fullname="D. Ferguson">
+		        <organization abbrev=""></organization>
+            </author>
+
+
+            <author initials="J." surname="Moy"
+                    fullname="J. Moy">
+		        <organization abbrev=""></organization>
+            </author>
+
+<author initials="A." surname="Lindem"
+                    fullname="A. Lindem">
+		        <organization abbrev=""></organization>
+            </author>
+
+            <date month="July" year="2008" />
+        </front>
+        <seriesInfo name="RFC" value="5340" />
+    </reference>
+
+    <reference anchor="RFC4813">
+        <front>
+            <title>OSPF Link-Local Signaling</title>
+            <author initials="B." surname="Friedman"
+                    fullname="B. Friedman">
+		        <organization abbrev=""></organization>
+            </author>
+
+            <author initials="L." surname="Nguyen"
+                    fullname="L. Nguyen">
+		        <organization abbrev=""></organization>
+            </author>
+
+            <author initials="A." surname="Roy"
+                    fullname="A. Roy">
+		        <organization abbrev=""></organization>
+            </author>
+
+            <author initials="D." surname="Yeung"
+                    fullname="D. Yeung">
+		        <organization abbrev=""></organization>
+            </author>            
+
+            <author initials="A." surname="Zinin"
+                    fullname="A. Zinin">
+		        <organization abbrev=""></organization>
+            </author>            
+
+
+            <date month="March" year="2007" />
+        </front>
+        <seriesInfo name="RFC" value="4813" />
+    </reference> 
+
+
+
+</references>
+<references title="Informative References">
+
+    <reference anchor="RFC2501">
+        <front>
+            <title>Mobile Ad hoc Networking (MANET): Routing Protocol Performance Issues and Evaluation Considerations</title>
+
+            <author initials="S." surname="Corson"
+                    fullname="Scott Corson">
+                <organization abbrev="UM">
+                University of Maryland, USA
+                </organization>
+            </author>
+
+            <author initials="J." surname="Macker"
+                    fullname="Joe Macker">
+                <organization abbrev="NRL">
+                Naval Research Lab, USA
+                </organization>
+            </author>
+
+
+            <date month="February" year="1999" />
+        </front>
+        <seriesInfo name="RFC" value="2501" />
+    </reference>
+
+    <reference anchor="RFC3626">
+        <front>
+            <title>Optimized Link State Routing Protocol (OLSR)</title>
+            <author initials="T.H." surname="Clausen"
+                    fullname="Thomas Heide Clausen">
+                <organization abbrev="X">
+                Ecole Polytechnique, France
+                </organization>
+            </author>
+            <author initials="P." surname="Jacquet">
+        	<organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+
+            </author>
+            <date month="October" year="2003" />
+        </front>
+        <seriesInfo name="RFC" value="3626" />
+    </reference>
+
+    <reference anchor="RFC5148">
+        <front>
+            <title>Jitter Considerations in Mobile Ad Hoc Networks (MANETs)</title>
+			<author initials="T." surname="Clausen"
+                    fullname="Thomas Clausen">
+                <organization abbrev="X">
+                LIX, Ecole Polytechnique, France
+                </organization>
+            </author>
+
+            <author initials="C." surname="Dearlove"
+                    fullname="Christopher Dearlove">
+                <organization abbrev="BAE">
+                BAE Systems Advanced Technology, UK
+                </organization>
+            </author>
+
+            <author initials="B." surname="Adamson"
+                    fullname="Brian Adamson">
+                <organization abbrev="NRL">
+                Naval Research Lab, USA
+                </organization>
+            </author>
+
+            <date month="February" year="2008" />
+        </front>
+        <seriesInfo name="RFC" value="5148" />
+    </reference>
+
+    <reference anchor="MPR">
+        <front>
+            <title>Multipoint Relaying for Flooding Broadcast Messages in Mobile Wireless Networks</title>
+                        <author initials="A." surname="Qayyum"
+                    fullname="A. Qayyum">
+		        <organization abbrev=""></organization>
+            </author>            
+            <author initials="L." surname="Viennot"
+                    fullname="L. Viennot">
+        <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+            </author>
+			<author initials="A." surname="Laouiti,"
+                    fullname="A. Laouiti,">
+		        <organization abbrev=""></organization>
+            </author>             
+            <date year="2002" />
+        </front>
+        <seriesInfo name="Proceedings of HICSS" value=""/>
+    </reference> 
+
+<reference anchor="MPR-robustness">
+        <front>
+            <title>On the Robustness and Stability of Connected Dominated Sets</title>
+                        <author initials="C." surname="Adjih"
+                    fullname="C. Adjih">
+        <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+            </author>            
+            <author initials="E." surname="Baccelli"
+                    fullname="E. Baccelli">
+        <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+    </author>
+			<author initials="T." surname="Clausen"
+                    fullname="T. Clausen">
+                <organization abbrev="X">
+                Ecole Polytechnique, France
+                </organization>
+            </author>  
+			<author initials="P." surname="Jacquet"
+                    fullname="P. Jacquet">
+        <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+			</author>           
+            <date year="2005" />
+        </front>
+        <seriesInfo name="INRIA Research Report" value="RR-5609"/>
+    </reference> 
+
+    <reference anchor="MPR-analysis">
+        <front>
+            <title>Analysis of MPR Selection in the OLSR Protocol</title>
+                        <author initials="D." surname="Ngyuen"
+                    fullname="D. Ngyuen">
+        <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+            </author>            
+            <author initials="P." surname="Minet"
+                    fullname="P. Minet">
+        <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+            </author>            
+            <date year="2007" />
+        </front>
+        <seriesInfo name="2nd Int. Workshop on Performance Analysis and
+        Enhancement of Wireless" value="Networks"/>
+    </reference> 
+
+
+<reference anchor="MPR-topology">
+        <front>
+            <title>Partial Topology in an MPR-based Solution for Wireless OSPF on Mobile Ad Hoc Networks</title>
+            <author initials="E." surname="Baccelli"
+                    fullname="E. Baccelli">
+        <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+            </author>
+			<author initials="T." surname="Clausen"
+                    fullname="T. Clausen">
+                <organization abbrev="X">
+                Ecole Polytechnique, France
+                </organization>
+            </author>  
+			<author initials="P." surname="Jacquet"
+                    fullname="P. Jacquet">
+         <organization abbrev="INRIA">Project Hipercom, INRIA Rocquencourt, France</organization>
+
+            </author>           
+            <date year="2005" />
+        </front>
+        <seriesInfo name="INRIA Research Report" value="RR-5619"/>
+    </reference> 
+
+    <reference anchor="RFC4593">
+        <front>
+            <title>Generic Threats to Routing Protocols</title>
+            <author initials="A." surname="Barbir"
+                    fullname="A. Barbir">
+		        <organization> Nortel</organization>
+            </author>            
+            <author initials="S." surname="Murphy"
+                    fullname="S. Murphy">
+		        <organization> Sparta Inc.</organization>
+            </author>
+            <author initials="Y." surname="Yang"
+                    fullname="Y. Yang">
+		        <organization> Cisco Systems</organization>
+            </author>          
+            <date month="October" year="2006" />
+        </front>
+        <seriesInfo name="RFC" value="4593" />
+    </reference> 
+
+</references>
+<section anchor="flooding-mpr-heuristics" title="Flooding-MPR Selection Heuristic">
+<t>
+	The following specifies a proposed heuristic for selection of Flooding-MPRs on interface i. It constructs a Flooding-MPR set that enables a router to reach routers in the 2-hop neighborhood through relaying by one Flooding-MPR router. 
+</t>
+
+<t>
+	The following terminology will be used in describing the heuristics:  D(Y) is the degree of a 1-hop neighbor, router Y (where Y is a member of N(i), defined as the number of neighbors of router Y, EXCLUDING all the members of N(i) and EXCLUDING the router performing the computation. The proposed heuristic can then be described as follows. Begin with an empty Flooding-MPR set. Then:
+
+	<list style="numbers">
+        <t>
+        	Calculate D(Y), where Y is a member of N(i), for all routers in N(i).
+        </t>
+
+        <t>
+        	Add to the Flooding-MPR set those routers in N(i) that are the only routers to provide reachability to a router in N2(i).  For example, if router B in N2(i) can be reached only through a router A in N(i), then add router A to the Flooding-MPR set. Remove the routers from N2(i) that are now covered by a router in the Flooding-MPR set.
+        </t>
+
+        <t>
+        	While there exist routers in N2(i) that are not covered by at least one router in the Flooding-MPR set:
+			<list style="numbers">
+				<t>For each router in N(i), calculate the reachability, i.e.,
+                  the number of routers in N2(i) that are not yet covered
+                  by at least one router in the Flooding-MPR set, and
+                  that are reachable through this 1-hop neighbor;
+				</t>
+
+             	<t>
+             		Select as a Flooding-MPR the neighbor with the
+             		highest willingness among the routers in N(i)
+             		with non-zero reachability. In case of a tie
+             		among routers with the same willingness,
+             		select the router that provides reachability
+             		to the maximum number of routers in N2(i). In
+             		case of another tie between routers also
+             		providing the same amount of reachability,
+             		select as Flooding-MPR the router whose D(Y)
+             		is greater. Remove the routers from N2(i) that
+             		are now covered by a router in the Flooding-MPR set.
+             	</t>
+			</list>
+        </t>
+        <t>
+        	As an optimization, consider in increasing order of willingness each router Y in the Flooding-MPR set: if all routers in N2(i) are still covered by at least one router in the Flooding-MPR set when excluding router Y, then router Y MAY be removed from the Flooding-MPR set.
+        </t>
+	</list>
+</t>
+
+<t>
+	Other algorithms, as well as improvements over this algorithm, are possible. Different routers may use different algorithms independently. However, the algorithm used MUST provide the router with a Flooding-MPR set that fulfills the flooding coverage criterion, i.e., it MUST select a Flooding-MPR set such that any 2-hop neighbor is covered by at least one Flooding-MPR router.
+</t>
+</section>  
+<section anchor="path-mpr-heuristics" title="Path-MPR Selection Heuristic">
+
+<t>
+	The following specifies a proposed heuristic for calculating a Path-MPR set that enables a router to reach routers in the 2-hop neighborhood through shortest paths via routers in its Path-MPR set. The following terminology will be used for describing this heuristic:
+	
+	<list style="hanging">
+		<t hangText="A -">
+			The router performing the Path-MPR set calculation.
+		</t>
+		<t hangText="B, C, D, .... -">
+			Other routers in the network.
+		</t>
+		<t hangText="cost(A,B) -">
+			The cost of the path through the direct link,
+			from A to B. 
+		</t>
+		<t hangText="dist(C,A) -">
+			The cost of the shortest path from C to A. 
+		</t>
+	</list>
+</t>
+<t>
+	A cost matrix is populated with the values of the costs of
+	links originating from router A (available locally) and with
+	values listed in Hello packets received from neighbor
+	routers. More precisely, the cost matrix is populated as follows:
+
+	<list style="numbers">
+		<t>
+			The coefficients of the cost matrix are set by
+			default to 0xFFFF (maximal value, i.e., infinity).
+		</t>
+
+		<t>
+			The coefficient cost(A,B) of the cost matrix
+			for a link from router A to a neighbor B (the
+			direct cost for this link) is set to the
+			minimum cost over all interfaces that feature
+			router B as a symmetric 1-hop neighbor. The
+			reverse cost for this link, cost(B,A), is set
+			at the value received in Hello packets from
+			router B.&nbsp;&nbsp;If router B is reachable through
+			several interfaces at the same time, cost(B,A)
+			is set as the minimum cost advertised by
+			router B for its links towards router A.
+		</t>
+
+		<t>
+			The coefficients of the cost matrix concerning
+			the link between two neighbors of A, routers C
+			and B, are populated at the reception of their
+			Hello packets. The cost(B,C) is set to the
+			value advertised by the Hello packets from B,
+			and, respectively, the cost(C,B) is set to the
+			value advertised in Hello packets from C.
+		</t>
+
+		<t>
+			The coefficients cost(B,C) of the cost matrix
+			for a link that connects a neighbor B to a
+			2-hop neighbor C are obtained via the Hello
+			packets received from router B.&nbsp;&nbsp;In this case,
+			cost(B,C) and cost(C,B) are respectively set
+			to the values advertised by router B for the
+			direct cost and reverse cost for node C.
+
+		</t>
+	</list>
+</t>
+<t>
+	Once the cost matrix is populated, the proposed heuristic can then be described as follows. Begin with an empty Path-MPR set. Then:
+
+	<list style="numbers">
+        <t>
+        	Using the cost matrix and the Dijkstra algorithm, compute the router distance vector, i.e., the shortest distance for each pair (X,A) where X is in N or N2 minimizing the sum of the cost of the path between X and A.
+        </t>
+
+        <t>
+        	Compute N' as the subset of N made of the elements X such that cost(X,A)=dist(X,A).
+        </t>
+
+		<t>
+			Compute N2' as the subset of N and N2 made of the elements Y that do not belong to N' and such that there exist X in N' such cost(Y,X)+cost(X,A)=dist(Y,A). 
+		</t>
+
+        <t>
+        	Compute the MPR selection algorithm presented in <xref target="flooding-mpr-heuristics"/> with N' instead of N(i) and N2' instead of N2(i). The resulting MPR set is the Path-MPR set.
+        </t>
+	</list>
+</t>
+
+<t>
+Other algorithms, as well as improvements over this algorithm, are possible. Different routers may use different algorithms independently.
+However, the algorithm used MUST provide the router with a Path-MPR set that fulfills the path coverage criterion, i.e., it MUST select a Path-MPR set such that for any element of N or N2 that is not in the Path-MPR set, there exists a shortest path that goes from this element to the router through a neighbor selected as Path-MPR (unless the shortest path is only one hop). 
+</t>
+
+</section> 
+
+<section title="Contributors">
+<t>The authors would like to thank Cedric Adjih, Acee Lindem, Padma Pillay-Esnault, and Laurent Viennot for their contributions to this document.</t>
+ </section>
+<section title="Acknowledgments">
+<t>The authors would like to thank Juan Antonio Cordero Fuertes, Ulrich Herberg, and Richard Ogier for reviewing this document.</t>
+</section>		
+	</back>
+   
+	</rfc>

@@ -1,0 +1,555 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="2"?>
+<?rfc tocindent="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="8326" category="std"
+     ipr="trust200902"
+     submissionType="IETF" consensus="yes">
+
+<front>
+
+<title>Graceful BGP Session Shutdown</title>
+
+<author surname="Francois"  initials="P." fullname="Pierre Francois" role="editor">
+<organization>Individual Contributor</organization> 
+<address>
+<email>pfrpfr@gmail.com</email>
+</address>
+</author>
+
+<author surname="Decraene"  initials="B." fullname="Bruno Decraene" role="editor">
+<organization>Orange</organization>
+<address>
+<email>bruno.decraene@orange.com</email>
+</address>
+</author>
+
+<author surname="Pelsser" initials="C." fullname="Cristel Pelsser">
+<organization>Strasbourg University</organization>
+<address>
+<email>pelsser@unistra.fr</email>
+</address>
+</author>
+
+<author surname="Patel"  initials="K." fullname="Keyur Patel">
+<organization>Arrcus, Inc.</organization>
+<address>
+<email>keyur@arrcus.com</email>
+</address>
+</author>
+
+<author surname="Filsfils"  initials="C." fullname="Clarence Filsfils">
+<organization>Cisco Systems</organization>
+<address>
+<email>cfilsfil@cisco.com</email>
+</address>
+</author>
+
+<date month="February" year="2018"/>
+
+
+<abstract>
+
+  <t>This document standardizes a new well-known BGP community,
+  GRACEFUL_SHUTDOWN, to signal the graceful shutdown of paths.  This document
+  also describes operational procedures that use this well-known community to reduce the
+  amount of traffic lost when BGP peering sessions are about to be shut down
+  deliberately, e.g., for planned maintenance.</t> 
+  
+</abstract>
+
+</front>
+
+<middle>
+<section title="Introduction" anchor = "Introduction">
+
+    <t> Routing changes in BGP can be caused by planned maintenance
+    operations. This document defines a well-known community <xref
+    target="RFC1997"/>, called GRACEFUL_SHUTDOWN, for the purpose of
+     reducing the management overhead of gracefully shutting down BGP
+     sessions. The well-known community allows implementers to provide an
+     automated graceful shutdown mechanism that does not require any
+     router reconfiguration at maintenance time.</t>
+
+	<t>This document discusses operational procedures to be applied in
+    order to reduce or eliminate loss of packets during a maintenance operation.
+    Loss comes from transient lack of reachability during BGP
+    convergence that follows the shutdown of an EBGP peering session between two
+    Autonomous System Border Routers (ASBRs).</t>
+
+	<t> This document presents procedures for the cases where the
+	forwarding plane is impacted by the maintenance, hence for when
+	the use of Graceful Restart does not apply.</t>
+
+    <t> The procedures described in this document can be applied to reduce or
+    avoid packet loss for outbound and inbound traffic flows initially
+    forwarded along the peering link to be shut down.  
+In both Autonomous Systems (ASes), these procedures
+    trigger rerouting to alternate paths if
+    they exist within the AS while 
+    allowing the use of the old path until alternate ones are learned.
+    This ensures that routers always have a valid route available during the
+    convergence process.</t>
+
+    <t> The goal of the document is to meet the requirements described in <xref
+    target="RFC6198"/> as best possible without changing BGP.</t>
+
+	<t>Other maintenance cases, such as the shutdown of an IBGP session or
+	the establishment of an EBGP session, are out of scope for this
+	document. For informational purposes, they are briefly discussed in
+	<xref target="beyond"/>.</t> 
+
+	<t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+</section><!--Introduction -->
+
+<section title = "Terminology" anchor="Terminology">
+
+	<t> 
+	<list style="hanging" hangIndent="3">
+        <t hangText="graceful shutdown initiator"><vspace />A router on which the session shutdown
+	is performed for the maintenance. </t>
+
+	<t hangText="graceful shutdown receiver"><vspace />A router that has a
+	BGP session to be shut down with the graceful shutdown
+	initiator.</t>
+	</list>
+	</t>
+
+
+</section><!--Terminology -->
+
+<section title="Packet Loss upon Manual EBGP Session Shutdown" anchor="sec.loss">
+
+	<t>Packets can be lost during the BGP convergence following a manual
+	shut down of an EBGP
+	session for two reasons. </t>
+			
+	<t>First, some routers can
+	 have no path toward an affected prefix and drop
+	traffic destined to this prefix. This is because alternate
+	paths can be hidden by nodes of an AS. 
+   This happens when the extension defined in <xref target="RFC7911"/>
+   is not used and a) the paths are not selected as best by the ASBRs that 
+   receive them on an EBGP session or b) Route Reflectors do not
+   propagate the paths further in the IBGP topology because they do not
+   select them as best.
+	</t>
+
+	<t>Second, the FIB can be 
+	inconsistent between routers within the AS,  and packets toward
+	affected prefixes can loop and be dropped unless encapsulation is used
+	within the AS.</t>
+
+	<t>This document only addresses the first reason. </t>
+
+</section><!--Packet loss upon manual EBGP session shutdown -->
+
+
+
+<section title = "Procedure for EBGP Graceful Shutdown" anchor ="gshut">
+
+      <t>This section describes configurations and actions to be performed for the graceful shutdown of EBGP peering links.</t>
+  
+     <t>The goal of this procedure is to retain the paths to be shut down between
+the peers, but with a lower LOCAL_PREF value, allowing the paths to remain
+in use while alternate paths are selected and propagated, rather than
+simply withdrawing the paths. The LOCAL_PREF value SHOULD be lower than any of the alternative paths.
+ The RECOMMENDED value is 0.</t>
+
+       <t>Note that some alternative techniques with limited applicability are
+       discussed in <xref target="Alternatives"/> for informational purposes.</t> 
+ 
+	<section title = "Pre-configuration" anchor = "sec.summary.config">
+
+        <t>On each ASBR supporting the graceful shutdown receiver procedure,
+	an inbound BGP route policy is applied on all EBGP sessions of the
+	ASBR. That policy:
+
+	    <list style = "symbols" hangIndent="5">
+          <t> matches the GRACEFUL_SHUTDOWN community.</t>
+
+	      <t> sets the LOCAL_PREF attribute of the paths tagged with the
+	      GRACEFUL_SHUTDOWN community to a low value.</t>
+
+	    </list></t>
+		
+		<t>For informational purposes, examples of configurations are
+		provided in <xref target="config_examples"/>.</t> 
+
+	    
+	  </section><!--Pre-configuration-->
+	  
+	<section title = "Operations at Maintenance Time" anchor = "sec.summary.shut">
+     
+     <t> On the graceful shutdown initiator, at maintenance time, the operator: 
+
+     <list style = "symbols">
+
+       <t>applies an outbound BGP route policy on the EBGP session to be shutdown. This policy
+       tags the paths propagated over the session with the GRACEFUL_SHUTDOWN community.
+       This will trigger the BGP implementation to re-advertise all active
+       routes previously advertised and tag them with the GRACEFUL_SHUTDOWN community.
+       </t>
+     
+       <t>applies an inbound BGP route policy on the EBGP session to be shutdown. This policy tags the
+       paths received over the session with the GRACEFUL_SHUTDOWN community and sets LOCAL_PREF to a low value. </t>
+     
+       <t>waits for route re-advertisement over the EBGP session and for BGP
+       routing convergence on both ASBRs.</t>
+
+       <t>shuts down the EBGP session, optionally using <xref target="RFC8203"/> to communicate the reason for the shutdown.</t>
+
+     </list></t>
+
+        <t>In the case of a shutdown of the whole router, in addition to the
+	graceful shutdown of all EBGP sessions, there is a need to gracefully
+	shut down the routes originated by this router (e.g., BGP aggregates redistributed from other protocols, including static routes).  This can be performed by tagging these routes with the GRACEFUL_SHUTDOWN community and setting LOCAL_PREF to a low value.</t>
+
+     
+   </section><!--Operations at maintenance time-->
+
+
+
+
+	   <section title = "BGP Implementation Support for Graceful Shutdown" anchor = "Implementation">
+
+   <t> BGP Implementers SHOULD provide configuration knobs that utilize
+   the GRACEFUL_SHUTDOWN community to inform BGP neighbors in
+   preparation for an impending neighbor shutdown. Implementation details
+   are outside the scope of this document.</t>
+ 
+     
+ </section><!--implementations-->
+
+
+
+</section><!--Graceful shutdown procedures for EBGP sessions-->
+
+
+<section anchor="IANA" title="IANA Considerations">
+<t>IANA previously assigned the community value 0xFFFF0000 to the 'planned-shut'
+  community in the "BGP Well-known Communities" registry. IANA has
+ changed the name 'planned-shut' to 'GRACEFUL_SHUTDOWN' and updated the
+ reference to point to this document.</t>
+</section><!--IANA-->
+
+<section title = "Security Considerations"  anchor = "security">
+
+    <t> By providing the graceful shutdown service to a neighboring AS, an ISP provides
+    means to this neighbor, and possibly its downstream ASes, to lower the LOCAL_PREF value assigned to the paths
+    received from this neighbor. </t>
+
+    <t> The neighbor could abuse the technique and do inbound traffic
+    engineering by declaring that some prefixes are undergoing maintenance so
+    as to switch traffic to another peering link.</t>
+
+    <t>If this behavior is not tolerated by the ISP, it SHOULD monitor the use
+    of the graceful shutdown community.</t> 
+
+</section><!-- Security Considerations-->
+
+</middle>
+<back>
+
+<references title="Normative References">
+
+<?rfc include="reference.RFC.6198"?>
+<?rfc include="reference.RFC.1997"?>
+<?rfc include="reference.RFC.2119"?>
+<?rfc include="reference.RFC.8174"?>
+
+</references>
+
+<references title="Informative References">
+<?rfc include="reference.RFC.7911"?>
+<!-- I-D.ietf-idr-best-external --> 
+
+<reference anchor='BEST-EXTERNAL'>
+<front>
+<title>Advertisement of the best external route in BGP</title>
+
+<author initials='P' surname='Marques' fullname='Pedro Marques'>
+    <organization />
+</author>
+
+<author initials='R' surname='Fernando' fullname='Rex Fernando'>
+    <organization />
+</author>
+
+<author initials='E' surname='Chen' fullname='Enke Chen'>
+    <organization />
+</author>
+
+<author initials='P' surname='Mohapatra' fullname='Pradosh Mohapatra'>
+    <organization />
+</author>
+
+<author initials='H' surname='Gredler' fullname='Hannes Gredler'>
+    <organization />
+</author>
+
+<date month='January' day='3' year='2012' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-idr-best-external-05' />
+
+</reference>
+
+
+<?rfc include="reference.RFC.8203"?>
+</references>
+
+
+<section title = "Alternative Techniques with Limited Applicability" anchor = "Alternatives">
+
+
+  <t>A few alternative techniques have been considered to provide
+  graceful shutdown capabilities but have been rejected due to their limited
+  applicability.  This section describes these techniques for possible
+  reference.</t>
+
+
+
+  <section title = "Multi-Exit Discriminator Tweaking" anchor = "sec.med-poison"> 
+
+    <t> The Multi-Exit Discriminator (MED) attribute of the paths to be
+    avoided can be increased to influence the routers in the neighboring AS
+    to select other paths. </t>
+    
+    <t> The solution only works if the alternate paths are as good as
+    the initial ones with respect to the LOCAL_PREF value and the AS
+    Path Length value.  In the other cases, increasing the MED value
+    will not have an impact on the decision process of the routers in
+    the neighboring AS.</t>
+    
+  </section><!--MED-->
+  
+  <section title = "IGP Distance Poisoning" anchor = "sec.igp-poison">
+    
+    <t> The distance to the BGP NEXT_HOP corresponding to the
+    maintained session can be increased in the IGP so that the old
+    paths will be less preferred during the application of the IGP
+    distance tie-break rule. However, this solution only works for the
+    paths whose alternates are as good as the old paths with respect
+    to their LOCAL_PREF value, their AS Path length, and their MED
+    value.</t>
+    
+<!-- [rfced] To what does "self" refer here?  Should it be "itself"?  Or,
+perhaps it should be deleted? 
+
+Original:
+   Also, this poisoning cannot be applied when BGP NEXT_HOP self is used
+   as there is no BGP NEXT_HOP specific to the maintained session to
+   poison in the IGP.
+-->
+
+    <t> Also, this poisoning cannot be applied when BGP "NEXT_HOP self" is
+    used, as there is no BGP NEXT_HOP specific to the maintained session to
+    poison in the IGP.</t>
+	
+  </section><!--IGP distance poisoning-->
+
+
+</section><!--Techniques with limited applicability-->
+
+<section anchor="config_examples" title="Configuration Examples">
+    <t>
+        This appendix is non-normative.
+    </t>
+	<t>
+		This appendix includes examples of routing policy
+		configurations to honor the GRACEFUL_SHUTDOWN well-known BGP
+		community. 
+	</t>
+	<section title="Cisco IOS XR">
+	<figure>
+<artwork><![CDATA[
+community-set comm-graceful-shutdown
+  65535:0
+end-set
+!
+route-policy AS64497-ebgp-inbound
+  ! normally this policy would contain much more
+  if community matches-any comm-graceful-shutdown then
+    set local-preference 0
+  endif
+end-policy
+!
+router bgp 64496
+ neighbor 2001:db8:1:2::1
+  remote-as 64497
+  address-family ipv6 unicast
+   send-community-ebgp
+   route-policy AS64497-ebgp-inbound in
+
+  !
+ !
+!
+]]></artwork>
+	</figure>
+	</section><!--Cisco IOS XR-->
+	<section title="BIRD">
+<figure>
+<artwork><![CDATA[
+function honor_graceful_shutdown() {
+    if (65535, 0) ~ bgp_community then {
+        bgp_local_pref = 0;
+    }
+}
+filter AS64497_ebgp_inbound
+{
+        # normally this policy would contain much more
+        honor_graceful_shutdown();
+}
+protocol bgp peer_64497_1 {
+    neighbor 2001:db8:1:2::1 as 64497;
+    local as 64496;
+    import keep filtered;
+    import filter AS64497_ebgp_inbound;
+}
+]]></artwork>
+	</figure>
+	</section><!--BIRD-->
+	<section title="OpenBGPD">
+<figure>
+<artwork><![CDATA[
+AS 64496
+router-id 192.0.2.1
+neighbor 2001:db8:1:2::1 {
+        remote-as 64497
+}
+# normally this policy would contain much more
+match from any community GRACEFUL_SHUTDOWN set { localpref 0 }
+]]></artwork>
+    </figure>
+    </section><!--OpenBGP-->
+</section><!--Configuration Examples-->
+
+<section title = "Beyond EBGP Graceful Shutdown" anchor = "beyond">
+
+	<section title = "IBGP Graceful Shutdown" anchor="IBGP">
+  
+		<t>For the shutdown of an IBGP session, provided the IBGP
+		topology is viable after the
+		maintenance of the session (i.e., if all BGP speakers
+		of the AS have an IBGP signaling path for all prefixes
+		advertised on this graceful shutdown IBGP session), then the
+		shutdown of an IBGP session does not lead to transient
+		unreachability. As a consequence, no specific graceful shutdown action is required.</t>
+
+	</section><!--IBGP graceful shutdown -->
+
+
+	<section title = "EBGP Session Establishment" anchor="UP">
+  
+  <t>We identify two potential causes for transient packet losses upon
+  the establishment of an EBGP session. The first one is local to the startup initiator;
+  the second one is due to the BGP convergence following the injection of new
+  best paths within the IBGP topology. </t>
+
+  <section title = "Unreachability Local to the ASBR">
+    
+    <t>An ASBR that selects a path received over a newly
+    established EBGP session as the best path may transiently drop traffic. This can
+    typically happen when the NEXT_HOP attribute differs from the IP
+    address of the EBGP peer and the receiving ASBR has not yet
+    resolved the MAC address associated with the IP address of that
+    third-party NEXT_HOP. </t>
+
+    <t>A BGP speaker implementation MAY avoid such losses by ensuring that
+    third-party NEXT_HOPs are resolved before installing paths using these
+    NEXT_HOPs in the RIB.</t>
+
+    <t>Alternatively, the operator (script) MAY ping third-party NEXT_HOPs that are expected to be
+    used prior to establishing the session. By proceeding like
+    this, the MAC addresses associated with these third-party NEXT_HOPs
+    are resolved by the startup initiator.
+    </t>
+
+  </section><!--Unreachability local to the ASBR-->
+
+  <section title = "IBGP Convergence">
+
+    <t>During the establishment of an EBGP session, in some corner cases, a
+    router may have no path toward an affected prefix, leading to loss of
+    connectivity.</t> 
+		
+
+    <t>A typical example for such transient unreachability for a given
+    prefix is the following:
+<list style="empty">
+    <t>Consider three Route Reflectors (RR): RR1, RR2, RR3. There is a full mesh
+    of IBGP sessions between them. 
+    <list style="numbers">
+	  <t>RR1 is initially advertising the
+	  current best path to the members of its IBGP RR
+	  full mesh. It propagated that path within its RR
+	  full-mesh. RR2 knows only that path toward the prefix.
+	  </t>
+
+      <t>RR3 receives a new best path originated by the startup
+      initiator, which is one of its RR clients. RR3 selects it as best and
+      propagates an UPDATE within its RR full mesh, i.e., to RR1 and RR2.  </t>
+ 
+	  <t>RR1 receives that path, reruns its decision process,
+	  and picks this new path as best. As a result, RR1 withdraws
+	  its previously announced best path on the IBGP sessions of its RR
+	  full mesh.
+	  </t>
+	
+	  <t>If, for any reason, RR3 processes the withdraw
+	  generated in step 3 before processing the update generated
+	  in step 2, RR3 transiently suffers from unreachability for
+	  the affected prefix. </t>
+			
+	  </list></t>
+</list>
+	</t>
+
+
+	<t> The use of <xref target="RFC7911"/> or <xref target="BEST-EXTERNAL"></xref> among the RR of
+	the IBGP full mesh can solve these corner cases by ensuring
+	that within an AS, the advertisement of a new route is not
+	translated into the withdraw of a former route.</t>
+
+<t>Indeed, advertising the best external route ensures that 
+   an ASBR does not withdraw a previously advertised (EBGP) path 
+   when it receives an additional, preferred path over an IBGP 
+   session.  Also, advertising the best intra-cluster route 
+   ensures that an RR does not withdraw a previously advertised (IBGP) path to
+   its non-clients (e.g., other RRs in a mesh of RR) when it receives a new,
+   preferred path over an IBGP session. 
+</t>
+
+  </section><!--IBGP convergence-->
+
+  
+
+</section><!--Link up cases-->
+
+</section><!--Beyond EBGP graceful shutdown-->
+
+<section title = "Acknowledgments"  anchor = "ack" numbered="no">
+
+<t>The authors wish to thank Olivier Bonaventure, Pradosh Mohapatra, Job Snijders, John Heasley, and Christopher Morrow for their useful comments.</t>
+
+</section>
+
+
+
+</back>
+</rfc>

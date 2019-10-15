@@ -1,0 +1,687 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?xml-stylesheet type='text/xsl' href='http://xml2rfc.tools.ietf.org/authoring/rfc2629.xslt' ?>
+
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc tocindent="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc category="std" ipr="trust200902" number="7797" submissionType="IETF" consensus="yes"
+     updates="7519">
+
+  <front>
+    <title abbrev="JWS Unencoded Payload Option">JSON Web Signature (JWS) Unencoded Payload Option</title>
+
+    <author fullname="Michael B. Jones" initials="M.B." surname="Jones">
+      <organization>Microsoft</organization>
+      <address>
+        <email>mbj@microsoft.com</email>
+        <uri>http://self-issued.info/</uri>
+      </address>
+    </author>
+
+    <date month="February" year="2016" />
+
+    <area>Security</area>
+    <workgroup>JOSE Working Group</workgroup>
+
+    <keyword>JavaScript Object Notation</keyword>
+    <keyword>JSON</keyword>
+    <keyword>JSON Object Signing and Encryption</keyword>
+    <keyword>JOSE</keyword>
+    <keyword>JSON Web Signature</keyword>
+    <keyword>JWS</keyword>
+    <keyword>Digital Signature</keyword>
+    <keyword>Message Authentication Code</keyword>
+    <keyword>MAC</keyword>
+    <keyword>Unencoded Payload</keyword>
+
+    <abstract>
+      <t>
+	JSON Web Signature (JWS) represents the payload of a JWS as a base64url-encoded
+	value and uses this value in the JWS Signature computation.
+	While this enables arbitrary payloads to be integrity protected,
+	some have described use cases in which the base64url encoding is unnecessary
+	and/or an impediment to adoption, especially when the payload is large and/or detached.
+	This specification defines a means of accommodating these use cases by
+	defining an option to change the JWS Signing Input computation to not
+	base64url-encode the payload.
+	This option is intended to broaden the set of use cases for which
+	the use of JWS is a good fit.
+      </t>
+      <t>
+	This specification updates RFC 7519
+	by stating that JSON Web Tokens (JWTs)
+	MUST NOT use the unencoded payload option defined by this specification.
+      </t>
+    </abstract>
+
+  </front>
+
+  <middle>
+    <section title="Introduction" anchor="Introduction">
+      <t>
+	The "JSON Web Signature (JWS)" <xref target="JWS"/> specification
+	defines the JWS Signing Input as
+	the input to the digital signature or Message Authentication Code (MAC) computation, with the value
+	ASCII(BASE64URL(UTF8(JWS Protected Header)) || '.' || BASE64URL(JWS Payload)).
+	While this works well in practice for many use cases,
+	including those accommodating arbitrary payload values,
+	other use cases have been described in which base64url-encoding
+	the payload is unnecessary and/or an impediment to adoption,
+	particularly when the payload is large and/or detached.
+      </t>
+      <t>
+	This specification introduces a new JWS Header Parameter value that
+	generalizes the JWS Signing Input computation in a manner that makes
+	base64url-encoding the payload selectable and optional.
+	The primary set of use cases where this enhancement may be helpful are those
+	in which the payload may be very large and where means are already in place
+	to enable the payload to be communicated between the parties without modifications.
+	Appendix F of <xref target="JWS"/> describes how to represent JWSs with
+	detached content, which would typically be used for these use cases.
+      </t>
+      <t>
+	The advantages of not having to base64url-encode a large payload are that
+	allocation of the additional storage to hold the base64url-encoded form is avoided
+	and the base64url-encoding computation never has to be performed.
+	In summary, this option can help avoid unnecessary copying and transformations
+	of the potentially large payload, resulting in sometimes significant space
+	and time improvements for deployments.
+      </t>
+
+      <section title='Notational Conventions' anchor="NotationalConventions">
+        <t>
+          The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+          "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY",
+          and "OPTIONAL" in this document are to be interpreted as
+          described in
+	  "Key words for use in RFCs to Indicate Requirement Levels" <xref target='RFC2119' />.
+	  The interpretation should only be applied when the terms appear in all capital letters.
+        </t>
+	<t>
+	  BASE64URL(OCTETS) denotes the base64url encoding of OCTETS,
+	  per Section 2 of <xref target="JWS" />.
+	</t>
+	<t>
+	  UTF8(STRING) denotes the octets of the
+	  UTF-8 <xref target="RFC3629"/> representation of STRING,
+	  where STRING is a sequence of zero or more Unicode <xref target="UNICODE"/> characters.
+	</t>
+	<t>
+	  ASCII(STRING) denotes the octets of the
+	  ASCII <xref target="RFC20"/> representation of STRING,
+	  where STRING is a sequence of zero or more ASCII characters.
+	</t>
+	<t>
+	  The concatenation of two values A and B
+	  is denoted as A&nbsp;||&nbsp;B.
+	</t>
+      </section>
+
+    </section>
+
+    <section title="Terminology" anchor="Terminology">
+      <t>
+	This specification uses the same terminology as the
+	"JSON Web Signature" <xref target="JWS"/> and
+	"JSON Web Algorithms" <xref target="JWA"/>
+	specifications.
+      </t>
+
+    </section>
+
+    <section title='The "b64" Header Parameter' anchor="Header">
+      <t>
+	This Header Parameter modifies the JWS Payload representation
+	and the JWS Signing Input computation in the following way:
+
+	<list style="hanging">
+	  <t hangText="b64">
+	    <vspace/>
+	    The <spanx style="verb">b64</spanx> (base64url-encode payload) Header Parameter
+	    determines whether the payload is represented in the JWS and
+	    the JWS Signing Input as ASCII(BASE64URL(JWS Payload))
+	    or as the JWS Payload value itself with no encoding performed.
+	    When the <spanx style="verb">b64</spanx> value is <spanx style="verb">false</spanx>,
+	    the payload is represented simply as the JWS Payload value;
+	    otherwise, it is represented as ASCII(BASE64URL(JWS Payload)).
+	    The <spanx style="verb">b64</spanx> value is a JSON boolean,
+	    with a default value of <spanx style="verb">true</spanx>.
+	    When used, this Header Parameter MUST be integrity protected;
+	    therefore, it MUST occur only within the JWS Protected Header.
+	    Use of this Header Parameter is OPTIONAL.
+	    If the JWS has multiple signatures and/or MACs,
+	    the <spanx style="verb">b64</spanx> Header Parameter value
+	    MUST be the same for all of them.
+	    Note that unless the payload is detached,
+	    many payload values
+	    would cause errors parsing the resulting JWSs,
+	    as described in <xref target="UnencodedPayloads"/>.
+	  </t>
+
+	</list>
+      </t>
+
+      <t>
+	The following table shows the JWS Signing Input computation,
+	depending upon the value of this parameter:
+      </t>
+<?rfc compact="no"?> 
+      <texttable>
+
+	<ttcol align="left">"b64"</ttcol>
+	<ttcol align="left">JWS Signing Input Formula</ttcol>
+
+	<c>true</c>
+	<c>ASCII(BASE64URL(UTF8(JWS Protected Header)) || '.' || BASE64URL(JWS Payload))</c>
+
+	<c>false</c>
+	<c>ASCII(BASE64URL(UTF8(JWS Protected Header)) || '.') || JWS Payload</c>
+
+      </texttable>
+<?rfc compact="yes"?>
+    </section>
+
+    <section title="Examples" anchor="Examples">
+
+      <t>
+	This section gives examples of JWSs showing the difference that
+	using the <spanx style="verb">b64</spanx> Header Parameter makes.
+	The examples all use the JWS Payload value [36, 46, 48, 50].
+	This octet sequence represents the ASCII characters
+	<spanx style="verb">$.02</spanx>;
+	its base64url-encoded representation is <spanx style="verb">JC4wMg</spanx>.
+      </t>
+
+      <t>
+	The following table shows a set of Header Parameter values
+	without using a false <spanx style="verb">b64</spanx> Header Parameter value
+	and a set using it,
+	with the resulting JWS Signing Input values represented as ASCII characters:
+      </t>
+<?rfc compact="no"?> 
+      <texttable>
+
+	<ttcol align="left">JWS Protected Header</ttcol>
+	<ttcol align="left" width="55%">JWS Signing Input Value</ttcol>
+
+	<c>{"alg":"HS256"}</c>
+	<c>eyJhbGciOiJIUzI1NiJ9.JC4wMg</c>
+
+	<c>{"alg":"HS256","b64":false,"crit":["b64"]}</c>
+	<c>eyJhbGciOiJIUzI1NiIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19.$.02</c>
+
+      </texttable>
+<?rfc compact="yes"?> 
+      <t>
+	These examples use the Hash-based Message Authentication Code (HMAC) key from 
+        Appendix A.1 of <xref target="JWS"/>,
+	which is represented below as a JSON Web Key <xref target="JWK"/>
+	(with line breaks within values for display purposes only):
+      </t>
+      <figure><artwork><![CDATA[
+  {
+   "kty":"oct",
+   "k":"AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75
+        aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow"
+  }
+]]></artwork></figure>
+
+      <t>
+	The rest of this section shows complete representations
+	for the two JWSs above.
+      </t>
+
+      <section title='Example with Header Parameters {"alg":"HS256"}' anchor="RegularExample">
+	<t>
+	  The complete JWS representation for this example
+	  using the JWS Compact Serialization
+	  and a non-detached payload
+	  (with line breaks for display purposes only) is:
+	</t>
+
+	<figure><artwork><![CDATA[
+  eyJhbGciOiJIUzI1NiJ9
+  .
+  JC4wMg
+  .
+  5mvfOroL-g7HyqJoozehmsaqmvTYGEq5jTI1gVvoEoQ
+]]></artwork></figure>
+	<t>
+	  Note that this JWS uses only features defined by <xref target="JWS"/> and
+	  does not use the new <spanx style="verb">b64</spanx> Header Parameter.
+	  It is the "control" so that differences when it is used can be easily seen.
+	</t>
+	<t>
+	  The equivalent representation for this example
+	  using the flattened JWS JSON Serialization is:
+	</t>
+
+	<figure><artwork><![CDATA[
+  {
+   "protected":
+    "eyJhbGciOiJIUzI1NiJ9",
+   "payload":
+    "JC4wMg",
+   "signature":
+    "5mvfOroL-g7HyqJoozehmsaqmvTYGEq5jTI1gVvoEoQ"
+  }
+]]></artwork></figure>
+
+      </section>
+
+      <section title='Example with Header Parameters {"alg":"HS256","b64":false,"crit":["b64"]}' anchor="b64Example">
+	<t>
+	  The complete JWS representation for this example
+	  using the JWS Compact Serialization
+	  and a detached payload
+	  (with line breaks for display purposes only) is:
+	</t>
+
+	<figure><artwork><![CDATA[
+  eyJhbGciOiJIUzI1NiIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19
+  .
+  .
+  A5dxf2s96_n5FLueVuW1Z_vh161FwXZC4YLPff6dmDY
+]]></artwork></figure>
+	<t>
+	  Note that the payload <spanx style="verb">$.02</spanx> cannot be represented
+	  in this JWS in its unencoded form because it contains a period ('.') character,
+	  which would cause parsing problems.
+	  This JWS is therefore shown with a detached payload.
+	</t>
+	<t>
+	  The complete JWS representation for this example
+	  using the flattened JWS JSON Serialization
+	  and a non-detached payload is:
+	</t>
+
+	<figure><artwork><![CDATA[
+  {
+   "protected":
+    "eyJhbGciOiJIUzI1NiIsImI2NCI6ZmFsc2UsImNyaXQiOlsiYjY0Il19",
+   "payload":
+    "$.02",
+   "signature":
+    "A5dxf2s96_n5FLueVuW1Z_vh161FwXZC4YLPff6dmDY"
+  }
+]]></artwork></figure>
+	<t>
+	  If using a detached payload with the JWS JSON Serialization,
+	  the <spanx style="verb">payload</spanx> element would be omitted.
+	</t>
+      </section>
+
+    </section>
+
+    <section title="Unencoded Payload Content Restrictions" anchor="UnencodedPayloads">
+      <t>
+	When the <spanx style="verb">b64</spanx> value is <spanx style="verb">false</spanx>,
+	different restrictions on the payload contents apply, depending upon the circumstances,
+	as described in this section.
+	The restrictions prevent the use of payload values that would cause errors
+	parsing the resulting JWSs.
+      </t>
+      <t>
+	Note that because the character sets that can be used for
+	unencoded non-detached payloads differ between the two serializations,
+	some JWSs using
+	a <spanx style="verb">b64</spanx> value of <spanx style="verb">false</spanx>
+	cannot be syntactically converted between the JWS JSON Serialization and
+	the JWS Compact Serialization.
+	See <xref target="Security"/> for security considerations
+	on using unencoded payloads.
+      </t>
+
+      <section title="Unencoded Detached Payload" anchor="Detached">
+	<t>
+	  Appendix F of <xref target="JWS"/> describes how to represent JWSs with
+	  detached content.
+
+	  A detached payload can contain any octet sequence representable by the application.
+	  The payload value will not cause problems parsing the JWS,
+	  since it is not represented as part of the JWS.
+	  If an application uses a content encoding when representing the payload,
+	  then it MUST specify whether the signature or MAC is performed over
+	  the content-encoded representation or over the unencoded content.
+	</t>
+      </section>
+
+      <section title="Unencoded JWS Compact Serialization Payload" anchor="Compact">
+	<t>
+	  When using the JWS Compact Serialization, unencoded non-detached payloads
+	  using period ('.') characters would cause parsing errors;
+	  such payloads MUST NOT be used with the JWS Compact Serialization.
+	  Similarly, if a JWS using the JWS Compact Serialization and a non&nbhy;detached payload
+	  is to be transmitted in a context that requires
+	  URL-safe characters, then the application MUST ensure that
+	  the payload contains only the URL-safe characters 'a'-'z', 'A'-'Z', '0'-'9',
+	  dash ('-'), underscore ('_'), and tilde ('~').
+	  The payload value is the ASCII representation of the characters in the payload string.
+	  The ASCII space character and all printable ASCII characters other than period ('.')
+	  (those characters in the ranges %x20-2D and %x2F-7E)
+	  MAY be included in a non-detached payload using the JWS Compact Serialization,
+	  provided that the application can transmit the resulting JWS without modification.
+	</t>
+	<t>
+	  No meaning or special semantics are attached to any characters in the payload.
+	  For instance, the percent ('%') character represents itself
+	  and is not used by JWS objects for percent-encoding <xref target="RFC3986"/>.
+	  Applications, of course, are free to utilize content-encoding rules of their choosing,
+	  provided that the encoded representations utilize only allowed payload characters.
+	</t>
+      </section>
+
+      <section title="Unencoded JWS JSON Serialization Payload" anchor="JSON">
+	<t>
+	  When using the JWS JSON Serialization, unencoded non-detached payloads
+	  must consist of
+	  the octets of the UTF-8 encoding of a sequence of Unicode code points
+	  that are representable in a JSON string.
+	  The payload value is determined after performing any JSON string escape processing,
+	  per Section 8.3 of <xref target="RFC7159">RFC 7159</xref>,
+	  and then UTF-8-encoding the resulting Unicode code points.
+	  This means, for instance, that these payloads represented as JSON strings
+	  are equivalent ("$.02", "\u0024.02").
+	  Unassigned Unicode code point values MUST NOT be used to represent the payload.
+	</t>
+      </section>
+
+    </section>
+
+    <section title='Using "crit" with "b64"' anchor="crit">
+      <t>
+	The <spanx style="verb">crit</spanx> Header Parameter MUST be included
+	with <spanx style="verb">b64</spanx> in its set of values
+	when using the <spanx style="verb">b64</spanx> Header Parameter
+	to cause implementations not implementing <spanx style="verb">b64</spanx>
+	to reject the JWS (instead of it being misinterpreted).
+      </t>
+    </section>
+
+    <section title="Intended Use by Applications" anchor="IntendedUse">
+      <t>
+	Application profiles should specify whether
+	<spanx style="verb">b64</spanx> with a <spanx style="verb">false</spanx> value
+	is to be used by the application in each application context or not,
+	with it then being consistently applied in each application context.
+	For instance, an application that uses detached payloads might specify
+	that <spanx style="verb">b64</spanx> with a <spanx style="verb">false</spanx> value
+	always be used.
+	It is NOT RECOMMENDED that this parameter value be dynamically varied
+	with different payloads in the same application context.
+      </t>
+      <t>
+	While it is legal to use
+	<spanx style="verb">b64</spanx> with a <spanx style="verb">true</spanx> value,
+	it is RECOMMENDED that <spanx style="verb">b64</spanx> simply be omitted in this case,
+	since it would be selecting the behavior already specified in <xref target="JWS" />.
+      </t>
+      <t>
+	For interoperability reasons,
+	JSON Web Tokens <xref target="JWT" /> MUST NOT use
+	<spanx style="verb">b64</spanx> with a <spanx style="verb">false</spanx> value.
+      </t>
+    </section>
+
+    <section title="Security Considerations" anchor="Security">
+
+      <t>
+	<xref target="JWS"/> base64url-encodes the JWS Payload to restrict
+	the set of characters used to represent it so that the representation
+	does not contain characters used for delimiters in JWS representations.
+	Those delimiters are the period ('.') character for the JWS Compact Serialization
+	and the double-quote ('"') character for the JWS JSON Serialization.
+	When the <spanx style="verb">b64</spanx> (base64url-encode payload)
+	value is <spanx style="verb">false</spanx>, these properties are lost.
+	It then becomes the responsibility of the application to ensure that
+	payloads only contain characters that will not cause parsing problems
+	for the serialization used, as described in <xref target="UnencodedPayloads"/>.
+	The application also incurs the responsibility to ensure
+	that the payload will not be modified during transmission.
+      </t>
+      <t>
+	Note that if a JWS were to be created with a
+	<spanx style="verb">b64</spanx> value of <spanx style="verb">false</spanx>
+	without including the <spanx style="verb">crit</spanx> Header Parameter
+	with <spanx style="verb">b64</spanx> in its set of values
+	and it were to be received by an implementation not supporting the <spanx style="verb">b64</spanx>
+	Header Parameter, then the signature or MAC would still verify but the recipient
+	would believe that the intended JWS Payload value is the base64url decoding of
+	the payload value received, rather than the payload value received itself.
+	For example, if the payload value received were <spanx style="verb">NDA1</spanx>,
+	an implementation not supporting this extension would interpret the intended payload
+	as being the base64url decoding of this value, which is <spanx style="verb">405</spanx>.
+	Requiring the use of the <spanx style="verb">crit</spanx> Header Parameter
+	with <spanx style="verb">b64</spanx> in the set of values
+	prevents this misinterpretation.
+      </t>
+
+    </section>
+
+    <section title="IANA Considerations" anchor="IANA">
+
+      <section title="JSON Web Signature and Encryption Header Parameter Registration" anchor="HdrReg">
+	<t>
+	  This specification registers the <spanx style="verb">b64</spanx>
+	  Header Parameter defined in <xref target="Header"/> in
+	  the IANA "JSON Web Signature and Encryption Header Parameters" registry
+	  <xref target="IANA.JOSE"/>
+	  established by <xref target="JWS"/>.
+	</t>
+
+        <section title="Registry Contents" anchor="HdrContents">
+          <t> <?rfc subcompact="yes"?>
+            <list style='symbols'>
+              <t>
+                Header Parameter Name: <spanx style="verb">b64</spanx>
+              </t>
+	      <t>
+		Header Parameter Description: Base64url-Encode Payload
+	      </t>
+	      <t>
+		Header Parameter Usage Location(s): JWS
+	      </t>
+              <t>
+                Change Controller: IESG
+              </t>
+              <t>
+                Specification Document(s): <xref target="Header"/> of RFC 7797
+              </t>
+            </list>
+	  </t>
+	</section>
+	<?rfc subcompact="no"?>
+      </section>
+
+    </section>
+
+   </middle>
+
+  <back>
+    <references title="Normative References">
+      <?rfc include='http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml' ?>
+      <?rfc include='http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.3629.xml' ?>
+      <?rfc include='http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.7159.xml' ?>
+
+      <reference anchor="RFC20" target="http://www.rfc-editor.org/info/rfc20">
+	<front>
+	  <title>ASCII format for Network Interchange</title>
+	  <author fullname="Vint Cerf" surname="Cerf" initials="V.">
+	    <organization>University California Los Angeles (UCLA)</organization>
+	  </author>
+	  <date month="October" year="1969"/>
+	</front>
+	<seriesInfo name="STD" value="80"/>
+	<seriesInfo name="RFC" value="20"/>
+      </reference>
+
+      <reference anchor="UNICODE" target="http://www.unicode.org/versions/latest/">
+	<front>
+	  <title abbrev="Unicode">The Unicode Standard</title>
+	  <author>
+	    <organization>The Unicode Consortium</organization>
+	    <address />
+	  </author>
+	  <date />
+	</front>
+	<!--
+	<annotation>
+	  Note that this reference is to the latest version of Unicode,
+	  rather than to a specific release.  It is not expected that future changes in
+	  the UNICODE specification will impact the syntax of JSON or the UTF-8 encoding.
+	</annotation>
+	-->
+      </reference>
+
+      <reference anchor="JWS" target="http://www.rfc-editor.org/info/rfc7515">
+        <front>
+          <title>JSON Web Signature (JWS)</title>
+	  <author fullname="Michael B. Jones" initials="M.B." surname="Jones">
+	    <organization>Microsoft</organization>
+	    <address>
+	      <email>mbj@microsoft.com</email>
+	      <uri>http://self-issued.info/</uri>
+	    </address>
+	  </author>
+	  <author fullname="John Bradley" initials="J." surname="Bradley">
+	    <organization abbrev="Ping Identity">Ping Identity</organization>
+	    <address>
+	      <email>ve7jtb@ve7jtb.com</email>
+	    </address>
+	  </author>
+	  <author fullname="Nat Sakimura" initials="N." surname="Sakimura">
+	    <organization abbrev="NRI">Nomura Research Institute</organization>
+	    <address>
+	      <email>n-sakimura@nri.co.jp</email>
+	    </address>
+	  </author>
+	  <date month="May" year="2015"/>
+        </front>
+        <seriesInfo name="RFC" value="7515" />
+	<seriesInfo name="DOI" value="10.17487/RFC7515"/>
+      </reference>
+
+      <reference anchor="JWA" target="http://www.rfc-editor.org/info/rfc7518">
+        <front>
+	  <title>JSON Web Algorithms (JWA)</title>
+	  <author fullname="Michael B. Jones" initials="M.B." surname="Jones">
+	    <organization>Microsoft</organization>
+	    <address>
+	      <email>mbj@microsoft.com</email>
+	      <uri>http://self-issued.info/</uri>
+	    </address>
+	  </author>
+	  <date month="May" year="2015"/>
+        </front>
+        <seriesInfo name="RFC" value="7518"/>
+	<seriesInfo name="DOI" value="10.17487/RFC7518"/>
+      </reference>
+
+      <reference anchor="JWT" target='http://www.rfc-editor.org/info/rfc7519'>
+        <front>
+          <title>JSON Web Token (JWT)</title>
+
+	  <author fullname="Michael B. Jones" initials="M.B." surname="Jones">
+	    <organization>Microsoft</organization>
+	    <address>
+	      <email>mbj@microsoft.com</email>
+	      <uri>http://self-issued.info/</uri>
+	    </address>
+	  </author>
+
+	  <author fullname="John Bradley" initials="J." surname="Bradley">
+	    <organization abbrev="Ping Identity">Ping Identity</organization>
+	    <address>
+	      <email>ve7jtb@ve7jtb.com</email>
+	      <uri>http://www.thread-safe.com/</uri>
+	    </address>
+	  </author>
+
+	  <author fullname="Nat Sakimura" initials="N." surname="Sakimura">
+	    <organization abbrev="NRI">Nomura Research Institute</organization>
+	    <address>
+	      <email>n-sakimura@nri.co.jp</email>
+	      <uri>http://nat.sakimura.org/</uri>
+	    </address>
+	  </author>
+
+	  <date month="May" year="2015"/>
+        </front>
+        <seriesInfo name="RFC" value="7519" />
+	<seriesInfo name="DOI" value="10.17487/RFC7519"/>
+      </reference>
+
+      <reference anchor="IANA.JOSE" target="http://www.iana.org/assignments/jose">
+        <front>
+          <title>JSON Object Signing and Encryption (JOSE)</title>
+          <author>
+            <organization>IANA</organization>
+          </author>
+	  <date/>
+        </front>
+      </reference>
+
+    </references>
+
+    <references title="Informative References">
+
+      <?rfc include='http://xml2rfc.tools.ietf.org/public/rfc/bibxml/reference.RFC.3986.xml' ?>
+
+      <reference anchor="JWK" target="http://www.rfc-editor.org/info/rfc7517">
+        <front>
+	  <title>JSON Web Key (JWK)</title>
+
+	  <author fullname="Michael B. Jones" initials="M.B." surname="Jones">
+	    <organization>Microsoft</organization>
+	    <address>
+	      <email>mbj@microsoft.com</email>
+	      <uri>http://self-issued.info/</uri>
+	    </address>
+	  </author>
+
+	  <date month="May" year="2015"/>
+        </front>
+        <seriesInfo name="RFC" value="7517"/>
+	<seriesInfo name="DOI" value="10.17487/RFC7517"/>
+      </reference>
+
+    </references>
+
+    <section title='Acknowledgements' anchor='Acknowledgements' numbered="no">
+      <t>
+	Anders Rundgren, Richard Barnes, Phillip Hallam-Baker, Jim Schaad,
+	Matt Miller, Martin Thomson,
+	and others have all made the case
+	for being able to use a representation
+	of the payload that is not base64url encoded
+	in contexts in which it safe to do so.
+      </t>
+      <t>
+	Thanks to
+	Sergey Beryozkin,
+	Stephen Farrell,
+	Benjamin Kaduk,
+	James Manger,
+	Kathleen Moriarty,
+	Axel Nennker,
+	Anders Rundgren,
+	Nat Sakimura,
+	Jim Schaad,
+	Robert Sparks,
+	and
+	Matias Woloski
+	for their reviews of the specification,
+	and thanks to
+	Vladimir Dzhuvinov
+	for verifying the examples.
+      </t>
+    </section>
+  </back>
+</rfc>

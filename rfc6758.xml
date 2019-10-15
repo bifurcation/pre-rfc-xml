@@ -1,0 +1,566 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+
+<?rfc toc="yes"?>
+<?rfc rfcedstyle="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+
+<rfc ipr="trust200902" category="info" number="6758" submissionType="IETF" consensus="yes">
+
+  <front>
+    <title abbrev="Tunneling of Message Transfer Priorities">
+      Tunneling of SMTP Message Transfer Priorities
+    </title>
+    <author initials="A." surname="Melnikov" fullname="Alexey Melnikov">
+      <organization>Isode Ltd</organization>
+      <address>
+        <postal>
+          <street>5 Castle Business Village</street>
+          <street>36 Station Road</street>
+          <city>Hampton</city>
+          <region>Middlesex</region>
+          <code>TW12 2BX</code>
+          <country>UK</country>
+        </postal>
+        <email>Alexey.Melnikov@isode.com</email>
+      </address>
+    </author>
+      
+    <author initials="K." surname="Carlberg" fullname="Ken Carlberg">
+      <organization>G11</organization>
+      <address>
+        <postal>
+          <street>1601 Clarendon Blvd, #203</street>
+          <city>Arlington</city>
+          <region>VA</region>
+          <code>22209</code>
+          <country>USA</country>
+        </postal>
+        <email>carlberg@g11.org.uk</email>
+      </address>
+    </author>
+
+    <date month="October" year="2012"/>
+    
+    <keyword>SMTP</keyword>
+    <keyword>Priority</keyword>
+    <keyword>MMHS</keyword>
+
+    <abstract>
+      <t>
+   This memo defines a mechanism for tunneling of SMTP (Simple Mail Transfer
+   Protocol) Message Transfer Priority values through MTAs (Message Transfer
+   Agents) that don't support the MT-PRIORITY SMTP extension.
+      </t>
+    </abstract>
+    
+  </front>
+  <middle>
+    <section title="Introduction">
+
+<t>
+  The SMTP Message Transfer Priorities extension <xref target="RFC6710"/>
+  specifies a mechanism to allow messages to be given a label to
+  indicate preferential handling, to enable mail handling nodes to take
+  this into account for onward processing. However, as with all SMTP
+  extensions, all SMTP Message Transfer Agents (MTAs) between the
+  source and the destination must support the extension in order for it
+  to be successfully used. This document describes an application-layer
+  tunneling of message priority, to convey the priority of the messages
+  through MTAs that do not support the Message Transfer Priorities extension.
+  The tunneling is done by adding a new message header field to the Internet
+  Message Format specified in <xref target="RFC5322"/>.
+</t>
+
+<t>
+  A number of other header fields are already in use, mostly in
+   Message User Agents (MUAs), to convey meanings related to importance
+   or priority of messages.
+   Examples of such header fields are Importance <xref target="RFC2156"/>,
+   Priority <xref target="RFC2156"/>, and X-Priority (undocumented).
+   Considering sometimes subtle and sometimes significant differences in the meaning of these header fields
+   and widely different syntax, this document defines a new header field.
+</t>
+
+<t>This document is motivated by 2 main deployment scenarios: (1) an MUA
+   talking to a non-MT-PRIORITY-aware Message Submission Agent (MSA), and
+   (2) the use of an unextended MUA to talk to an MT-PRIORITY-aware MSA.
+   These 2 use cases are discussed in more detail below.</t>
+
+<!--////Add ASCII art?-->
+
+<t>Use case (1) is about an MT-PRIORITY-capable MUA talking to a
+   non&nbhy;MT&nbhy;PRIORITY-capable MSA <xref target="RFC6409"/>,
+   which in turn is talking to an MT-PRIORITY-capable
+   MTA <xref target="RFC5321"/>. Both the MSA and MTA are within the same
+   ADministrative Management Domain (ADMD) and are on a fast network;
+   however, some recipients are accessible via the MTA that is talking over
+   a slow link to the next MTA. Communications over that slow link can benefit
+   from the use of the MT-PRIORITY SMTP extension.</t>
+
+<t>In use case (2), a widely deployed client (such as a desktop client) is
+   talking to an MT-PRIORITY-capable MSA. The client might be extendable via a
+   plug-in API provided by the client developers; however, existing APIs
+   frequently allow easy manipulation of email header fields, while not
+   allowing for addition of SMTP protocol features. In such a case, installing
+   a plug-in on the client that can set the MT-Priority header field could
+   provide easier and earlier deployment of the MT-PRIORITY SMTP extension in
+   an organization without requiring changes to desktop clients.</t>
+
+<t>
+We note that the above use cases are not exhaustive and that other use cases --
+variations of the above --
+may exist.  The purpose of this document is not to consider every scenario, but
+rather examples
+that reinforce the need to consider a tunneling mechanism that can deal with
+SMTP-capable devices
+that do not support <xref target="RFC6710"/>.
+</t>
+
+    </section>
+    
+    <section title="Conventions Used in This Document">
+      
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+            "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in
+            this document are to be interpreted as described in
+            <xref target="RFC2119"/> when they appear in ALL CAPS.
+      These words also appear in this document in lower case as plain
+      English words, absent their normative meanings.</t>
+      
+      <t>The formal syntax uses the <xref target="RFC5234">Augmented
+         Backus-Naur Form (ABNF)</xref> notation, including the core rules
+         defined in Appendix B of <xref target="RFC5234">RFC 5234</xref>.
+      </t>
+
+<t>
+In examples, "C:" and "S:" indicate lines sent by the client and
+server, respectively.  Line breaks that do not start with a new "C:" or
+"S:" exist for editorial reasons and are not a part of the protocol.
+</t>
+
+<t>
+  This document uses the term "priority" specifically in relation to
+  the internal treatment of a message by the server. Messages with
+  higher priorities may be given expedited handling, and those with
+  lower priorities may be handled only as resources become available.
+</t>
+
+    </section>
+
+
+    <section title="Handling of Messages Received via SMTP">
+      
+        <t>
+  The subsections of this section update the corresponding subsections
+  of Section 4 of <xref target="RFC6710"/>.
+        </t>
+
+        
+        <section title="Handling of the MT-PRIORITY Parameter by the Receiving SMTP Server" anchor="message-pri">
+
+            <t>
+        This specification inserts the following between steps 4 and 5
+        in Section 4.1 of <xref target="RFC6710"/>:
+
+        <list style="format 4%c.">
+
+                <t>If the sending SMTP client hasn't specified the MT-PRIORITY parameter to the MAIL FROM command,
+                but the message has a single syntactically valid MT-Priority header field (see <xref target="mt-priority"/>),
+                then the value of this header field is the message priority.</t>
+
+          <t>
+    In the absence of both the MT-PRIORITY MAIL FROM parameter and the MT-Priority header field,
+    other message header fields, such as Priority <xref target="RFC2156"/> and X-Priority,
+    MAY be used for determining the priority under this "Priority Message Handling" SMTP extension.
+    Note, however, that the Importance <xref target="RFC2156"/> header field MUST NOT be used for determining
+    the priority under this "Priority Message Handling" SMTP extension, as it has different semantics:
+    the Importance header field is aimed at the user recipient and not at the nodes responsible for transferring the message.
+          </t>
+
+      </list>
+
+            </t>
+
+        </section>
+
+        <section title="Relay of Messages to Other Conforming SMTP/LMTP Servers" anchor="relay-conform">
+            
+            <t>
+      This specification inserts the following between steps 1 and 2
+      in Section 4.2 of <xref target="RFC6710"/>.
+
+<list style="format 1%c.">
+    
+                <t>
+    Note that rule 1 also applies to messages that didn't have any priority
+    explicitly specified using the MT-PRIORITY MAIL FROM parameter or the MT-Priority header field.
+    </t>
+
+</list>
+
+            </t>
+
+        </section>
+
+        <section title="Relay of Messages to Non-Conforming SMTP/LMTP Servers" anchor="relay-non-conform">
+
+           <t>
+     This specification appends the following after step 1
+     in Section 4.3 of <xref target="RFC6710"/>:
+
+         <list style="hanging" hangIndent="4">
+
+    <t hangText="2.">
+    The relaying MTA MUST first remove any and all existing MT&nbhy;Priority
+    header fields from the message. (Please see <xref target="seccons"/>
+    for additional considerations related to removal of the MT-Priority
+    header field.)
+  </t>
+  
+    <t hangText="3.">
+    If the incoming message had an MT-PRIORITY parameter specified in the MAIL FROM
+    command *or* there was an MT-Priority header field
+    removed in step 2 above, then the relaying MTA MUST add its own
+    MT-Priority header field with the value determined by the
+    procedure in <xref target="message-pri"/>.
+    The syntax of the MT-Priority header field is specified in <xref target="mt-priority"/>.
+                </t>
+</list>
+</t>
+
+        </section>
+
+        <section title="Mailing Lists and Aliases">
+
+    <t>
+    This specification makes no changes to Section 4.4 of <xref target="RFC6710"/>.
+    </t>
+
+        </section>
+        
+        <section title="Gatewaying a Message into a Foreign Environment">
+            
+          <t>
+   This specification inserts the following between steps 1 and 2
+   in Section 4.5 of <xref target="RFC6710"/>.
+
+<list style="format 1%c.">
+
+        <t>
+  Note that if the destination environment doesn't support the transport
+  of an arbitrary header field, the requirement in <xref target="relay-non-conform"/>
+  to add an MT-Priority header field doesn't apply.
+        </t>
+    
+</list>
+
+          </t>
+        
+        </section>
+
+        <section title="Interaction with the DSN SMTP Extension">
+
+           <t>
+     This specification makes no changes to Section 4.6 of <xref target="RFC6710"/>.
+           </t>
+
+        </section>
+
+    </section>
+
+    <section title="Header Field: MT-Priority" anchor="mt-priority">
+      <figure><artwork>
+Applicable protocol: mail [RFC5322]
+Status: standard
+Author/change controller: Alexey Melnikov / IESG (iesg@ietf.org)
+   on behalf of the IETF
+Specification document(s): RFC 6758
+      </artwork></figure>
+
+      <t>
+        The MT-Priority header field conveys message transfer priority when relaying
+        a message through MTAs that don't support the MT-PRIORITY SMTP extension.
+      </t>
+
+      <t>
+      The ABNF for this header field is defined as follows:
+      </t>
+
+      <figure>
+        <artwork type="abnf"><![CDATA[
+   priority-header-field = "MT-Priority:"
+                           [CFWS] priority-value [CFWS] CRLF
+]]>  </artwork></figure>
+
+      <t>where "priority-value" is defined in <xref target="RFC6710"/>.</t>
+      
+      <figure><artwork>
+Example:
+MT-Priority: -3
+
+Example:
+MT-Priority: 4 (ultra)
+      </artwork></figure>
+      
+    </section>
+
+    <section title="Example">
+
+     <t>
+     Note that the following example of an SMTP transaction with 2
+     recipients is also making use of the STARTTLS <xref target="RFC3207"/> and
+     Delivery Status Notification (DSN) <xref target="RFC3461"/> SMTP
+     extensions, even though there is no requirement
+     that these other extensions are to be supported when the MT-PRIORITY
+     SMTP extension is implemented.
+     </t>
+        
+<figure><artwork><![CDATA[
+     S: 220 example.net SMTP server here
+     C: EHLO example.com
+     S: 250-example.net
+     S: 250-DSN
+     S: 250-STARTTLS
+     S: 250 MT-PRIORITY STANAG4406
+     C: STARTTLS
+     [...TLS negotiation...]
+     C: MAIL FROM:<eljefe@example.com> ENVID=QQ314159
+         MT-PRIORITY=3
+     S: 250 <eljefe@example.com> sender ok
+     C: RCPT TO:<topbanana@example.net>
+     S: 250 <topbanana@example.net> recipient ok
+     C: RCPT TO:<Dana@Ivory.example.net> NOTIFY=SUCCESS,FAILURE
+         ORCPT=rfc822;Dana@Ivory.example.net
+     S: 250 <Dana@Ivory.example.net> recipient ok
+     C: DATA
+     S: 354 okay, send message
+     C:  (message goes here)
+     C: .
+     S: 250 message accepted
+     C: QUIT
+     S: 221 goodbye
+]]></artwork></figure>
+   
+           <t>
+           Here, the receiving SMTP server supports the "STANAG4406" Priority Assignment Policy
+     <xref target="RFC6710"/> with 6 priority levels, so it will use the priority value
+     4 internally (the next supported priority higher or equal to 3)
+     and will communicate the priority value 3 when relaying it to the next hop (if necessary).
+     When relaying the message to the next hop that doesn't support the MT-PRIORITY SMTP
+     extension, the transaction might look like this:
+           </t>
+
+      <figure>
+        <artwork>
+          <![CDATA[
+     S: 220 example.org SMTP server here
+     C: EHLO example.net
+     S: 250-example.org
+     S: 250-DSN
+     S: 250-STARTTLS
+     S: 250 SIZE
+     C: STARTTLS
+     [...TLS negotiation...]
+     C: MAIL FROM:<eljefe@example.com> ENVID=QQ314159
+     S: 250 <eljefe@example.com> sender ok
+     C: RCPT TO:<topbanana@example.net>
+     S: 250 <topbanana@example.net> recipient ok
+     C: RCPT TO:<Dana@Ivory.example.net> NOTIFY=SUCCESS,FAILURE
+         ORCPT=rfc822;Dana@Ivory.example.net
+     S: 250 <Dana@Ivory.example.net> recipient ok
+     C: DATA
+     S: 354 okay, send message
+     C: MT-Priority: 3
+     C:  (the rest of the message goes here)
+     C: .
+     S: 250 message accepted
+     C: QUIT
+     S: 221 goodbye
+]]>  </artwork> </figure>
+
+    </section>
+
+    <section title="IANA Considerations" anchor="iana-regs">
+
+      <t>IANA has added the following list of header field names to
+      the "Permanent Message Header Field Names" registry (in
+      <eref target="http://www.iana.org/assignments/message-headers/perm-headers.html"/>):</t>
+
+      <figure><artwork>
+Header field: MT-Priority
+Applicable protocol: mail
+Status: standard
+Author/change controller: Alexey Melnikov / IESG (iesg@ietf.org)
+   on behalf of the IETF
+Specification document(s): RFC 6758
+      </artwork></figure>
+        
+    </section>
+
+    <section title="Security Considerations" anchor="seccons">
+        
+        <t>This document allows a message priority to be tunneled through MTAs
+        that don't support the MT-PRIORITY SMTP extension by specifying how it can be
+        represented in the message itself (using the MT-Priority header field).
+        Thus, it is important to ensure that an MTA receiving a message containing
+        the MT-Priority header field can trust that it was set by an authorized agent.
+
+  The use of technologies such as DomainKeys Identified Mail (DKIM)
+  <xref target="RFC6376"/> or S/MIME
+  to sign the MT&nbhy;Priority header field value can enable a recipient to verify
+  whether the specified priority value was generated by a trusted agent.
+  In particular, DKIM signing allows a recipient to verify that the
+  specified priority value was present when the message was
+  signed, and to verify who signed the message. Note, however, that the DKIM
+  signer might not be the same agent that generated the MT-Priority header
+  field.
+        </t>
+
+  <t>
+  MSAs ought to only accept message transfer
+  priorities (whether by using the MT-PRIORITY parameter to the MAIL FROM command or
+        the MT&nbhy;Priority header field in the message itself)
+  from users (or only certain groups of such users) who are authenticated and authorized
+  in some way that's acceptable to the MSA.  As part of this policy, they can also
+  restrict maximum priority values that different groups of users can
+  request and can override the priority values specified by MUAs.
+  When relaying to non-MT-PRIORITY-capable SMTP/LMTP (Local Mail
+Transfer Protocol) servers, such MSAs are required to replace any MT&nbhy;Priority
+header field values that don't satisfy this policy.
+  See <xref target="dkim"/> for more details on what the consequences of such
+changes might be.
+  </t>
+
+        <t>
+  Similarly, MTAs ought to only accept message transfer priorities
+  (whether by using the MT-PRIORITY parameter to the MAIL FROM command or
+        the MT-Priority header field in the message itself) from senders
+  (or only certain groups of such senders) who are authenticated and authorized
+  in some way that's acceptable to the MTA.  As part of this policy, they can also
+  restrict maximum priority values that different groups of senders can
+  request and can override the priority values specified by them.
+  When relaying to non-MT-PRIORITY-capable SMTP/LMTP servers, such MTAs are
+  required to replace any MT-Priority header field values that don't satisfy
+  this policy.
+  See <xref target="dkim"/> for more details on what the consequences of such
+changes might be.
+        </t>
+      
+        <t>
+        In the absence of the policy enforcement mentioned above, an SMTP server (whether an MSA or an MTA)
+  implementing the MT-PRIORITY SMTP extension might be susceptible to a
+  denial-of-service attack. For example,
+        malicious clients (MUAs/MSAs/MTAs) can try to abuse this feature by always
+  requesting priority 9.
+        </t>
+
+        <t>
+        To protect the MT-Priority header field from modification or insertion,
+        MUAs, MSAs, and MTAs inserting it into messages SHOULD use a message
+header protection
+        mechanism such as DKIM <xref target="RFC6376"/>; however,
+see <xref target="dkim"/> for more information.
+        </t>
+
+      <section title="Modification of the MT-Priority Header Field and DKIM" anchor="dkim">
+
+<t>An MSA/MTA that receives a message with an MT-Priority header field
+protected by DKIM and that wants to change the message priority due to its
+policy is forced to choose between
+
+     <list style="letters">
+
+       <t>breaking DKIM signatures (by replacing the MT-Priority header value),</t>
+       
+       <t>leaving the message as is (and using the MT-PRIORITY MAIL FROM
+       parameter), relying on the fact that all downstream MTAs are compliant
+       with this specification, and</t>
+       
+       <t>rejecting the message.</t>
+       
+      </list>
+  
+None of these choices are perfect.  They work in a particular situation, so these choices
+should be carefully considered during implementation and deployment.
+</t>
+
+<t>
+If the MSA/MTA decides to alter the message, it SHOULD re-sign the message with DKIM.
+</t>
+
+      </section>
+
+    </section>
+
+  </middle>
+  <back>
+
+  <?rfc rfcedstyle="no"?>
+    <references title="Normative References">
+      
+      <?rfc include="reference.RFC.2119"?> <!-- Keywords -->
+      <?rfc include="reference.RFC.3461"?> <!-- SMTP DSN -->
+      <?rfc include="reference.RFC.5234"?> <!-- ABNF -->
+      <?rfc include="reference.RFC.5321"?> <!-- SMTP -->
+      <?rfc include="reference.RFC.5322"?> <!-- Email -->
+      <?rfc include="reference.RFC.6409"?> <!-- Submission Service -->
+      <?rfc include="reference.RFC.6710"?> <!-- SMTP Priorities -->
+
+    </references>
+
+    <references title="Informative References">
+
+      <?rfc include="reference.RFC.2156"?> <!-- MIXER -->
+      <?rfc include="reference.RFC.3207"?> <!-- SMTP STARTTLS -->
+      <?rfc include="reference.RFC.6376"?> <!-- DKIM -->
+
+<!-- draft-schmeing-smtp-priorities (Expired) -->
+<reference anchor='SMTP-PRI-OLD'>
+<front>
+<title>SMTP Service Extension for Priority Message Handling</title>
+<author initials='M' surname='Schmeing' fullname='Michael Schmeing'>
+    <organization />
+</author>
+<author initials='J' surname='Brendecke' fullname='J. Brendecke'>
+    <organization />
+</author>
+<author initials='K' surname='Carlberg' fullname='K. Carlberg'>
+    <organization />
+</author>
+<date month='August' year='2006' />
+</front>
+<seriesInfo name='Work in' value='Progress' />
+</reference>
+
+    </references>
+  <?rfc rfcedstyle="yes"?>
+
+    <section title="Acknowledgements">
+        
+      <t>
+      This document copies lots of text from "SMTP Service Extension
+   for Priority Message Handling" <xref target="SMTP-PRI-OLD"/>.
+   Therefore, the authors of this document would like to acknowledge
+   contributions made by the authors of that document: Michael Schmeing
+   and Jan-Wilhelm Brendecke.
+      </t>
+
+      <t>
+      Many thanks for input provided by Steve Kille, David Wilson,
+      John Klensin, Dave Crocker, Graeme Lunt, Alessandro Vesely,
+      Barry Leiba, Bill McQuillan, Murray Kucherawy, SM,
+      Glenn Parsons, Pete Resnick, Chris Newman, Ned Freed, Claudio Allocchio,
+      Martin Thomson, and Joseph Yee.
+      </t>
+
+      <t>
+      Special thanks to Barry Leiba for agreeing to shepherd this document.
+      </t>
+ 
+    </section>
+  </back>
+</rfc>

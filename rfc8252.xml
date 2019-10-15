@@ -1,0 +1,1133 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="2"?>
+<?rfc tocindent="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="no"?>
+<?rfc comments="yes"?>
+<?rfc inline="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<rfc number="8252" seriesNo="212" category="bcp" ipr="trust200902" submissionType="IETF"
+     consensus="yes" updates="6749">
+
+  <front>
+
+    <title abbrev="OAuth 2.0 for Native Apps">OAuth 2.0 for Native Apps</title>
+
+    <author fullname="William Denniss" initials="W." surname="Denniss">
+      <organization>Google</organization>
+      <address>
+        <postal>
+          <street>1600 Amphitheatre Pkwy</street>
+          <city>Mountain View</city>
+          <region>CA</region>
+          <code>94043</code>
+          <country>United States of America</country>
+        </postal>
+        <email>rfc8252@wdenniss.com</email>
+        <uri>http://wdenniss.com/appauth</uri>
+      </address>
+    </author>
+
+    <author fullname="John Bradley" initials="J." surname="Bradley">
+      <organization>Ping Identity</organization>
+      <address>
+        <phone>+1 202-630-5272</phone>
+        <email>rfc8252@ve7jtb.com</email>
+        <uri>http://www.thread-safe.com/p/appauth.html</uri>
+      </address>
+    </author>
+
+    <date month="October" year="2017"/>
+    <area>Security</area>
+    <workgroup>OAuth Working Group</workgroup>
+
+    <keyword>openid connect</keyword>
+    <keyword>appauth</keyword>
+    <keyword>napps</keyword>
+    <keyword>application</keyword>
+    <keyword>mobile</keyword>
+    <keyword>desktop</keyword>
+    <keyword>pkce</keyword>
+    <keyword>authorization</keyword>
+
+    <abstract>
+      <t>
+        OAuth 2.0 authorization requests from native apps should only
+        be made through external user-agents, primarily the user's browser.
+        This specification details the security and usability reasons why
+        this is the case and how native apps and authorization servers
+        can implement this best practice.
+      </t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section title="Introduction" anchor="intro">
+      <t>
+        Section 9 of the OAuth 2.0 authorization framework <xref target="RFC6749"/>
+        documents two approaches for native apps to interact with
+        the authorization endpoint: an embedded user-agent and an external
+        user-agent.
+      </t>
+      <t>
+        This best current practice requires that only external user-agents
+        like the browser are used for OAuth by native apps. It documents how
+        native apps can implement authorization flows using the browser
+        as the preferred external user-agent as well as the requirements for
+        authorization servers to support such usage.
+      </t>
+      <t>
+        This practice is also known as the "AppAuth pattern", in reference to
+        open-source libraries <xref target="AppAuth" /> that implement it.
+      </t>
+    </section>
+    <section title="Notational Conventions" anchor="NotationalConventions">
+      <t>
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+   NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+   "MAY", and "OPTIONAL" in this document are to be interpreted as
+   described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> when, and only when, they
+   appear in all capitals, as shown here.
+  </t></section>
+
+    <section title="Terminology" anchor="terminology">
+      <t>
+        In addition to the terms defined in referenced specifications, this
+        document uses the following terms:
+      </t>
+      <t>
+        <list style="hanging">
+          <t hangText='"native app"'>
+            An app or application that is installed by the user to their device,
+            as distinct from a web app that runs in the browser context only.
+            Apps implemented using web-based technology but distributed as a native
+            app, so-called "hybrid apps", are considered equivalent to native apps
+            for the purpose of this specification.
+          </t>
+          <t hangText='"app"'>
+            A "native app" unless further specified.
+          </t>
+          <t hangText='"app store"'>
+            An e-commerce store where users can download and purchase apps.
+          </t>
+          <t hangText='"OAuth"'>
+            Authorization protocol specified by the
+            <xref target="RFC6749">OAuth 2.0 Authorization Framework</xref>.
+          </t>
+          <t hangText='"external user-agent"'>
+            A user-agent capable of handling the authorization request that is
+            a separate entity or security domain to the native app making the request, such that
+            the app cannot access the cookie storage, nor inspect or modify page content.
+          </t>
+          <t hangText='"embedded user-agent"'>
+            A user-agent hosted by the native app making the authorization request
+            that forms a part of the app or shares the same security domain such that
+            the app can access the cookie storage and/or inspect or modify page content.
+          </t>
+          <t hangText='"browser"'>
+            The default application launched by the operating system to handle
+            "http" and "https" scheme URI content.
+          </t>
+          <t hangText='"in-app browser tab"'>
+            A programmatic instantiation of the browser that is
+            displayed inside a host app but that retains the full security
+            properties and authentication state of the browser. It has
+            different platform-specific product names, several of which
+            are detailed in <xref target="os" />.
+          </t>
+
+          <t hangText='"web-view"'>
+            A web browser UI (user interface) component that is
+            embedded in apps to render web pages under the control of the app.
+          </t>
+          <t hangText='"inter-app communication"'>
+            Communication between two apps on a device.
+          </t>
+          <t hangText='"claimed "https" scheme URI"'>
+
+            Some platforms allow apps to claim an "https" scheme URI after proving
+            ownership of the domain name. URIs claimed in such a way are then
+            opened in the app instead of the browser.
+          </t>
+          <t hangText='"private-use URI scheme"'>
+            As used by this document, a URI scheme defined by the app (following the requirements of
+            Section 3.8 of [RFC7595]) and registered with the operating system.
+            URI requests to such schemes launch the
+            app that registered it to handle the request.
+          </t>
+          <t hangText='"reverse domain name notation"'>
+            A naming convention based on the domain name system, but one where
+            the domain components are reversed, for example,
+            <spanx style="verb">app.example.com</spanx> becomes
+            <spanx style="verb">com.example.app</spanx>.
+          </t>
+        </list>
+      </t>
+    </section>
+
+    <section title="Overview" anchor="overview">
+      <t>
+        For authorizing users in native apps, the best current practice is
+        to perform the OAuth authorization request in an external user-agent
+        (typically the browser) rather than an embedded user-agent (such as 
+        one implemented with web-views).
+      </t>
+      <t>
+        Previously, it was common for native apps to use embedded user-agents
+        (commonly implemented with web-views) for OAuth
+        authorization requests.  That approach has many drawbacks,
+        including the host app being able to copy user credentials and cookies
+        as well as the user needing to authenticate from scratch in each app. See
+        <xref target="security-webviews" /> for a deeper analysis of the drawbacks of using
+        embedded user-agents for OAuth.
+      </t>
+      <t>
+        Native app authorization requests that use the browser are
+        more secure and can take advantage of the user's authentication state.
+        Being able to use the existing authentication session in the browser enables
+        single sign-on, as users don't need to authenticate to the authorization
+        server each time they use a new app (unless required by the authorization
+        server policy).
+      </t>
+      <t>
+        Supporting authorization flows between a native app and the browser
+        is possible without changing the OAuth protocol itself, as the OAuth
+        authorization request and response are already defined in terms of
+        URIs. This encompasses URIs that can be used for inter-app communication.
+        Some OAuth server implementations that
+        assume all clients are confidential web clients will need to add an
+        understanding of public native app clients and the types of redirect URIs
+        they use to support this best practice.
+      </t>
+
+      <section title="Authorization Flow for Native Apps Using the Browser" anchor="intro-overview">
+        <t>
+              <figure anchor="figure_mobile_apps_overview"
+         title="Native App Authorization via an External User-Agent">
+               <artwork><![CDATA[
+ +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+ |          User Device          |
+ |                               |
+ | +--------------------------+  | (5) Authorization  +---------------+
+ | |                          |  |     Code           |               |
+ | |        Client App        |---------------------->|     Token     |
+ | |                          |<----------------------|    Endpoint   |
+ | +--------------------------+  | (6) Access Token,  |               |
+ |   |             ^             |     Refresh Token  +---------------+
+ |   |             |             |
+ |   |             |             |
+ |   | (1)         | (4)         |
+ |   | Authorizat- | Authoriza-  |
+ |   | ion Request | tion Code   |
+ |   |             |             |
+ |   |             |             |
+ |   v             |             |
+ | +---------------------------+ | (2) Authorization  +---------------+
+ | |                           | |     Request        |               |
+ | |          Browser          |--------------------->| Authorization |
+ | |                           |<---------------------|    Endpoint   |
+ | +---------------------------+ | (3) Authorization  |               |
+ |                               |     Code           +---------------+
+ +~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+
+]]></artwork>
+        </figure>
+      </t>
+
+      <t>Figure 1 illustrates the interaction between a native app and the browser to authorize the user.
+            <list style="format (%d)">
+              <t>
+                Client app opens a browser tab with the authorization
+                request.
+              </t>
+              <t>
+                Authorization endpoint receives the authorization request,
+                authenticates the user, and obtains authorization. Authenticating
+                the user may involve chaining to other authentication systems.
+              </t>
+              <t>
+                Authorization server issues an authorization code to the
+                redirect URI.
+              </t>
+              <t>
+                Client receives the authorization code from the redirect URI.
+              </t>
+              <t>
+                Client app presents the authorization code at the token
+                endpoint.
+              </t>
+              <t>
+                Token endpoint validates the authorization code and issues
+                the tokens requested.
+              </t>
+            </list>
+        </t>
+      </section>
+
+    </section>
+
+
+    <section title="Using Inter-App URI Communication for OAuth">
+      <t>
+        Just as URIs are used for <xref target="RFC6749">OAuth 2.0</xref> on
+        the web to initiate the authorization request and return the
+        authorization response to the requesting website, URIs can be used by
+        native apps to initiate the authorization request in the device's
+        browser and return the response to the requesting native app.
+      </t>
+      <t>
+        By adopting the same methods used on the web for OAuth, benefits seen
+        in the web context like the usability of a single sign-on session and
+        the security of a separate authentication context are likewise gained
+        in the native app context. Reusing the same approach also reduces the
+        implementation complexity and
+        increases interoperability by relying on standards-based web flows that
+        are not specific to a particular platform.
+      </t>
+      <t>
+        To conform to this best practice, native apps MUST use an external
+        user-agent to perform OAuth authorization requests. This is achieved by
+        opening the authorization request in the browser
+        (detailed in <xref target="authorization-request" />)
+        and using a redirect URI that will return the authorization response
+        back to the native app (defined in <xref target="authorization-response" />).
+      </t>
+
+    </section>
+
+    <section title="Initiating the Authorization Request from a Native App"
+        anchor="authorization-request">
+      <t>
+        Native apps needing user authorization create an authorization request
+        URI with the authorization code grant type per Section 4.1 of
+        <xref target="RFC6749">OAuth 2.0</xref>, using a redirect URI capable
+        of being received by the native app.
+      </t>
+      <t>
+        The function of the redirect URI for a native app authorization request
+        is similar to that of a web-based authorization request. Rather than
+        returning the authorization response to the OAuth client's server, the
+        redirect URI used by a native app returns the response to the app. 
+        Several options for a redirect URI that will return the authorization
+        response to the native app in different platforms are documented in
+        <xref target='authorization-response' />. Any redirect URI that allows
+        the app to receive the URI and inspect its parameters is viable.
+      </t>
+      <t>
+        Public native app clients MUST implement the Proof Key for Code Exchange
+        (<xref target="RFC7636">PKCE</xref>) extension to OAuth, and authorization
+        servers MUST support PKCE for such clients, for the reasons detailed in
+        <xref target='protecting-auth-grant'/>.
+      </t>
+      <t>
+        After constructing the authorization request URI, the app uses
+        platform-specific APIs to open the URI in an external user-agent.
+        Typically, the external user-agent used is the default browser, that is,
+        the application configured for handling "http" and "https" scheme URIs
+        on the system; however, different browser selection criteria and other
+        categories of external user-agents MAY be used.
+      </t>
+      <t>
+        This best practice focuses on the browser as the RECOMMENDED external
+        user-agent for native apps. An external user-agent designed specifically for 
+        user authorization and capable of processing authorization requests
+        and responses like a browser MAY also be used. Other external
+        user-agents, such as a native app provided by the authorization server
+        may meet the criteria set out in this best practice, including using the
+        same redirection URI properties, but their use is out of scope for this
+        specification.
+      </t>
+      <t>
+        Some platforms support a browser feature known as "in-app browser tabs",
+        where an app can present a tab of the browser within the app context
+        without switching apps, but still retain key benefits of the browser
+        such as a shared authentication state and security context. On platforms
+        where they are supported, it is RECOMMENDED, for usability reasons, that
+        apps use in-app browser tabs for the authorization request.
+      </t>
+    </section>
+
+    <section title="Receiving the Authorization Response in a Native App"
+        anchor="authorization-response">
+      <t>
+        There are several redirect URI options available to native apps for
+        receiving the authorization response from the browser, the availability
+        and user experience of which varies by platform.
+      </t>
+      <t>
+        To fully support this best practice, authorization servers MUST offer
+        at least the three redirect URI options described in the following subsections to native apps. Native
+        apps MAY use whichever redirect option suits their needs best, taking
+        into account platform-specific implementation details.
+      </t>
+
+      <section title="Private-Use URI Scheme Redirection"
+	       anchor="custom-uri-scheme">
+
+        <t>
+          Many mobile and desktop computing platforms support inter-app
+          communication via URIs by allowing apps to register private-use
+          URI schemes (sometimes colloquially referred to as "custom URL schemes")
+          like <spanx style="verb">com.example.app</spanx>. When the
+          browser or another app attempts to load a URI with a private-use URI scheme,
+          the app that registered it is launched to handle the request.
+        </t>
+        <t>
+          To perform an OAuth 2.0 authorization request with a private-use URI
+          scheme redirect, the native app launches the browser with a standard
+          authorization request, but one where the redirection URI
+          utilizes a private-use URI scheme it registered with the operating system.
+        </t>
+        <t>
+          When choosing a URI scheme to associate with the app, apps MUST
+          use a URI scheme based on a domain name under their control, 
+          expressed in reverse order, as recommended by Section 3.8 of 
+          <xref target="RFC7595" /> for private-use URI schemes.
+        </t>
+        <t>
+          For example, an app that controls the domain name 
+          <spanx style="verb">app.example.com</spanx> can use
+          <spanx style="verb">com.example.app</spanx> as their scheme.
+          Some authorization servers assign client identifiers based on domain
+          names, for example, 
+          <spanx style="verb">client1234.usercontent.example.net</spanx>, 
+          which can also be used as the domain name for the scheme
+          when reversed in the same manner. 
+          A scheme such as <spanx style="verb">myapp</spanx>, however, would
+          not meet this requirement, as it is not based on a domain name.
+        </t>
+        <t>
+          When there are multiple apps by the same publisher, care must be taken so 
+          that each scheme is unique within that group. On platforms that use
+          app identifiers based on reverse-order domain names,
+          those identifiers can be reused as the private-use URI scheme for the OAuth
+          redirect to help avoid this problem.
+        </t>
+        <t>
+          Following the requirements of Section 3.2 of <xref target="RFC3986" />,
+          as there is no naming authority for private-use URI scheme redirects, only
+          a single slash (<spanx style="verb">/</spanx>) appears after the
+          scheme component. A complete example of a redirect URI
+          utilizing a private-use URI scheme is:
+        </t>
+        <t>
+          <figure><artwork><![CDATA[
+  com.example.app:/oauth2redirect/example-provider
+]]></artwork></figure>
+        </t>
+        <t>
+          When the authorization server completes the request, it redirects
+          to the client's redirection URI as it would normally.
+          As the redirection URI uses a private-use URI scheme, it results in the
+          operating system launching the native app, passing in the URI as
+          a launch parameter. Then, the native app uses normal processing for
+	        the authorization response.
+        </t>
+      </section>
+
+      <section title='Claimed "https" Scheme URI Redirection' anchor="App-Claimed">
+        <t>
+          Some operating systems allow apps to claim "https" scheme
+          <xref target="RFC7230" /> URIs in the domains
+          they control. When the browser encounters a claimed URI, instead of
+          the page being loaded in the browser, the native app is launched
+          with the URI supplied as a launch parameter.
+        </t>
+        <t>
+          Such URIs can be used as redirect URIs by native apps. They are
+          indistinguishable to the authorization server from a regular web-based
+          client redirect URI. An example is:
+        </t>
+        <t>
+          <figure><artwork><![CDATA[
+  https://app.example.com/oauth2redirect/example-provider
+]]></artwork></figure>
+        </t>
+        <t>
+          As the redirect URI alone is not enough to distinguish public native app
+          clients from confidential web clients, it is REQUIRED in
+          <xref target="customuri-registration" /> that the client type be
+          recorded during client registration to enable the server to determine
+          the client type and act accordingly.
+        </t>
+        <t>
+          App-claimed "https" scheme redirect URIs have some advantages compared to other
+          native app redirect options in that the identity of the destination
+          app is guaranteed to the authorization server by the operating system.
+          For this reason, native apps SHOULD use them over the other options
+          where possible.
+        </t>
+      </section>
+
+      <section title="Loopback Interface Redirection" anchor="Loopback">
+        <t>
+          Native apps that are able to open a port on the loopback network
+          interface without needing special permissions (typically,
+          those on desktop operating systems) can use the loopback
+          interface to receive the OAuth redirect.
+        </t>
+        <t>
+          Loopback redirect URIs use the "http" scheme and are constructed with
+          the loopback IP literal and whatever port the client is listening on.
+          That is, <spanx style="verb">http://127.0.0.1:{port}/{path}</spanx>
+          for IPv4, and <spanx style="verb">http://[::1]:{port}/{path}</spanx>
+          for IPv6. An example redirect using the IPv4 loopback interface with a
+          randomly assigned port:
+        </t>
+        <t>
+          <figure><artwork><![CDATA[
+  http://127.0.0.1:51004/oauth2redirect/example-provider
+]]></artwork></figure>
+        </t>
+        <t>
+          An example redirect using the IPv6 loopback interface with a
+          randomly assigned port:
+        </t>
+        <t>
+          <figure><artwork><![CDATA[
+  http://[::1]:61023/oauth2redirect/example-provider
+]]></artwork></figure>
+        </t>
+        <t>
+          The authorization server MUST allow any port to be specified at the
+          time of the request for loopback IP redirect URIs, to accommodate
+          clients that obtain an available ephemeral port from the operating
+          system at the time of the request.
+        </t>
+        <t>
+          Clients SHOULD NOT assume that the device supports a particular version of
+          the Internet Protocol. It is RECOMMENDED that clients attempt to bind
+          to the loopback interface using both IPv4 and IPv6 and use whichever
+          is available.
+        </t>
+      </section>
+    </section>
+
+    <section title="Security Considerations" anchor="security-considerations">
+
+      <section title="Protecting the Authorization Code"
+          anchor="protecting-auth-grant">
+        <t>
+          The redirect URI options documented in
+          <xref target='authorization-response' /> share the benefit
+          that only a native app on the same device or the app's own website
+          can receive the authorization code, which limits the attack surface.  However, code
+          interception by a different native app running on the same device
+          may be possible. 
+        </t>
+        <t>
+          A limitation of using private-use URI schemes for redirect URIs is that
+          multiple apps can typically register the same scheme, which makes it
+          indeterminate as to which app will receive the authorization code.
+          Section 1 of <xref target="RFC7636">PKCE</xref> details how this
+          limitation can be used to execute a code interception attack.
+        </t>
+        <t>
+          Loopback IP-based redirect URIs may be susceptible to interception
+          by other apps accessing the same loopback interface on some operating
+          systems.
+        </t>
+        <t>
+          App-claimed "https" scheme redirects are less susceptible to URI interception
+          due to the presence of the URI authority, but the app is still a
+          public client; further, the URI is sent using the operating system's
+          URI dispatch handler with unknown security properties.
+        </t>
+        <t>
+          The PKCE <xref target="RFC7636"></xref> protocol was created specifically
+          to mitigate this attack.  It is a proof-of-possession
+          extension to OAuth 2.0 that protects the authorization code
+          from being used if it is intercepted. 
+          To provide protection, this extension has the client generate a secret
+          verifier; it passes a hash of this verifier in the initial
+          authorization request, and must present the unhashed verifier when
+          redeeming the authorization code. An app that intercepted the
+          authorization code would not be in possession of this secret,
+          rendering the code useless.
+        </t>
+        <t>
+          <xref target='authorization-request' /> requires that both clients and servers use PKCE for public
+          native app clients. Authorization servers SHOULD reject authorization requests
+          from native apps that don't use PKCE by returning an error message,
+          as defined in Section 4.4.1 of <xref target="RFC7636">PKCE</xref>.
+        </t>
+      </section>
+
+      <section title="OAuth Implicit Grant Authorization Flow"
+          anchor="implicit-flow">
+        <t>
+          The OAuth 2.0 implicit grant authorization flow (defined in Section 4.2 of <xref
+          target="RFC6749">OAuth 2.0</xref>) generally works with the practice of
+          performing the authorization request in the browser and receiving the
+          authorization response via URI-based inter-app communication.
+          However, as the implicit flow cannot be protected by
+          <xref target="RFC7636">PKCE</xref> (which is required in
+          <xref target="protecting-auth-grant" />),
+          the use of the Implicit Flow with native apps is NOT RECOMMENDED.
+        </t>
+        <t>
+          Access tokens granted via the implicit flow also cannot be refreshed without
+          user interaction, making the authorization code grant flow -- which can issue refresh
+          tokens -- the more practical option for native app authorizations that
+          require refreshing of access tokens.
+        </t>
+      </section>
+
+      <section title="Loopback Redirect Considerations"
+        anchor="security-loopback">
+        <t>
+          Loopback interface redirect URIs use the
+          "http" scheme (i.e., without
+          Transport Layer Security (TLS)). This is acceptable for loopback interface redirect URIs as the
+          HTTP request never leaves the device.
+        </t>
+        <t>
+          Clients should open the network port only when starting the
+          authorization request and close it once the response is returned.
+        </t>
+        <t>
+          Clients should listen on the loopback network interface only, in order
+          to avoid interference by other network actors.
+        </t>
+        <t>
+          While redirect URIs using localhost (i.e.,
+          <spanx style="verb">http://localhost:{port}/{path}</spanx>)
+          function similarly to loopback IP redirects described in
+          <xref target="Loopback"></xref>,
+          the use of localhost is NOT RECOMMENDED.
+          Specifying a redirect URI with the loopback IP literal rather than
+          localhost avoids inadvertently listening on network interfaces other
+          than the loopback interface. It is also less susceptible to
+          client-side firewalls and misconfigured host name resolution on the
+          user's device.
+        </t>
+      </section>
+
+      <section title="Registration of Native App Clients" anchor="customuri-registration">
+        <t>
+          Except when using a mechanism like Dynamic Client Registration
+          <xref target="RFC7591"></xref> to provision per-instance secrets, native apps are
+          classified as public clients, as defined by Section 2.1 of
+          <xref target="RFC6749">OAuth 2.0</xref>; they MUST be registered with
+          the authorization server as such. Authorization servers MUST record
+          the client type in the client registration details in order to
+          identify and process requests accordingly.
+        </t>
+        <t>
+          Authorization servers MUST require clients to register their
+          complete redirect URI (including the path component) and reject
+          authorization requests that specify a redirect URI that doesn't exactly
+          match the one that was registered; the exception is loopback
+          redirects, where an exact match is required except for
+          the port URI component.
+        </t>
+        <t>
+          For private-use URI scheme-based redirects, authorization servers SHOULD
+          enforce the requirement in <xref target="custom-uri-scheme" />
+          that clients use schemes that are reverse domain name based. At a minimum, any
+          private-use URI scheme that doesn't contain a period character
+          (<spanx style="verb">.</spanx>) SHOULD be rejected.
+        </t>
+        <t>
+          In addition to the collision-resistant properties, requiring a URI
+          scheme based on a domain name that is under the control of the app can
+          help to prove ownership in the event of a dispute where two apps
+          claim the same private-use URI scheme (where one app is acting
+          maliciously). For example, if two apps claimed 
+          <spanx style="verb">com.example.app</spanx>, the owner of 
+          <spanx style="verb">example.com</spanx> could petition
+          the app store operator to remove the counterfeit app. Such a
+          petition is harder to prove if a generic URI scheme was used.
+        </t>
+        <t>
+          Authorization servers MAY request the inclusion of 
+          other platform-specific information, such as the app package or bundle
+          name, or other information that may be 
+          useful for verifying the calling app's identity on operating systems
+          that support such functions.
+        </t>
+      </section>
+
+
+    <section title="Client Authentication" anchor="client-authentication">
+      <t>
+        Secrets that are statically included as part of an app distributed to
+        multiple users should not be treated as confidential secrets, as one
+        user may inspect their copy and learn the shared secret.
+        For this reason, and those stated in Section 5.3.1 of 
+        <xref target="RFC6819" />, it is NOT RECOMMENDED for authorization
+        servers to require client authentication of public native apps clients using a shared
+        secret, as this serves little value beyond client identification which
+        is already provided by the <spanx style="verb">client_id</spanx> request
+        parameter.
+      </t>
+      <t>
+        Authorization servers that still require a statically included shared
+        secret for native app clients MUST treat the client as a public client
+        (as defined by Section 2.1 of <xref target="RFC6749">OAuth 2.0</xref>),
+        and not accept the secret as proof of the client's identity. Without
+        additional measures, such clients are subject to client
+        impersonation (see <xref target="security-user-interaction" />).
+      </t>
+    </section>
+
+      <section title="Client Impersonation"
+        anchor="security-user-interaction">
+        <t>
+          As stated in Section 10.2 of <xref target="RFC6749">OAuth 2.0</xref>,
+          the authorization server SHOULD NOT process authorization requests
+          automatically without user consent or interaction, except when the
+          identity of the client can be assured. This includes the case
+          where the user has previously approved an authorization request for
+          a given client id -- unless the identity of the client can be proven,
+          the request SHOULD be processed as if no previous request had been
+          approved.
+        </t>
+        <t>
+          Measures such as claimed "https" scheme redirects MAY be accepted by
+          authorization servers as identity proof. Some operating systems may
+          offer alternative platform-specific identity features that MAY be
+          accepted, as appropriate.
+        </t>
+      </section>
+
+      <section title="Fake External User-Agents" anchor="fake-external-user-agent">
+        <t>
+          The native app that is initiating the authorization request has a
+          large degree of control over the user interface and can potentially
+          present a fake external user-agent, that is, an embedded user-agent
+          made to appear as an external user-agent.
+        </t>
+        <t>
+          When all good actors are using external user-agents, the advantage 
+          is that it is possible for security experts to detect bad
+          actors, as anyone faking an external user-agent is provably bad. On the other hand, if
+          good and bad actors alike are using embedded user-agents, bad actors
+          don't need to fake anything, making them harder to detect. Once
+          a malicious app is detected, it may be possible to use this knowledge
+          to blacklist the app's signature in malware scanning software, take
+          removal action (in the case of apps distributed by app stores) and
+          other steps to reduce the impact and spread of the malicious app.
+        </t>
+        <t>
+          Authorization servers can also directly protect against fake 
+          external user-agents by requiring an authentication factor only
+          available to true external user-agents.
+        </t>
+        <t>
+          Users who are particularly concerned about their security when using
+          in-app browser tabs may also take the additional step of opening the
+          request in the full browser from the in-app browser tab and complete
+          the authorization there, as most implementations of the in-app browser
+          tab pattern offer such functionality.
+        </t>
+      </section>
+
+    <section title="Malicious External User-Agents" anchor="malicious-browser">
+      <t>
+        If a malicious app is able to configure itself as the default handler
+        for "https" scheme URIs in the operating system, it will be able to
+        intercept authorization requests that use the default browser and abuse
+        this position of trust for malicious ends such as phishing the user.
+      </t>
+      <t>
+        This attack is not confined to OAuth; a malicious app configured in this
+        way would present a general and ongoing risk to the user beyond
+        OAuth usage by native apps. Many operating systems mitigate this issue
+        by requiring an explicit user action to change the default handler for
+        "http" and "https" scheme URIs. 
+      </t>
+    </section>
+
+    <section title="Cross-App Request Forgery Protections" anchor="oauth-state">
+      <t>
+        Section 5.3.5 of <xref target="RFC6819" /> recommends using the
+        <spanx style="verb">state</spanx> parameter to link client requests and
+        responses to prevent CSRF (Cross-Site Request Forgery) attacks.
+      </t>
+      <t>
+        To mitigate CSRF-style attacks over inter-app URI communication channels
+        (so called "cross-app request forgery"),
+        it is similarly RECOMMENDED that native apps include a high-entropy
+        secure random number in the <spanx style="verb">state</spanx> parameter
+        of the authorization request and reject any incoming authorization
+        responses without a state value that matches a pending outgoing
+        authorization request.
+      </t>
+    </section>
+
+    <section title="Authorization Server Mix-Up Mitigation" anchor="oauth-mixup">
+      <t>
+        To protect against a compromised or malicious authorization server
+        attacking another authorization server used by the same app, it is
+        REQUIRED that a unique redirect URI is used for each
+        authorization server used by the app (for example, by varying the path
+        component), and that authorization responses are rejected if the
+        redirect URI they were received on doesn't match the redirect URI
+        in an outgoing authorization request.
+      </t>
+      <t>
+        The native app MUST store the redirect URI used in the authorization
+        request with the authorization session data (i.e., along with
+        <spanx style="verb">state</spanx> and other related data) and MUST
+        verify that the URI on which the authorization response was received
+        exactly matches it.
+      </t>
+      <t>
+       The requirement of <xref target="customuri-registration" />, specifically that
+       authorization servers reject requests with URIs that don't match what was
+       registered, is also required to prevent such attacks.
+      </t>
+    </section>
+
+    <section title="Non-Browser External User-Agents" anchor="other-external-agents">
+      <t>
+        This best practice recommends a particular type of external user-agent:
+        the user's browser. Other external user-agent patterns may also be
+        viable for secure and usable OAuth. This document makes no comment on
+        those patterns.
+      </t>
+    </section>
+
+    <section title="Embedded User-Agents" anchor="security-webviews">
+        <t>
+          Section 9 of <xref target="RFC6749">OAuth 2.0</xref> documents two
+          approaches for native apps to interact with the authorization endpoint.
+          This best current practice requires that native apps MUST NOT use
+          embedded user-agents to perform authorization requests and allows
+          that authorization endpoints MAY take steps to detect and block
+          authorization requests in embedded user-agents. The security
+          considerations for these requirements are detailed herein.
+        </t>
+        <t>
+          Embedded user-agents are an alternative method for
+          authorizing native apps. These embedded user-agents are unsafe for use by
+          third parties to the authorization server by definition, as the app
+          that hosts the embedded user-agent can access the user's full
+          authentication credential, not just the OAuth authorization grant
+          that was intended for the app.
+        </t>
+        <t>
+          In typical web-view-based implementations of embedded user-agents,
+          the host application can record every keystroke entered in the login form to
+          capture usernames and passwords, automatically submit forms to bypass
+          user consent, and copy session cookies and use them to perform
+          authenticated actions as the user.
+        </t>
+        <t>
+          Even when used by trusted apps belonging to the same party as the
+          authorization server, embedded user-agents violate the principle of
+          least privilege by having access to more powerful credentials than
+          they need, potentially increasing the attack surface.
+        </t>
+        <t>
+          Encouraging users to enter credentials in an embedded user-agent
+          without the usual address bar and visible certificate validation
+          features that browsers have makes it impossible for the user to know
+          if they are signing in to the legitimate site; even when they are,
+          it trains them that it's OK to enter credentials without validating
+          the site first.
+        </t>
+        <t>
+          Aside from the security concerns, embedded user-agents do not share
+          the authentication state with other apps or the browser, requiring
+          the user to log in for every authorization request, which is often
+          considered an inferior user experience.
+        </t>
+
+      </section>
+
+    </section>
+
+    <section title="IANA Considerations" anchor="iana-considerations">
+      <t>
+        This document does not require any IANA actions.
+      </t>
+      <t>
+        <xref target="custom-uri-scheme" /> specifies how private-use URI
+        schemes are used for inter-app communication in OAuth protocol flows.
+        This document requires in <xref target="custom-uri-scheme" /> 
+        that such schemes are based on domain names owned or assigned to the
+        app, as recommended in Section 3.8 of <xref target="RFC7595" />.
+        Per Section 6 of <xref target="RFC7595" />,
+        registration of domain-based URI schemes with IANA is not required.
+      </t>
+    </section>
+
+  </middle>
+
+  <back>
+
+    <references title="Normative References">
+      <?rfc include='reference.RFC.2119'?>
+      <?rfc include='reference.RFC.3986'?>
+      <?rfc include='reference.RFC.6749'?>
+      <?rfc include='reference.RFC.7230'?>
+      <?rfc include='reference.RFC.7595'?>
+      <?rfc include='reference.RFC.7636'?>
+<?rfc include='reference.RFC.8174'?>
+    </references>
+
+    <references title="Informative References">
+
+      <?rfc include='reference.RFC.6819'?>
+      <?rfc include='reference.RFC.7591'?>
+
+      <reference anchor="AppAuth" target="https://openid.net/code/AppAuth">
+        <front>
+          <title>AppAuth</title>
+          <author>
+<organization>OpenID Connect Working Group</organization></author>
+          <date month="September" year="2017" />
+        </front>
+      </reference>
+
+      <reference anchor="AppAuth.iOSmacOS" target="https://openid.net/code/AppAuth-iOS">
+        <front>
+          <title>AppAuth for iOS and macOS</title>
+          <author fullname="Steven E Wright" surname="Wright" initials="S."><organization>Google</organization></author>
+          <author fullname="William Denniss" surname="Denniss, et al." initials="W."><organization>Google</organization></author>
+
+          <date month="February" year="2016" />
+        </front>
+      </reference>
+
+      <reference anchor="AppAuth.Android" target="https://openid.net/code/AppAuth-Android">
+        <front>
+          <title>AppAuth for Android</title>
+          <author fullname="Iain McGinniss" surname="McGinniss" initials="I."><organization>Google</organization></author>
+          <author fullname="William Denniss" surname="Denniss, et al." initials="W."><organization>Google</organization></author>
+     
+          <date month="February" year="2016" />
+        </front>
+      </reference>
+
+      <reference anchor="SamplesForWindows"
+          target="https://openid.net/code/sample-oauth-apps-for-windows">
+        <front>
+          <title>OAuth for Apps: Samples for Windows</title>
+        	  <author fullname="William Denniss" surname="Denniss" initials="W."><organization>Google</organization></author>
+          <date month="July" year="2016" />
+        </front>
+      </reference>
+
+    </references>
+
+    <section title="Server Support Checklist"
+        anchor="as-checklist">
+      <t>
+        OAuth servers that support native apps must:
+      </t>
+      <t>
+      <list style="numbers">
+              <t>
+                Support private-use URI scheme redirect URIs.
+                This is required to support mobile operating systems.
+                See <xref target="custom-uri-scheme"></xref>.
+              </t>
+              <t>
+                Support "https" scheme redirect URIs for use with public native app
+                clients. This is used by apps on advanced mobile operating
+                systems that allow app-claimed "https" scheme URIs.
+                See <xref target="App-Claimed"></xref>.
+              </t>
+              <t>
+                Support loopback IP redirect URIs.
+                This is required to support desktop operating systems.
+                See <xref target="Loopback"></xref>.
+              </t>
+              <t>
+                Not assume that native app clients can keep a secret.
+                If secrets are distributed to multiple installs of the same
+                native app, they should not be treated as confidential.
+                See <xref target="client-authentication"></xref>.
+              </t>
+              <t>
+                Support <xref target="RFC7636">PKCE</xref>. Required to protect
+                authorization code grants sent to public clients over inter-app
+                communication channels.
+                See <xref target="protecting-auth-grant"></xref>
+              </t>
+            </list>
+          </t>
+    </section>
+
+    <section title="Platform-Specific Implementation Details"
+        anchor="os">
+      <t>
+        This document primarily defines best practices in a generic
+        manner, referencing techniques commonly available in a variety of
+        environments.  This non-normative section documents implementation
+        details of the best practice for various operating systems. 
+      </t>
+      <t>
+        The implementation details herein are considered accurate at the time of
+        publishing but will likely change over time. It is hoped that such a
+        change won't invalidate the generic principles in the rest of the
+        document and that those principles should take precedence in the event of a
+        conflict.
+      </t>
+      <section title="iOS Implementation Details" anchor="os-ios">
+        <t>
+          Apps can initiate an authorization request in the browser,
+          without the user leaving the app, through the <spanx style="verb">SFSafariViewController</spanx>
+          class or its successor <spanx style="verb">SFAuthenticationSession</spanx>, which implement the
+          in-app browser tab pattern. Safari can be used to handle requests on
+          old versions of iOS without in-app browser tab functionality.
+        </t>
+        <t>
+          To receive the authorization response, both private-use URI scheme
+          (referred to as "custom URL scheme") redirects
+          and claimed "https" scheme URIs (known as "Universal Links") are
+          viable choices.
+          Apps can claim private-use URI schemes with the 
+          <spanx style="verb">CFBundleURLTypes</spanx>
+          key in the application's property list file, 
+          <spanx style="verb">Info.plist</spanx>, and "https" scheme
+          URIs using the Universal Links feature with an entitlement file in
+          the app and an association file hosted on the domain.
+        </t>
+        <t>
+          Claimed "https" scheme URIs are the preferred redirect choice on iOS 9 and above due to the
+          ownership proof that is provided by the operating system.
+        </t>
+        <t>
+          A complete open-source sample is included in the
+          <xref target="AppAuth.iOSmacOS">AppAuth for iOS and macOS</xref> library.
+        </t>
+      </section>
+      <section title="Android Implementation Details" anchor="os-android">
+        <t>
+          Apps can initiate an authorization request in the browser,
+          without the user leaving the app, through the Android Custom Tab feature, which
+          implements the in-app browser tab pattern. The user's default browser can
+          be used to handle requests when no browser supports Custom Tabs.
+        </t>
+        <t>
+          Android browser vendors should support the Custom Tabs
+          protocol (by providing an implementation of the <spanx style="verb">CustomTabsService</spanx>
+          class), to provide the in-app browser tab user-experience optimization to their users.
+          Chrome is one such browser that implements Custom Tabs.
+        </t>
+        <t>
+          To receive the authorization response, private-use URI schemes
+          are broadly supported through Android Implicit Intents. Claimed "https" scheme
+          redirect URIs through Android App Links are available on Android 6.0
+          and above. Both types of redirect URIs are registered in the application's
+          manifest.
+        </t>
+        <t>
+          A complete open-source sample is included in the
+          <xref target="AppAuth.Android">AppAuth for Android</xref> library.
+        </t>
+      </section>
+      <section title="Windows Implementation Details" anchor="os-windows">
+        <t>
+          Both traditional and Universal Windows Platform (UWP) apps can
+          perform authorization requests in the user's browser.  Traditional
+          apps typically use a loopback redirect to receive the authorization
+          response, and listening on the loopback interface is allowed by
+          default firewall rules. When creating the loopback network socket,
+          apps SHOULD set the <spanx style="verb">SO_EXCLUSIVEADDRUSE</spanx>
+          socket option to prevent other apps binding to the same socket.
+        </t>
+        <t>
+          UWP apps can use private-use URI scheme redirects to receive the
+          authorization response from the browser, which will bring the app to
+          the foreground. Known on the platform as "URI Activation", the URI
+          scheme is limited to 39 characters in length, and it may include the "."
+          character, making short reverse domain name based schemes (as
+          required in <xref target="custom-uri-scheme"></xref>) possible.
+        </t>
+        <t>
+          UWP apps can alternatively use the Web Authentication Broker API in
+          Single Sign-on (SSO) mode, which is an external user-agent
+          designed for authorization flows. Cookies are shared between
+          invocations of the broker but not the user's preferred browser,
+          meaning the user will need to log in again, even if they have an
+          active session in their browser; but the session created in the broker
+          will be available to subsequent apps that use the broker.
+          Personalizations the user has made to their browser, such as
+          configuring a password manager, may not be available in the broker.
+          To qualify as an external user-agent, the broker MUST be used in
+          SSO mode.
+        </t>
+        <t>
+          To use the Web Authentication Broker in SSO mode, the redirect URI
+          must be of the form <spanx style="verb">msapp://{appSID}</spanx>
+          where <spanx style="verb">{appSID}</spanx> is the app's security identifier (SID),
+          which can be found in the app's registration information or by calling
+          the <spanx style="verb">GetCurrentApplicationCallbackUri</spanx> method. While Windows enforces the URI authority on
+          such redirects, ensuring that only the app with the matching SID can
+          receive the response on Windows, the URI scheme could be claimed by
+          apps on other platforms without the same authority present; thus, this
+          redirect type should be treated similarly to private-use URI scheme
+          redirects for security purposes.
+        </t>
+        <t>
+          An open-source sample demonstrating these patterns is available
+          <xref target="SamplesForWindows"></xref>.
+        </t>
+      </section>
+       <section title="macOS Implementation Details" anchor="os-macos">
+        <t>
+          Apps can initiate an authorization request in the user's default browser
+          using platform APIs for opening URIs in the browser.
+        </t>
+        <t>
+          To receive the authorization response, private-use URI schemes are
+          a good redirect URI choice on macOS, as the user
+          is returned right back to the app they launched the request from.
+          These are registered in the application's bundle information property list
+          using the <spanx style="verb">CFBundleURLSchemes</spanx> key.
+          Loopback IP redirects are another viable option, and listening on the
+          loopback interface is allowed by default firewall rules.
+        </t>
+        <t>
+          A complete open-source sample is included in the
+          <xref target="AppAuth.iOSmacOS">AppAuth for iOS and macOS</xref> library.
+        </t>
+
+      </section>
+       <section title="Linux Implementation Details" anchor="os-linux">
+        <t>
+          Opening the authorization request in the user's default browser
+          requires a distro-specific command: 
+          <spanx style="verb">xdg-open</spanx> is one such tool.
+        </t>
+        <t>
+          The loopback redirect is the recommended redirect choice for desktop apps
+          on Linux to receive the authorization response. Apps SHOULD NOT set
+          the <spanx style="verb">SO_REUSEPORT</spanx> or
+          <spanx style="verb">SO_REUSEADDR</spanx> socket options in order to prevent
+          other apps binding to the same socket.
+        </t>
+      </section>
+      
+    </section>
+
+    <section title="Acknowledgements" anchor="Acknowledgements" numbered="no">
+      <t>
+        The authors would like to acknowledge the work of
+        Marius Scurtescu and Ben Wiley Sittler, whose design for using
+        private-use URI schemes in native app OAuth 2.0 clients at Google formed
+        the basis of <xref target="custom-uri-scheme"></xref>.
+      </t>
+      <t>
+        The following individuals contributed ideas, feedback, and wording
+        that shaped and formed the final specification:
+      </t>
+      <t>
+        Andy Zmolek, Steven E.&nbsp;Wright, Brian Campbell, Nat Sakimura, Eric Sachs,
+        Paul Madsen, Iain McGinniss, Rahul Ravikumar, Breno de Medeiros,
+        Hannes Tschofenig, Ashish Jain, Erik Wahlstrom, Bill Fisher,
+        Sudhi Umarji, Michael B.&nbsp;Jones, Vittorio Bertocci, Dick Hardt,
+        David Waite, Ignacio Fiorentino, Kathleen Moriarty, and Elwyn Davies.
+      </t>
+    </section>
+
+  </back>
+</rfc>

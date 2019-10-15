@@ -1,0 +1,1154 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+<!ENTITY RFC2119 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2119.xml"> 
+<!ENTITY RFC8174 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.8174.xml"> 
+<!ENTITY RFC2328 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.2328.xml"> 
+<!ENTITY RFC5286 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5286.xml"> 
+<!ENTITY RFC3906 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3906.xml"> 
+<!ENTITY RFC4090 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.4090.xml"> 
+<!ENTITY RFC5714 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5714.xml"> 
+<!ENTITY RFC5305 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5305.xml"> 
+<!ENTITY RFC5715 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5715.xml"> 
+<!ENTITY RFC3630 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.3630.xml"> 
+<!ENTITY RFC5443 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.5443.xml"> 
+<!ENTITY RFC6571 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6571.xml"> 
+<!ENTITY REMOTE-LFA SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7490.xml"> 
+<!ENTITY OFIB      SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.6976.xml"> 
+<!ENTITY PLSN SYSTEM "http://xml.resource.org/public/rfc/bibxml3/reference.I-D.ietf-rtgwg-microloop-analysis.xml"> 
+<!ENTITY BACKOFF SYSTEM "http://xml.resource.org/public/rfc/bibxml3/reference.I-D.ietf-rtgwg-backoff-algo.xml"> 
+<!ENTITY RFC7916 SYSTEM "http://xml.resource.org/public/rfc/bibxml/reference.RFC.7916.xml"> 
+]>
+
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt" ?> 
+
+<?rfc toc="yes"?> 
+<?rfc tocdepth="3"?> 
+<?rfc symrefs="yes"?> 
+<?rfc sortrefs="yes" ?>
+<?rfc compact="yes" ?>
+<?rfc subcompact="no" ?>
+
+<rfc number="8333" category="std" consensus="yes" submissionType="IETF" ipr="trust200902"> 
+  <front> 
+
+
+    <title abbrev="Micro-loop Prevention by Local Delay">Micro-loop Prevention by Introducing a Local Convergence Delay</title> 
+	 
+    <author fullname="Stephane Litkowski" initials="S" surname="Litkowski"> 
+      <organization>Orange</organization> 
+      <address> 
+
+      <email>stephane.litkowski@orange.com</email> 
+
+      </address> 
+    </author> 
+	 
+	<author fullname="Bruno Decraene" initials="B" surname="Decraene"> 
+      <organization>Orange</organization> 
+      <address> 
+
+      <email>bruno.decraene@orange.com</email> 
+
+      </address> 
+    </author> 
+	 
+	<author fullname="Clarence Filsfils" initials="C" surname="Filsfils"> 
+      <organization>Cisco Systems</organization> 
+ 
+      <address> 
+ 
+        <email>cfilsfil@cisco.com</email> 
+ 
+      </address> 
+    </author> 
+
+
+	<author fullname="Pierre Francois" initials="P" surname="Francois"> 
+      <organization>Individual Contributor</organization> 
+      <address> 
+
+      <email>pfrpfr@gmail.com</email> 
+
+      </address> 
+    </author> 
+
+    <date month="March" year="2018" /> 
+      <area></area> 
+      <workgroup>Routing Area Working Group</workgroup> 
+
+
+    <abstract> 
+	<t> 
+	This document describes a mechanism for link-state routing protocols 
+   that prevents local transient forwarding loops in case of link failure. 
+   This mechanism  
+   proposes a two-step convergence by introducing a delay between the
+   convergence of the node adjacent to the topology change and the network-wide convergence. 
+ 
+	</t> 
+	<t> 
+  Because this mechanism delays the IGP convergence, it may only be
+  used for planned maintenance or when Fast Reroute (FRR) protects the
+  traffic during the time between the link failure and the IGP convergence.
+	</t> 
+
+	<t> 
+	The mechanism is limited to the link-down event in order to keep the mechanism simple. 
+	</t> 
+	<t> 
+	Simulations using real network topologies have been performed and show
+	that local loops are a significant portion (>50%) of the total
+	forwarding loops.    
+	</t> 
+    </abstract> 
+
+
+
+  </front>
+
+  <middle> 
+
+    <section anchor="intro" title="Introduction"> 
+
+	<t> 
+	Micro-loops and some potential solutions are described in <xref target="RFC5715"/>.    
+	This document describes a simple targeted mechanism that prevents
+	micro-loops that are local to the failure. Based on network analysis,
+	local micro-loops make up a significant portion of the micro-loops.    
+
+	A simple and easily deployable solution for these local micro-loops is
+	critical because these local loops cause some traffic loss after an
+	FRR alternate has been used (see <xref target="side-effects-frr"/>).    
+</t> 
+<t> 
+Consider the case in <xref target="fig1"/> where S does not have an LFA (Loop-Free Alternate) to protect its traffic to D when the S-D link fails.    
+That means that all non-D neighbors of S on the topology will send to S any
+traffic destined to D; if a neighbor did not, then that neighbor would be
+loop-free.  Regardless of the advanced FRR technique used, when S converges to
+the new topology, it will send its traffic to a neighbor that is not loop-free
+and will thus cause a local micro-loop. 
+ 
+The deployment of advanced FRR techniques motivates this simple router-local mechanism to solve this targeted problem.  This solution can work with the various techniques described in <xref target="RFC5715"/>. 
+
+
+</t> 
+
+
+
+		<figure anchor="fig1"><artwork align="center"> 
+     D ------ C 
+     |        | 
+     |        | 5 
+     |        | 
+     S ------ B         
+</artwork></figure>
+
+<t>
+In <xref target="fig1"/>, all links have a metric of 1 except the B-C link,
+which has a metric of 5. 
+When the S-D link fails, a transient forwarding loop may appear between S and B if S
+updates its forwarding entry to D before B does. 
+</t>
+
+    </section>
+
+    <section title="Terminology">
+    <section title="Acronyms"> 
+
+	<t>FIB: Forwarding Information Base</t> 
+	<t>FRR: Fast Reroute</t> 
+	<t>IGP: Interior Gateway Protocol</t> 
+	<t>LFA: Loop-Free Alternate</t> 
+	<t>LSA: Link State Advertisement</t> 
+	<t>LSP: Link State Packet</t> 
+	<t>MRT: Maximally Redundant Tree</t> 
+	<t>oFIB: Ordered FIB</t> 
+        <t>PLR: Point of Local Repair</t>
+	<t>PLSN: Path Locking via Safe Neighbors</t> 
+	<t>RIB: Routing Information Base</t> 
+	<t>RLFA: Remote Loop-Free Alternate</t> 
+	<t>SPF: Shortest Path First</t> 
+	<t>TTL: Time to Live</t> 
+	 
+	</section> 
+
+
+		<section title="Requirements Language"> 
+      <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+</t>
+  </section>
+	</section>	
+
+	 
+	<section anchor="side-effects" title="Side Effects of Transient Forwarding Loops"> 
+	<t>Even if they are very limited in duration, transient forwarding loops may cause significant network damage.</t> 
+		<section anchor="side-effects-frr" title="FRR Inefficiency"> 
+		<t> 
+		In <xref target="fig2"/>, we consider an IP/LDP routed
+		network. 
+		<figure anchor="fig2"><artwork align="center">
+        D 
+      1 |     
+        |    1 
+        A ------ B 
+        |        |    ^ 
+     10 |        | 5  | T 
+        |        |    | 
+        E--------C         
+        |    1    
+      1 |         
+        S  
+</artwork></figure> 
+
+</t>
+
+<t>An RSVP-TE tunnel T, provisioned on C and terminating
+		on B, is used to protect the traffic against C-B link failure
+		(the IGP shortcut feature, defined in <xref
+		target="RFC3906"/>, is activated on C). The primary path of T
+		is C->B and FRR is activated on T, providing an FRR bypass or
+		detour using path C->E->A->B. 
+		On router C, the next hop to D is the tunnel T, thanks to the
+		IGP shortcut. 
+		When the C-B link fails: 
+		<list style="numbers"> 
+		<t>C detects the failure and updates the tunnel path using a
+		preprogrammed FRR path. The traffic path from S to D becomes
+		S->E->C->E->A->B->A->D.</t> 
+		<t>In parallel, on router C, both the IGP convergence and the
+		TE tunnel convergence (tunnel path recomputation) are
+		occurring: 
+			<list style="symbols"> 
+			<t>The tunnel T path is recomputed and now uses C->E->A->B.</t> 
+			<t>The IGP path to D is recomputed and now uses C->E->A->D.</t> 
+			</list> 
+		</t> 
+		<t>On C, the tail-end of the TE tunnel (router B) is no longer on the shortest-path tree (SPT) to D, so C does not continue to encapsulate the traffic to D using the tunnel T and updates its forwarding entry to D using the next-hop E.</t> 
+		</list> 
+		If C updates its forwarding entry to D before router E, there would be a transient forwarding loop between C and E until E has converged. 
+
+
+		</t> 
+
+
+		<t> 
+		<xref target="table1"/> describes a theoretical sequence of
+		events happening when the B-C link fails. This theoretical
+		sequence of events should only be read as an example.  
+		</t> 
+	<texttable anchor="table1"> 
+	<ttcol align="center">Network Condition</ttcol> 
+	<ttcol align="center">Time</ttcol> 
+	<ttcol align="center">Router C Events</ttcol> 
+	<ttcol align="center">Router E Events</ttcol> 
+	<c>S->D Traffic OK</c><c></c><c></c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic lost</c><c>t0</c><c>Link B-C fails</c><c>Link B-C fails</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+20 ms</c><c>C detects the failure</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic OK</c><c>t0+40 ms</c><c>C activates FRR</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+50 ms</c><c>C updates its local LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+60 ms</c><c>C floods its local updated LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+62 ms</c><c>C schedules SPF (100 ms)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+87 ms</c><c></c><c>E receives LSP/LSA from C and floods it</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+92 ms</c><c></c><c>E schedules SPF (100 ms)</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+163 ms</c><c>C computes SPF</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+165 ms</c><c>C starts updating its RIB/FIB</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+193 ms</c><c></c><c>E computes SPF</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+199 ms</c><c></c><c>E starts updating its RIB/FIB</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic lost</c><c>t0+255 ms</c><c>C updates its RIB/FIB for D</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+340 ms</c><c>C convergence ends</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic OK</c><c>t0+443 ms</c><c></c><c>E updates its RIB/FIB for D</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+470 ms</c><c></c><c>E convergence ends</c> 
+	</texttable> 
+		<t> 
+
+		The issue described here is completely independent of the FRR
+		mechanism involved (e.g., TE FRR, LFA/RLFA, MRT, etc.) when the
+		primary path uses hop-by-hop routing. 
+ 
+   The protection enabled by
+   FRR works perfectly but only ensures protection
+   until the PLR has converged (as soon as the PLR has
+   converged, it replaces its FRR path with a new primary path). 
+
+
+		When implementing FRR, a service provider wants to guarantee a
+		very limited loss of connectivity time. 
+
+
+The example described in this section
+		shows that the benefit of FRR may be completely lost due to a
+		transient forwarding loop appearing when PLR has converged. 
+
+  Delaying FIB
+  updates after the IGP convergence (1) may allow the FRR
+  path to be kept until the neighbors have converged and (2) preserves the
+  customer traffic.
+
+		</t> 
+		</section> 
+		 
+		 
+		<section anchor="side-effects-congestion" title="Network Congestion"> 
+
+
+<t>
+   In <xref target="fig3"/>, when the S-D link fails, a
+   transient forwarding loop may appear between S and B for destination
+   D.  The traffic on the S-B link will constantly increase due to the
+   looping traffic to D.  Depending on the TTL of the packets, the
+   traffic rate destined to D, and the bandwidth of the link, the S-B
+   link may become congested in a few hundreds of milliseconds and will
+   stay congested until the loop is eliminated.
+</t>
+
+<t>
+		<figure anchor="fig3"> 
+		<artwork align="center"> 
+          1 
+     D ------ C 
+     |        | 
+   1 |        | 5 
+     |        | 
+A -- S ------ B         
+   / |    1 
+  F  E
+</artwork> 
+		</figure>	 
+		</t> 
+
+
+		<t> 
+		The congestion introduced by transient forwarding loops is
+		problematic as it can affect traffic that is not directly
+		affected by the failing network component.  
+
+
+		In <xref target="fig3"/>, the congestion of the S-B link will impact
+		some customer traffic that is not directly affected by the
+		failure, e.g., traffic from A to B, F to B, and E to B. 
+		Class of service may mitigate the congestion for some
+		traffic. However, some traffic not directly affected by the
+		failure will still be dropped as a router is not able to
+		distinguish the looping traffic from the normally forwarded
+		traffic. 
+
+		</t> 
+ 
+		</section> 
+       
+	</section>	 
+		    <section anchor="overview" title="Overview of the Solution"> 
+		<t> 
+		This document defines a two-step convergence initiated by the router 
+    detecting a failure and advertising the topological change in the 
+    IGP.  This introduces a delay between network-wide convergence and 
+    the convergence of the local router. 
+		</t> 
+		<t> 
+		The solution described in this document is limited to local
+		link-down events in order to keep the solution simple. 
+		</t> 
+		<t> 
+
+
+	  This ordered convergence is similar to the ordered FIB (oFIB) approach
+   defined in <xref target="RFC6976"/>, but it is limited to only a "one-hop" 
+   distance. As a consequence, it is more simple and becomes a local-only
+   feature that does not require interoperability. This benefit comes with the
+   limitation of eliminating transient forwarding loops involving the local
+   router only.  The mechanism also reuses some concepts described 
+   in <xref target="PLSN"/>.   
+ 
+	  </t> 
+    </section> 
+	 
+	<section anchor="specification" title="Specification"> 
+			<section anchor="definition" title="Definitions"> 
+	<t> 
+	This document refers to the following existing IGP timers. These
+	timers may be standardized or implemented as a vendor-specific local
+	feature. 
+
+	<list style="symbols"> 
+
+	<t>LSP_GEN_TIMER: The delay between the consecutive generation of two
+	local LSPs/LSAs.
+
+From an operational point of view, this delay is usually
+	tuned to batch multiple local events in a single local LSP/LSA
+	update. In IS-IS, this timer is defined as
+	minimumLSPGenerationInterval <xref target="ISO10589"/>. In OSPF
+	version 2, this timer is defined as MinLSInterval <xref
+	target="RFC2328"/>. It is often associated with a vendor-specific
+	damping mechanism to slow down reactions by incrementing the timer
+	when multiple consecutive events are detected.</t> 
+
+	<t>SPF_DELAY: The delay between the first IGP event triggering a new 
+   routing table computation and the start of that routing table 
+   computation. It is often associated with a damping mechanism to slow down reactions by incrementing the timer when the IGP becomes unstable. As an example, <xref target="BACKOFF"/> defines a standard SPF delay algorithm.</t> 
+	</list> 
+	</t> 
+	<t> 
+	This document introduces the following new timer: 
+	<list style="symbols"> 
+	<t>ULOOP_DELAY_DOWN_TIMER: Used to slow down the local node convergence in case of link-down events.</t> 
+	</list> 
+	</t> 
+	</section> 
+		<section anchor="description-current" title="Regular IGP Reaction"> 
+		<t> 
+		When the status of an adjacency or link changes, the regular
+		IGP convergence 
+   behavior of the router advertising the event involves the following main steps: 
+		<list style="numbers"> 
+		<t>IGP is notified of the up/down event.</t> 
+		<t>The IGP processes the notification and postpones the reaction for LSP_GEN_TIMER ms.</t> 
+		<t>Upon LSP_GEN_TIMER expiration, the IGP updates its LSP/LSA and floods it.</t> 
+		<t>The SPF computation is scheduled in SPF_DELAY ms.</t> 
+		<t>Upon SPF_DELAY timer expiration, the SPF is computed, and
+		then the RIB and FIB are updated.</t> 
+		</list> 
+		</t> 
+		</section> 
+		<section anchor="description-local-events" title="Local Events"> 
+		<t> 
+		The mechanism described in this document assumes that there has been a single link failure as seen by the IGP area/level.     
+		If this assumption is violated (e.g., multiple links or nodes
+		failed), then regular IP convergence must be applied (as
+		described in <xref target="description-current"/>).</t> 
+
+		<t> 
+To determine if the mechanism is applicable or not, an implementation SHOULD
+implement logic to correlate the protocol messages (LSP/LSA) received during
+the SPF scheduling period in order to determine the topology changes that
+occurred. This is necessary as multiple protocol messages may describe the same
+topology change, and a single protocol message may describe multiple topology
+changes. 
+As a consequence, determining a particular topology change MUST be independent
+of the order of reception of those protocol messages. 
+How the logic works is left to the implementation. 
+</t> 
+<t> 
+Using this logic, if an implementation determines that the associated topology
+change is a single local link failure, then the router MAY use the mechanism
+described in this document; otherwise, the regular IP convergence MUST be
+used.   
+</t> 
+
+		<t> 
+In <xref target="fig4"/>, let router B be the computing router when the link
+B-C fails.  B updates its
+local LSP/LSA describing the link B-C as down, C does the same, and both start
+flooding their updated LSPs/LSAs.    
+During the SPF_DELAY period, B and C learn all the LSPs/LSAs to consider.   
+B sees that C is flooding an advertisement that indicates that a link is down, and B is the other end of that link. B determines that B and C are describing the same single event.    
+Since B receives no other changes, B can determine that this is a local link failure and may decide to activate the mechanism described in this document. 
+</t> 
+
+		<t>
+		<figure anchor="fig4">
+		<artwork align="center"> 
+       +--- E ----+--------+ 
+       |          |        | 
+A ---- B -------- C ------ D 
+</artwork></figure>
+		</t> 
+
+ 
+		</section> 
+		<section anchor="description-new" title="Local Delay for Link-Down Events"> 
+
+
+		<t> 
+		This document introduces a change 
+   in step 5 (see list in <xref target="description-current"/>) 
+   so that, upon an adjacency or link-down event, the local convergence
+   is delayed compared to the network-wide convergence. 
+   The new step 5 is described below:</t> 
+
+   <t><list style="hanging" hangIndent="4"> 
+   <t hangText="5.">Upon SPF_DELAY timer expiration, the SPF is computed. If
+   the condition of a single local link-down event has been met, then an
+   update of the RIB and the FIB MUST be delayed for ULOOP_DELAY_DOWN_TIMER
+   ms. Otherwise, the RIB and FIB SHOULD be updated immediately.</t> 
+	</list></t> 
+
+	<t>If a new convergence occurs while ULOOP_DELAY_DOWN_TIMER is
+	running, ULOOP_DELAY_DOWN_TIMER is stopped, and the RIB/FIB SHOULD be
+	updated as part of the new convergence event.</t> 
+
+		<t>As a result of this addition, routers local to the failure will 
+   converge slower than remote routers. Hence, it SHOULD only be done for a
+   non-urgent convergence, such as administrative deactivation
+   (maintenance) or when the traffic is protected by FRR. 
+		</t> 
+		</section> 
+ 
+    </section> 
+	<section anchor="use-case" title="Applicability"> 
+		<t>As previously stated, this mechanism only avoids the forwarding loops on the links between the node local to the failure and its neighbors. Forwarding loops may still occur on other links.</t>	 
+		<section anchor="use-case-working" title="Applicable Case: Local Loops"> 
+		<t> 
+		In <xref target="fig5"/>, let us consider the traffic from G to F. The primary path is 
+   G->D->C->E->F. When the link C-E fails, if C updates its forwarding entry 
+   for F before D, a transient loop occurs. 
+This is sub-optimal as it breaks C's FRR forwarding even though upstream
+routers are still forwarding the traffic to C.
+		</t> 
+
+
+		<t> 
+		<figure anchor="fig5">
+		<artwork align="center"> 
+     A ------ B ----- E 
+     |              / | 
+     |             /  | 
+ G---D------------C   F
+
+ All the links have a metric of 1  
+</artwork></figure>
+		</t> 
+
+		<t> 
+		By implementing the mechanism defined in this document on C, when the 
+   C-E link fails, C delays the update of its forwarding entry to F, in 
+   order to allow some time for D to converge.  FRR on C keeps protecting the
+   traffic during this period. When ULOOP_DELAY_DOWN_TIMER expires on 
+   C, its forwarding entry to F is updated.  There is no transient 
+   forwarding loop on the link C-D. 
+ 
+		</t> 
+		</section> 
+		 
+		<section anchor="use-case-nonworking" title="Non-applicable Case: Remote Loops"> 
+		<t> 
+		In <xref target="fig6"/>, let us consider the traffic from G to K. The primary path is 
+   G->D->C->F->J->K. When the C-F link fails, if C updates its forwarding 
+   entry to K before D, a transient loop occurs between C and D.</t> 
+		<t> 
+		<figure anchor="fig6"><artwork align="center">
+     A ------ B ----- E --- H 
+     |                      | 
+     |                      | 
+ G---D--------C ------F --- J ---- K     
+
+ All the links have a metric of 1 except B-E=15     
+</artwork></figure> 
+		</t> 
+ 
+		<t> 
+		By implementing the mechanism defined in this document on C, when the 
+   link C-F fails, C delays the update of its forwarding entry to K, 
+   allowing time for D to converge.  When ULOOP_DELAY_DOWN_TIMER expires on C, 
+   its forwarding entry to F is updated.  There is no transient forwarding 
+   loop between C and D. However, a transient forwarding loop may still 
+   occur between D and A. In this scenario, this mechanism is not enough 
+   to address all the possible forwarding loops.  However, it does not 
+   create additional traffic loss.  Besides, in some cases -- such as when 
+   the nodes update their FIB in the order C, A, D
+   because the router A is quicker than D to converge -- the 
+   mechanism may still avoid the forwarding loop that would have otherwise
+   occurred. 
+		</t> 
+		</section> 
+		 
+    </section> 
+	<section anchor="applicability" title="Simulations"> 
+	<t> 
+	Simulations have been run on multiple service-provider topologies.    
+   We evaluated the efficiency of the mechanism on eight different
+   service-provider topologies (different network size and design).  
+   <xref target="table2"/> displays the gain for each topology.
+	</t> 
+
+		<texttable anchor="table2"> 
+		<ttcol align="center">Topology</ttcol> 
+		<ttcol align="center">Gain</ttcol> 
+		<c>T1</c><c>71%</c> 
+		<c>T2</c><c>81%</c> 
+		<c>T3</c><c>62%</c> 
+		<c>T4</c><c>50%</c> 
+		<c>T5</c><c>70%</c> 
+		<c>T6</c><c>70%</c> 
+		<c>T7</c><c>59%</c> 
+		<c>T8</c><c>77%</c> 
+		</texttable> 
+		<t> 
+ We evaluated the gain as follows:
+
+			<list style="symbols"> 
+			<t>We considered a tuple (link A-B, destination D, PLR
+			S, backup next-hop N) as a loop if, upon link A-B
+			failure, the flow from a router S upstream from A (A
+			could be considered as PLR also) to D may loop due to
+			convergence time difference between S and one of its
+			neighbors N.</t> 
+			<t>We evaluated the number of potential loop tuples in normal conditions.</t> 
+
+
+			<t>We evaluated the number of potential loop tuples using the same topological input but taking into account that S converges after N.</t> 
+			<t>The gain is the relative number of loops (both
+			remote and local) we succeed in suppressing.
+</t> 
+
+			</list> 
+
+   For topology 1, implementing the local delay prevented 71% of the 
+   transient forwarding loops created by the failure of any link.
+The analysis shows that all local loops are
+		prevented and only remote loops remain. 
+
+		</t> 
+	</section> 
+	<section anchor="Deployment" title="Deployment Considerations"> 
+	<t> 
+	Transient forwarding loops have the following drawbacks: 
+	<list style="symbols"> 
+	<t>They limit FRR efficiency. Even if FRR is activated  within 50
+	ms, as soon as the PLR has converged, the traffic may be affected by a
+	transient loop.</t> 
+
+	<t>They may impact traffic not directly affected by the failure (due to link congestion).</t> 
+	</list> 
+	The local delay mechanism is a transient forwarding loop avoidance 
+   mechanism (like oFIB).  Even if it only addresses local transient loops, the efficiency versus complexity comparison of the  
+   mechanism makes it a good solution. It is also incrementally deployable
+   with incremental benefits, which makes it an attractive option for both 
+   vendors to implement and service providers to deploy. 
+
+ 
+   Delaying the convergence time is not an issue if we consider that the 
+   traffic is protected during the convergence.   
+	</t> 
+	<t> 
+	The ULOOP_DELAY_DOWN_TIMER value should be set according to the maximum IGP convergence time observed in the network (usually observed in the slowest node). 
+	</t> 
+	<t> 
+	This mechanism is limited to link-down events. When a link
+	goes down, it eventually goes back up. As a consequence, with this
+	mechanism deployed, only the link-down event will be
+	protected against transient forwarding loops while the link-up event
+	will not.  
+
+   If the operator wants to limit the impact of transient
+   forwarding loops during the link-up event, it should make sure to
+   use specific procedures to bring the link back online.  
+
+
+As examples, the operator
+	can decide to put the link back online outside of business hours, or it can
+	use some incremental metric changes to prevent loops (as proposed in
+	<xref target="RFC5715"/>). 
+
+	</t> 
+    </section> 
+	 
+	<section anchor="action" title="Examples"> 
+
+
+		<t>We consider the following figure for the 
+		examples in this section:</t> 
+			<figure anchor="fig7"><artwork align="center"> 
+        D 
+      1 |        F----X 
+        |    1   | 
+        A ------ B 
+        |        |     
+     10 |        | 5   
+        |        |    
+        E--------C         
+        |    1    
+      1 |         
+        S  
+</artwork></figure>
+
+		<t>The network above is considered to have a convergence time of
+		about 1 second, so ULOOP_DELAY_DOWN_TIMER will be adjusted to
+		this value. 
+
+		We also consider that FRR is running on each node.</t> 
+
+		<section anchor="action-linkdown" title="Local Link-Down Event"> 
+
+		<t> 
+
+
+		<xref target="table3"/> describes the events and their timing on routers C and E when the link B-C goes
+		down. It is based on a theoretical sequence of events that
+		should only been read as an example. 
+		As C detects a single local event corresponding to a link-down event
+		(its LSP + LSP from B received), it applies the local delay
+		down behavior, and no micro-loop is formed. 
+
+		</t> 
+		 
+	<texttable anchor="table3"> 
+	<ttcol align="center">Network Condition</ttcol> 
+	<ttcol align="center">Time</ttcol> 
+	<ttcol align="center">Router C Events</ttcol> 
+	<ttcol align="center">Router E Events</ttcol> 
+	<c>S->D Traffic OK</c><c></c><c></c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic lost</c><c>t0</c><c>Link B-C fails</c><c>Link B-C fails</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+20 ms</c><c>C detects the failure</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic OK</c><c>t0+40 ms</c><c>C activates FRR</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+50 ms</c><c>C updates its local LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+53 ms</c><c>C floods its local updated LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+60 ms</c><c>C schedules SPF (100 ms)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+67 ms</c><c>C receives LSP/LSA from B and floods it</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+87 ms</c><c></c><c>E receives LSP/LSA from C and
+	floods it</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+90 ms</c><c></c><c>E schedules SPF (100 ms)</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+161 ms</c><c>C computes SPF</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+165 ms</c><c>C delays its RIB/FIB update (1 sec)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+193 ms</c><c></c><c>E computes SPF</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+199 ms</c><c></c><c>E starts updating its RIB/FIB</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+443 ms</c><c></c><c>E updates its RIB/FIB for D</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+470 ms</c><c></c><c>E convergence ends</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+1165 ms</c><c>C starts updating its RIB/FIB</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+1255 ms</c><c>C updates its RIB/FIB for D</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+1340 ms</c><c>C convergence ends</c><c></c> 
+	</texttable> 
+		<t> 
+		Similarly, upon B-C link-down event, if LSP/LSA from B is received before C detects the link failure, C will apply the route update delay if the local detection is part of the same SPF run. 
+		<xref target="table4"/> describes the associated theoretical sequence of events. It should only been read as an example. 
+		</t> 
+		<texttable anchor="table4"> 
+	<ttcol align="center">Network Condition</ttcol> 
+	<ttcol align="center">Time</ttcol> 
+	<ttcol align="center">Router C Events</ttcol> 
+	<ttcol align="center">Router E Events</ttcol> 
+	<c>S->D Traffic OK</c><c></c><c></c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic lost</c><c>t0</c><c>Link B-C fails</c><c>Link B-C fails</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+32 ms</c><c>C receives LSP/LSA from B and floods it</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+33 ms</c><c>C schedules SPF (100 ms)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+50 ms</c><c>C detects the failure</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic OK</c><c>t0+55 ms</c><c>C activates FRR</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+55 ms</c><c>C updates its local LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+70 ms</c><c>C floods its local updated LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+87 ms</c><c></c><c>E receives LSP/LSA from C and
+	floods it</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+90 ms</c><c></c><c>E schedules SPF (100 ms)</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+135 ms</c><c>C computes SPF</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+140 ms</c><c>C delays its RIB/FIB update (1 sec) </c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+193 ms</c><c></c><c>E computes SPF</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+199 ms</c><c></c><c>E starts updating its RIB/FIB</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+443 ms</c><c></c><c>E updates its RIB/FIB for D</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+470 ms</c><c></c><c>E convergence ends</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+1145 ms</c><c>C starts updating its RIB/FIB</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+1255 ms</c><c>C updates its RIB/FIB for D</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+1340 ms</c><c>C convergence ends</c><c></c> 
+	</texttable> 
+	 
+		</section> 
+		<section anchor="action-abort1" title="Local and Remote Event"> 
+		<t> 
+
+		<xref target="table5"/> describes the events and their 
+		timing on
+   router C and E when the link B-C goes down and when the link F-X 
+   fails in the same time window. 
+
+
+		C will not apply the local delay because a non-local topology
+		change is also received. 
+
+		<xref target="table5"/> is based on a theoretical sequence of
+		events that should only been read as an example. 
+
+		</t> 
+		<t> 
+		</t> 
+	<texttable anchor="table5"> 
+	<ttcol align="center">Network Condition</ttcol> 
+	<ttcol align="center">Time</ttcol> 
+	<ttcol align="center">Router C Events</ttcol> 
+	<ttcol align="center">Router E Events</ttcol> 
+	<c>S->D Traffic OK</c><c></c><c></c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic lost</c><c>t0</c><c>Link B-C fails</c><c>Link B-C fails</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+20 ms</c><c>C detects the failure</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+36 ms</c><c>Link F-X fails</c><c>Link F-X fails</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic OK</c><c>t0+40 ms</c><c>C activates FRR</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+50 ms</c><c>C updates its local LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+54 ms</c><c>C receives LSP/LSA from F and floods it</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+60 ms</c><c>C schedules SPF (100 ms)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+67 ms</c><c>C receives LSP/LSA from B and floods it</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+69 ms</c><c></c><c>E receives LSP/LSA from F, floods it
+	and schedules SPF (100 ms)</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+70 ms</c><c>C floods its local updated LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+87 ms</c><c></c><c>E receives LSP/LSA from C</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+117 ms</c><c></c><c>E floods LSP/LSA from C</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+160 ms</c><c>C computes SPF</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+165 ms</c><c>C starts updating its RIB/FIB (NO DELAY)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+170 ms</c><c></c><c>E computes SPF</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+173 ms</c><c></c><c>E starts updating its RIB/FIB</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic lost</c><c>t0+365 ms</c><c>C updates its RIB/FIB for D</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic OK</c><c>t0+443 ms</c><c></c><c>E updates its RIB/FIB for D</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+450 ms</c><c>C convergence ends</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+470 ms</c><c></c><c>E convergence ends</c> 
+	<c></c><c></c><c></c><c></c> 
+	</texttable> 
+		</section> 
+		<section anchor="action-abort2" title="Aborting Local Delay"> 
+		<t> 
+		<xref target="table6"/> describes the events and their timing on routers C and E when the link B-C goes
+		down. In addition, we consider what happens when the F-X link
+		fails during local delay of the FIB update. 
+
+		C will first apply the local delay, but when the new event
+		happens, it will fall back to the standard convergence
+		mechanism without further delaying route insertion. 
+		In this example, we consider a ULOOP_DELAY_DOWN_TIMER configured to 2 seconds. 
+		<xref target="table6"/> is based on a theoretical sequence of
+		events that should only been read as an example. 
+
+		</t> 
+		<texttable anchor="table6"> 
+	<ttcol align="center">Network Condition</ttcol> 
+	<ttcol align="center">Time</ttcol> 
+	<ttcol align="center">Router C Events</ttcol> 
+	<ttcol align="center">Router E Events</ttcol> 
+	<c>S->D Traffic OK</c><c></c><c></c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic lost</c><c>t0</c><c>Link B-C fails</c><c>Link B-C fails</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+20 ms</c><c>C detects the failure</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic OK</c><c>t0+40 ms</c><c>C activates FRR</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+50 ms</c><c>C updates its local LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c>
+	<c></c><c>t0+55 ms</c><c>C floods its local updated LSP/LSA</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+57 ms</c><c>C schedules SPF (100 ms)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+67 ms</c><c>C receives LSP/LSA from B and floods it</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+87 ms</c><c></c><c>E receives LSP/LSA from C and
+	floods it</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+90 ms</c><c></c><c>E schedules SPF (100 ms)</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+160 ms</c><c>C computes SPF</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+165 ms</c><c>C delays its RIB/FIB update (2 sec)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+193 ms</c><c></c><c>E computes SPF</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+199 ms</c><c></c><c>E starts updating its RIB/FIB</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+254 ms</c><c>Link F-X fails</c><c>Link F-X fails</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+300 ms</c><c>C receives LSP/LSA from F and floods it</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+303 ms</c><c>C schedules SPF (200 ms)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+312 ms</c><c>E receives LSP/LSA from F and floods it</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+313 ms</c><c>E schedules SPF (200 ms)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+502 ms</c><c>C computes SPF</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+505 ms</c><c>C starts updating its RIB/FIB (NO DELAY)</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+514 ms</c><c></c><c>E computes SPF</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+519 ms</c><c></c><c>E starts updating its RIB/FIB</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic lost</c><c>t0+659 ms</c><c>C updates its RIB/FIB for D</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c>S->D Traffic OK</c><c>t0+778 ms</c><c></c><c>E updates its RIB/FIB for D</c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+781 ms</c><c>C convergence ends</c><c></c> 
+	<c></c><c></c><c></c><c></c> 
+	<c></c><c>t0+810 ms</c><c></c><c>E convergence ends</c> 
+	</texttable> 
+		</section> 
+		 
+	</section> 
+	 
+	<section anchor="comparison" title="Comparison with Other Solutions"> 
+		<t> 
+		As stated in <xref target="overview"/>, the local delay solution
+		reuses some concepts already introduced by other IETF
+		proposals but tries to find a trade-off between efficiency and
+		simplicity. 
+		This section tries to compare behaviors of the solutions. 
+		</t> 
+		<section anchor="plsn" title="PLSN"> 
+		<t> 
+		PLSN <xref target="PLSN"/>
+		describes a mechanism where each node in the network tries to
+		avoid transient forwarding loops upon a topology change by
+		always keeping traffic on a loop-free path for a defined
+		duration (locked path to a safe neighbor). 
+		The locked path may be the new primary next hop, another
+		neighbor, or the old primary next hop depending on how the safety
+		condition is satisfied. 
+		</t>
+		<t>PLSN does not solve all transient forwarding loops (see
+		Section 4 of
+		<xref target="PLSN"/> 
+		for more details).</t> 
+
+		<t>The solution defined in this document reuses some concepts
+		of PLSN but in a more simple fashion: 
+
+		<list style="symbols"> 
+
+		<t>
+     PLSN has three different behaviors: (1) keep using the old next hop,
+     (2) use the new primary next hop if it is safe, or (3) use another safe
+     next hop.  The local delay solution, however, only has one: keep
+     using the current next hop (i.e., the old primary next hop or an
+     already-activated FRR path).
+
+</t> 
+
+		<t>PLSN may cause some damage while using a safe next hop that
+		is
+     not the new primary next hop if the new safe next hop does
+     not provide enough bandwidth (see <xref
+		target="RFC7916"/>). The solution defined in this document may not experience this
+		issue as the service provider may have control on the FRR path
+		being used, preventing network congestion.</t> 
+
+		<t>PLSN applies to all nodes in a network (remote or local
+		changes), while the mechanism defined in this document applies only to the
+		nodes connected to the topology change.</t>	 
+
+		</list> 
+		</t> 
+		</section> 
+		<section anchor="ofib" title="oFIB"> 
+		<t> 
+		oFIB <xref target="RFC6976"/> describes a mechanism where the
+		convergence of the network upon a topology change is ordered
+		in order to prevent transient forwarding loops.  
+		Each router in the network deduces the failure type from
+		the LSA/LSP received and computes/applies a specific FIB
+		update timer based on the failure type and its rank in the
+		network, considering the failure point as root. 
+
+		</t> 
+
+		<t> 
+  The oFIB mechanism solves all the transient forwarding loops in a
+  network at the price of introducing complexity in the convergence
+  process that may require careful monitoring by the service provider.
+
+		</t> 
+		<t> 
+		The solution defined in this document reuses the oFIB concept
+		but limits it to the first hop that experiences the topology
+		change. 
+
+  As demonstrated, the mechanism
+  defined in this document allows all the local transient
+  forwarding loops to be solved; these represent a high percentage of all the
+  loops.
+  Moreover, limiting to one hop allows 
+  network-wide convergence behavior to be kept.
+		</t> 
+		</section> 
+	 
+    </section> 
+
+
+    <section anchor="IANA" title="IANA Considerations"> 
+	<t> 
+This document has no IANA actions.
+	</t> 
+    </section> 
+
+	<section anchor="Security" title="Security Considerations"> 
+	<t> 
+	This document does not introduce any change in terms of IGP security.  The 
+   operation is internal to the router.  The local delay does not 
+   increase the number of attack vectors as an attacker could only trigger this 
+   mechanism if it already has the ability to disable or enable an IGP 
+   link.  The local delay does not increase the negative consequences. 
+   If an attacker has the ability to disable or enable an IGP link, it 
+   can already harm the network by creating instability and harm the 
+   traffic by creating forwarding packet loss and forwarding loss for 
+   the traffic crossing that link. 
+ 
+	</t> 
+    </section> 
+ 
+  </middle> 
+  <back> 
+     <references title="Normative References"> 
+      &RFC2119;
+      &RFC8174;
+	  &RFC2328; 
+
+	  <reference anchor="ISO10589"> 
+	  <front> 
+	  <title>
+Information technology -- Telecommunications and
+              information exchange between systems -- Intermediate
+              System to Intermediate System intra-domain routeing
+              information exchange protocol for use in conjunction with
+              the protocol for providing the connectionless-mode network
+              service (ISO 8473)
+</title> 
+	<author><organization>International Organization for Standardization</organization></author> 
+	  <date month="November" year="2002"/> 
+	  </front> 
+	  <seriesInfo name="ISO/IEC" value="10589:2002, Second Edition"/> 
+	  </reference> 
+
+	</references> 
+
+    <references title="Informative References"> 
+	  &RFC5715; 
+	  &RFC3906; 
+	  &OFIB; 
+	  &RFC7916; 
+
+<!-- draft-ietf-rtgwg-microloop-analysis EXPIRED -->
+<reference anchor='PLSN'>
+<front>
+<title>Analysis and Minimization of Microloops in Link-state Routing Protocols</title>
+
+<author initials='A' surname='Zinin' fullname='Alex Zinin'>
+    <organization />
+</author>
+
+<date month='October' day='24' year='2005' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-rtgwg-microloop-analysis-01' />
+
+</reference>
+
+
+<!-- draft-ietf-rtgwg-backoff-algo LAST CALL  -->
+<reference anchor='BACKOFF'>
+<front>
+<title>SPF Back-off Delay algorithm for link state IGPs</title>
+
+<author initials='B' surname='Decraene' fullname='Bruno Decraene'>
+    <organization />
+</author>
+
+<author initials='S' surname='Litkowski' fullname='Stephane Litkowski'>
+    <organization />
+</author>
+
+<author initials='H' surname='Gredler' fullname='Hannes Gredler'>
+    <organization />
+</author>
+
+<author initials='A' surname='Lindem' fullname='Acee Lindem'>
+    <organization />
+</author>
+
+<author initials='P' surname='Francois' fullname='Pierre Francois'>
+    <organization />
+</author>
+
+<author initials='C' surname='Bowers' fullname='Chris Bowers'>
+    <organization />
+</author>
+
+<date month='March' year='2018' />
+
+</front>
+
+<seriesInfo name='Work in Progress,' value='draft-ietf-rtgwg-backoff-algo-10' />
+
+</reference>
+
+    </references> 
+
+    <section anchor="Acknowledgements" title="Acknowledgements" numbered="no">
+	<t> 
+	We would like to thank the authors of <xref target="RFC6976"/> for
+	introducing the concept of ordered convergence: Mike Shand, Stewart
+	Bryant, Stefano Previdi, and Olivier Bonaventure.	 
+	</t> 
+    </section> 
+
+
+
+  </back> 
+</rfc> 

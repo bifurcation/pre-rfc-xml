@@ -1,0 +1,1835 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<?xml-stylesheet type="text/xsl" href="rfc2629.xslt"?>
+
+<!DOCTYPE rfc SYSTEM 'rfc2629.dtd'>
+<?rfc toc="yes"?>
+<?rfc compact="no"?>
+<?rfc subcompact="no"?>
+<?rfc symrefs="yes" ?>
+<?rfc sortrefs="yes"?>
+<?rfc iprnotified="no"?>
+<?rfc strict="yes"?>
+
+<rfc ipr="trust200902" category="std"
+    number="8072" submissionType="IETF" consensus="yes" >
+
+    <front>
+    <title abbrev="YANG Patch">YANG Patch Media Type</title>
+
+    <author initials="A" surname="Bierman" fullname='Andy Bierman' >
+      <organization>YumaWorks</organization>
+      <address>
+        <email>andy@yumaworks.com</email>
+      </address>
+    </author>
+
+    <author initials="M" surname="Bjorklund" fullname='Martin Bjorklund' >
+      <organization>Tail-f Systems</organization>
+      <address>
+        <email>mbj@tail-f.com</email>
+      </address>
+    </author>
+
+    <author initials="K" surname="Watsen" fullname='Kent Watsen' >
+      <organization>Juniper Networks</organization>
+      <address>
+        <email>kwatsen@juniper.net</email>
+      </address>
+    </author>
+
+        <date month="February" year="2017"/>
+
+    <abstract>
+        <t>
+This document describes a method for applying patches
+to configuration datastores using data defined with the YANG
+data modeling language.
+        </t>
+    </abstract>
+</front>
+
+<middle>
+<section title="Introduction" anchor="introduction">
+    <t>
+There is a need for standard mechanisms to patch
+datastores defined in <xref target="RFC6241"/>,
+which contain conceptual data that conforms to
+schema specified with YANG <xref target="RFC7950"/>.
+An &quot;ordered &apos;edit&apos; list&quot; approach
+is needed to provide RESTCONF client developers with
+more precise RESTCONF client control of the edit procedure than
+the &quot;plain&nbsp;patch&quot; mechanism found in <xref target="RFC8040"/>.
+    </t>
+    <t>
+This document defines a media type for a YANG-based editing
+mechanism that can be used with the HTTP PATCH method <xref target="RFC5789"/>.
+YANG Patch is designed to support the RESTCONF protocol,
+defined in <xref target="RFC8040"/>.
+This document only specifies the use of the YANG Patch media type
+with the RESTCONF protocol.
+    </t>
+    <t>
+It may be possible to use YANG Patch with other protocols
+besides RESTCONF. This is outside the scope of this document.
+For any protocol that supports the YANG Patch media type,
+if the entire patch document cannot be successfully applied,
+then the server MUST NOT apply any of the changes.
+It may be possible to use YANG Patch with datastore
+types other than a configuration datastore.
+This is outside the scope of this document.
+    </t>
+<section title="Terminology" anchor="terminology">
+    <t>
+The key words &quot;MUST&quot;, &quot;MUST NOT&quot;, &quot;REQUIRED&quot;,
+&quot;SHALL&quot;, &quot;SHALL NOT&quot;, &quot;SHOULD&quot;,
+&quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;,  &quot;MAY&quot;, and
+&quot;OPTIONAL&quot; in this document are to be interpreted as described in
+<xref target="RFC2119"/>.
+    </t>
+
+<section title="NETCONF" anchor="netconf">
+    <t>
+The following terms are defined in <xref target="RFC6241"/>:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+configuration data
+ </t>
+ <t>
+datastore
+ </t>
+ <t>
+configuration datastore
+ </t>
+ <t>
+protocol operation
+ </t>
+ <t>
+running configuration datastore
+ </t>
+ <t>
+state data
+ </t>
+ <t>
+user
+ </t>
+ </list>
+</t>
+</section>
+<section title="HTTP" anchor="http">
+    <t>
+The following terms are defined in <xref target="RFC7230"/>:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+header field
+ </t>
+ <t>
+message-body
+ </t>
+ <t>
+query
+ </t>
+ <t>
+request URI
+ </t>
+ </list>
+</t>
+    <t>
+The following terms are defined in <xref target="RFC7231"/>:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+method
+ </t>
+ <t>
+request
+ </t>
+ <t>
+resource
+ </t>
+ </list>
+</t>
+</section>
+<section title="YANG" anchor="yang">
+    <t>
+The following terms are defined in <xref target="RFC7950"/>:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+container
+ </t>
+ <t>
+data node
+ </t>
+ <t>
+leaf
+ </t>
+ <t>
+leaf-list
+ </t>
+ <t>
+list
+ </t>
+ </list>
+</t>
+</section>
+
+<section title="RESTCONF" anchor="restconf">
+    <t>
+The following terms are defined in <xref target="RFC8040"/>:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+application/yang-data+xml
+ </t>
+ <t>
+application/yang-data+json
+ </t>
+ <t>
+data resource
+ </t>
+ <t>
+datastore resource
+ </t>
+ <t>
+patch
+ </t>
+ <t>
+RESTCONF capability
+ </t>
+ <t>
+target resource
+ </t>
+ <t>
+YANG data template
+ </t>
+ </list>
+</t>
+</section>
+<section title="YANG Patch" anchor="yang-patch">
+    <t>
+The following terms are used within this document:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+RESTCONF client: a client that implements the RESTCONF protocol.
+ </t>
+ <t>
+RESTCONF server: a server that implements the RESTCONF protocol.
+ </t>
+ <t>
+YANG Patch: a conceptual edit request using the &quot;yang&#8209;patch&quot;
+YANG Patch template, defined in <xref target="module"/>.
+In HTTP, refers to a PATCH method where a representation uses
+either the media type &quot;application/yang&#8209;patch+xml&quot; or
+&quot;application/yang&#8209;patch+json&quot;.
+ </t>
+ <t>
+YANG Patch Status: a conceptual edit status response using
+the YANG &quot;yang&#8209;patch&#8209;status&quot; YANG data template,
+defined in <xref target="module"/>. In HTTP, refers to a response message
+for a PATCH method, where it has a representation with either the media type
+&quot;application&wj;/yang&#8209;data+xml&quot; or
+&quot;application/yang&#8209;data+json&quot;.
+ </t>
+ <t>
+YANG Patch template: similar to a YANG data template, except that
+it has a representation with the media type
+&quot;application&wj;/yang&#8209;patch+xml&quot;
+or &quot;application/yang&#8209;patch+json&quot;.
+ </t>
+ </list>
+</t>
+</section>
+
+<section title="Examples" anchor="examples">
+    <t>
+Some protocol message lines within examples throughout this document
+are split into multiple lines for display purposes only. When a
+line ends with a backslash (&quot;\&quot;) as the last character,
+the line is wrapped for display purposes.  It is to be considered
+to be joined to the next line by deleting the backslash, the
+following line break, and the leading whitespace of the next line.
+    </t>
+</section>
+
+<section title="Tree Diagram Notations" anchor="tree-diagram-notations">
+    <t>
+A simplified graphical representation of the data model is used in
+this document.  The meanings of the symbols in these diagrams are as follows:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+Brackets &quot;[&quot; and &quot;]&quot; enclose list keys.
+ </t>
+ <t>
+Abbreviations before data node names: &quot;rw&quot; means configuration
+data (read-write), &quot;ro&quot; means state data (read-only), and
+&quot;x&quot; means operation resource (executable).
+ </t>
+ <t>
+Symbols after data node names: &quot;?&quot; means an optional node, and
+&quot;*&quot; denotes a &quot;list&quot; and &quot;leaf&#8209;list&quot;.
+ </t>
+ <t>
+Parentheses enclose choice and case nodes, and case nodes are also
+marked with a colon (&quot;:&quot;).
+ </t>
+ <t>
+Ellipsis (&quot;...&quot;) stands for contents of subtrees that are not shown.
+ </t>
+ </list>
+</t>
+</section>
+</section>
+</section>
+
+<section title="YANG Patch" anchor="yang-patch-2">
+    <t>
+A &quot;YANG Patch&quot; is an ordered list of edits that are applied
+to the target datastore by the RESTCONF server. The specific fields
+are defined in the YANG module in <xref target="module"/>.
+    </t>
+    <t>
+The YANG Patch operation is invoked
+by the RESTCONF client by sending a PATCH method request with
+a representation using either the media type
+&quot;application/yang&#8209;patch+xml&quot;
+or &quot;application/yang&#8209;patch+json&quot;. This message&nbhy;body
+representing the YANG Patch input parameters MUST be present.
+    </t>
+    <t>
+YANG Patch has some features that are not possible with the
+&quot;plain&nbhy;patch&quot; mechanism defined in RESTCONF
+<xref target="RFC8040"/>:
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+YANG Patch allows multiple sub-resources to be edited
+within the same PATCH method.
+ </t>
+ <t>
+YANG Patch allows a more precise edit operation than the
+&quot;plain&nbsp;patch&quot; mechanism found in <xref target="RFC8040"/>.
+There are seven operations supported (&quot;create&quot;,
+&quot;delete&quot;, &quot;insert&quot;, &quot;merge&quot;,
+&quot;move&quot;, &quot;replace&quot;, and &quot;remove&quot;).
+ </t>
+ <t>
+YANG Patch uses an &quot;edit&quot;&nbsp;list with an explicit
+processing order. The edits are processed in client-specified order,
+and error processing can be precise even when multiple errors occur
+in the same YANG Patch request.
+ </t>
+ </list>
+</t>
+    <t>
+The YANG Patch &quot;patch&#8209;id&quot; may be useful for debugging,
+and SHOULD be present in any audit logging records generated by the
+RESTCONF server for a patch.
+    </t>
+    <t>
+The RESTCONF server MUST return the &quot;Accept&nbhy;Patch&quot; header field
+in an OPTIONS response, as specified in <xref target="RFC5789"/>,
+which includes the media type for YANG Patch. This is needed by a
+client to determine the message&nbhy;encoding formats supported by the server
+(e.g., XML, JSON, or both). The following is an example of an
+&quot;Accept&nbhy;Patch&quot; header:
+    </t>
+
+        <figure>
+            <artwork><![CDATA[
+ Accept-Patch: application/yang-patch+xml,application/yang-patch+json
+            ]]></artwork>
+        </figure>
+
+    <t>
+Note that YANG Patch can only edit data resources.
+The PATCH method cannot be used to replace the datastore resource.
+Although the &quot;ietf&#8209;yang&#8209;patch&quot; YANG module is written
+using YANG version&nbsp;1.1 <xref target="RFC7950"/>, an implementation
+of YANG Patch can be used with content defined in YANG version&nbsp;1
+<xref target="RFC6020"/> as well.
+    </t>
+    <t>
+A YANG Patch can be encoded in XML format according
+to <xref target="W3C.REC-xml-20081126"/>. It can also be encoded in
+JSON according to &quot;JSON Encoding of Data Modeled with YANG&quot;
+<xref target="RFC7951"/>.  If any metadata needs to
+be sent in a JSON message, it is encoded according
+to &quot;Defining and Using Metadata with YANG&quot; <xref target="RFC7952"/>.
+    </t>
+<section title="Target Resource" anchor="target-resource">
+    <t>
+The YANG Patch operation uses the RESTCONF target resource URI
+to identify the resource that will be patched.
+This can be the datastore resource itself, i.e., &quot;{+restconf}/data&quot;,
+to edit top&nbhy;level configuration data resources,
+or it can be a configuration data resource within the
+datastore resource, e.g.,
+&quot;{+restconf}&wj;/data&wj;/ietf&#8209;interfaces:interfaces&quot;,
+to edit sub-resources within a top-level configuration
+data resource.
+    </t>
+    <t>
+The target resource MUST identify exactly one resource instance.
+If more than one resource instance is identified, then
+the request MUST&nbsp;NOT be processed and a &quot;400 Bad Request&quot;
+error response MUST be sent by the server. If the target resource
+does not identify any existing resource instance, then the request
+MUST&nbsp;NOT be processed and a &quot;404 Not Found&quot; error
+response MUST be sent by the server.
+    </t>
+    <t>
+Each edit with a YANG Patch identifies a target data node for the
+associated edit. This is described in <xref target="target-data-node"/>.
+    </t>
+</section>
+
+<section title="yang-patch Request" anchor="yang-patch-request">
+    <t>
+A YANG Patch is identified by a unique &quot;patch&#8209;id&quot;, and
+it may have an optional comment.  A patch is an ordered collection of
+edits. Each edit is identified by an &quot;edit&#8209;id&quot;, and
+it has an edit operation (&quot;create&quot;, &quot;delete&quot;,
+&quot;insert&quot;, &quot;merge&quot;, &quot;move&quot;,
+&quot;replace&quot;, or &quot;remove&quot;) that is applied to the
+target resource.  Each edit can be applied to a sub&nbhy;resource
+&quot;target&quot; within the target resource. If the operation is
+&quot;insert&quot; or &quot;move&quot;, then the &quot;where&quot;
+parameter indicates how the node is inserted or moved. For values
+&quot;before&quot; and &quot;after&quot;, the &quot;point&quot; parameter
+specifies the data node insertion point.
+    </t>
+    <t>
+The &quot;merge&quot;, &quot;replace&quot;, &quot;create&quot;,
+&quot;delete&quot;, and &quot;remove&quot; edit operations
+have exactly the same meanings as those defined for
+the &quot;operation&quot; attribute described in Section&nbsp;7.2 of
+<xref target="RFC6241"/>.
+    </t>
+    <t>
+Each edit within a YANG Patch MUST identify exactly one data
+resource instance. If an edit represents more than one
+resource instance, then the request MUST NOT be processed and
+a &quot;400 Bad Request&quot; error response MUST be sent by the server.
+If the edit does not identify any existing resource instance
+and the operation for the edit is not &quot;create&quot;, then
+the request MUST NOT be processed and a &quot;404 Not Found&quot;
+error response MUST be sent by the server.
+A &quot;yang&#8209;patch&#8209;status&quot; response MUST be sent
+by the server identifying the edit or edits that are not valid.
+    </t>
+    <t>
+YANG Patch does not provide any access to specific datastores.
+How a server processes an edit if it is co&nbhy;located with a
+Network Configuration Protocol (NETCONF) server that does provide
+access to individual datastores is left up to the implementation. 
+A complete datastore cannot be replaced in the same manner as that
+provided by the &lt;copy&#8209;config&gt; operation defined in
+Section&nbsp;7.3 of <xref target="RFC6241"/>. Only the specified nodes
+in a YANG Patch are affected.
+    </t>
+    <t>
+A message-body representing the YANG Patch is sent
+by the RESTCONF client to specify the edit operation request.
+When used with the HTTP PATCH method, this data is identified
+by the YANG Patch media type.
+    </t>
+    <t>
+YANG tree diagram for &quot;yang&#8209;patch&quot; container:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+  +---- yang-patch
+        +---- patch-id    string
+        +---- comment?    string
+        +---- edit* [edit-id]
+           +---- edit-id      string
+           +---- operation    enumeration
+           +---- target       target-resource-offset
+           +---- point?       target-resource-offset
+           +---- where?       enumeration
+           +---- value?
+            ]]></artwork>
+        </figure>
+</section>
+<section title="yang-patch-status Response" anchor="yang-patch-status-response">
+    <t>
+A message-body representing the YANG Patch Status is returned
+to the RESTCONF client to report the detailed status of the edit operation.
+When used with the HTTP PATCH method, this data is identified by the
+YANG Patch Status media type; the syntax specification is defined
+in <xref target="module"/>.
+    </t>
+    <t>
+YANG tree diagram for &quot;yang&#8209;patch&#8209;status&quot; container:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+  +---- yang-patch-status
+        +---- patch-id       string
+        +---- (global-status)?
+        |  +--:(global-errors)
+        |  |  +---- errors
+        |  |     +---- error*
+        |  |        +---- error-type       enumeration
+        |  |        +---- error-tag        string
+        |  |        +---- error-app-tag?   string
+        |  |        +---- error-path?      instance-identifier
+        |  |        +---- error-message?   string
+        |  |        +---- error-info?
+        |  +--:(ok)
+        |     +---- ok?            empty
+        +---- edit-status
+           +---- edit* [edit-id]
+              +---- edit-id    string
+              +---- (edit-status-choice)?
+                 +--:(ok)
+                 |  +---- ok?        empty
+                 +--:(errors)
+                    +---- errors
+                       +---- error*
+                          +---- error-type       enumeration
+                          +---- error-tag        string
+                          +---- error-app-tag?   string
+                          +---- error-path?      instance-identifier
+                          +---- error-message?   string
+                          +---- error-info?
+            ]]></artwork>
+        </figure>
+</section>
+
+<section title="Target Data Node" anchor="target-data-node">
+    <t>
+The target data node for each edit operation is determined
+by the value of the target resource in the request and the
+&quot;target&quot; leaf within each &quot;edit&quot; entry.
+    </t>
+    <t>
+If the target resource specified in the request URI identifies
+a datastore resource, then the path string in the &quot;target&quot; leaf
+is treated as an absolute path expression identifying the
+target data node for the corresponding edit. The first node specified
+in the &quot;target&quot; leaf is a top-level data node defined within
+a YANG module. The &quot;target&quot; leaf MUST NOT contain a single
+forward slash (&quot;/&quot;), since this would identify the
+datastore resource, not a data resource.
+    </t>
+    <t>
+If the target resource specified in the request URI identifies
+a configuration data resource, then the path string in
+the &quot;target&quot; leaf is treated as a relative path expression.
+The first node specified in the &quot;target&quot; leaf is a
+child configuration data node of the data node associated with the
+target resource. If the &quot;target&quot; leaf contains a single
+forward slash (&quot;/&quot;), then the target data node is
+the target resource data node.
+    </t>
+</section>
+<section title="Edit Operations" anchor="edit-operations">
+    <t>
+Each YANG Patch edit specifies one edit operation on
+the target data node. The set of operations is aligned
+with the NETCONF edit operations but also includes
+some new operations.
+    </t>
+
+<texttable title="YANG Patch Edit Operations">
+<ttcol align='left'> Operation</ttcol>
+<ttcol align='left'>Description</ttcol>
+<c>create</c>
+<c>create a new data resource if it does not already exist; if it already
+exists, return an error</c>
+<c>delete</c>
+<c>delete a data resource if it already exists; if it does not exist, return
+an error</c>
+<c>insert</c>
+<c>insert a new user-ordered data resource</c>
+<c>merge</c>
+<c>merge the edit value with the target data resource; create if it
+does not already exist</c>
+<c>move</c>
+<c>reorder the target data resource</c>
+<c>replace</c>
+<c>replace the target data resource with the edit value</c>
+<c>remove</c>
+<c>remove a data resource if it already exists</c>
+</texttable>
+
+</section>
+
+<section title="Successful Edit Response Handling" anchor="successful-edit-response-handling">
+    <t>
+If a YANG Patch is completed without errors, the RESTCONF server MUST
+return a &quot;yang&#8209;patch&#8209;status&quot; message with a
+&quot;global&nbhy;status&quot; choice set to &quot;ok&quot;.
+    </t>
+
+    <t>
+Refer to <xref target="success-example"/> for an example of a successful
+YANG Patch response.
+    </t>
+</section>
+<section title="Error Handling" anchor="error-handling">
+    <t>
+If a well-formed, schema-valid YANG Patch message is received, then
+the RESTCONF server will process the supplied edits in ascending order.
+The following error modes apply to the processing of this
+&quot;edit&quot;&nbsp;list:
+    </t>
+    <t>
+If a YANG Patch is completed with errors, the RESTCONF server SHOULD
+return a &quot;yang&#8209;patch&#8209;status&quot; message. It is
+possible (e.g., within a distributed implementation) that an invalid
+request will be rejected before the YANG Patch edits are processed. In
+this case, the server MUST send the appropriate HTTP error response instead.
+    </t>
+    <t>
+Refer to <xref target="error-example"/> for an example of an error
+YANG Patch response.
+    </t>
+</section>
+
+<section title="&quot;:yang-patch&quot; RESTCONF Capability" anchor="yang-patch-restconf-capability">
+    <t>
+A URI is defined to identify the YANG Patch extension to
+the base RESTCONF protocol.  If the RESTCONF server supports the
+YANG Patch media type, then the &quot;:yang&#8209;patch&quot;
+RESTCONF capability defined in <xref target="capability-uri-def"/> MUST be
+present in the &quot;capability&quot; leaf-list in the
+&quot;ietf&#8209;restconf&#8209;monitoring&quot; module defined
+in <xref target="RFC8040"/>.
+    </t>
+</section>
+</section>
+
+<section title="YANG Module" anchor="module">
+    <t>
+The &quot;ietf&#8209;yang&#8209;patch&quot; module defines conceptual
+definitions with the &quot;yang&#8209;data&quot; extension statements,
+which are not meant to be implemented as datastore contents by a
+RESTCONF server.
+    </t>
+    <t>
+The &quot;ietf&#8209;restconf&quot; module from
+<xref target="RFC8040"/> is used by this module for the
+&quot;yang&#8209;data&quot; extension definition.
+    </t>
+
+<!-- [PUB]  Per authors:
+Re. 2016-11-09, 2017-02-03:  Please update to show date of pub. -->
+
+        <figure>
+            <artwork><![CDATA[
+<CODE BEGINS>
+
+file "ietf-yang-patch@2016-11-09.yang"
+
+module ietf-yang-patch {
+  yang-version 1.1;
+  namespace "urn:ietf:params:xml:ns:yang:ietf-yang-patch";
+  prefix "ypatch";
+
+  import ietf-restconf { prefix rc; }
+
+  organization
+    "IETF NETCONF (Network Configuration) Working Group";
+
+  contact
+    "WG Web:   <https://datatracker.ietf.org/wg/netconf/>
+     WG List:  <mailto:netconf@ietf.org>
+
+     Author:   Andy Bierman
+               <mailto:andy@yumaworks.com>
+
+     Author:   Martin Bjorklund
+               <mailto:mbj@tail-f.com>
+
+     Author:   Kent Watsen
+               <mailto:kwatsen@juniper.net>";
+
+  description
+    "This module contains conceptual YANG specifications
+     for the YANG Patch and YANG Patch Status data structures.
+
+     Note that the YANG definitions within this module do not
+     represent configuration data of any kind.
+     The YANG grouping statements provide a normative syntax
+     for XML and JSON message-encoding purposes.
+
+     Copyright (c) 2017 IETF Trust and the persons identified as
+     authors of the code.  All rights reserved.
+
+     Redistribution and use in source and binary forms, with or
+     without modification, is permitted pursuant to, and subject
+     to the license terms contained in, the Simplified BSD License
+     set forth in Section 4.c of the IETF Trust's Legal Provisions
+     Relating to IETF Documents
+     (http://trustee.ietf.org/license-info).
+
+     This version of this YANG module is part of RFC 8072; see
+     the RFC itself for full legal notices.";
+
+  revision 2017-02-03 {
+    description
+      "Initial revision.";
+    reference
+      "RFC 8072: YANG Patch Media Type.";
+  }
+
+  typedef target-resource-offset {
+    type string;
+    description
+      "Contains a data resource identifier string representing
+       a sub-resource within the target resource.
+       The document root for this expression is the
+       target resource that is specified in the
+       protocol operation (e.g., the URI for the PATCH request).
+
+       This string is encoded according to the same rules as those
+       for a data resource identifier in a RESTCONF request URI.";
+
+    reference
+       "RFC 8040, Section 3.5.3.";
+  }
+
+  rc:yang-data "yang-patch" {
+    uses yang-patch;
+  }
+
+  rc:yang-data "yang-patch-status" {
+    uses yang-patch-status;
+  }
+
+  grouping yang-patch {
+
+    description
+      "A grouping that contains a YANG container representing the
+       syntax and semantics of a YANG Patch edit request message.";
+
+    container yang-patch {
+      description
+        "Represents a conceptual sequence of datastore edits,
+         called a patch.  Each patch is given a client-assigned
+         patch identifier.  Each edit MUST be applied
+         in ascending order, and all edits MUST be applied.
+         If any errors occur, then the target datastore MUST NOT
+         be changed by the YANG Patch operation.
+
+         It is possible for a datastore constraint violation to occur
+         due to any node in the datastore, including nodes not
+         included in the 'edit' list.  Any validation errors MUST
+         be reported in the reply message.";
+
+      reference
+        "RFC 7950, Section 8.3.";
+
+      leaf patch-id {
+        type string;
+        mandatory true;
+        description
+          "An arbitrary string provided by the client to identify
+           the entire patch.  Error messages returned by the server
+           that pertain to this patch will be identified by this
+           'patch-id' value.  A client SHOULD attempt to generate
+           unique 'patch-id' values to distinguish between
+           transactions from multiple clients in any audit logs
+           maintained by the server.";
+      }
+
+      leaf comment {
+        type string;
+        description
+          "An arbitrary string provided by the client to describe
+           the entire patch.  This value SHOULD be present in any
+           audit logging records generated by the server for the
+           patch.";
+      }
+
+      list edit {
+        key edit-id;
+        ordered-by user;
+
+        description
+          "Represents one edit within the YANG Patch request message.
+           The 'edit' list is applied in the following manner:
+
+             - The first edit is conceptually applied to a copy
+               of the existing target datastore, e.g., the
+               running configuration datastore.
+             - Each ascending edit is conceptually applied to
+               the result of the previous edit(s).
+             - After all edits have been successfully processed,
+               the result is validated according to YANG constraints.
+             - If successful, the server will attempt to apply
+               the result to the target datastore.";
+
+        leaf edit-id {
+          type string;
+          description
+            "Arbitrary string index for the edit.
+             Error messages returned by the server that pertain
+             to a specific edit will be identified by this value.";
+        }
+
+        leaf operation {
+          type enumeration {
+            enum create {
+              description
+                "The target data node is created using the supplied
+                 value, only if it does not already exist.  The
+                 'target' leaf identifies the data node to be
+                 created, not the parent data node.";
+            }
+            enum delete {
+              description
+                "Delete the target node, only if the data resource
+                 currently exists; otherwise, return an error.";
+            }
+            enum insert {
+              description
+                "Insert the supplied value into a user-ordered
+                 list or leaf-list entry.  The target node must
+                 represent a new data resource.  If the 'where'
+                 parameter is set to 'before' or 'after', then
+                 the 'point' parameter identifies the insertion
+                 point for the target node.";
+            }
+            enum merge {
+              description
+                "The supplied value is merged with the target data
+                 node.";
+            }
+            enum move {
+              description
+                "Move the target node.  Reorder a user-ordered
+                 list or leaf-list.  The target node must represent
+                 an existing data resource.  If the 'where' parameter
+                 is set to 'before' or 'after', then the 'point'
+                 parameter identifies the insertion point to move
+                 the target node.";
+            }
+            enum replace {
+              description
+                "The supplied value is used to replace the target
+                 data node.";
+            }
+            enum remove {
+              description
+                "Delete the target node if it currently exists.";
+            }
+          }
+          mandatory true;
+          description
+            "The datastore operation requested for the associated
+             'edit' entry.";
+        }
+
+        leaf target {
+          type target-resource-offset;
+          mandatory true;
+          description
+            "Identifies the target data node for the edit
+             operation.  If the target has the value '/', then
+             the target data node is the target resource.
+             The target node MUST identify a data resource,
+             not the datastore resource.";
+        }
+
+        leaf point {
+          when "(../operation = 'insert' or ../operation = 'move')"
+             + "and (../where = 'before' or ../where = 'after')" {
+            description
+              "This leaf only applies for 'insert' or 'move'
+               operations, before or after an existing entry.";
+          }
+          type target-resource-offset;
+          description
+            "The absolute URL path for the data node that is being
+             used as the insertion point or move point for the
+             target of this 'edit' entry.";
+        }
+
+        leaf where {
+          when "../operation = 'insert' or ../operation = 'move'" {
+            description
+              "This leaf only applies for 'insert' or 'move'
+               operations.";
+          }
+          type enumeration {
+            enum before {
+              description
+                "Insert or move a data node before the data resource
+                 identified by the 'point' parameter.";
+            }
+            enum after {
+              description
+                "Insert or move a data node after the data resource
+                 identified by the 'point' parameter.";
+            }
+            enum first {
+              description
+                "Insert or move a data node so it becomes ordered
+                 as the first entry.";
+            }
+            enum last {
+              description
+                "Insert or move a data node so it becomes ordered
+                 as the last entry.";
+            }
+          }
+          default last;
+          description
+            "Identifies where a data resource will be inserted
+             or moved.  YANG only allows these operations for
+             list and leaf-list data nodes that are
+             'ordered-by user'.";
+        }
+
+        anydata value {
+          when "../operation = 'create' "
+             + "or ../operation = 'merge' "
+             + "or ../operation = 'replace' "
+             + "or ../operation = 'insert'" {
+            description
+              "The anydata 'value' is only used for 'create',
+               'merge', 'replace', and 'insert' operations.";
+          }
+          description
+            "Value used for this edit operation.  The anydata 'value'
+             contains the target resource associated with the
+             'target' leaf.
+
+             For example, suppose the target node is a YANG container
+             named foo:
+
+                 container foo {
+                   leaf a { type string; }
+                   leaf b { type int32; }
+                 }
+
+             The 'value' node contains one instance of foo:
+
+                 <value>
+                    <foo xmlns='example-foo-namespace'>
+                       <a>some value</a>
+                       <b>42</b>
+                    </foo>
+                 </value>
+              ";
+        }
+      }
+    }
+
+  } // grouping yang-patch
+
+  grouping yang-patch-status {
+
+    description
+      "A grouping that contains a YANG container representing the
+       syntax and semantics of a YANG Patch Status response
+       message.";
+
+    container yang-patch-status {
+      description
+        "A container representing the response message sent by the
+         server after a YANG Patch edit request message has been
+         processed.";
+
+      leaf patch-id {
+        type string;
+        mandatory true;
+        description
+          "The 'patch-id' value used in the request.";
+      }
+
+      choice global-status {
+        description
+          "Report global errors or complete success.
+           If there is no case selected, then errors
+           are reported in the 'edit-status' container.";
+
+        case global-errors {
+          uses rc:errors;
+          description
+            "This container will be present if global errors that
+             are unrelated to a specific edit occurred.";
+        }
+        leaf ok {
+          type empty;
+          description
+            "This leaf will be present if the request succeeded
+             and there are no errors reported in the 'edit-status'
+             container.";
+        }
+      }
+
+      container edit-status {
+        description
+          "This container will be present if there are
+           edit-specific status responses to report.
+           If all edits succeeded and the 'global-status'
+           returned is 'ok', then a server MAY omit this
+           container.";
+
+        list edit {
+          key edit-id;
+
+          description
+            "Represents a list of status responses,
+             corresponding to edits in the YANG Patch
+             request message.  If an 'edit' entry was
+             skipped or not reached by the server,
+             then this list will not contain a corresponding
+             entry for that edit.";
+
+          leaf edit-id {
+            type string;
+             description
+               "Response status is for the 'edit' list entry
+                with this 'edit-id' value.";
+          }
+          choice edit-status-choice {
+            description
+              "A choice between different types of status
+               responses for each 'edit' entry.";
+            leaf ok {
+              type empty;
+              description
+                "This 'edit' entry was invoked without any
+                 errors detected by the server associated
+                 with this edit.";
+            }
+            case errors {
+              uses rc:errors;
+              description
+                "The server detected errors associated with the
+                 edit identified by the same 'edit-id' value.";
+            }
+          }
+        }
+      }
+    }
+  }  // grouping yang-patch-status
+
+}
+
+<CODE ENDS>
+            ]]></artwork>
+        </figure>
+
+</section>
+
+<section title="IANA Considerations" anchor="iana">
+<section title="Registrations for New URI and YANG Module"
+         anchor="yang-module-registry">
+
+    <t>
+This document registers one URI as a namespace in the
+&quot;IETF XML Registry&quot; <xref target="RFC3688"/>. It follows
+the format in RFC&nbsp;3688.
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   URI: urn:ietf:params:xml:ns:yang:ietf-yang-patch
+   Registrant Contact: The IESG.
+   XML: N/A; the requested URI is an XML namespace.
+            ]]></artwork>
+        </figure>
+
+    <t>
+This document registers one YANG module in the &quot;YANG Module Names&quot;
+registry <xref target="RFC6020"/>.
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   name:         ietf-yang-patch
+   namespace:    urn:ietf:params:xml:ns:yang:ietf-yang-patch
+   prefix:       ypatch
+   reference:    RFC 8072
+            ]]></artwork>
+        </figure>
+</section>
+
+<section title="Media Types" anchor="media-types">
+<section title="Media Type &quot;application/yang-patch+xml&quot;" anchor="yang-patch-xml">
+        <figure>
+            <artwork><![CDATA[
+Type name: application
+
+Subtype name: yang-patch+xml
+
+Required parameters: None
+
+Optional parameters: None
+
+Encoding considerations: 8-bit
+   The "utf-8" charset is always used for this type.
+   Each conceptual YANG data node is encoded according to the
+   XML Encoding Rules and Canonical Format for the specific
+   YANG data node type defined in [RFC7950].
+   In addition, the "yang-patch" YANG Patch template found
+   in RFC 8072 defines the structure of a YANG Patch request.
+
+Security considerations: Security considerations related
+   to the generation and consumption of RESTCONF messages
+   are discussed in Section 5 of RFC 8072.
+   Additional security considerations are specific to the
+   semantics of particular YANG data models.  Each YANG module
+   is expected to specify security considerations for the
+   YANG data defined in that module.
+
+Interoperability considerations: RFC 8072 specifies the format
+   of conforming messages and the interpretation thereof.
+
+Published specification: RFC 8072
+
+Applications that use this media type: Instance document
+   data parsers used within a protocol or automation tool
+   that utilize the YANG Patch data structure.
+
+Fragment identifier considerations: The syntax and semantics
+   of fragment identifiers are the same as the syntax and semantics
+   specified for the "application/xml" media type.
+
+Additional information:
+
+   Deprecated alias names for this type: N/A
+   Magic number(s): N/A
+   File extension(s): None
+   Macintosh file type code(s): "TEXT"
+
+Person & email address to contact for further information: See
+   the Authors' Addresses section of RFC 8072.
+
+Intended usage: COMMON
+
+Restrictions on usage: N/A
+
+Author: See the Authors' Addresses section of RFC 8072.
+
+Change controller: Internet Engineering Task Force
+   (mailto:iesg@ietf.org).
+
+Provisional registration? (standards tree only): no
+            ]]></artwork>
+        </figure>
+</section>
+
+<section title="Media Type &quot;application/yang-patch+json&quot;" anchor="yang-patch-json">
+        <figure>
+            <artwork><![CDATA[
+Type name: application
+
+Subtype name: yang-patch+json
+
+Required parameters: None
+
+Optional parameters: None
+
+Encoding considerations: 8-bit
+   The "utf-8" charset is always used for this type.
+   Each conceptual YANG data node is encoded according to
+   RFC 7951.  A metadata annotation is encoded according to
+   RFC 7952.  In addition, the "yang-patch" YANG Patch
+   template found in RFC 8072 defines the structure of a
+   YANG Patch request.
+
+Security considerations: Security considerations related
+   to the generation and consumption of RESTCONF messages
+   are discussed in Section 5 of RFC 8072.
+   Additional security considerations are specific to the
+   semantics of particular YANG data models.  Each YANG module
+   is expected to specify security considerations for the
+   YANG data defined in that module.
+
+Interoperability considerations: RFC 8072 specifies the format
+   of conforming messages and the interpretation thereof.
+
+Published specification: RFC 8072
+
+Applications that use this media type: Instance document
+   data parsers used within a protocol or automation tool
+   that utilize the YANG Patch data structure.
+
+Fragment identifier considerations: The syntax and semantics
+   of fragment identifiers are the same as the syntax and semantics
+   specified for the "application/json" media type.
+
+Additional information:
+
+   Deprecated alias names for this type: N/A
+   Magic number(s): N/A
+   File extension(s): None
+   Macintosh file type code(s): "TEXT"
+
+Person & email address to contact for further information: See
+   the Authors' Addresses section of RFC 8072.
+
+Intended usage: COMMON
+
+Restrictions on usage: N/A
+
+Author: See the Authors' Addresses section of RFC 8072.
+
+Change controller: Internet Engineering Task Force
+   (mailto:iesg@ietf.org).
+
+Provisional registration? (standards tree only): no
+            ]]></artwork>
+        </figure>
+
+</section>
+</section>
+
+<section title="RESTCONF Capability URNs" anchor="capability-uri-def">
+    <t>
+This document registers one capability identifier in the
+&quot;RESTCONF Capability URNs&quot; registry <xref target="RFC8040"/>.
+The review policy for this registry is "IETF&nbsp;Review"
+<xref target="RFC5226"/>.
+    </t>
+
+        <figure>
+            <artwork><![CDATA[
+Index           Capability Identifier
+------------------------------------------------------------------
+:yang-patch     urn:ietf:params:restconf:capability:yang-patch:1.0
+            ]]></artwork>
+        </figure>
+</section>
+</section>
+
+<section title="Security Considerations" anchor="security-considerations">
+    <t>
+The YANG Patch media type does not introduce any significant new
+security threats, beyond what is described in <xref target="RFC8040"/>.
+This document defines edit processing instructions for a
+variant of the PATCH method, as used within the RESTCONF protocol.
+Message integrity is provided by the RESTCONF protocol.
+There is no additional capability to validate that a patch
+has not been altered.
+    </t>
+    <t>
+It may be possible to use YANG Patch with other protocols
+besides RESTCONF; this topic is outside the scope of this document.
+    </t>
+    <t>
+For RESTCONF, both the client and server MUST be authenticated
+according to Section&nbsp;2 of <xref target="RFC8040"/>.
+It is important for RESTCONF server implementations to carefully
+validate all the edit request parameters in some manner.
+If the entire YANG Patch request cannot be completed,
+then no configuration changes to the system are done.
+A PATCH request MUST be applied atomically, as specified
+in Section&nbsp;2 of <xref target="RFC5789"/>.
+    </t>
+    <t>
+A RESTCONF server implementation SHOULD attempt to prevent
+system disruption due to incremental processing of the
+YANG Patch &quot;edit&quot;&nbsp;list.  It may be possible to construct
+an attack on such a RESTCONF server, which relies on the
+edit processing order mandated by YANG Patch. A server SHOULD
+apply only the fully validated configuration to the underlying
+system. For example, an &quot;edit&quot;&nbsp;list that deleted
+an interface and then recreated it could cause system disruption
+if the &quot;edit&quot;&nbsp;list was incrementally applied.
+    </t>
+    <t>
+A RESTCONF server implementation SHOULD attempt to prevent
+system disruption due to excessive resource consumption
+required to fulfill YANG Patch edit requests. On such an
+implementation, it may be possible to construct an attack that
+attempts to consume all available memory or other resource types.
+    </t>
+</section>
+</middle>
+<back>
+<references title="Normative References">
+
+  <?rfc include="reference.RFC.2119"?>
+  <?rfc include="reference.RFC.3688"?>
+  <?rfc include="reference.RFC.5789"?>
+  <?rfc include="reference.RFC.6020"?>
+  <?rfc include="reference.RFC.6241"?>
+  <?rfc include="reference.RFC.7159"?>
+  <?rfc include="reference.RFC.7230"?>
+  <?rfc include="reference.RFC.7231"?>
+  <?rfc include="reference.RFC.7950"?>
+  <?rfc include="reference.RFC.7951"?>
+  <?rfc include="reference.RFC.7952"?>
+
+
+<reference anchor="RFC8040" target="http://www.rfc-editor.org/info/rfc8040">
+<front>
+<title>RESTCONF Protocol</title>
+<author initials="A" surname="Bierman" fullname="Andy Bierman">
+    <organization/>
+</author>
+<author initials="M" surname="Bjorklund" fullname="Martin Bjorklund">
+    <organization/>
+</author>
+<author initials="K" surname="Watsen" fullname="Kent Watsen">
+    <organization/>
+</author>
+<date month="January" year="2017"/>
+</front>
+<seriesInfo name="RFC" value="8040"/>
+<seriesInfo name="DOI" value="10.17487/RFC8040"/>
+</reference>
+
+<reference anchor='W3C.REC-xml-20081126'
+           target='http://www.w3.org/TR/2008/REC-xml-20081126'>
+<front>
+<title>Extensible Markup Language (XML) 1.0 (Fifth Edition)</title>
+<author initials='T.' surname='Bray' fullname='Tim Bray'>
+    <organization />
+</author>
+<author initials='J.' surname='Paoli' fullname='Jean Paoli'>
+    <organization />
+</author>
+<author initials='M.' surname='Sperberg-McQueen' fullname='C. M. Sperberg-McQueen'>
+    <organization />
+</author>
+<author initials='E.' surname='Maler' fullname='Eve Maler'>
+    <organization />
+</author>
+<author initials='F.' surname='Yergeau' fullname='Francois Yergeau'>
+    <organization />
+</author>
+<date month='November' day='26' year='2008' />
+</front>
+<seriesInfo name='World Wide Web Consortium Recommendation' value='REC-xml-20081126' />
+</reference>
+</references>
+
+<references title="Informative References">
+
+  <?rfc include="reference.RFC.5226"?>
+
+</references>
+
+<section title="Example YANG Module" anchor="example-yang-module">
+    <t>
+The example YANG module used in this document represents
+a simple media jukebox interface. The &quot;example&#8209;jukebox&quot;
+YANG module is defined in <xref target="RFC8040"/>.
+    </t>
+    <t>
+YANG tree diagram for the &quot;example&#8209;jukebox&quot; module:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   +--rw jukebox!
+      +--rw library
+      |  +--rw artist* [name]
+      |  |  +--rw name     string
+      |  |  +--rw album* [name]
+      |  |     +--rw name     string
+      |  |     +--rw genre?   identityref
+      |  |     +--rw year?    uint16
+      |  |     +--rw admin
+      |  |     |  +--rw label?              string
+      |  |     |  +--rw catalogue-number?   string
+      |  |     +--rw song* [name]
+      |  |        +--rw name        string
+      |  |        +--rw location    string
+      |  |        +--rw format?     string
+      |  |        +--rw length?     uint32
+      |  +--ro artist-count?   uint32
+      |  +--ro album-count?    uint32
+      |  +--ro song-count?     uint32
+      +--rw playlist* [name]
+      |  +--rw name           string
+      |  +--rw description?   string
+      |  +--rw song* [index]
+      |     +--rw index    uint32
+      |     +--rw id       instance-identifier
+      +--rw player
+         +--rw gap?   decimal64
+
+  rpcs:
+
+   +---x play
+      +--ro input
+         +--ro playlist       string
+         +--ro song-number    uint32
+            ]]></artwork>
+        </figure>
+<section title="YANG Patch Examples" anchor="yang-patch-examples">
+    <t>
+This section includes RESTCONF examples.
+Most examples are shown in JSON encoding <xref target="RFC7159"/>, and some
+are shown in XML encoding <xref target="W3C.REC-xml-20081126"/>.
+    </t>
+<section title="Add Resources: Error" anchor="error-example">
+    <t>
+The following example shows several songs being added to
+an existing album. Each edit contains one song.
+The first song already exists, so an error will be
+reported for that edit. The rest of the edits were not attempted,
+since the first edit failed.  XML encoding is used in this example.
+    </t>
+    <t>
+Request from the RESTCONF client:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   PATCH /restconf/data/example-jukebox:jukebox/\
+      library/artist=Foo%20Fighters/album=Wasting%20Light HTTP/1.1
+   Host: example.com
+   Accept: application/yang-data+xml
+   Content-Type: application/yang-patch+xml
+
+   <yang-patch xmlns="urn:ietf:params:xml:ns:yang:ietf-yang-patch">
+     <patch-id>add-songs-patch</patch-id>
+     <edit>
+       <edit-id>edit1</edit-id>
+       <operation>create</operation>
+       <target>/song=Bridge%20Burning</target>
+       <value>
+         <song xmlns="http://example.com/ns/example-jukebox">
+           <name>Bridge Burning</name>
+           <location>/media/bridge_burning.mp3</location>
+           <format>MP3</format>
+           <length>288</length>
+         </song>
+       </value>
+     </edit>
+     <edit>
+       <edit-id>edit2</edit-id>
+       <operation>create</operation>
+       <target>/song=Rope</target>
+       <value>
+         <song xmlns="http://example.com/ns/example-jukebox">
+           <name>Rope</name>
+           <location>/media/rope.mp3</location>
+           <format>MP3</format>
+           <length>259</length>
+         </song>
+       </value>
+     </edit>
+     <edit>
+       <edit-id>edit3</edit-id>
+       <operation>create</operation>
+       <target>/song=Dear%20Rosemary</target>
+       <value>
+         <song xmlns="http://example.com/ns/example-jukebox">
+           <name>Dear Rosemary</name>
+           <location>/media/dear_rosemary.mp3</location>
+           <format>MP3</format>
+           <length>269</length>
+         </song>
+       </value>
+     </edit>
+   </yang-patch>
+            ]]></artwork>
+        </figure>
+    <t>
+XML response from the RESTCONF server:
+    </t>
+
+        <figure>
+            <artwork><![CDATA[
+   HTTP/1.1 409 Conflict
+   Date: Thu, 26 Jan 2017 20:56:30 GMT
+   Server: example-server
+   Last-Modified: Thu, 26 Jan 2017 20:56:30 GMT
+   Content-Type: application/yang-data+xml
+
+   <yang-patch-status
+      xmlns="urn:ietf:params:xml:ns:yang:ietf-yang-patch">
+     <patch-id>add-songs-patch</patch-id>
+     <edit-status>
+       <edit>
+          <edit-id>edit1</edit-id>
+          <errors>
+             <error>
+                <error-type>application</error-type>
+                <error-tag>data-exists</error-tag>
+                <error-path
+                  xmlns:jb="http://example.com/ns/example-jukebox">
+                  /jb:jukebox/jb:library
+                  /jb:artist[jb:name='Foo Fighters']
+                  /jb:album[jb:name='Wasting Light']
+                  /jb:song[jb:name='Bridge Burning']
+                </error-path>
+                <error-message>
+                  Data already exists; cannot be created
+                </error-message>
+             </error>
+          </errors>
+       </edit>
+    </edit-status>
+  </yang-patch-status>
+            ]]></artwork>
+        </figure>
+    <t>
+JSON response from the RESTCONF server:
+    </t>
+    <t>
+The following response is shown in JSON format to highlight the
+difference in the &quot;error&#8209;path&quot; object encoding. For
+JSON, the instance-identifier encoding specified in
+<xref target="RFC7951"/> is used.
+    </t>
+
+        <figure>
+            <artwork><![CDATA[
+   HTTP/1.1 409 Conflict
+   Date: Thu, 26 Jan 2017 20:56:30 GMT
+   Server: example-server
+   Last-Modified: Thu, 26 Jan 2017 20:56:30 GMT
+   Content-Type: application/yang-data+json
+
+   {
+     "ietf-yang-patch:yang-patch-status" : {
+       "patch-id" : "add-songs-patch",
+       "edit-status" : {
+         "edit" : [
+           {
+             "edit-id" : "edit1",
+             "errors" : {
+               "error" : [
+                 {
+                   "error-type": "application",
+                   "error-tag": "data-exists",
+                   "error-path": "/example-jukebox:jukebox/library\
+                      /artist[name='Foo Fighters']\
+                      /album[name='Wasting Light']\
+                      /song[name='Bridge Burning']",
+                   "error-message":
+                     "Data already exists; cannot be created"
+                 }
+               ]
+             }
+           }
+         ]
+       }
+     }
+   }
+            ]]></artwork>
+        </figure>
+</section>
+<section title="Add Resources: Success" anchor="success-example">
+    <t>
+The following example shows several songs being added to
+an existing album.
+    </t>
+<t>
+ <list style="symbols">
+ <t>
+Each of two edits contains one song.
+ </t>
+ <t>
+Both edits succeed, and new sub-resources are created.
+ </t>
+ </list>
+</t>
+    <t>
+Request from the RESTCONF client:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   PATCH /restconf/data/example-jukebox:jukebox/\
+      library/artist=Foo%20Fighters/album=Wasting%20Light \
+      HTTP/1.1
+   Host: example.com
+   Accept: application/yang-data+json
+   Content-Type: application/yang-patch+json
+
+   {
+     "ietf-yang-patch:yang-patch" : {
+       "patch-id" : "add-songs-patch-2",
+       "edit" : [
+         {
+           "edit-id" : "edit1",
+           "operation" : "create",
+           "target" : "/song=Rope",
+           "value" : {
+             "song" : [
+               {
+                 "name" : "Rope",
+                 "location" : "/media/rope.mp3",
+                 "format" : "MP3",
+                 "length" : 259
+               }
+             ]
+           }
+         },
+         {
+           "edit-id" : "edit2",
+           "operation" : "create",
+           "target" : "/song=Dear%20Rosemary",
+           "value" : {
+             "song" : [
+               {
+                 "name" : "Dear Rosemary",
+                 "location" : "/media/dear_rosemary.mp3",
+                 "format" : "MP3",
+                 "length" : 269
+               }
+             ]
+           }
+         }
+       ]
+     }
+   }
+            ]]></artwork>
+        </figure>
+    <t>
+Response from the RESTCONF server:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   HTTP/1.1 200 OK
+   Date: Thu, 26 Jan 2017 20:56:30 GMT
+   Server: example-server
+   Last-Modified: Thu, 26 Jan 2017 20:56:30 GMT
+   Content-Type: application/yang-data+json
+
+   {
+     "ietf-yang-patch:yang-patch-status" : {
+       "patch-id" : "add-songs-patch-2",
+       "ok" : [null]
+     }
+   }
+            ]]></artwork>
+        </figure>
+</section>
+<section title="Insert List Entry" anchor="insert-list-entry-example">
+    <t>
+The following example shows a song being inserted within
+an existing playlist. Song &quot;6&quot; in
+playlist &quot;Foo&#8209;One&quot; is being inserted after
+song &quot;5&quot; in the playlist. The operation succeeds, so
+a non&nbhy;error reply can be provided.
+    </t>
+        <figure>
+            <artwork><![CDATA[
+ Request from the RESTCONF client:
+
+   PATCH /restconf/data/example-jukebox:jukebox/\
+     playlist=Foo-One HTTP/1.1
+   Host: example.com
+   Accept: application/yang-data+json
+   Content-Type: application/yang-patch+json
+
+   {
+     "ietf-yang-patch:yang-patch" : {
+       "patch-id" : "insert-song-patch",
+       "comment" : "Insert song 6 after song 5",
+       "edit" : [
+         {
+           "edit-id" : "edit1",
+           "operation" : "insert",
+           "target" : "/song=6",
+           "point" : "/song=5",
+           "where" : "after",
+           "value" : {
+             "example-jukebox:song" : [
+               {
+                 "index" : 6,
+                 "id" : "/example-jukebox:jukebox/library\
+                   /artist[name='Foo Fighters']\
+                   /album[name='Wasting Light']\
+                   /song[name='Bridge Burning']"
+               }
+             ]
+           }
+         }
+       ]
+     }
+
+Response from the RESTCONF server:
+
+  HTTP/1.1 200 OK
+  Date: Thu, 26 Jan 2017 20:56:30 GMT
+  Server: example-server
+  Last-Modified: Thu, 26 Jan 2017 20:56:30 GMT
+  Content-Type: application/yang-data+json
+
+  {
+    "ietf-yang-patch:yang-patch-status" : {
+      "patch-id" : "insert-song-patch",
+      "ok" : [null]
+    }
+  }
+            ]]></artwork>
+        </figure>
+</section>
+<section title="Move List Entry" anchor="move-list-entry-example">
+    <t>
+The following example shows a song being moved within
+an existing playlist. Song &quot;1&quot; in
+playlist &quot;Foo&#8209;One&quot; is being moved after
+song&nbsp;&quot;3&quot; in the playlist. Note that no
+&quot;value&quot; parameter is needed for a &quot;move&quot; operation.
+The operation succeeds, so a non&nbhy;error reply can be provided.
+    </t>
+    <t>
+Request from the RESTCONF client:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   PATCH /restconf/data/example-jukebox:jukebox/\
+     playlist=Foo-One HTTP/1.1
+   Host: example.com
+   Accept: application/yang-data+json
+   Content-Type: application/yang-patch+json
+
+   {
+     "ietf-yang-patch:yang-patch" : {
+       "patch-id" : "move-song-patch",
+       "comment" : "Move song 1 after song 3",
+       "edit" : [
+         {
+           "edit-id" : "edit1",
+           "operation" : "move",
+           "target" : "/song=1",
+           "point" : "/song=3",
+           "where" : "after"
+         }
+       ]
+     }
+   }
+            ]]></artwork>
+        </figure>
+    <t>
+Response from the RESTCONF server:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   HTTP/1.1 200 OK
+   Date: Thu, 26 Jan 2017 20:56:30 GMT
+   Server: example-server
+   Last-Modified: Thu, 26 Jan 2017 20:56:30 GMT
+   Content-Type: application/yang-data+json
+
+   {
+     "ietf-restconf:yang-patch-status" : {
+       "patch-id" : "move-song-patch",
+       "ok" : [null]
+     }
+   }
+            ]]></artwork>
+        </figure>
+</section>
+
+<section title="Edit Datastore Resource" anchor="edit-datastore-resource-example">
+    <t>
+The following example shows how three top-level data nodes from
+different modules can be edited at the same time.
+    </t>
+    <t>
+Example module &quot;foo&quot; defines leaf X.
+Example module &quot;bar&quot; defines container Y, with child leafs A and B.
+Example module &quot;baz&quot; defines list Z, with key C and child leafs D
+and E.
+    </t>
+    <t>
+Request from the RESTCONF client:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   PATCH /restconf/data HTTP/1.1
+   Host: example.com
+   Accept: application/yang-data+json
+   Content-Type: application/yang-patch+json
+
+   {
+     "ietf-yang-patch:yang-patch" : {
+       "patch-id" : "datastore-patch-1",
+       "comment" : "Edit 3 top-level data nodes at once",
+       "edit" : [
+         {
+           "edit-id" : "edit1",
+           "operation" : "create",
+           "target" : "/foo:X",
+           "value" : {
+             "foo:X" : 42
+           }
+         },
+         {
+           "edit-id" : "edit2",
+           "operation" : "merge",
+           "target" : "/bar:Y",
+           "value" : {
+             "bar:Y" : {
+               "A" : "test1",
+               "B" : 99
+             }
+           }
+         },
+         {
+           "edit-id" : "edit3",
+           "operation" : "replace",
+           "target" : "/baz:Z=2",
+           "value" : {
+             "baz:Z" : [
+               {
+                 "C" : 2,
+                 "D" : 100,
+                 "E" : false
+               }
+             ]
+           }
+         }
+       ]
+     }
+   }
+            ]]></artwork>
+        </figure>
+    <t>
+Response from the RESTCONF server:
+    </t>
+        <figure>
+            <artwork><![CDATA[
+   HTTP/1.1 200 OK
+   Date: Thu, 26 Jan 2017 20:56:30 GMT
+   Server: example-server
+   Last-Modified: Thu, 26 Jan 2017 20:55:30 GMT
+   Content-Type: application/yang-data+json
+
+   {
+     "ietf-yang-patch:yang-patch-status" : {
+       "patch-id" : "datastore-patch-1",
+       "ok" : [null]
+     }
+   }
+            ]]></artwork>
+        </figure>
+</section>
+</section>
+</section>
+
+<section title="Acknowledgements" anchor="acknowledgements" numbered="no">
+    <t>
+The authors would like to thank Rex Fernando for his contributions to
+this document.
+
+    </t>
+    <t>
+Contributions to this material by Andy Bierman are based upon work
+supported by the United States Army, Space &amp; Terrestrial
+Communications Directorate (S&amp;TCD) under Contract
+No.&nbsp;W15P7T&nbhy;13&nbhy;C&nbhy;A616. Any opinions, findings, and
+conclusions or recommendations expressed in this material are those
+of the author(s) and do not necessarily reflect the views of the
+S&amp;TCD.
+    </t>
+</section>
+</back>
+
+</rfc>

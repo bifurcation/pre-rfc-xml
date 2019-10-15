@@ -1,0 +1,815 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+
+<?rfc toc="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc tocindent="no"?>
+<?rfc sortrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<?rfc rfcedstyle="yes"?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+
+<rfc number="7457"
+     category="info"
+     submissionType="IETF"
+     consensus="yes"
+     ipr="trust200902">
+
+  <front>
+    <title abbrev="TLS Attacks">Summarizing Known Attacks on Transport Layer
+    Security (TLS) and Datagram TLS (DTLS)</title>
+
+    <author initials="Y." surname="Sheffer" fullname="Yaron Sheffer">
+      <organization abbrev="Porticor">Porticor</organization>
+      <address>
+        <postal>
+          <street>29 HaHarash St.</street>
+          <city>Hod HaSharon</city>
+          <code>4501303</code>
+          <country>Israel</country>
+        </postal>
+        <email>yaronf.ietf@gmail.com</email>
+      </address>
+    </author>
+    <author initials="R." surname="Holz" fullname="Ralph Holz">
+      <organization abbrev="Technische Universitaet Muenchen">Technische Universitaet Muenchen</organization>
+      <address>
+        <postal>
+          <street>Boltzmannstr. 3</street>
+          <city>Garching</city>
+          <code>85748</code>
+          <country>Germany</country>
+        </postal>
+        <email>holz@net.in.tum.de</email>
+      </address>
+    </author>
+    <author initials="P." surname="Saint-Andre" fullname="Peter Saint-Andre">
+      <organization abbrev="&amp;yet">&amp;yet</organization>
+      <address>
+        <email>peter@andyet.com</email>
+        <uri>https://andyet.com/</uri>
+      </address>
+    </author>
+    <date month="February" year="2015"/>
+    <workgroup>UTA</workgroup>
+
+<keyword>
+Transport Layer Security
+TLS
+Datagram TLS
+DTLS
+Secure Sockets Layer
+SSL
+security
+attacks
+</keyword>
+
+    <abstract>
+      <t>
+Over the last few years, there have been several serious attacks on Transport Layer
+Security (TLS), including attacks on its most commonly used ciphers and modes
+of operation. This document summarizes these attacks, with the goal of
+motivating generic and protocol-specific recommendations on the usage of TLS and Datagram TLS (DTLS).</t>
+    </abstract>
+  </front>
+  <middle>
+    <section title="Introduction" anchor="d1e329">
+      <t>
+Over the last few years, there have been several major attacks on TLS <xref target="RFC5246"/>, including attacks on its most commonly used ciphers and modes of operation. Details are given in  <xref target="sec_Attacks"/>, but a quick summary is that both AES-CBC and RC4, which together make up for most current usage, have been seriously attacked in the context of TLS.</t>
+      <t>
+This situation was one of the motivations for the creation of the UTA working group,
+which was tasked with the creation of generic and protocol-specific recommendations
+for the use of TLS and DTLS <xref target="RFC6347"/> (unless
+otherwise noted under <xref target='dtls'/>, all of the information provided in this document applies to DTLS).</t>
+      <t>
+
+
+There is an old saying attributed, ironically enough, to the US National Security Agency (NSA): "Attacks always get better; they never get worse." Unfortunately, that saying is true, so any description of security attacks can only be a snapshot in time. Therefore this document reflects our knowledge as of this writing. It seems likely that new attacks will be discovered in the future.</t>
+      <t>
+For a more detailed discussion of the attacks listed here, the interested reader is referred to <xref target="Attacks-iSec"/>.</t>
+    </section>
+    <section title="Attacks on TLS" anchor="sec_Attacks">
+      <t>
+This section lists the attacks that motivated the current recommendations in <xref target='SECURE-TLS'/>. This list is not intended to be an extensive survey of the security of TLS.</t>
+      <t>
+While there are widely deployed mitigations for some of the attacks listed below, we believe that their root causes necessitate a more systematic solution, which we have attempted
+to develop in <xref target='SECURE-TLS'/>.</t>
+      <t>
+      When an identifier exists for an attack,
+      we have included its Common Vulnerabilities
+      and Exposures (CVE) ID. CVE <xref target="CVE"/> is an extensive,
+      industry-wide database of software
+      vulnerabilities.
+      </t>
+      <section title="SSL Stripping">
+      <t>
+      Various attacks attempt to remove the use of Secure Socket
+      Layer / Transport Layer Security (SSL/TLS) altogether by modifying unencrypted protocols that request the use of TLS,
+      specifically modifying HTTP traffic and HTML pages as they pass on 
+      the wire. These attacks are known collectively as "SSL Stripping" (a form of the more generic "downgrade
+      attack") and were first introduced by Moxie Marlinspike
+      <xref target="SSL-Stripping"/>. In the context of Web traffic, these attacks are only effective if the
+	client initially accesses a Web server using HTTP. A commonly used mitigation is HTTP Strict
+	Transport Security (HSTS) <xref target="RFC6797"/>.
+      </t>
+      </section>
+      <section title="STARTTLS Command Injection Attack (CVE-2011-0411)">
+      <t>
+      Similarly, there are attacks on the transition between unprotected and TLS-protected traffic.
+      A number of IETF application protocols have used an application-level command,
+	usually STARTTLS, to upgrade a cleartext connection to use TLS. Multiple
+	implementations of STARTTLS had a flaw where an application-layer input buffer
+	retained commands that were pipelined with the STARTTLS command, such that
+	commands received prior to TLS negotiation are executed after TLS negotiation.
+	This problem is resolved by requiring the application-level command input
+	buffer to be empty before negotiating TLS. Note that this flaw lives in the
+	application layer code and does not impact the TLS protocol directly.
+      </t>
+
+      <t>
+      STARTTLS and similar mechanisms are vulnerable to downgrade attacks, whereby the attacker
+      simply removes the STARTTLS indication from the (unprotected) request. This cannot be mitigated unless
+      HSTS-like solutions are added.
+      </t>
+      </section>
+      <section title="BEAST (CVE-2011-3389)" anchor="d1e392">
+        <t>
+The BEAST attack <xref target="BEAST"/> uses issues with the TLS 1.0
+implementation of Cipher Block Chaining (CBC) (that is, the predictable
+initialization vector) to decrypt parts of a packet, and specifically to
+decrypt HTTP cookies when HTTP is run over TLS.</t>
+      </section>
+      <section title="Padding Oracle Attacks" anchor="d1e407">
+        <t>
+A consequence of the MAC-then-encrypt design in all current versions of TLS is the existence of
+padding oracle attacks <xref target="Padding-Oracle"/>. A recent incarnation of these attacks is
+the Lucky Thirteen attack (CVE-2013-0169) <xref target="CBC-Attack"/>, a timing side-channel attack
+that allows the attacker to decrypt arbitrary ciphertext.</t>
+<t>
+The Lucky Thirteen attack can be
+   mitigated by using authenticated encryption like AES-GCM <xref target="RFC5288"/>
+   or encrypt-then-MAC <xref target="RFC7366"/> instead of the TLS default of
+   MAC-then-encrypt.
+</t>
+<t>
+An even newer variant of the padding oracle attack, one that does not use timing information,
+is the POODLE attack (CVE-2014-3566) <xref target="POODLE"/>
+on SSL 3.0. This attack has no known mitigation.
+</t>
+      </section>
+      <section title="Attacks on RC4" anchor="d1e428">
+        <t>
+The RC4 algorithm <xref target="RC4"/> has been used with TLS (and previously, SSL) for many years.
+RC4 has long been
+   known to have a variety of cryptographic weaknesses, e.g., <xref target="RC4-Attack-Pau"/>,
+   <xref target="RC4-Attack-Man"/>, and <xref target="RC4-Attack-FMS"/>.  Recent cryptanalysis results <xref target="RC4-Attack-AlF"/> exploit biases in
+   the RC4 keystream to recover repeatedly encrypted plaintexts.
+   </t>
+<t>
+   These recent results are on the verge of becoming practically
+   exploitable; currently they require 2^26 sessions or 13x2^30
+   encryptions.  As a result, RC4 can no longer be seen as providing a
+   sufficient level of security for TLS sessions. For further details, the reader is
+   referred to <xref target="CIPHER-SUITES"/> and the references it cites.
+</t>
+      </section>
+      <section title="Compression Attacks: CRIME, TIME, and BREACH" anchor="d1e468">
+        <t>
+The CRIME attack <xref target="CRIME"/> (CVE-2012-4929) allows an active attacker to decrypt ciphertext (specifically, cookies) when TLS is used with TLS-level compression.</t>
+        <t>
+The TIME attack <xref target="TIME"/> and the later BREACH attack <xref target="BREACH"/> (CVE-2013-3587,
+though the number has not been officially allocated) both make similar use of HTTP-level compression to
+decrypt secret data passed in the HTTP response. We note that compression of the HTTP message body is much
+more prevalent than compression at the TLS level.</t>
+        <t>
+The TIME attack can be mitigated by disabling TLS compression. We are not
+	aware of mitigations at the TLS protocol level to the BREACH attack,
+	and so application-level mitigations are needed (see <xref
+	target="BREACH"/>). For example, implementations of HTTP that use
+	Cross-Site Request Forgery (CSRF) tokens will need to randomize them.  Even the best practices and recommendations from <xref target='SECURE-TLS'/> are insufficient to thwart this attack.</t>
+      </section>
+      <section title="Certificate and RSA-Related Attacks">
+      <t>
+      There have been several practical attacks on TLS when used with RSA certificates
+      (the most common use case).
+      These include
+      <xref target="Bleichenbacher98"/> and <xref target="Klima03"/>.
+
+
+      While the Bleichenbacher attack has been mitigated in TLS 1.0, the
+      Klima attack, which relies on a version-check oracle, is only mitigated by TLS 1.1.
+      </t>
+      <t>
+      The use of RSA certificates often involves exploitable timing issues <xref target="Brumley03"/>
+      (CVE-2003-0147),
+      unless the implementation takes 
+      care to explicitly eliminate them.
+      </t>
+      <t>
+      A recent certificate fuzzing tool <xref target="Brubaker2014using"/> uncovered numerous
+      vulnerabilities in different TLS libraries related to certificate validation.
+      </t>
+      </section>
+      <section title="Theft of RSA Private Keys">
+      <t>
+      When TLS is used with most non-Diffie-Hellman cipher suites, it is sufficient to obtain the
+      server's private key in order to decrypt any sessions (past and future) that were initiated
+      with that server. This technique is used, for example, by the popular Wireshark network
+      sniffer to inspect TLS-protected connections.
+      </t>
+      <t>
+      It is known that stolen (or otherwise obtained) private keys have been used as part of 
+      large-scale monitoring <xref target="RFC7258"/> of certain servers.
+      </t>
+      <t>
+      Such attacks can be mitigated by better protecting the private key, e.g., using OS protections
+      or dedicated hardware. Even more effective is the use of cipher suites that offer "forward secrecy", the
+      property where revealing a secret such as a private key does not expose past or future sessions to a passive attacker.
+      </t>
+      </section>
+      <section title="Diffie-Hellman Parameters">
+      <t>
+      TLS allows the definition of ephemeral Diffie-Hellman (DH)
+      and Elliptic Curve Diffie-Hellman parameters in its respective
+      key exchange modes. This results in an attack detailed in <xref target="Cross-Protocol"/>.
+      Using predefined DH groups, as proposed in <xref target="FFDHE-TLS"/>,
+      would mitigate this attack.
+      </t>
+      <t>
+      In addition, clients that do not properly verify the received parameters
+      are exposed to man-in-the-middle 
+      (MITM) attacks.
+      Unfortunately, the TLS protocol
+      does not mandate this verification (see <xref target="RFC6989"/> for analogous information for IPsec).
+      </t>
+      </section>
+      <section title="Renegotiation (CVE-2009-3555)">
+      <t>
+      A major attack on the TLS renegotiation mechanism applies to all current versions
+      of the protocol. The attack and the TLS extension that resolves it are
+      described in <xref target="RFC5746"/>.
+      </t>
+      </section>
+      <section title="Triple Handshake (CVE-2014-1295)">
+      <t>
+      The triple handshake attack <xref target="BhargavanDFPS14"/>
+      enables the attacker to cause two TLS
+connections to share keying material. This leads to a multitude of attacks,
+e.g., man-in-the-middle, breaking safe renegotiation, and breaking channel
+binding via TLS Exporter <xref target="RFC5705"/> or "tls-unique"
+<xref target="RFC5929"/>.
+
+      </t>
+      </section>
+      <section title="Virtual Host Confusion">
+      <t>
+	A recent article <xref target="Delignat14"/> describes a security issue whereby SSLv3 fallback
+	and improper handling of session caches on the server side can be abused
+	by an attacker to establish a malicious connection to a virtual host
+	other than the one originally intended and approved by the server. This attack
+	is especially serious in performance critical environments where sharing
+	of SSLv3 session caches is very common.
+      </t>
+      </section>
+      <section title="Denial of Service">
+      <t>
+      Server CPU power has progressed over the years so that TLS can now be turned on by default.
+      However, the risk of malicious clients and
+	coordinated groups of clients ("botnets") mounting denial-of-service attacks is still very real.
+	TLS adds another vector for computational
+	attacks, since a client can easily (with little computational effort) force the server to expend relatively large computational
+	work. It is known that such attacks have in fact been mounted.
+      </t>
+      </section>
+      <section title="Implementation Issues">
+      <t>
+      Even when the protocol is properly specified, this does not guarantee the security of 
+      implementations. In fact, there are very common
+      issues that often plague TLS implementations. In particular, when integrating into
+      higher-level protocols, TLS and its PKI-based authentication are sometimes the source
+      of misunderstandings and implementation "shortcuts". An extensive survey 
+      of these issues can be found in <xref target="Georgiev2012"/>.
+      </t>
+      <t>
+      <list style="symbols">
+      <t>Implementations might omit validation of the server certificate altogether.
+      For example, this is true of the default implementation of HTTP client libraries
+      in Python 2 (e.g., CVE-2013-2191).</t>
+      <t>Implementations might not validate the server identity.  This
+      validation typically amounts to matching the protocol-level server
+      name with the certificate's Subject Alternative Name field.  Note:
+      this same information is often also found in the Common Name part of the
+      Distinguished Name, and some validators incorrectly retrieve
+      it from there instead of from the Subject Alternative Name.
+      </t>
+      <t>Implementations might validate the certificate chain incorrectly
+      or not at all, or use an incorrect or outdated trust anchor list.</t>
+      </list>
+      </t>
+      <t>
+      An implementation attack of a different kind, one that exploits a simple coding mistake (bounds check),
+      is the Heartbleed attack (CVE-2014-0160) that affected a wide swath of the Internet
+      when it was discovered in
+      April 2014.
+      </t>
+      </section>
+      <section title="Usability">
+      <t>
+      Many TLS endpoints, such as browsers and mail clients, allow the user to explicitly accept an
+      invalid server certificate. This often takes the form of a UI dialog (e.g., "do you accept this server?"), and
+      users have been conditioned to respond in the affirmative in order to allow the connection to take place.
+      </t>
+      <t>This user behavior is used by (arguably legitimate) "SSL proxies" that decrypt and 
+      re-encrypt the TLS connection in order to enforce local security policy. It is also 
+      abused by attackers whose goal is to gain access to the encrypted information.
+      </t>
+      <t>Mitigation is complex and will probably involve a combination of protocol mechanisms (HSTS,
+      certificate pinning <xref target="KEY-PINNING"/>), and very careful UI design.</t>
+      </section>
+    </section>
+    <section title="Applicability to DTLS" anchor="dtls">
+    <t>
+    DTLS <xref target="RFC4347"/> <xref target="RFC6347"/> is an adaptation of TLS
+    for UDP.
+    </t>
+    <t>
+    With respect to the attacks described in the current document,
+    DTLS 1.0 is equivalent to TLS
+    1.1. The only exception is RC4, which is disallowed in DTLS. DTLS 1.2 is equivalent
+    to TLS 1.2.
+    </t>
+    </section>
+    <section title="Security Considerations" anchor="d1e507">
+      <t>
+This document describes protocol attacks in an informational manner and in itself does not have any security implications.
+Its companion documents, especially <xref target='SECURE-TLS'/>, certainly do.</t>
+    </section>
+  </middle>
+  <back>
+
+
+    <references title="Informative References">
+
+    <reference  anchor='RFC4347' target='http://www.rfc-editor.org/info/rfc4347'>
+    <front>
+    <title>Datagram Transport Layer Security</title>
+    <author initials='E.' surname='Rescorla' fullname='E. Rescorla'><organization /></author>
+    <author initials='N.' surname='Modadugu' fullname='N. Modadugu'><organization /></author>
+    <date year='2006' month='April' />
+    </front>
+    <seriesInfo name='RFC' value='4347'/>
+    <format type='ASCII' octets='56014'/>
+    </reference>
+
+    <reference  anchor='RFC5246' target='http://www.rfc-editor.org/info/rfc5246'>
+    <front>
+    <title>The Transport Layer Security (TLS) Protocol Version 1.2</title>
+    <author initials='T.' surname='Dierks' fullname='T. Dierks'><organization /></author>
+    <author initials='E.' surname='Rescorla' fullname='E. Rescorla'><organization /></author>
+    <date year='2008' month='August' />
+    </front>
+    <seriesInfo name='RFC' value='5246'/>
+    <format type='ASCII' octets='222395'/>
+    </reference>
+
+    <reference  anchor='RFC5288' target='http://www.rfc-editor.org/info/rfc5288'>
+    <front>
+    <title>AES Galois Counter Mode (GCM) Cipher Suites for TLS</title>
+    <author initials='J.' surname='Salowey' fullname='J. Salowey'><organization /></author>
+    <author initials='A.' surname='Choudhury' fullname='A. Choudhury'><organization /></author>
+    <author initials='D.' surname='McGrew' fullname='D. McGrew'><organization /></author>
+    <date year='2008' month='August' />
+    </front>
+    <seriesInfo name='RFC' value='5288'/>
+    <format type='ASCII' octets='16468'/>
+    </reference>
+
+    <reference  anchor='RFC5705' target='http://www.rfc-editor.org/info/rfc5705'>
+    <front>
+    <title>Keying Material Exporters for Transport Layer Security (TLS)</title>
+    <author initials='E.' surname='Rescorla' fullname='E. Rescorla'><organization /></author>
+    <date year='2010' month='March' />
+    </front>
+    <seriesInfo name='RFC' value='5705'/>
+    <format type='ASCII' octets='16346'/>
+    </reference>
+
+    <reference  anchor='RFC5746' target='http://www.rfc-editor.org/info/rfc5746'>
+    <front>
+    <title>Transport Layer Security (TLS) Renegotiation Indication Extension</title>
+    <author initials='E.' surname='Rescorla' fullname='E. Rescorla'><organization /></author>
+    <author initials='M.' surname='Ray' fullname='M. Ray'><organization /></author>
+    <author initials='S.' surname='Dispensa' fullname='S. Dispensa'><organization /></author>
+    <author initials='N.' surname='Oskov' fullname='N. Oskov'><organization /></author>
+    <date year='2010' month='February' />
+    </front>
+    <seriesInfo name='RFC' value='5746'/>
+    <format type='ASCII' octets='33790'/>
+    </reference>
+
+    <reference  anchor='RFC5929' target='http://www.rfc-editor.org/info/rfc5929'>
+    <front>
+    <title>Channel Bindings for TLS</title>
+    <author initials='J.' surname='Altman' fullname='J. Altman'><organization /></author>
+    <author initials='N.' surname='Williams' fullname='N. Williams'><organization /></author>
+    <author initials='L.' surname='Zhu' fullname='L. Zhu'><organization /></author>
+    <date year='2010' month='July' />
+    </front>
+    <seriesInfo name='RFC' value='5929'/>
+    <format type='ASCII' octets='34061'/>
+    </reference>
+
+    <reference  anchor='RFC6347' target='http://www.rfc-editor.org/info/rfc6347'>
+    <front>
+    <title>Datagram Transport Layer Security Version 1.2</title>
+    <author initials='E.' surname='Rescorla' fullname='E. Rescorla'><organization /></author>
+    <author initials='N.' surname='Modadugu' fullname='N. Modadugu'><organization /></author>
+    <date year='2012' month='January' />
+    </front>
+    <seriesInfo name='RFC' value='6347'/>
+    <format type='ASCII' octets='73546'/>
+    </reference>
+
+    <reference  anchor='RFC6797' target='http://www.rfc-editor.org/info/rfc6797'>
+    <front>
+    <title>HTTP Strict Transport Security (HSTS)</title>
+    <author initials='J.' surname='Hodges' fullname='J. Hodges'><organization /></author>
+    <author initials='C.' surname='Jackson' fullname='C. Jackson'><organization /></author>
+    <author initials='A.' surname='Barth' fullname='A. Barth'><organization /></author>
+    <date year='2012' month='November' />
+    </front>
+    <seriesInfo name='RFC' value='6797'/>
+    <format type='ASCII' octets='103554'/>
+    </reference>
+
+    <reference  anchor='RFC6989' target='http://www.rfc-editor.org/info/rfc6989'>
+    <front>
+    <title>Additional Diffie-Hellman Tests for the Internet Key Exchange Protocol Version 2 (IKEv2)</title>
+    <author initials='Y.' surname='Sheffer' fullname='Y. Sheffer'><organization /></author>
+    <author initials='S.' surname='Fluhrer' fullname='S. Fluhrer'><organization /></author>
+    <date year='2013' month='July' />
+    </front>
+    <seriesInfo name='RFC' value='6989'/>
+    <format type='ASCII' octets='21099'/>
+    </reference>
+
+    <reference  anchor='RFC7258' target='http://www.rfc-editor.org/info/rfc7258'>
+    <front>
+    <title>Pervasive Monitoring Is an Attack</title>
+    <author initials='S.' surname='Farrell' fullname='S. Farrell'><organization /></author>
+    <author initials='H.' surname='Tschofenig' fullname='H. Tschofenig'><organization /></author>
+    <date year='2014' month='May' />
+    </front>
+    <seriesInfo name='BCP' value='188'/>
+    <seriesInfo name='RFC' value='7258'/>
+    <format type='ASCII' octets='13396'/>
+    </reference>
+
+    <reference  anchor='RFC7366' target='http://www.rfc-editor.org/info/rfc7366'>
+    <front>
+    <title>Encrypt-then-MAC for Transport Layer Security (TLS) and Datagram Transport Layer Security (DTLS)</title>
+    <author initials='P.' surname='Gutmann' fullname='P. Gutmann'><organization /></author>
+    <date year='2014' month='September' />
+    </front>
+    <seriesInfo name='RFC' value='7366'/>
+    <format type='ASCII' octets='15775'/>
+    </reference>
+
+<!--draft-ietf-uta-tls-bcp-08: I-D Exisits-->
+<reference anchor='SECURE-TLS'>
+<front>
+<title>Recommendations for Secure Use of TLS and DTLS</title>
+<author initials='Y' surname='Sheffer' fullname='Yaron Sheffer'>
+    <organization />
+</author>
+<author initials='R' surname='Holz' fullname='Ralph Holz'>
+    <organization />
+</author>
+<author initials='P' surname='Saint-Andre' fullname='Peter Saint-Andre'>
+    <organization />
+</author>
+<date month='October' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-uta-tls-bcp-08' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-uta-tls-bcp-05.txt' />
+</reference>
+
+<!--draft-ietf-tls-prohibiting-rc4-00: I-D Exists-->
+<reference anchor='CIPHER-SUITES'>
+<front>
+<title>Prohibiting RC4 Cipher Suites</title>
+<author initials='A' surname='Popov' fullname='Andrey Popov'>
+    <organization />
+</author>
+<date month='July' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-tls-prohibiting-rc4-00' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-tls-prohibiting-rc4-00.txt' />
+</reference>
+
+<!--draft-ietf-websec-key-pinning-21: I-D Exists-->
+<reference anchor='KEY-PINNING'>
+<front>
+<title>Public Key Pinning Extension for HTTP</title>
+<author initials='C' surname='Evans' fullname='Chris Evans'>
+    <organization />
+</author>
+<author initials='C' surname='Palmer' fullname='Chris Palmer'>
+    <organization />
+</author>
+<author initials='R' surname='Sleevi' fullname='Ryan Sleevi'>
+    <organization />
+</author>
+<date month='October' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-websec-key-pinning-21' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-websec-key-pinning-21.txt' />
+</reference>
+
+<!--draft-ietf-tls-negotiated-ff-dhe-02: I-D Exists-->
+<reference anchor='FFDHE-TLS'>
+<front>
+<title>Negotiated Finite Field Diffie-Hellman Ephemeral Parameters for TLS</title>
+<author initials='D' surname='Gillmor' fullname='Daniel Gillmor'>
+    <organization />
+</author>
+<date month='October' year='2014' />
+</front>
+<seriesInfo name='Work in Progress,' value='draft-ietf-tls-negotiated-ff-dhe-02' />
+<format type='TXT'
+        target='http://www.ietf.org/internet-drafts/draft-ietf-tls-negotiated-ff-dhe-02.txt' />
+</reference>
+
+<reference anchor="CVE" target="https://cve.mitre.org/">
+  <front>
+    <title>Common Vulnerabilities and Exposures</title>
+    <author surname="MITRE"/>
+    <date/>
+  </front>
+</reference>
+
+<reference anchor="CBC-Attack" target="http://www.ieee-security.org/TC/SP2013/papers/4977a526.pdf">
+<front>
+<title>Lucky Thirteen: Breaking the TLS and DTLS Record Protocols</title>
+<author initials="N.J." surname="AlFardan" fullname="Nadhem J. AlFardan"/>
+<author initials="K." surname="Paterson" fullname="K. Paterson"/>
+<date year="2013"/>
+</front>
+<seriesInfo name="IEEE Symposium on Security and Privacy" value=""/>
+</reference>
+
+<reference anchor="BEAST"
+	   target="http://packetstormsecurity.com/files/105499/Browser-Exploit-Against-SSL-TLS.html">
+<front>
+<title>Browser Exploit Against SSL/TLS</title>
+<author initials="J." surname="Rizzo" fullname="Juliano Rizzo" />
+<author initials="T." surname="Duong" fullname="Thai Duong"/>
+<date year="2011"/>
+</front>
+</reference>
+
+
+
+
+
+<reference anchor="POODLE"
+	   target="https://www.openssl.org/~bodo/ssl-poodle.pdf"><front>
+<title>This POODLE Bites: Exploiting the SSL 3.0 Fallback</title>
+<author initials="B." surname="Moeller" fullname="Bodo Moeller"/>
+<author initials="T." surname="Duong" fullname="Thai Duong"/>
+<author initials="K." surname="Kotowicz" fullname="Krzysztof Kotowicz"/>
+<date month="September" year="2014"/>
+</front>
+</reference>
+    
+<reference anchor="CRIME"><front>
+<title>The CRIME Attack</title>
+<author initials="J." surname="Rizzo" fullname="Juliano Rizzo"/>
+<author initials="T." surname="Duong" fullname="Thai Duong"/>
+<date year="2012"/>
+</front>
+<seriesInfo name="EKOparty Security Conference" value=""/>
+</reference>
+    
+<reference anchor="BREACH"
+       target="http://breachattack.com/">
+<front>
+<title>The BREACH Attack</title>
+<author initials="A." surname="Prado" fullname="Angelo Prado"/>
+<author initials="N." surname="Harris" fullname="Neal Harris"/>
+<author initials="Y." surname="Gluck" fullname="Yoel Gluck"/>
+<date year="2013"/>
+</front>
+</reference>
+
+<reference anchor="TIME"
+   target="https://media.blackhat.com/eu-13/briefings/Beery/bh-eu-13-a-perfect-crime-beery-wp.pdf">
+<front>
+<title>A Perfect CRIME? Only TIME Will Tell</title>
+<author initials="T." surname="Be'ery" fullname="Tal Be'ery"/>
+<author initials="A." surname="Shulman" fullname="Amichai Shulman"/>
+<date year="2013"/>
+</front>
+<seriesInfo name="Black Hat Europe" value="2013"/>
+</reference>
+
+<reference anchor="RC4">
+<front>
+<title>Applied Cryptography: Protocols, Algorithms, and Source Code in C, 2nd Ed.</title>
+<author initials="B." surname="Schneier" fullname="Bruce Schneier"/>
+<date month="October" year="1996"/>
+</front>
+<seriesInfo name="Second" value="Edition"/>
+</reference>
+
+<reference anchor="RC4-Attack-FMS" target="http://www.crypto.com/papers/others/rc4_ksaproc.pdf">
+<front>
+<title>Weaknesses in the Key Scheduling Algorithm of RC4</title>
+<author initials="S." surname="Fluhrer" fullname="Scott Fluhrer"/>
+<author initials="I." surname="Mantin" fullname="Itsik Mantin"/>
+<author initials="A." surname="Shamir" fullname="Adi Shamir"/>
+<date month="August" year="2001"/>
+</front>
+<seriesInfo name="Selected Areas in Cryptography" value=""/>
+</reference>
+
+<reference anchor="RC4-Attack-AlF" 
+	   target="https://www.usenix.org/conference/usenixsecurity13/security-rc4-tls">
+  <front>
+<title>On the Security of RC4 in TLS</title><author initials="N."
+surname="AlFardan" fullname="Nadhem AlFardan"/><author initials="D.J."
+surname="Bernstein" fullname="Daniel J. Bernstein"/><author initials="K.G."
+surname="Paterson" fullname="Kenneth G. Paterson"/><author initials="B."
+surname="Poettering" fullname="Bertram Poettering"/><author initials="J.C.N."
+surname="Schuldt" fullname="Jacob C. N. Schuldt"/>
+<date month="August" year="2013"/>
+</front>
+<seriesInfo name="Usenix Security Symposium" value="2013"/></reference>
+
+<reference anchor="Georgiev2012"
+	   target="http://doi.acm.org/10.1145/2382196.2382204">
+<front>
+<title>The most dangerous code in the world: validating SSL certificates in non-browser
+software</title>
+<author fullname="Martin Georgiev" initials="M." surname="Georgiev" />
+<author fullname="Subodh Iyengar" initials="S." surname="Iyengar" />
+<author fullname="Suman Jana" initials="S." surname="Jana"/>
+<author fullname="Rishita Anubhai" initials="R." surname="Anubhai" />
+<author fullname="Dan Boneh" initials="D." surname="Boneh" />
+<author fullname="Vitaly Shmatikov" initials="V." surname="Shmatikov" />
+<date year="2012"/>
+</front>
+<seriesInfo name="Proceedings of the 2012 ACM conference on Computer and
+		  Communications Security"
+	    value="Pages 38-49"/>
+</reference>
+
+<reference anchor="Attacks-iSec"
+	   target="https://www.isecpartners.com/media/106031/ssl_attacks_survey.pdf"><front>
+  <title>Attacks on SSL, a comprehensive study of BEAST, CRIME, TIME, BREACH, Lucky13 and RC4
+biases</title>
+<author initials="P.G." surname="Sarkar" fullname="Pratik Guha Sarkar"/>
+<author initials="S." surname="Fitzgerald" fullname="Shawn
+Fitzgerald"/>
+<date month="August" year="2013"/>
+</front>
+</reference>
+
+<reference anchor="Padding-Oracle"
+	   target="http://www.iacr.org/cryptodb/archive/2002/EUROCRYPT/2850/2850.pdf"><front>
+<title>Security Flaws Induced by CBC Padding Applications to SSL, IPSEC, WTLS...</title>
+<author initials="S." surname="Vaudenay" fullname="Serge Vaudenay"/>
+<date year="2002"/>
+</front>
+<seriesInfo name="EUROCRYPT" value="2002"/>
+</reference>
+
+<reference anchor="Cross-Protocol"
+	       target="http://doi.acm.org/10.1145/2382196.2382206"><front>
+<title>A cross-protocol attack on the TLS protocol</title>
+<author fullname="Nikos Mavrogiannopoulos" initials="N." surname="Mavrogiannopoulos" />
+<author fullname="Frederik Vercauteren" initials="F." surname="Vercauteren"/>
+<author fullname="Vesselin Velichkov" initials="V." surname="Velichkov"/>
+<author fullname="Bart Preneel" initials="B." surname="Preneel" />
+<date year="2012" />
+</front>
+<seriesInfo name="Proceedings of the 2012 ACM Conference in Computer and
+  Communications Security" value="Pages 62-72"/>
+</reference>
+
+<reference anchor="RC4-Attack-Pau"
+	   target="http://dblp.uni-trier.de/db/conf/sacrypt/sacrypt2007.html#PaulM07"><front>
+<title>Permutation After RC4 Key Scheduling Reveals the Secret Key</title>
+<author fullname="Goutam Paul" initials="G." surname="Paul" />
+<author fullname="Subhamoy Maitra" initials="S." surname="Maitra" />
+<date month="August" year="2007"/>
+</front>
+</reference>
+
+<reference anchor="RC4-Attack-Man" target="http://saluc.engr.uconn.edu/refs/stream_cipher/mantin01attackRC4.pdf">
+<front>
+<title>A Practical Attack on Broadcast RC4</title>
+<author fullname="Itsik Mantin" initials="I." surname="Mantin" />
+<author fullname="Adi Shamir" initials="A." surname="Shamir" />
+<date month="April" year="2001" />
+</front>
+</reference>
+
+
+<reference anchor="SSL-Stripping"
+	   target="http://www.thoughtcrime.org/software/sslstrip/">
+<front>
+<title>sslstrip</title>
+<author initials="M." surname="Marlinspike" fullname="Moxie Marlinspike"><organization/>
+</author>
+<date year="2009" month="February"/>
+</front>
+</reference>
+
+<reference anchor="Bleichenbacher98" target="http://archiv.infsec.ethz.ch/education/fs08/secsem/Bleichenbacher98.pdf">
+<front>
+<title>Chosen Ciphertext Attacks Against Protocols Based on the RSA Encryption 
+Standard PKCS #1</title>
+<author fullname="Daniel Bleichenbacher" initials="D." surname="Bleichenbacher"/>
+<date year="1998" />
+</front>
+</reference>
+
+<reference anchor="Klima03" target="https://eprint.iacr.org/2003/052.pdf">
+<front>
+<title>Attacking RSA-based Sessions in SSL/TLS</title>
+<author fullname="Vlastimil Klima" initials="V." surname="Klima" />
+<author fullname="Ondej Pokorny" initials="O." surname="Pokorny" />
+<author fullname="Tomas Rosa" initials="T." surname="Rosa"/>
+<date year="2003" /></front>
+</reference>
+
+<reference anchor="Brumley03" target="http://crypto.stanford.edu/~dabo/papers/ssl-timing.pdf">
+<front>
+<title>Remote Timing Attacks are Practical</title>
+<author fullname="David Brumley" initials="D." surname="Brumley" />
+<author fullname="Dan Boneh" initials="D." surname="Boneh"
+/><date year="2003" />
+</front>
+</reference>
+
+<reference anchor="Brubaker2014using" target="https://www.cs.utexas.edu/~shmat/shmat_oak14.pdf">
+<front>
+<title>Using Frankencerts for Automated Adversarial Testing of Certificate Validation in SSL/TLS
+Implementations</title>
+<author fullname="Chad Brubaker" initials="C." surname="Brubaker" />
+<author fullname="Suman Jana" initials="S." surname="Jana" />
+<author fullname="Baishakhi Ray" initials="B." surname="Ray"/>
+<author fullname="Sarfraz Khurshid" initials="S." surname="Khurshid"/>
+<author fullname="Vitaly Shmatikov" initials="V." surname="Shmatikov"/>
+<date year="2014" /></front>
+</reference>
+
+<reference anchor="Delignat14" target="https://bh.ht.vc/vhost_confusion.pdf">
+<front>
+<title>Virtual Host Confusion: Weaknesses and Exploits</title>
+<author fullname="Antoine Delignat-Lavaud" initials="A." surname="Delignat-Lavaud" />
+<author fullname="Karthikeyan Bhargavan" initials="K." surname="Bhargavan" />
+<date year="2014"/></front>
+<seriesInfo name="Black Hat" value="2014"/></reference>
+
+
+<reference anchor="BhargavanDFPS14"
+	   target="https://secure-resumption.com/tlsauth.pdf"><front><title>Triple
+handshakes and cookie cutters: breaking and fixing authentication over
+tls</title><author fullname="Karthikeyan Bhargavan" initials="K."
+surname="Bhargavan" /><author fullname="Antoine Delignat-Lavaud" initials="A."
+surname="Delignat-Lavaud" /><author fullname="Cedric Fournet" initials="C."
+surname="Fournet" /><author fullname="Alfredo Pironti" initials="A."
+surname="Pironti" /><author fullname="Pierre-Yves Strub" initials="P."
+surname="Strub" />
+<date year="2014" /></front></reference>
+    </references>
+<section title="Acknowledgements" anchor="d1e530">
+<t>We would like to thank Stephen Farrell, Simon Josefsson, John
+   Mattsson, Yoav Nir, Kenny Paterson, Patrick Pelletier, Tom Ritter,
+   Rich Salz, and Meral Shirazipour for their feedback on this document.
+   We thank Andrei Popov for contributing text on RC4, Kohei Kasamatsu
+   for text on Lucky13, Ilari Liusvaara for text on attacks and on DTLS,
+   Aaron Zauner for text on virtual host confusion, and Chris Newman for
+text on STARTTLS command injection. Ralph Holz gratefully acknowledges
+the support of NICTA (National ICT of Australia) in the preparation
+of this document.</t>
+
+<t>During IESG review, Richard Barnes, Barry Leiba, and Kathleen
+   Moriarty caught several issues that needed to be addressed.</t>
+
+<t>The authors gratefully acknowledge the assistance of Leif Johansson
+   and Orit Levin as the working group chairs and Pete Resnick as the
+   sponsoring Area Director.</t>
+
+<t>The document was prepared using the lyx2rfc tool, created by Nico
+   Williams.</t>
+</section>
+  </back>
+</rfc>

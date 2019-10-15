@@ -1,0 +1,881 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+  <?xml-stylesheet type="text/xsl" href="rfc2629.xslt" ?>
+
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd" [
+]>
+
+<?rfc toc="yes"?>
+<?rfc tocdepth="4"?>
+<?rfc sortrefs="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+
+<rfc number="8484" 
+     submissionType="IETF" 
+     consensus="yes"  
+     ipr="trust200902" 
+     category="std">
+
+  <front>
+    <title abbrev="DNS Queries over HTTPS (DoH)">DNS Queries over HTTPS (DoH)</title>
+
+    <author initials="P." surname="Hoffman" fullname="Paul Hoffman">
+      <organization>ICANN</organization>
+      <address>
+        <email>paul.hoffman@icann.org</email>
+      </address>
+    </author>
+    <author initials="P." surname="McManus" fullname="Patrick McManus">
+      <organization>Mozilla</organization>
+      <address>
+        <email>mcmanus@ducksong.com</email>
+      </address>
+    </author>
+
+    <date year="2018" month="October"/>
+
+    <area>Art</area>
+   
+ 
+    <abstract>
+<t>This document defines a protocol for sending DNS queries and
+getting DNS responses over HTTPS. Each DNS query-response pair is
+mapped into an HTTP exchange.</t>
+    </abstract>
+
+  </front>
+
+  <middle>
+
+<section anchor="introduction" title="Introduction">
+
+<t>This document defines a specific protocol, DNS over HTTPS (DoH), for
+sending DNS <xref target="RFC1035"/> queries and getting DNS responses over HTTP
+<xref target="RFC7540"/> using https <xref target="RFC2818"/> URIs (and therefore TLS <xref target="RFC8446"/> security
+for integrity and confidentiality). Each DNS query-response pair is
+mapped into an HTTP exchange.</t>
+
+<t>The described approach is more than a tunnel over HTTP. It establishes
+default media formatting types for requests and responses but uses
+normal HTTP content negotiation mechanisms for selecting alternatives
+that endpoints may prefer in anticipation of serving new use cases. In
+addition to this media type negotiation, it aligns itself with HTTP
+features such as caching, redirection, proxying, authentication, and
+compression.</t>
+
+<t>The integration with HTTP provides a transport suitable for both
+existing DNS clients and native web applications seeking access to
+the DNS.</t>
+
+<t>
+Two primary use cases were considered during this protocol's
+development. These use cases are preventing on-path devices from interfering
+with DNS operations, and also allowing web applications to access DNS
+information via existing browser APIs in a safe way consistent with 
+Cross Origin Resource Sharing (CORS) <xref target="FETCH"/>. 
+
+No special effort has
+been taken to enable or prevent application to other use cases.
+This document focuses on communication between DNS clients (such as operating
+system stub resolvers) and recursive resolvers.</t>
+
+</section>
+<section anchor="terminology" title="Terminology">
+
+<t>A server that supports this protocol is called a "DoH server" to
+differentiate it from a "DNS server"
+(one that only provides DNS service over one or more of the other transport protocols
+standardized for DNS).
+Similarly, a client that supports this protocol is called a
+"DoH client".</t>
+
+        <t>
+    The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+    NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED",
+    "MAY", and "OPTIONAL" in this document are to be interpreted as
+    described in BCP&nbsp;14 <xref target="RFC2119"/> <xref target="RFC8174"/> 
+    when, and only when, they appear in all capitals, as shown here.
+        </t>
+
+</section>
+<section anchor="selection" title="Selection of DoH Server">
+
+<t>The DoH client is configured with a URI Template <xref target="RFC6570"/>, which
+describes how to construct the URL to use for resolution.
+Configuration, discovery, and updating of the URI Template is done out
+of band from this protocol. Note that configuration might be manual
+(such as a user typing URI Templates in a user interface for
+"options") or automatic (such as URI Templates being supplied in
+responses from DHCP or similar protocols). DoH servers MAY support
+more than one URI Template. This allows the different endpoints to
+have different properties, such as different authentication
+requirements or service-level guarantees.</t>
+
+<t>A DoH client uses configuration to select the URI, and thus the
+DoH server, that is to be used for resolution. <xref target="RFC2818"/> defines how HTTPS
+verifies the DoH server's identity.</t>
+
+<t>A DoH client MUST NOT use a different URI simply because it was discovered
+outside of the client's configuration (such as through HTTP/2 server push) 
+or because a server offers an unsolicited response that
+appears to be a valid answer to a DNS query. This specification does
+not extend DNS resolution privileges to URIs that are not recognized
+by the DoH client as configured URIs. Such scenarios may create
+additional operational, tracking, and security hazards that require
+limitations for safe usage. A future specification may support this
+use case.</t>
+
+</section>
+<section anchor="the-http-exchange" title="The HTTP Exchange">
+
+<section anchor="httprequest" title="The HTTP Request">
+
+<t>A DoH client encodes a single DNS query
+into an HTTP request using either the HTTP GET or POST method and the
+other requirements of this section. The DoH server defines the URI
+used by the request through the use of a URI Template.</t>
+
+<t>The URI Template defined in this document is processed without any
+variables when the HTTP method is POST. When the HTTP method is
+GET, the single variable "dns" is defined as the content of the DNS request
+(as described in <xref target="dnswire"/>), encoded with base64url <xref target="RFC4648"/>.</t>
+
+<t>Future specifications for new media types for DoH MUST define the variables
+used for URI Template processing with this protocol.</t>
+
+<t>DoH servers MUST implement both the POST and GET methods.</t>
+
+<t>When using the POST method, the DNS query is included as the message
+body of the HTTP request, and the Content-Type request header field indicates
+the media type of the message. POSTed requests are generally smaller than their
+GET equivalents.</t>
+
+<t>Using the GET method is friendlier to many HTTP cache implementations.</t>
+
+<t>The DoH client SHOULD include an HTTP Accept request header field to
+indicate what type of content can be understood in
+response. Irrespective of the value of the Accept request header field, the
+client MUST be prepared to process "application/dns-message"
+(as described in <xref target="dnswire"/>) responses but MAY also process other
+DNS-related media types it receives.</t>
+
+<t>In order to maximize HTTP cache friendliness, DoH clients using media
+formats that include the ID field from the DNS message header, such as "application/dns-message",
+SHOULD use a DNS ID of 0 in every DNS request.  HTTP correlates
+the request and response, thus eliminating the need for the ID in a media
+type such as "application/dns-message". The use of a varying
+DNS ID can cause semantically equivalent DNS queries to be cached
+separately.</t>
+
+<t>DoH clients can use HTTP/2 padding and compression <xref target="RFC7540"/> in the same way
+that other HTTP/2 clients use (or don't use) them.</t>
+
+<section anchor="http-request-examples" title="HTTP Request Examples">
+
+<t>These examples use HTTP/2-style formatting from <xref target="RFC7540"/>.</t>
+
+<t>These examples use a DoH service with a URI Template of
+"https://dnsserver.example.net/dns-query{?dns}" to resolve
+IN A records.</t>
+
+<t>The requests are represented as bodies with media type "application/dns-message".</t>
+
+<t>The first example request uses GET to request "www.example.com".</t>
+
+<figure><artwork><![CDATA[
+:method = GET
+:scheme = https
+:authority = dnsserver.example.net
+:path = /dns-query?dns=AAABAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB
+accept = application/dns-message
+]]></artwork></figure>
+
+<t>The same DNS query for "www.example.com", using the POST method would be:</t>
+
+<figure><artwork><![CDATA[
+:method = POST
+:scheme = https
+:authority = dnsserver.example.net
+:path = /dns-query
+accept = application/dns-message
+content-type = application/dns-message
+content-length = 33
+
+<33 bytes represented by the following hex encoding>
+00 00 01 00 00 01 00 00  00 00 00 00 03 77 77 77
+07 65 78 61 6d 70 6c 65  03 63 6f 6d 00 00 01 00
+01
+]]></artwork></figure>
+
+<t>In this example, the 33 bytes are the DNS message in DNS wire format <xref
+target="RFC1035"/>, starting with the DNS header.</t>
+
+<t>Finally, a GET-based query for 
+"a.62characterlabel-makes-base64url-distinct-from-standard-base64.example.com"
+is shown as an example to emphasize that the encoding alphabet of
+base64url is different than regular base64 and that padding is omitted.</t>
+
+<t>The DNS query, expressed in DNS wire format, is 94 bytes represented by the following:</t>
+
+<figure><artwork><![CDATA[
+00 00 01 00 00 01 00 00  00 00 00 00 01 61 3e 36
+32 63 68 61 72 61 63 74  65 72 6c 61 62 65 6c 2d
+6d 61 6b 65 73 2d 62 61  73 65 36 34 75 72 6c 2d
+64 69 73 74 69 6e 63 74  2d 66 72 6f 6d 2d 73 74
+61 6e 64 61 72 64 2d 62  61 73 65 36 34 07 65 78
+61 6d 70 6c 65 03 63 6f  6d 00 00 01 00 01
+
+:method = GET
+:scheme = https
+:authority = dnsserver.example.net
+:path = /dns-query? (no space or Carriage Return (CR))
+        dns=AAABAAABAAAAAAAAAWE-NjJjaGFyYWN0ZXJsYWJl (no space or CR)
+        bC1tYWtlcy1iYXNlNjR1cmwtZGlzdGluY3QtZnJvbS1z (no space or CR)
+        dGFuZGFyZC1iYXNlNjQHZXhhbXBsZQNjb20AAAEAAQ
+accept = application/dns-message
+]]></artwork></figure>
+
+</section>
+</section>
+<section anchor="http-response" title="The HTTP Response">
+
+<t>The only response type defined in this document is
+"application/dns-message", but it is possible that other
+response formats will be defined in the future.
+A DoH server MUST be able to process "application/dns-message"
+request messages.</t>
+
+<t>Different response media types will provide more or less information from a DNS
+response. For example, one response type might include information from the
+DNS header bytes while another might omit it. 
+The amount and type of information that a media type gives are solely up to
+the format and are not defined in this protocol.</t>
+
+<t>Each DNS request-response pair is mapped to one HTTP exchange.
+The responses may be processed and transported in any order
+using HTTP's multi-streaming functionality (see Section 5 of <xref target="RFC7540"/>).</t>
+
+<t><xref target="caching"/> discusses the relationship between DNS and HTTP
+response caching.</t>
+
+<section anchor="handling-dns-and-http-errors" title="Handling DNS and HTTP Errors">
+
+<t>DNS response codes indicate either success or failure for the DNS query. A
+successful HTTP response with a 2xx status code (see Section 6.3 of <xref target="RFC7231"/>) is used for
+any valid DNS response, regardless of the DNS response code. For example, a
+successful 2xx HTTP status code is used even with a DNS message whose DNS
+response code indicates failure, such as SERVFAIL or NXDOMAIN.</t>
+
+<t>HTTP responses with non-successful HTTP status codes do not contain
+replies to the original DNS question in the HTTP request.
+DoH clients need to use the same semantic processing of non-successful
+HTTP status codes as other HTTP clients. This might mean that the DoH
+client retries the query with the same DoH server, such as if there are authorization
+failures (HTTP status code 401; see Section 3.1 of <xref target="RFC7235"/>). It could also mean
+that the DoH client retries  with a different DoH server, such as for
+unsupported media types (HTTP status code 415; see Section 6.5.13 of  <xref target="RFC7231"/>), or
+where the server cannot generate a representation suitable for the client
+(HTTP status code 406; see Section 6.5.6 of <xref target="RFC7231"/>), and so on.</t>
+
+</section>
+<section anchor="http-response-example" title="HTTP Response Example">
+
+<t>This is an example response for a query for the IN AAAA records for
+"www.example.com" with recursion turned on. The response bears one
+answer record with an address of 2001:db8:abcd:12:1:2:3:4 and a TTL of
+3709 seconds.</t>
+
+<figure><artwork><![CDATA[
+:status = 200
+content-type = application/dns-message
+content-length = 61
+cache-control = max-age=3709
+
+<61 bytes represented by the following hex encoding>
+00 00 81 80 00 01 00 01  00 00 00 00 03 77 77 77
+07 65 78 61 6d 70 6c 65  03 63 6f 6d 00 00 1c 00
+01 c0 0c 00 1c 00 01 00  00 0e 7d 00 10 20 01 0d
+b8 ab cd 00 12 00 01 00  02 00 03 00 04
+
+]]></artwork></figure>
+
+</section>
+</section>
+</section>
+<section anchor="http-integration" title="HTTP Integration">
+
+<t>This protocol MUST be used with the https URI scheme <xref target="RFC7230"/>.</t>
+
+<t>Sections <xref target="PrivacyConsiderations" format="counter"/> and <xref
+target="Security" format="counter"/> discuss additional considerations
+for the integration with HTTP.</t>
+
+<section anchor="caching" title="Cache Interaction">
+
+<t>A DoH exchange can pass through a hierarchy of caches that include
+both HTTP- and DNS-specific caches.
+These caches may exist between the DoH server and client, 
+or they may exist on the DoH client itself.
+HTTP caches are generic by design;
+that is, they do not understand this protocol. Even if a DoH
+client has modified its cache implementation to be aware of DoH
+semantics, it does not follow that all upstream caches (for example,
+inline proxies, server-side gateways, and content delivery networks) will
+be.</t>
+
+<t>As a result, DoH servers need to carefully consider the HTTP
+caching metadata they send in response to GET requests (responses to POST requests
+are not cacheable unless specific response header fields are sent; this is
+not widely implemented and is not advised for DoH).</t>
+
+<t>In particular, DoH servers SHOULD assign an explicit HTTP freshness
+lifetime (see Section 4.2 of <xref target="RFC7234"/>)
+so that the DoH client is more likely to use fresh DNS data.
+This requirement is due to HTTP caches being able to assign
+their own heuristic freshness (such as that described in Section 4.2.2 of <xref target="RFC7234"/>),
+which would take control of the cache contents out of the hands of the DoH server.</t>
+
+<t>The assigned freshness lifetime of a DoH HTTP response MUST be less
+than or equal to the smallest TTL in the Answer section of the DNS
+response. A freshness lifetime equal to the smallest TTL in the Answer
+section is RECOMMENDED. For example, if a HTTP response carries three
+RRsets with TTLs of 30, 600, and 300, the HTTP freshness lifetime
+should be 30 seconds (which could be specified as "Cache-Control:
+max-age=30").
+This requirement helps prevent expired RRsets in messages in an HTTP cache
+from unintentionally being served.</t>
+
+<t>If the DNS response has no records in the Answer section, and the DNS
+response has an SOA record in the Authority section, the response
+freshness lifetime MUST NOT be greater than the MINIMUM field from
+that SOA record (see <xref target="RFC2308"/>).</t>
+
+<t>The stale-while-revalidate and stale-if-error Cache-Control directives
+<xref target="RFC5861"/> could be well suited to a DoH implementation when
+allowed by server policy. Those mechanisms allow a client, at the
+server's discretion, to reuse an HTTP cache entry that is no longer fresh.
+In such a case, the client reuses either all of a cached entry or none of it.</t>
+
+<t>DoH servers also need to consider HTTP caching when generating
+responses that are not globally valid. For instance, if a DoH
+server customizes a response based on the client's identity, it would
+not want to allow global reuse of that response. This could be
+accomplished through a variety of HTTP techniques, such as a
+Cache-Control max-age of 0, or by using the Vary response header field
+(see Section 7.1.4 of <xref target="RFC7231"/>) to establish a secondary cache key
+(see Section 4.1 of <xref target="RFC7234"/>).</t>
+
+<t>DoH clients MUST account for the Age response header field's value
+<xref target="RFC7234"/> when calculating the DNS TTL of a response. For example,
+if an RRset is received with a DNS TTL of 600, but the Age header field
+indicates that the response has been cached for 250 seconds, the
+remaining lifetime of the RRset is 350 seconds.
+This requirement applies to both DoH client HTTP caches and
+DoH client DNS caches.</t>
+
+<t>DoH clients can request an uncached copy of a HTTP response by using
+the "no-cache" request Cache-Control directive (see Section 5.2.1.4 of <xref
+target="RFC7234"/>) and similar controls. Note that some caches might not honor
+these directives, either due to configuration or interaction with
+traditional DNS caches that do not have such a mechanism.</t>
+
+<t>HTTP conditional requests <xref target="RFC7232"/> may be of limited value to
+DoH, as revalidation provides only a bandwidth benefit and DNS
+transactions are normally latency bound. Furthermore, the HTTP
+response header fields that enable revalidation (such as "Last-Modified" and
+"Etag") are often fairly large when compared to the overall DNS
+response size and have a variable nature that creates constant
+pressure on the HTTP/2 compression dictionary <xref target="RFC7541"/>. Other types
+of DNS data, such as zone transfers, may be larger and benefit more
+from revalidation.</t>
+
+</section>
+<section anchor="http2" title="HTTP/2">
+
+<t>HTTP/2 <xref target="RFC7540"/> is the minimum RECOMMENDED version of HTTP for use with DoH.</t>
+
+<t>The messages in classic UDP-based DNS <xref target="RFC1035"/> are inherently
+unordered and have low overhead. A competitive HTTP transport needs to
+support reordering, parallelism, priority, and header compression to
+achieve similar performance. Those features were introduced to HTTP in
+HTTP/2 <xref target="RFC7540"/>. Earlier versions of HTTP are capable of conveying
+the semantic requirements of DoH but may result in very poor
+performance.</t>
+
+</section>
+<section anchor="server-push" title="Server Push">
+
+<t>Before using DoH response data for DNS resolution, the client MUST
+establish that the HTTP request URI can be used for the DoH query.
+For HTTP requests initiated by the DoH client, this is
+implicit in the selection of URI. For HTTP server push (see Section 8.2 of
+<xref target="RFC7540"/>), extra care must be taken to ensure that the pushed URI is
+one that the client would have directed the same query to if the
+client had initiated the request (in addition to the other security
+checks normally needed for server push).</t>
+
+</section>
+<section anchor="content-negotiation" title="Content Negotiation">
+
+<t>In order to maximize interoperability, DoH clients and DoH
+servers MUST support the "application/dns-message" media
+type. Other media types MAY be used as defined by HTTP Content
+Negotiation (see Section 3.4 of <xref target="RFC7231"/>).
+Those media types MUST be flexible enough to express every
+DNS query that would normally be sent in DNS over UDP (including queries and
+responses that use DNS extensions, but not those that require multiple
+responses).</t>
+
+</section>
+</section>
+<section anchor="dnswire" title='Definition of the "application/dns-message" Media Type'>
+
+<t>The data payload for the "application/dns-message" media type is a
+single message of the DNS on-the-wire format defined in Section 4.2.1
+of <xref target="RFC1035"/>, which in turn refers to the full wire format defined
+in Section 4.1 of that RFC.</t>
+
+<t>Although <xref target="RFC1035"/> says "Messages carried by UDP are restricted to 512
+bytes", that was later updated by <xref target="RFC6891"/>. This media type
+restricts the maximum size of the DNS message to 65535 bytes.</t>
+
+<t>Note that the wire format used in this media type is different than the
+wire format used in <xref target="RFC7858"/> (which uses the format defined in
+Section 4.2.2 of <xref target="RFC1035"/> that includes two length bytes).</t>
+
+<t>DoH clients using this media type MAY have one or more Extension Mechanisms
+for DNS (EDNS) options
+<xref target="RFC6891"/> in the request. DoH servers using this media type MUST ignore
+the value given for the EDNS UDP payload size in DNS requests.</t>
+
+<t>When using the GET method, the data payload for this media type MUST be
+encoded with base64url <xref target="RFC4648"/> and then provided as a variable named
+"dns" to the URI Template expansion. Padding characters for base64url MUST
+NOT be included.</t>
+
+<t>When using the POST method, the data payload for this media type MUST NOT
+be encoded and is used directly as the HTTP message body.</t>
+
+</section>
+<section anchor="iana" title="IANA Considerations">
+
+<section anchor="dnsMessageType" title='Registration of the "application/dns-message" Media Type'>
+
+<figure><artwork><![CDATA[
+Type name: application
+
+Subtype name: dns-message
+
+Required parameters: N/A
+
+Optional parameters: N/A
+
+Encoding considerations: This is a binary format.  The contents are a
+   DNS message as defined in RFC 1035.  The format used here is for 
+   DNS over UDP, which is the format defined in the diagrams in 
+   RFC 1035.
+
+Security considerations: See RFC 8484.  The content is a DNS message 
+   and thus not executable code.
+
+Interoperability considerations: None.
+
+Published specification: RFC 8484.
+
+Applications that use this media type:
+   Systems that want to exchange full DNS messages.
+
+Additional information:
+
+   Deprecated alias names for this type: N/A
+   Magic number(s): N/A
+   File extension(s): N/A
+   Macintosh file type code(s): N/A
+
+Person & email address to contact for further information:
+   Paul Hoffman <paul.hoffman@icann.org>
+
+Intended usage: COMMON
+
+Restrictions on usage: N/A
+
+Author: Paul Hoffman <paul.hoffman@icann.org>
+
+Change controller: IESG
+]]></artwork></figure>
+
+</section>
+</section>
+<section anchor="PrivacyConsiderations" title="Privacy Considerations">
+
+<t><xref target="RFC7626"/> discusses DNS privacy considerations in both "on the
+wire" (Section 2.4 of <xref target="RFC7626"/>) and "in the server" (Section 2.5 of <xref target="RFC7626"/>) contexts. This
+is also a useful framing for DoH's privacy considerations.</t>
+
+<section anchor="OnTheWire" title="On the Wire">
+
+<t>DoH encrypts DNS traffic and requires authentication of the
+server. This mitigates both passive surveillance <xref target="RFC7258"/> and
+active attacks that attempt to divert DNS traffic to rogue servers
+(see Section 2.5.1 of <xref target="RFC7626"/>). DNS over TLS <xref target="RFC7858"/> provides
+similar protections, while direct UDP- and TCP-based transports are
+vulnerable to this class of attack.
+An experimental effort to offer guidance on choosing the padding 
+length can be found in <xref target="RFC8467"/>.</t>
+
+<t>Additionally, the use of the HTTPS default port 443 and the ability to
+mix DoH traffic with other HTTPS traffic on the same connection can
+deter unprivileged on-path devices from interfering with DNS operations and make
+DNS traffic analysis more difficult.</t>
+
+</section>
+<section anchor="InTheServer" title="In the Server">
+
+<t>The DNS wire format <xref target="RFC1035"/> contains no client identifiers; however, 
+various transports of DNS queries and responses do provide data that can be
+used to correlate requests. HTTPS presents new considerations for
+correlation, such as explicit HTTP cookies and implicit
+fingerprinting of the unique set and ordering of HTTP request header fields.</t>
+
+<t>A DoH implementation is built on IP, TCP, TLS, and HTTP. Each layer
+contains one or more common features that can be used to correlate
+queries to the same identity. DNS transports will generally
+carry the same privacy properties of the layers used to implement
+them. For example, the properties of IP, TCP, and TLS apply to implementations
+of DNS over TLS.</t>
+
+<t>The privacy considerations of using the HTTPS layer in DoH are
+incremental to those of DNS over TLS. DoH is not known to introduce
+new concerns beyond those associated with HTTPS.</t>
+
+<t>At the IP level, the client address provides obvious correlation
+information. This can be mitigated by use of a NAT, proxy, VPN, or
+simple address rotation over time. It may be aggravated by use of a
+DNS server that can correlate real-time addressing information with
+other personal identifiers, such as when a DNS server and DHCP server
+are operated by the same entity.</t>
+
+<t>DNS implementations that use one TCP connection for multiple DNS
+requests directly group those requests. Long-lived connections have
+better performance behaviors than short-lived connections; however, they group
+more requests, which can expose more information to correlation and
+consolidation. TCP-based solutions may also seek performance through
+the use of TCP Fast Open <xref target="RFC7413"/>. The cookies used in TCP Fast
+Open allow servers to correlate TCP sessions.</t>
+
+<t>TLS-based implementations often achieve better handshake performance
+through the use of some form of session resumption mechanism, such as
+Section 2.2 of <xref target="RFC8446"/>. Session resumption creates trivial
+mechanisms for a server to correlate TLS connections
+together.</t>
+
+<t>HTTP's feature set can also be used for identification and tracking in
+a number of different ways. For example, Authentication request header
+fields explicitly identify profiles in use, and HTTP cookies are
+designed as an explicit state-tracking mechanism between the client
+and serving site and often are used as an authentication mechanism.</t>
+
+<t>Additionally, the User-Agent and Accept-Language request header fields
+often convey specific information about the client version or locale.
+This facilitates content negotiation and operational work-arounds for
+implementation bugs. Request header fields that control caching
+can expose state information about a subset of the client's
+history. Mixing DoH requests with other HTTP requests on the same
+connection also provides an opportunity for richer data correlation.</t>
+
+<t>The DoH protocol design allows applications to fully leverage the HTTP
+ecosystem, including features that are not enumerated here. Utilizing the full
+set of HTTP features enables DoH to be more than an HTTP tunnel, but
+it is at the cost of opening up implementations to the full set of privacy
+considerations of HTTP.</t>
+
+<t>Implementations of DoH clients and servers need to consider the
+benefit and privacy impact of these features, and their deployment
+context, when deciding whether or not to enable them. Implementations
+are advised to expose the minimal set of data needed to achieve the desired
+feature set.</t>
+
+<t>Determining whether or not a DoH implementation requires HTTP cookie
+<xref target="RFC6265"/> support is particularly important because HTTP cookies are the primary
+state tracking mechanism in HTTP. HTTP cookies SHOULD NOT be accepted
+by DOH clients unless they are explicitly required by a use case.</t>
+
+</section>
+</section>
+<section anchor="Security" title="Security Considerations">
+
+<t>Running DNS over HTTPS relies on the security of the underlying
+HTTP transport. This mitigates classic amplification
+attacks for UDP-based DNS. Implementations utilizing HTTP/2 benefit from the TLS
+profile defined in Section 9.2 of <xref target="RFC7540"/>.</t>
+
+<t>Session-level encryption has well-known weaknesses with respect to
+traffic analysis, which might be particularly acute when dealing with
+DNS queries.
+HTTP/2 provides further advice about the use of compression
+(see Section 10.6 of <xref target="RFC7540"/>) and padding (see Section 10.7
+of <xref target="RFC7540"/>).
+DoH servers can also add DNS padding <xref target="RFC7830"/> if the DoH client requests
+it in the DNS query. An experimental effort to offer guidance on choosing the padding 
+length can be found in <xref target="RFC8467"/>.</t>
+
+<t>The HTTPS connection provides transport security for the interaction between the
+DoH server and client, but it does not provide the response integrity of DNS
+data provided by DNSSEC. DNSSEC and DoH are independent and fully compatible
+protocols, each solving different problems. The use of one does not diminish the
+need nor the usefulness of the other. It is the choice of a client to either
+perform full DNSSEC validation of answers or to trust the DoH server to do
+DNSSEC validation and inspect the AD (Authentic Data) bit in the returned
+message to determine whether an answer was authentic or not. As noted in
+<xref target="http-response"/>, different response media types will provide more or less
+information from a DNS response, so this choice may be affected by the response
+media type.</t>
+
+<t><xref target="caching"/> describes the interaction of this protocol with HTTP
+caching. An adversary that can control the cache used by the client
+can affect that client's view of the DNS. This is no different
+than the security implications of HTTP caching for other protocols
+that use HTTP.</t>
+
+<t>In the absence of DNSSEC information, a DoH server can give a
+client invalid data in response to a DNS query. <xref target="selection"/>
+disallows the use of DoH DNS responses that do not originate from
+configured servers. This prohibition does not guarantee protection against invalid
+data, but it does reduce the risk.</t>
+
+</section>
+<section anchor="operational-considerations" title="Operational Considerations">
+
+<t>Local policy considerations and similar factors mean different DNS
+servers may provide different results to the same query, for instance,
+in split DNS configurations <xref target="RFC6950"/>.  It logically follows that
+the server that is queried can influence the end result.  Therefore, a
+client's choice of DNS server may affect the responses it gets to its
+queries.
+For example, in the case of DNS64 <xref target="RFC6147"/>, the choice could affect
+whether IPv6/IPv4 translation will work at all.</t>
+
+<t>The HTTPS channel used by this specification establishes secure
+two-party communication between the DoH client and the DoH server.
+Filtering or inspection systems that rely on unsecured transport of
+DNS will not function in a DNS over HTTPS environment
+due to the confidentiality and integrity protection provided by TLS.</t>
+
+<t>Some HTTPS client implementations perform real time third-party checks
+of the revocation status of the certificates being used by TLS. If
+this check is done as part of the DoH server connection procedure
+and the check itself requires DNS resolution to connect to the third
+party, a deadlock can occur. The use of Online Certificate Status Protocol
+(OCSP) <xref target="RFC6960"/> servers or Authority Information Access (AIA)
+for Certificate Revocation List (CRL) fetching (see Section 4.2.2.1 of <xref target="RFC5280"/>) are examples of how
+this deadlock can happen.  To mitigate the possibility of deadlock,
+the authentication given DoH servers SHOULD NOT rely on DNS-based references to external
+resources in the TLS handshake. For OCSP, the server can bundle the
+certificate status as part of the handshake using a mechanism
+appropriate to the version of TLS, such as using Section 4.4.2.1 of <xref
+target="RFC8446"/> for TLS version 1.3. AIA deadlocks can be avoided by providing
+intermediate certificates that might otherwise be obtained through
+additional requests. Note that these deadlocks also need to be
+considered for servers that a DoH server might redirect to.</t>
+
+<t>A DoH client may face a similar bootstrapping problem when the
+HTTP request needs to resolve the hostname portion of the DNS
+URI. Just as the address of a traditional DNS nameserver cannot be
+originally determined from that same server, a DoH client cannot use
+its DoH server to initially resolve the server's host name into an
+address. Alternative strategies a client might employ include 1) making
+the initial resolution part of the configuration, 2) IP-based URIs and
+corresponding IP-based certificates for HTTPS, or 3) resolving the DNS
+API server's hostname via traditional DNS or another DoH server while
+still authenticating the resulting connection via HTTPS.</t>
+
+<t>HTTP <xref target="RFC7230"/> is a stateless application-level protocol, and
+therefore DoH implementations do not provide stateful ordering
+guarantees between different requests. DoH cannot be used as a
+transport for other protocols that require strict ordering.</t>
+
+<t>A DoH server is allowed to answer queries with any valid DNS response.
+For example, a valid DNS response might have the TC (truncation) bit set in
+the DNS header to indicate that the server
+was not able to retrieve a full answer for the query but is providing
+the best answer it could get.
+A DoH server can reply to queries with an HTTP error
+for queries that it cannot fulfill.
+In this same example, a DoH server could use an HTTP error instead
+of a non-error response that has the TC bit set.</t>
+
+<t>Many extensions to DNS, using <xref target="RFC6891"/>, have been defined over the years.
+Extensions that are specific to the choice of transport, such as <xref target="RFC7828"/>,
+are not applicable to DoH.</t>
+
+</section>
+
+
+  </middle>
+
+  <back>
+
+    <references title='Normative References'>
+
+<?rfc include="reference.RFC.1035"?>
+
+<?rfc include="reference.RFC.2119"?>
+
+<?rfc include="reference.RFC.2308"?>
+
+<?rfc include="reference.RFC.4648"?>
+
+<?rfc include="reference.RFC.6265"?>
+
+<?rfc include="reference.RFC.6570"?>
+
+<?rfc include="reference.RFC.7230"?>
+
+<?rfc include="reference.RFC.7231"?>
+
+<?rfc include="reference.RFC.7232"?>
+
+<?rfc include="reference.RFC.7234"?>
+
+<?rfc include="reference.RFC.7235"?>
+
+<?rfc include="reference.RFC.7540"?>
+
+<?rfc include="reference.RFC.7541"?>
+
+<?rfc include="reference.RFC.7626"?>
+
+<?rfc include="reference.RFC.8174"?>
+
+<?rfc include="reference.RFC.8446"?>
+
+
+    </references>
+
+
+
+    <references title='Informative References'>
+
+<?rfc include="reference.RFC.8467"?>
+
+<?rfc include="reference.RFC.2818"?>
+
+<?rfc include="reference.RFC.5280"?>
+
+<?rfc include="reference.RFC.5861"?>
+
+<?rfc include="reference.RFC.6147"?>
+
+<?rfc include="reference.RFC.6891"?>
+
+<?rfc include="reference.RFC.6950"?>
+
+<?rfc include="reference.RFC.6960"?>
+
+<?rfc include="reference.RFC.7258"?>
+
+<?rfc include="reference.RFC.7413"?>
+
+<?rfc include="reference.RFC.7828"?>
+
+<?rfc include="reference.RFC.7830"?>
+
+<?rfc include="reference.RFC.7858"?>
+
+<reference anchor="FETCH"
+	   target="https://fetch.spec.whatwg.org/">
+  <front>
+    <title>Fetch Living Standard</title>
+    <author>
+      <organization/>
+    </author>
+    <date year="2018" month="August"/>
+  </front>
+</reference>
+
+
+    </references>
+
+
+<section anchor="protocol-development" title="Protocol Development">
+
+<t>This appendix describes the requirements used to design DoH. These requirements are listed
+here to help readers understand the current protocol, not to limit how the protocol might
+be developed in the future. This appendix is non-normative.</t>
+
+<t>The protocol described in this document based its design on the following protocol requirements:</t>
+
+<t><list style="symbols">
+  <t>The protocol must use normal HTTP semantics.</t>
+  <t>The queries and responses must be able to be flexible enough to express every
+DNS query that would normally be sent in DNS over UDP (including queries and
+responses that use DNS extensions, but not those that require multiple
+responses).</t>
+  <t>The protocol must permit the addition of new formats for DNS queries and responses.</t>
+  <t>The protocol must ensure interoperability by specifying a single format for
+requests and responses that is mandatory to implement.  That format must be
+able to support future modifications to the DNS protocol including the
+inclusion of one or more EDNS options (including those not yet defined).</t>
+  <t>The protocol must use a secure transport that meets the
+requirements for HTTPS.</t>
+</list></t>
+
+<t>The following were considered non-requirements:</t>
+
+<t><list style="symbols">
+  <t>Supporting network-specific DNS64 <xref target="RFC6147"/></t>
+  <t>Supporting other network-specific inferences from plaintext DNS queries</t>
+  <t>Supporting insecure HTTP</t>
+</list></t>
+
+</section>
+<section anchor="previous-work-on-dns-over-http-or-in-other-formats" title="Previous Work on DNS over HTTP or in Other Formats">
+
+<t>The following is an incomplete list of earlier work that related to DNS over HTTP/1 or representing DNS
+data in other formats.</t>
+
+<t>The list includes links to the tools.ietf.org site (because these documents
+are all expired) and web sites of software.</t>
+
+<t><list style="symbols">
+  <t>&lt;https://tools.ietf.org/html/draft-mohan-dns-query-xml&gt;</t>
+  <t>&lt;https://tools.ietf.org/html/draft-daley-dnsxml&gt;</t>
+  <t>&lt;https://tools.ietf.org/html/draft-dulaunoy-dnsop-passive-dns-cof&gt;</t>
+  <t>&lt;https://tools.ietf.org/html/draft-bortzmeyer-dns-json&gt;</t>
+  <t>&lt;https://www.nlnetlabs.nl/projects/dnssec-trigger/&gt;</t>
+</list></t>
+
+</section>
+<section numbered="false" anchor="acknowledgments" title="Acknowledgments">
+
+<t>This work required a high level of cooperation between experts in
+different technologies. Thank you
+Ray Bellis,
+Stephane Bortzmeyer,
+Manu Bretelle,
+Sara Dickinson,
+Massimiliano Fantuzzi,
+Tony Finch,
+Daniel Kahn Gilmor,
+Olafur Gudmundsson,
+Wes Hardaker,
+Rory Hewitt,
+Joe Hildebrand,
+David Lawrence,
+Eliot Lear,
+John Mattsson,
+Alex Mayrhofer,
+Mark Nottingham,
+Jim Reid,
+Adam Roach,
+Ben Schwartz,
+Davey Song,
+Daniel Stenberg,
+Andrew Sullivan,
+Martin Thomson,
+and Sam Weiler.</t>
+</section>
+</back>
+</rfc>
+
